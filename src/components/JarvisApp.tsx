@@ -2,6 +2,7 @@ import { useState, useCallback, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { parseCommand, JARVIS_GREETINGS, type JarvisState, type JarvisAction } from '../lib/jarvis-brain';
 import { useSpeechRecognition, useTextToSpeech } from './SpeechEngine';
+import { appendInfluencersToSheet, appendEmailLogToSheet, generateMockInfluencers, generateEmailLogs } from '../lib/google-sheets';
 import ConversationStream, { type Message } from './ConversationStream';
 import JarvisOrb from './JarvisOrb';
 import ParticleBackground from './ParticleBackground';
@@ -105,9 +106,29 @@ export default function JarvisApp() {
       await new Promise(r => setTimeout(r, 400));
       setDataPanel(prev => ({ ...prev, visible: false }));
       if (action.type === 'collect') {
-        setStats(prev => ({ ...prev, collected: prev.collected + (Number(action.params?.count) || 50) }));
+        const count = Number(action.params?.count) || 50;
+        const category = String(action.params?.category || '전체');
+        const platform = String(action.params?.platform || '');
+        setStats(prev => ({ ...prev, collected: prev.collected + count }));
+        // 구글 시트에 자동 기록
+        const influencers = generateMockInfluencers(count, category, platform);
+        appendInfluencersToSheet(influencers).then(result => {
+          if (result.success) {
+            console.log('[JARVIS] 구글 시트 기록 완료:', result.message);
+          } else {
+            console.warn('[JARVIS] 구글 시트 기록 실패:', result.message);
+          }
+        });
       } else if (action.type === 'send_email') {
-        setStats(prev => ({ ...prev, emailsSent: prev.emailsSent + 47 }));
+        const count = Number(action.params?.count) || 47;
+        setStats(prev => ({ ...prev, emailsSent: prev.emailsSent + count }));
+        // 이메일 발송 로그를 구글 시트에 기록
+        const template = String(action.params?.template || '협업 제안');
+        const dummyInfluencers = generateMockInfluencers(count, '전체', '');
+        const logs = generateEmailLogs(dummyInfluencers, template);
+        appendEmailLogToSheet(logs).then(result => {
+          console.log('[JARVIS] 이메일 로그 기록:', result.message);
+        });
       }
     }
 

@@ -1,5 +1,3 @@
-
-
 import { useEffect, useRef, useCallback } from 'react';
 
 interface SpeechEngineProps {
@@ -9,99 +7,112 @@ interface SpeechEngineProps {
   isListening: boolean;
 }
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+declare const window: any;
+
 export function useSpeechRecognition({
   onResult,
   onStart,
   onEnd,
   isListening,
 }: SpeechEngineProps) {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const recognitionRef = useRef<any>(null);
   const isActiveRef = useRef(false);
-  const restartTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  // 항상 최신 콜백을 ref로 유지
   const onResultRef = useRef(onResult);
   const onStartRef = useRef(onStart);
   const onEndRef = useRef(onEnd);
-  onResultRef.current = onResult;
-  onStartRef.current = onStart;
-  onEndRef.current = onEnd;
+  useEffect(() => { onResultRef.current = onResult; });
+  useEffect(() => { onStartRef.current = onStart; });
+  useEffect(() => { onEndRef.current = onEnd; });
 
+  // 최초 1회 recognition 인스턴스 생성
   useEffect(() => {
-    if (typeof window === 'undefined') return;
-
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const w = window as any;
-    const SpeechRecognitionAPI = w.SpeechRecognition || w.webkitSpeechRecognition;
+    const SpeechRecognitionAPI =
+      window.SpeechRecognition || window.webkitSpeechRecognition;
 
     if (!SpeechRecognitionAPI) {
-      console.warn('Web Speech API가 지원되지 않는 브라우저입니다. Chrome을 사용해주세요.');
+      console.warn('[JARVIS] Web Speech API 미지원. Chrome을 사용해주세요.');
       return;
     }
 
-    const recognition = new SpeechRecognitionAPI();
-    recognition.lang = 'ko-KR';
-    recognition.continuous = false;       // 한 문장씩 처리 (더 안정적)
-    recognition.interimResults = false;   // 최종 결과만 사용
-    recognition.maxAlternatives = 1;
+    const rec = new SpeechRecognitionAPI();
+    rec.lang = 'ko-KR';
+    rec.continuous = false;
+    rec.interimResults = false;
+    rec.maxAlternatives = 1;
 
-    recognition.onstart = () => {
+    rec.onstart = () => {
+      console.log('[JARVIS] 음성 인식 시작됨');
       isActiveRef.current = true;
       onStartRef.current();
     };
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    recognition.onresult = (event: any) => {
-      const transcript = event.results[event.results.length - 1][0].transcript.trim();
-      if (transcript) {
-        onResultRef.current(transcript);
+    rec.onresult = (event: any) => {
+      const result = event.results[event.results.length - 1];
+      if (result.isFinal) {
+        const transcript = result[0].transcript.trim();
+        console.log('[JARVIS] 인식된 텍스트:', transcript);
+        if (transcript) {
+          onResultRef.current(transcript);
+        }
       }
     };
 
-    recognition.onend = () => {
+    rec.onend = () => {
+      console.log('[JARVIS] 음성 인식 종료됨');
       isActiveRef.current = false;
       onEndRef.current();
     };
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    recognition.onerror = (event: any) => {
-      // no-speech는 조용한 실패 처리
+    rec.onerror = (event: any) => {
+      console.warn('[JARVIS] 음성 인식 오류:', event.error);
+      isActiveRef.current = false;
       if (event.error !== 'no-speech' && event.error !== 'aborted') {
-        console.warn('음성 인식 오류:', event.error);
+        onEndRef.current();
       }
-      isActiveRef.current = false;
-      onEndRef.current();
     };
 
-    recognitionRef.current = recognition;
+    recognitionRef.current = rec;
+    console.log('[JARVIS] SpeechRecognition 인스턴스 생성 완료');
 
     return () => {
-      if (restartTimerRef.current) clearTimeout(restartTimerRef.current);
-      try { recognition.abort(); } catch { /* ignore */ }
+      if (timerRef.current) clearTimeout(timerRef.current);
+      try { rec.abort(); } catch { /* ignore */ }
     };
   }, []);
 
+  // isListening 변경 시 시작/중지
   useEffect(() => {
-    if (!recognitionRef.current) return;
+    if (timerRef.current) clearTimeout(timerRef.current);
 
-    if (isListening && !isActiveRef.current) {
-      restartTimerRef.current = setTimeout(() => {
+    if (isListening) {
+      if (!isActiveRef.current && recognitionRef.current) {
+        timerRef.current = setTimeout(() => {
+          try {
+            console.log('[JARVIS] recognition.start() 호출');
+            recognitionRef.current.start();
+          } catch (e) {
+            console.warn('[JARVIS] start() 오류:', e);
+            isActiveRef.current = false;
+          }
+        }, 150);
+      }
+    } else {
+      if (isActiveRef.current && recognitionRef.current) {
         try {
-          recognitionRef.current?.start();
+          console.log('[JARVIS] recognition.stop() 호출');
+          recognitionRef.current.stop();
         } catch (e) {
-          console.warn('음성 인식 시작 오류:', e);
+          console.warn('[JARVIS] stop() 오류:', e);
         }
-      }, 100);
-    } else if (!isListening && isActiveRef.current) {
-      try {
-        recognitionRef.current.stop();
-      } catch (e) {
-        console.warn('음성 인식 중지 오류:', e);
       }
     }
 
     return () => {
-      if (restartTimerRef.current) clearTimeout(restartTimerRef.current);
+      if (timerRef.current) clearTimeout(timerRef.current);
     };
   }, [isListening]);
 }
@@ -110,16 +121,12 @@ export function useSpeechRecognition({
 export function useTextToSpeech() {
   const synthRef = useRef<SpeechSynthesis | null>(null);
   const voiceRef = useRef<SpeechSynthesisVoice | null>(null);
-  const voicesLoadedRef = useRef(false);
 
-  // 음성 목록 로드
   const loadVoices = useCallback(() => {
     if (!synthRef.current) return;
     const voices = synthRef.current.getVoices();
     if (voices.length === 0) return;
-    voicesLoadedRef.current = true;
 
-    // 우선순위: 한국어 남성 > 한국어 > 영어 남성 (JARVIS 느낌)
     const priorities = [
       (v: SpeechSynthesisVoice) => v.lang === 'ko-KR' && /male|남|man/i.test(v.name),
       (v: SpeechSynthesisVoice) => v.lang === 'ko-KR' && v.name.includes('Google'),
@@ -130,47 +137,40 @@ export function useTextToSpeech() {
 
     for (const fn of priorities) {
       const found = voices.find(fn);
-      if (found) { voiceRef.current = found; return; }
+      if (found) { voiceRef.current = found; console.log('[JARVIS] TTS 음성:', found.name); return; }
     }
-    // 폴백: 첫 번째 한국어 음성
-    voiceRef.current = voices.find(v => v.lang.startsWith('ko')) || null;
+    voiceRef.current = voices.find(v => v.lang.startsWith('ko')) || voices[0] || null;
   }, []);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
     synthRef.current = window.speechSynthesis;
     loadVoices();
-    // Chrome은 비동기로 음성 목록 로드
     if (window.speechSynthesis.onvoiceschanged !== undefined) {
       window.speechSynthesis.onvoiceschanged = loadVoices;
     }
   }, [loadVoices]);
 
   const speak = useCallback((text: string, onStart?: () => void, onEnd?: () => void) => {
-    if (!synthRef.current) return;
+    if (!synthRef.current) { onEnd?.(); return; }
     synthRef.current.cancel();
 
-    // 짧은 딜레이 후 발화 (Chrome 버그 방지)
     setTimeout(() => {
-      if (!synthRef.current) return;
+      if (!synthRef.current) { onEnd?.(); return; }
 
       const utterance = new SpeechSynthesisUtterance(text);
-
-      if (voiceRef.current) {
-        utterance.voice = voiceRef.current;
-      }
-
+      if (voiceRef.current) utterance.voice = voiceRef.current;
       utterance.lang = 'ko-KR';
-      utterance.rate = 0.92;    // 약간 느리게 — 자연스럽고 명확하게
-      utterance.pitch = 0.82;   // 낮은 피치 — JARVIS 남성 목소리
+      utterance.rate = 0.92;
+      utterance.pitch = 0.82;
       utterance.volume = 1.0;
 
-      utterance.onstart = () => onStart?.();
-      utterance.onend = () => onEnd?.();
-      utterance.onerror = () => onEnd?.();
+      utterance.onstart = () => { console.log('[JARVIS] TTS 시작'); onStart?.(); };
+      utterance.onend = () => { console.log('[JARVIS] TTS 완료'); onEnd?.(); };
+      utterance.onerror = (e) => { console.warn('[JARVIS] TTS 오류:', e); onEnd?.(); };
 
       synthRef.current.speak(utterance);
-    }, 50);
+    }, 80);
   }, []);
 
   const stop = useCallback(() => {
