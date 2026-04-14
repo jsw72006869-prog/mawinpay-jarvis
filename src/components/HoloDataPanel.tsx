@@ -4,7 +4,6 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { useEffect, useState } from 'react';
 
 interface HoloDataPanelProps {
-  isVisible: boolean;
   type: 'collect' | 'send_email' | 'create_banner' | 'report' | null;
   progress: number;
   message: string;
@@ -51,7 +50,7 @@ const mockInfluencers = [
   { name: '미식여행자', platform: 'INSTA', followers: '178K', status: 'OK' },
 ];
 
-export default function HoloDataPanel({ isVisible, type, progress, message }: HoloDataPanelProps) {
+export default function HoloDataPanel({ type, progress, message }: HoloDataPanelProps) {
   const [visibleRows, setVisibleRows] = useState(0);
   const [dataLines, setDataLines] = useState<string[]>([]);
 
@@ -60,11 +59,6 @@ export default function HoloDataPanel({ isVisible, type, progress, message }: Ho
   const completedSteps = Array.from({ length: activeStep }, (_, i) => i);
 
   useEffect(() => {
-    if (!isVisible) {
-      setVisibleRows(0);
-      setDataLines([]);
-      return;
-    }
     if (type === 'collect') {
       setVisibleRows(0);
       const interval = setInterval(() => {
@@ -75,26 +69,24 @@ export default function HoloDataPanel({ isVisible, type, progress, message }: Ho
       }, 350);
       return () => clearInterval(interval);
     }
-  }, [isVisible, type]);
+  }, [type]);
 
   useEffect(() => {
-    if (!isVisible) return;
     const chars = '0123456789ABCDEF';
     const newLine = Array.from({ length: 28 }, () => chars[Math.floor(Math.random() * chars.length)]).join('');
     setDataLines(prev => [...prev.slice(-5), newLine]);
-  }, [progress, isVisible]);
+  }, [progress]);
 
   return (
-    <AnimatePresence>
-      {isVisible && type && (
-        <motion.div
-          initial={{ opacity: 0, x: -60, scale: 0.9 }}
-          animate={{ opacity: 1, x: 0, scale: 1 }}
-          exit={{ opacity: 0, x: -60, scale: 0.9 }}
-          transition={{ duration: 0.4, ease: 'easeOut' }}
-          className="fixed left-5 top-1/2 -translate-y-1/2"
-          style={{ zIndex: 30, width: 230 }}
-        >
+    <motion.div
+      initial={{ opacity: 0, x: -60, scale: 0.9 }}
+      animate={{ opacity: 1, x: 0, scale: 1 }}
+      exit={{ opacity: 0, x: -60, scale: 0.9 }}
+      transition={{ duration: 0.4, ease: 'easeOut' }}
+      style={{ position: 'fixed', left: 20, top: '50%', transform: 'translateY(-50%)', zIndex: 30, width: 230 }}
+    >
+      {type && (
+        <div>
           <div
             className="rounded-xl overflow-hidden"
             style={{
@@ -237,8 +229,8 @@ export default function HoloDataPanel({ isVisible, type, progress, message }: Ho
               </p>
             </div>
           </div>
-        </motion.div>
+        </div>
       )}
-    </AnimatePresence>
+    </motion.div>
   );
 }
