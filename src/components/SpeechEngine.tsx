@@ -20,7 +20,6 @@ export function useSpeechRecognition({
   const isActiveRef = useRef(false);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // 항상 최신 콜백을 ref로 유지
   const onResultRef = useRef(onResult);
   const onStartRef = useRef(onStart);
   const onEndRef = useRef(onEnd);
@@ -28,7 +27,6 @@ export function useSpeechRecognition({
   useEffect(() => { onStartRef.current = onStart; });
   useEffect(() => { onEndRef.current = onEnd; });
 
-  // 최초 1회 recognition 인스턴스 생성
   useEffect(() => {
     const SpeechRecognitionAPI =
       window.SpeechRecognition || window.webkitSpeechRecognition;
@@ -55,9 +53,7 @@ export function useSpeechRecognition({
       if (result.isFinal) {
         const transcript = result[0].transcript.trim();
         console.log('[JARVIS] 인식된 텍스트:', transcript);
-        if (transcript) {
-          onResultRef.current(transcript);
-        }
+        if (transcript) onResultRef.current(transcript);
       }
     };
 
@@ -76,7 +72,6 @@ export function useSpeechRecognition({
     };
 
     recognitionRef.current = rec;
-    console.log('[JARVIS] SpeechRecognition 인스턴스 생성 완료');
 
     return () => {
       if (timerRef.current) clearTimeout(timerRef.current);
@@ -84,7 +79,6 @@ export function useSpeechRecognition({
     };
   }, []);
 
-  // isListening 변경 시 시작/중지
   useEffect(() => {
     if (timerRef.current) clearTimeout(timerRef.current);
 
@@ -103,7 +97,6 @@ export function useSpeechRecognition({
     } else {
       if (isActiveRef.current && recognitionRef.current) {
         try {
-          console.log('[JARVIS] recognition.stop() 호출');
           recognitionRef.current.stop();
         } catch (e) {
           console.warn('[JARVIS] stop() 오류:', e);
@@ -117,64 +110,130 @@ export function useSpeechRecognition({
   }, [isListening]);
 }
 
-// ── TTS 엔진 ──
+// ── ElevenLabs TTS 엔진 ──
+// JARVIS 목소리: Adam (pNInz6obpgDQGcFmaJgB) — 깊고 차분한 남성 영어 목소리
+// 한국어 지원 목소리: Aria (9BWtsMINqrJLrRacOk9x) 또는 기본 다국어 목소리
+const ELEVENLABS_VOICE_ID = 'pNInz6obpgDQGcFmaJgB'; // Adam - JARVIS 느낌
+
+async function speakElevenLabs(
+  text: string,
+  apiKey: string,
+  onStart?: () => void,
+  onEnd?: () => void,
+  audioRef?: React.MutableRefObject<HTMLAudioElement | null>
+): Promise<void> {
+  try {
+    onStart?.();
+    console.log('[JARVIS ElevenLabs] TTS 요청:', text.substring(0, 50));
+
+    const response = await fetch(
+      `https://api.elevenlabs.io/v1/text-to-speech/${ELEVENLABS_VOICE_ID}`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'xi-api-key': apiKey,
+        },
+        body: JSON.stringify({
+          text,
+          model_id: 'eleven_multilingual_v2', // 한국어 지원
+          voice_settings: {
+            stability: 0.5,
+            similarity_boost: 0.85,
+            style: 0.3,
+            use_speaker_boost: true,
+          },
+        }),
+      }
+    );
+
+    if (!response.ok) {
+      const err = await response.json().catch(() => ({}));
+      console.error('[JARVIS ElevenLabs] API 오류:', err);
+      throw new Error(`ElevenLabs API ${response.status}`);
+    }
+
+    const audioBlob = await response.blob();
+    const audioUrl = URL.createObjectURL(audioBlob);
+    const audio = new Audio(audioUrl);
+
+    if (audioRef) audioRef.current = audio;
+
+    audio.onended = () => {
+      console.log('[JARVIS ElevenLabs] 재생 완료');
+      URL.revokeObjectURL(audioUrl);
+      if (audioRef) audioRef.current = null;
+      onEnd?.();
+    };
+
+    audio.onerror = () => {
+      console.warn('[JARVIS ElevenLabs] 재생 오류');
+      URL.revokeObjectURL(audioUrl);
+      onEnd?.();
+    };
+
+    await audio.play();
+    console.log('[JARVIS ElevenLabs] 재생 시작');
+
+  } catch (error) {
+    console.error('[JARVIS ElevenLabs] 오류:', error);
+    onEnd?.();
+  }
+}
+
+// Web Speech API 폴백
+function speakWebSpeech(
+  text: string,
+  onStart?: () => void,
+  onEnd?: () => void
+): void {
+  if (!window.speechSynthesis) { onEnd?.(); return; }
+  window.speechSynthesis.cancel();
+
+  setTimeout(() => {
+    const utterance = new SpeechSynthesisUtterance(text);
+    const voices = window.speechSynthesis.getVoices();
+
+    // 한국어 목소리 우선 선택
+    const koVoice = voices.find((v: SpeechSynthesisVoice) => v.lang === 'ko-KR' && v.name.includes('Google'))
+      || voices.find((v: SpeechSynthesisVoice) => v.lang.startsWith('ko'))
+      || voices[0];
+
+    if (koVoice) utterance.voice = koVoice;
+    utterance.lang = 'ko-KR';
+    utterance.rate = 0.9;
+    utterance.pitch = 0.8;
+    utterance.volume = 1.0;
+
+    utterance.onstart = () => onStart?.();
+    utterance.onend = () => onEnd?.();
+    utterance.onerror = () => onEnd?.();
+
+    window.speechSynthesis.speak(utterance);
+  }, 80);
+}
+
 export function useTextToSpeech() {
-  const synthRef = useRef<SpeechSynthesis | null>(null);
-  const voiceRef = useRef<SpeechSynthesisVoice | null>(null);
-
-  const loadVoices = useCallback(() => {
-    if (!synthRef.current) return;
-    const voices = synthRef.current.getVoices();
-    if (voices.length === 0) return;
-
-    const priorities = [
-      (v: SpeechSynthesisVoice) => v.lang === 'ko-KR' && /male|남|man/i.test(v.name),
-      (v: SpeechSynthesisVoice) => v.lang === 'ko-KR' && v.name.includes('Google'),
-      (v: SpeechSynthesisVoice) => v.lang.startsWith('ko'),
-      (v: SpeechSynthesisVoice) => v.lang === 'en-GB' && /male|david|george/i.test(v.name),
-      (v: SpeechSynthesisVoice) => v.lang === 'en-US' && /male|david/i.test(v.name),
-    ];
-
-    for (const fn of priorities) {
-      const found = voices.find(fn);
-      if (found) { voiceRef.current = found; console.log('[JARVIS] TTS 음성:', found.name); return; }
-    }
-    voiceRef.current = voices.find(v => v.lang.startsWith('ko')) || voices[0] || null;
-  }, []);
-
-  useEffect(() => {
-    if (typeof window === 'undefined') return;
-    synthRef.current = window.speechSynthesis;
-    loadVoices();
-    if (window.speechSynthesis.onvoiceschanged !== undefined) {
-      window.speechSynthesis.onvoiceschanged = loadVoices;
-    }
-  }, [loadVoices]);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
 
   const speak = useCallback((text: string, onStart?: () => void, onEnd?: () => void) => {
-    if (!synthRef.current) { onEnd?.(); return; }
-    synthRef.current.cancel();
+    const elevenLabsKey = import.meta.env.VITE_ELEVENLABS_API_KEY;
 
-    setTimeout(() => {
-      if (!synthRef.current) { onEnd?.(); return; }
-
-      const utterance = new SpeechSynthesisUtterance(text);
-      if (voiceRef.current) utterance.voice = voiceRef.current;
-      utterance.lang = 'ko-KR';
-      utterance.rate = 0.92;
-      utterance.pitch = 0.82;
-      utterance.volume = 1.0;
-
-      utterance.onstart = () => { console.log('[JARVIS] TTS 시작'); onStart?.(); };
-      utterance.onend = () => { console.log('[JARVIS] TTS 완료'); onEnd?.(); };
-      utterance.onerror = (e) => { console.warn('[JARVIS] TTS 오류:', e); onEnd?.(); };
-
-      synthRef.current.speak(utterance);
-    }, 80);
+    if (elevenLabsKey) {
+      console.log('[JARVIS] ElevenLabs TTS 사용');
+      speakElevenLabs(text, elevenLabsKey, onStart, onEnd, audioRef);
+    } else {
+      console.log('[JARVIS] Web Speech API 폴백 사용');
+      speakWebSpeech(text, onStart, onEnd);
+    }
   }, []);
 
   const stop = useCallback(() => {
-    synthRef.current?.cancel();
+    if (audioRef.current) {
+      audioRef.current.pause();
+      audioRef.current = null;
+    }
+    window.speechSynthesis?.cancel();
   }, []);
 
   return { speak, stop };

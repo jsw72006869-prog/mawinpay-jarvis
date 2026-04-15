@@ -1,6 +1,6 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { parseCommand, JARVIS_GREETINGS, type JarvisState, type JarvisAction } from '../lib/jarvis-brain';
+import { askGPT, parseCommand, JARVIS_GREETINGS, type JarvisState, type JarvisAction } from '../lib/jarvis-brain';
 import { useSpeechRecognition, useTextToSpeech } from './SpeechEngine';
 import { appendInfluencersToSheet, appendEmailLogToSheet, generateMockInfluencers, generateEmailLogs } from '../lib/google-sheets';
 import ConversationStream, { type Message } from './ConversationStream';
@@ -183,12 +183,13 @@ export default function JarvisApp() {
     });
   }, [addMessage, speak, startSpeakingLevel, stopSpeakingLevel]);
 
-  const handleSpeechResult = useCallback((transcript: string) => {
+  const handleSpeechResult = useCallback(async (transcript: string) => {
     if (!transcript.trim()) return;
     addMessage('user', transcript);
     setIsListening(false);
     setState('thinking');
-    const action = parseCommand(transcript);
+    // GPT-4o API 호출 (폴백: 로컬 파서)
+    const action = await askGPT(transcript).catch(() => parseCommand(transcript));
     jarvisRespond(action.response, action);
   }, [addMessage, jarvisRespond]);
 
