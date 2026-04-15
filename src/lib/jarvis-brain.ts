@@ -252,7 +252,7 @@ export async function askGPT(userMessage: string): Promise<JarvisAction> {
         Authorization: `Bearer ${apiKey}`,
       },
       body: JSON.stringify({
-        model: 'gpt-4o',
+        model: 'gpt-5.4-mini',
         messages: [
           { role: 'system', content: SYSTEM_PROMPT + memoryContext + prevSessionContext + learnedContext + sessionContext + '\n\n## ANTI-REPETITION\n- NEVER repeat the same sentence or phrase you already said in this conversation\n- Each response must be unique and advance the conversation\n- If you already greeted the user, do NOT greet again\n- Vary your sentence structures and vocabulary' },
           ...conversationHistory.slice(-10), // 현재 세션 최근 10개만 사용 (중복 제거)
