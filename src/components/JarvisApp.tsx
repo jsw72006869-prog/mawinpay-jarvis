@@ -1,6 +1,6 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { askGPT, parseCommand, JARVIS_GREETINGS, generateBannerImage, saveSchedule, saveMemory, type JarvisState, type JarvisAction } from '../lib/jarvis-brain';
+import { askGPT, parseCommand, JARVIS_GREETINGS, generateBannerImage, saveSchedule, saveMemory, searchNaverAPI, type JarvisState, type JarvisAction, type NaverSearchItem } from '../lib/jarvis-brain';
 import { useSpeechRecognition, useTextToSpeech, setCurrentVoiceId, getCurrentVoiceId, ELEVENLABS_VOICES } from './SpeechEngine';
 import { saveLearnedKnowledge, getLearnedKnowledge, getMemoryStats, clearAllMemory, type LearnedKnowledge } from '../lib/jarvis-memory';
 import { appendInfluencersToSheet, appendEmailLogToSheet, generateMockInfluencers, generateEmailLogs } from '../lib/google-sheets';
@@ -77,6 +77,10 @@ export default function JarvisApp() {
   const [memoryPanelVisible, setMemoryPanelVisible] = useState(false);
   const [learnedKnowledge, setLearnedKnowledge] = useState<LearnedKnowledge[]>(() => getLearnedKnowledge());
   const [memoryStats, setMemoryStats] = useState(() => getMemoryStats());
+  const [naverResults, setNaverResults] = useState<NaverSearchItem[]>([]);
+  const [naverPanelVisible, setNaverPanelVisible] = useState(false);
+  const [naverKeyword, setNaverKeyword] = useState('');
+
   const [settingsForm, setSettingsForm] = useState(() => {
     const stored = JSON.parse(localStorage.getItem('jarvis_api_keys') || '{}');
     return {
@@ -221,6 +225,50 @@ export default function JarvisApp() {
         const saved = saveSchedule(task, time);
         setSchedules(prev => [...prev, { task: saved.task, time: saved.time }]);
       }
+    }
+
+    // ── 네이버 검색 액션 ──
+    if (action?.type === 'naver_search') {
+      const keyword = String(action.params?.keyword || '');
+      const source = (action.params?.source as 'blog' | 'cafe') || 'blog';
+      const display = Number(action.params?.display) || 30;
+      const sort = (action.params?.sort as 'sim' | 'date') || 'sim';
+
+      setState('working');
+      addMessage('jarvis', action.response);
+      startSpeakingLevel();
+      await new Promise<void>(resolve => {
+        speak(action.response, undefined, () => { stopSpeakingLevel(); resolve(); });
+      });
+
+      try {
+        const result = await searchNaverAPI(keyword, source, display, sort);
+        setNaverResults(result.items);
+        setNaverKeyword(keyword);
+        setNaverPanelVisible(true);
+        saveMemory('마지막 네이버 검색', `${keyword} (${source}) ${result.total}건 (${new Date().toLocaleDateString('ko-KR')})`);
+
+        const doneText = `네이버 ${source === 'cafe' ? '카페' : '블로그'}에서 '${keyword}' 검색 완료. ${result.total}건의 결과를 수집했습니다, 선생님. 오른쪽 패널에서 확인하실 수 있습니다.`;
+        setState('speaking');
+        addMessage('jarvis', doneText);
+        startSpeakingLevel();
+        await new Promise<void>(resolve => {
+          speak(doneText, undefined, () => { stopSpeakingLevel(); resolve(); });
+        });
+      } catch (err) {
+        const errMsg = `네이버 검색 중 오류가 발생했습니다, 선생님. ${String(err).includes('credentials') ? 'NAVER API 키가 설정되지 않았습니다. Vercel 환경변수에 NAVER_CLIENT_ID와 NAVER_CLIENT_SECRET을 설정해주세요.' : String(err)}`;
+        setState('speaking');
+        addMessage('jarvis', errMsg);
+        startSpeakingLevel();
+        await new Promise<void>(resolve => {
+          speak(errMsg, undefined, () => { stopSpeakingLevel(); resolve(); });
+        });
+      }
+
+      await new Promise(r => setTimeout(r, 400));
+      setState('listening');
+      setIsListening(true);
+      return;
     }
 
     // ── 목소리 변경 액션 ──
@@ -1162,6 +1210,92 @@ export default function JarvisApp() {
                   color: THEME.textDim, fontSize: '0.38rem', letterSpacing: '0.2em',
                 }}
               >CLOSE</div>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* ── 네이버 검색 결과 패널 ── */}
+      <AnimatePresence>
+        {naverPanelVisible && naverResults.length > 0 && (
+          <motion.div
+            initial={{ opacity: 0, x: 60 }}
+            animate={{ opacity: 1, x: 0 }}
+            exit={{ opacity: 0, x: 60 }}
+            style={{
+              position: 'fixed', top: 80, right: 28,
+              zIndex: 36, width: 280,
+              background: 'rgba(6,10,18,0.95)',
+              border: `1px solid ${THEME.blue}44`,
+              borderLeft: `2px solid ${THEME.blue}`,
+              backdropFilter: 'blur(12px)',
+              maxHeight: '70vh',
+              display: 'flex', flexDirection: 'column',
+            }}
+          >
+            {/* 헤더 */}
+            <div style={{ padding: '10px 14px', borderBottom: `1px solid ${THEME.blue}22`, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div>
+                <div style={{ fontFamily: 'Orbitron, monospace', color: THEME.blue, fontSize: '0.4rem', letterSpacing: '0.25em' }}>NAVER SEARCH</div>
+                <div style={{ color: THEME.text, fontSize: '0.55rem', marginTop: 2 }}>'{naverKeyword}' — {naverResults.length}건</div>
+              </div>
+              <div
+                onClick={() => setNaverPanelVisible(false)}
+                style={{ cursor: 'pointer', color: THEME.textDim, fontSize: '0.5rem', padding: '2px 6px', border: `1px solid ${THEME.textDim}33` }}
+              >×</div>
+            </div>
+
+            {/* 결과 리스트 */}
+            <div style={{ overflowY: 'auto', flex: 1, padding: '8px 0' }}>
+              {naverResults.map((item, i) => (
+                <div
+                  key={i}
+                  style={{
+                    padding: '8px 14px',
+                    borderBottom: `1px solid rgba(255,255,255,0.04)`,
+                    cursor: 'pointer',
+                  }}
+                  onClick={() => window.open(item.url, '_blank')}
+                >
+                  <div style={{ color: THEME.text, fontSize: '0.52rem', lineHeight: 1.4, marginBottom: 2 }}>
+                    {item.title.length > 35 ? item.title.substring(0, 35) + '…' : item.title}
+                  </div>
+                  <div style={{ color: THEME.blue, fontSize: '0.42rem', marginBottom: 2 }}>
+                    {item.creatorName}
+                  </div>
+                  <div style={{ color: THEME.textDim, fontSize: '0.38rem' }}>
+                    {item.description.length > 50 ? item.description.substring(0, 50) + '…' : item.description}
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {/* 하단 버튼 */}
+            <div style={{ padding: '8px 14px', borderTop: `1px solid ${THEME.blue}22`, display: 'flex', gap: 6 }}>
+              <div
+                onClick={() => {
+                  const csv = [
+                    ['\uc81c목', '작성자', 'URL', '설명', '날짜'].join(','),
+                    ...naverResults.map(r => [
+                      `"${r.title.replace(/"/g, '""')}"`,
+                      `"${r.creatorName}"`,
+                      `"${r.url}"`,
+                      `"${r.description.replace(/"/g, '""')}"`,
+                      `"${r.postDate}"`
+                    ].join(','))
+                  ].join('\n');
+                  const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
+                  const a = document.createElement('a');
+                  a.href = URL.createObjectURL(blob);
+                  a.download = `naver-${naverKeyword}-${new Date().toISOString().split('T')[0]}.csv`;
+                  a.click();
+                }}
+                style={{
+                  flex: 1, padding: '6px', textAlign: 'center', cursor: 'pointer',
+                  background: `${THEME.blue}22`, border: `1px solid ${THEME.blue}55`,
+                  fontFamily: 'Orbitron, monospace', color: THEME.blue, fontSize: '0.38rem', letterSpacing: '0.15em',
+                }}
+              >CSV 다운로드</div>
             </div>
           </motion.div>
         )}

@@ -12,7 +12,7 @@ export type JarvisState = 'idle' | 'listening' | 'thinking' | 'speaking' | 'work
 export type JarvisActionType =
   | 'collect' | 'send_email' | 'create_banner' | 'report'
   | 'schedule' | 'help' | 'greeting' | 'status' | 'confirm' | 'chat'
-  | 'change_voice' | 'list_voices' | 'unknown';
+  | 'change_voice' | 'list_voices' | 'naver_search' | 'unknown';
 
 export type JarvisAction = {
   type: JarvisActionType;
@@ -143,6 +143,22 @@ const JARVIS_FUNCTIONS = [
     },
   },
   {
+    name: 'naver_search',
+    description: '네이버 블로그 또는 카페에서 인플루언서/키워드를 검색하거나 수집할 때 호출. "네이버에서 뷰티 블로거 찾아줘", "네이버 카페에서 맛집 20개 수집해" 등.',
+    parameters: {
+      type: 'object',
+      properties: {
+        keyword: { type: 'string', description: '검색 키워드 (예: 뷰티, 맛집, 여행)' },
+        source: { type: 'string', enum: ['blog', 'cafe'], description: 'blog=네이버 블로그, cafe=네이버 카페' },
+        display: { type: 'number', description: '수집할 결과 수 (기본 30, 최대 100)' },
+        sort: { type: 'string', enum: ['sim', 'date'], description: 'sim=관련도순, date=최신순' },
+        response: { type: 'string', description: 'JARVIS 응답 (한국어, 검색 시작을 알리는 멘트)' },
+        follow_up: { type: 'string', description: '수집 완료 후 이어서 할 제안' },
+      },
+      required: ['keyword', 'response'],
+    },
+  },
+  {
     name: 'change_voice',
     description: '사용자가 JARVIS의 목소리를 변경하거나, 사용 가능한 목소리 목록을 요청하거나, 특정 조건(영국 억양, 여성, 남성, 지적인, 따뜻한 등)으로 목소리를 추천할 때 호출.',
     parameters: {
@@ -186,11 +202,12 @@ const SYSTEM_PROMPT = `You are JARVIS — the AI from Iron Man, now serving as t
 
 ## CAPABILITIES
 1. 인플루언서 수집 — 키워드/플랫폼/팔로워 조건으로 수집 + 구글 시트 저장
-2. 이메일 발송 — 개인화된 마케팅 이메일 발송 캠페인
-3. AI 배너 생성 — DALL-E 3 기반 마케팅 비주얼 제작
-4. 캠페인 분석 — 성과 분석 및 인사이트 제공
-5. 일정 관리 — 캠페인 자동화 스케줄링
-6. 자유 대화 — 마케팅 전략, 트렌드, 아이디어 논의
+2. 네이버 검색 — 네이버 블로그/카페에서 인플루언서 실시간 수집
+3. 이메일 발송 — 개인화된 마케팅 이메일 발송 캠페인
+4. AI 배너 생성 — DALL-E 3 기반 마케팅 비주얼 제작
+5. 캠페인 분석 — 성과 분석 및 인사이트 제공
+6. 일정 관리 — 캠페인 자동화 스케줄링
+7. 자유 대화 — 마케팅 전략, 트렌드, 아이디어 논의
 
 ## IMPORTANT
 - When user requests an action (collect, email, banner, report, schedule), use function calling
@@ -343,6 +360,19 @@ function buildActionFromFunction(fnName: string, args: Record<string, string | n
         response: String(args.response),
         followUp,
       };
+    case 'naver_search':
+      return {
+        type: 'naver_search',
+        params: {
+          keyword: String(args.keyword || ''),
+          source: String(args.source || 'blog'),
+          display: Number(args.display) || 30,
+          sort: String(args.sort || 'sim'),
+        },
+        workingMessage: `네이버 ${args.source === 'cafe' ? '카페' : '블로그'}에서 '${args.keyword}' 검색 중...`,
+        response: String(args.response),
+        followUp,
+      };
     case 'change_voice': {
       const action = String(args.action || 'list');
       const voiceName = String(args.voice_name || '');
@@ -406,6 +436,38 @@ export interface ScheduledTask {
   time: string;
   createdAt: string;
   status: 'pending' | 'done';
+}
+
+// ── 네이버 API 검색 함수 ──
+export interface NaverSearchItem {
+  source: 'blog' | 'cafe';
+  title: string;
+  url: string;
+  creatorName: string;
+  creatorUrl: string;
+  description: string;
+  postDate: string;
+}
+
+export async function searchNaverAPI(
+  keyword: string,
+  source: 'blog' | 'cafe' = 'blog',
+  display: number = 30,
+  sort: 'sim' | 'date' = 'sim'
+): Promise<{ total: number; items: NaverSearchItem[] }> {
+  // Vercel API Route를 통해 호출 (CORS 우회)
+  const apiBase = import.meta.env.PROD
+    ? '' // Vercel 배포 환경: 같은 도메인
+    : 'https://mawinpay-jarvis.vercel.app'; // 로컬 개발 시 Vercel 배포 URL 사용
+
+  const url = `${apiBase}/api/naver-search?keyword=${encodeURIComponent(keyword)}&source=${source}&display=${display}&sort=${sort}`;
+
+  const res = await fetch(url);
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.message || `Naver API 오류: ${res.status}`);
+  }
+  return res.json();
 }
 
 export function saveSchedule(task: string, time: string): ScheduledTask {
