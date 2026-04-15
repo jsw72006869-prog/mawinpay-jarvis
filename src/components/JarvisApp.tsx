@@ -2,6 +2,7 @@ import { useState, useCallback, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { askGPT, parseCommand, JARVIS_GREETINGS, generateBannerImage, saveSchedule, saveMemory, searchNaverAPI, searchYouTubeAPI, type JarvisState, type JarvisAction, type NaverSearchItem, type YouTubeChannel } from '../lib/jarvis-brain';
 import { useSpeechRecognition, useTextToSpeech, setCurrentVoiceId, getCurrentVoiceId, ELEVENLABS_VOICES } from './SpeechEngine';
+import { useMicrophoneFrequency } from '../lib/audio-analyzer';
 import { saveLearnedKnowledge, getLearnedKnowledge, getMemoryStats, clearAllMemory, type LearnedKnowledge } from '../lib/jarvis-memory';
 import { appendInfluencersToSheet, appendEmailLogToSheet, appendNaverResultsToSheet, generateMockInfluencers, generateEmailLogs, type NaverCollectedData } from '../lib/google-sheets';
 import ConversationStream, { type Message } from './ConversationStream';
@@ -54,6 +55,8 @@ export default function JarvisApp() {
   const [micLevel, setMicLevel] = useState(0);
   const [speakingLevel, setSpeakingLevel] = useState(0);
   const [clapBurst, setClapBurst] = useState(false);
+  // 마이크 주파수 배열 (파티클 파형용, listening 상태에서만 활성화)
+  const micFreqData = useMicrophoneFrequency(state === 'listening');
   const [isTyping, setIsTyping] = useState(false);
   const [dataPanel, setDataPanel] = useState<{
     visible: boolean;
@@ -545,7 +548,7 @@ export default function JarvisApp() {
       }}
     >
       {/* ── Three.js 파티클 배경 ── */}
-      <SparkleParticles state={state} audioLevel={micLevel} speakingLevel={speakingLevel} clapBurst={clapBurst} />
+      <SparkleParticles state={state} audioLevel={micLevel} speakingLevel={speakingLevel} clapBurst={clapBurst} freqData={micFreqData ?? undefined} />
 
       {/* ── 박수 감지 ── */}
       <ClapDetector onClap={handleActivate} onAudioLevel={setMicLevel} enabled={state === 'idle'} releaseStream={state !== 'idle'} />

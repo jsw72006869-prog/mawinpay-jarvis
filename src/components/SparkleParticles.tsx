@@ -10,6 +10,7 @@ interface SparkleParticlesProps {
   audioLevel: number;
   speakingLevel: number;
   clapBurst: boolean;
+  freqData?: Uint8Array; // 마이크 주파수 배열 (32~128 bins)
 }
 
 // ── 버텍스 셸이더 (고급스러운 우주 효과) ──
@@ -110,6 +111,30 @@ for (let i = 0; i < COUNT; i++) {
   FACE_TARGETS[i * 3 + 2] = fp[2] * FACE_SCALE * 0.3;
 }
 
+// 구체 목표 좌표 (speaking 시 수렴)
+const SPHERE_R = 10;
+const SPHERE_TARGETS = new Float32Array(COUNT * 3);
+for (let i = 0; i < COUNT; i++) {
+  const theta = Math.random() * Math.PI * 2;
+  const phi   = Math.acos(2 * Math.random() - 1);
+  SPHERE_TARGETS[i * 3]     = SPHERE_R * Math.sin(phi) * Math.cos(theta);
+  SPHERE_TARGETS[i * 3 + 1] = SPHERE_R * Math.sin(phi) * Math.sin(theta);
+  SPHERE_TARGETS[i * 3 + 2] = SPHERE_R * Math.cos(phi);
+}
+
+// 파형 링 목표 좌표 (listening 시 변형) — 32 밴드 × 여러 파티클
+const WAVEFORM_BANDS = 64;
+const WAVEFORM_TARGETS = new Float32Array(COUNT * 3);
+for (let i = 0; i < COUNT; i++) {
+  const band = i % WAVEFORM_BANDS;
+  const ring = Math.floor(i / WAVEFORM_BANDS) % 3; // 3중 링
+  const angle = (band / WAVEFORM_BANDS) * Math.PI * 2;
+  const baseR = 8 + ring * 3;
+  WAVEFORM_TARGETS[i * 3]     = Math.cos(angle) * baseR;
+  WAVEFORM_TARGETS[i * 3 + 1] = Math.sin(angle) * baseR;
+  WAVEFORM_TARGETS[i * 3 + 2] = (Math.random() - 0.5) * 2;
+}
+
 // ── 3단계 애니메이션 상태 ──
 // phase 0: 자유 유영
 // phase 1: 폭발 (0~0.6s)
@@ -117,7 +142,7 @@ for (let i = 0; i < COUNT; i++) {
 // phase 3: 얼굴 고정 (2.0s~)
 type EntryPhase = 0 | 1 | 2 | 3;
 
-export default function SparkleParticles({ state, audioLevel, speakingLevel, clapBurst }: SparkleParticlesProps) {
+export default function SparkleParticles({ state, audioLevel, speakingLevel, clapBurst, freqData }: SparkleParticlesProps) {
   const canvasRef    = useRef<HTMLCanvasElement>(null);
   const rendererRef  = useRef<THREE.WebGLRenderer | null>(null);
   const materialRef  = useRef<THREE.ShaderMaterial | null>(null);
@@ -140,6 +165,10 @@ export default function SparkleParticles({ state, audioLevel, speakingLevel, cla
   const audioRef       = useRef(0);
   const speakRef       = useRef(0);
   const clockElapsedRef = useRef(0);
+  const freqRef        = useRef<Uint8Array | null>(null);
+  // 상태 전환 블렌드 (0=자유, 1=파형, 2=구체)
+  const waveBlendRef   = useRef(0); // listening 시 파형 블렌드
+  const sphereBlendRef = useRef(0); // speaking 시 구체 블렌드
 
   const init = useCallback(() => {
     const pos   = posRef.current;
@@ -278,26 +307,65 @@ export default function SparkleParticles({ state, audioLevel, speakingLevel, cla
         let ax = 0, ay = 0, az = 0;
 
         if (ep === 0) {
-          // ── 자유 유영 ──
-          const tx = free[ix], ty = free[iy], tz = free[iz];
-          ax = (tx - px) * 0.010;
-          ay = (ty - py) * 0.010;
-          az = (tz - pz) * 0.010;
+          // ── 상태별 블렌드 목표 업데이트 ──
+          const wBlend = waveBlendRef.current;
+          const sBlend = sphereBlendRef.current;
+          const freeBlend = Math.max(0, 1 - wBlend - sBlend);
 
-          if (curState === 'listening') {
-            ax += -px * 0.005 + Math.sin(t * 4 + ph) * audio * 0.14;
-            ay += -py * 0.005 + Math.cos(t * 3.5 + ph) * audio * 0.14;
-          } else if (curState === 'speaking') {
-            const dist = Math.sqrt(px * px + py * py + pz * pz);
-            const wave = Math.sin(t * 3.0 - dist * 0.2 + ph) * speaking * 0.10;
-            if (dist > 0.1) {
-              ax += (px / dist) * wave;
-              ay += (py / dist) * wave;
-              az += (pz / dist) * wave;
+          // 자유 유영 기본 힘
+          const tx = free[ix], ty = free[iy], tz = free[iz];
+          ax += (tx - px) * 0.010 * freeBlend;
+          ay += (ty - py) * 0.010 * freeBlend;
+          az += (tz - pz) * 0.010 * freeBlend;
+
+          if (curState === 'listening' && wBlend > 0) {
+            // ── 파형 링 목표로 수렴 ──
+            const band = i % WAVEFORM_BANDS;
+            const ring = Math.floor(i / WAVEFORM_BANDS) % 3;
+            const angle = (band / WAVEFORM_BANDS) * Math.PI * 2;
+            // 주파수 데이터로 반지름 변조
+            let freqAmp = audio;
+            const freq = freqRef.current;
+            if (freq && freq.length > 0) {
+              const freqIdx = Math.floor((band / WAVEFORM_BANDS) * freq.length);
+              freqAmp = Math.max(freqAmp, freq[freqIdx] / 255);
             }
-          } else if (curState === 'thinking') {
+            const baseR = 8 + ring * 3.5;
+            const waveR = baseR + freqAmp * 6 * Math.sin(t * 5 + band * 0.3);
+            const wtx = Math.cos(angle) * waveR;
+            const wty = Math.sin(angle) * waveR;
+            const wtz = Math.sin(t * 3 + ph) * freqAmp * 3;
+            ax += (wtx - px) * 0.06 * wBlend;
+            ay += (wty - py) * 0.06 * wBlend;
+            az += (wtz - pz) * 0.04 * wBlend;
+            // 파형 진동 에너지
+            ax += Math.sin(t * 6 + ph) * freqAmp * 0.08 * wBlend;
+            ay += Math.cos(t * 5 + ph) * freqAmp * 0.08 * wBlend;
+          } else if (curState !== 'listening') {
+            // 파형 블렌드 감소
+          }
+
+          if (curState === 'speaking' && sBlend > 0) {
+            // ── 구체 목표로 수렴 ──
+            const stx = SPHERE_TARGETS[ix];
+            const sty = SPHERE_TARGETS[iy];
+            const stz = SPHERE_TARGETS[iz];
+            ax += (stx - px) * 0.05 * sBlend;
+            ay += (sty - py) * 0.05 * sBlend;
+            az += (stz - pz) * 0.05 * sBlend;
+            // 구체 표면 맥동 (JARVIS 목소리 진폭)
+            const dist = Math.sqrt(px * px + py * py + pz * pz);
+            const pulse = Math.sin(t * 3.0 - dist * 0.2 + ph) * speaking * 0.12;
+            if (dist > 0.1) {
+              ax += (px / dist) * pulse * sBlend;
+              ay += (py / dist) * pulse * sBlend;
+              az += (pz / dist) * pulse * sBlend;
+            }
+          }
+
+          if (curState === 'thinking') {
             ax += -py * 0.004;
-            ay +=  px * 0.004;
+            ay +=  px * 0.004;;
           }
 
         } else if (ep === 1) {
@@ -380,6 +448,7 @@ export default function SparkleParticles({ state, audioLevel, speakingLevel, cla
             ax += Math.sin(t * 6 + ph) * audio * 0.04;
             ay += Math.cos(t * 5 + ph) * audio * 0.04;
           }
+
         }
 
         // 폭발 힘 (박수 순간)
@@ -410,13 +479,18 @@ export default function SparkleParticles({ state, audioLevel, speakingLevel, cla
         pos[iz] += vel[iz];
       }
 
+      // ── 블렌드 값 부드럽게 전환 ──
+      const targetWave   = (curState === 'listening'  && ep === 0) ? 1 : 0;
+      const targetSphere = (curState === 'speaking'   && ep === 0) ? 1 : 0;
+      waveBlendRef.current   += (targetWave   - waveBlendRef.current)   * 0.04;
+      sphereBlendRef.current += (targetSphere - sphereBlendRef.current) * 0.04;
+
       // GPU 업데이트
       posAttrRef.current!.needsUpdate = true;
-
       // 유니폼 업데이트
       mat.uniforms.uTime.value          = t;
       mat.uniforms.uAudioLevel.value    = audio;
-      mat.uniforms.uSpeakingLevel.value = speaking;
+      mat.uniforms.uSpeakingLevel.value = speaking;;
       mat.uniforms.uFaceBlend.value     = faceBlendRef.current;
       mat.uniforms.uEntryPhase.value    = ep > 0 ? Math.min(entryAge / 2.2, 1.0) : 0;
 
@@ -478,6 +552,7 @@ export default function SparkleParticles({ state, audioLevel, speakingLevel, cla
 
   useEffect(() => { audioRef.current = audioLevel; }, [audioLevel]);
   useEffect(() => { speakRef.current = speakingLevel; }, [speakingLevel]);
+  useEffect(() => { freqRef.current = freqData ?? null; }, [freqData]);
 
   // 박수 → 3단계 애니메이션 시작
   useEffect(() => {

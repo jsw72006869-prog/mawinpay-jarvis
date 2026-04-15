@@ -71,6 +71,59 @@ export function useMicrophoneLevel(enabled: boolean) {
   return level;
 }
 
+// ── 마이크 주파수 배열 분석 (파티클 파형용) ──
+export function useMicrophoneFrequency(enabled: boolean): Uint8Array | null {
+  const analyserRef = useRef<AnalyserNode | null>(null);
+  const contextRef  = useRef<AudioContext | null>(null);
+  const streamRef   = useRef<MediaStream | null>(null);
+  const frameRef    = useRef<number>(0);
+  const dataRef     = useRef<Uint8Array>(new Uint8Array(64));
+  const [freqData, setFreqData] = useState<Uint8Array | null>(null);
+
+  const start = useCallback(async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+      streamRef.current = stream;
+      const ctx = new AudioContext();
+      contextRef.current = ctx;
+      const analyser = ctx.createAnalyser();
+      analyser.fftSize = 128; // 64 bins — 파티클 파형에 최적
+      analyser.smoothingTimeConstant = 0.75;
+      analyserRef.current = analyser;
+      dataRef.current = new Uint8Array(analyser.frequencyBinCount);
+      const source = ctx.createMediaStreamSource(stream);
+      source.connect(analyser);
+      const tick = () => {
+        if (!analyserRef.current) return;
+        analyserRef.current.getByteFrequencyData(dataRef.current);
+        setFreqData(new Uint8Array(dataRef.current)); // 복사본 전달
+        frameRef.current = requestAnimationFrame(tick);
+      };
+      tick();
+    } catch (e) {
+      console.warn('[AudioAnalyzer] 주파수 분석 마이크 접근 실패:', e);
+    }
+  }, []);
+
+  const stop = useCallback(() => {
+    cancelAnimationFrame(frameRef.current);
+    streamRef.current?.getTracks().forEach(t => t.stop());
+    contextRef.current?.close();
+    contextRef.current = null;
+    analyserRef.current = null;
+    streamRef.current = null;
+    setFreqData(null);
+  }, []);
+
+  useEffect(() => {
+    if (enabled) start();
+    else stop();
+    return stop;
+  }, [enabled, start, stop]);
+
+  return freqData;
+}
+
 // ── TTS HTMLAudioElement 오디오 레벨 분석 ──
 export function useAudioElementLevel(audioEl: HTMLAudioElement | null) {
   const [level, setLevel] = useState(0);
