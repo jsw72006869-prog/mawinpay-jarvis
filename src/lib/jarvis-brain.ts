@@ -41,6 +41,24 @@ export function clearMemory() { localStorage.removeItem(MEMORY_KEY); }
 // ── 대화 세션 통계 ──
 let sessionTurnCount = 0;
 let lastActionType: JarvisActionType = 'unknown';
+// ── 반복 응답 방지: 최근 5개 응답 해시 추적 ──
+const recentResponseHashes: Set<string> = new Set();
+const recentResponseList: string[] = [];
+function hashResponse(text: string): string {
+  return text.trim().slice(0, 30).toLowerCase().replace(/\s+/g, ' ');
+}
+function isRepeatedResponse(text: string): boolean {
+  return recentResponseHashes.has(hashResponse(text));
+}
+function trackResponse(text: string): void {
+  const hash = hashResponse(text);
+  recentResponseHashes.add(hash);
+  recentResponseList.push(hash);
+  if (recentResponseList.length > 5) {
+    const oldest = recentResponseList.shift()!;
+    recentResponseHashes.delete(oldest);
+  }
+}
 
 // ── ElevenLabs 목소리 목록 ──
 export const ELEVENLABS_VOICES = [
@@ -341,18 +359,29 @@ export async function askGPT(userMessage: string): Promise<JarvisAction> {
       const fnName = toolCallItem.name;
       const fnArgs = JSON.parse(toolCallItem.arguments || '{}');
       console.log('[JARVIS] Function call:', fnName, fnArgs);
-      const responseText = String(fnArgs.response || '');
+      let responseText = String(fnArgs.response || '');
+      // 반복 응답 방지: 동일한 응답이 최근에 있으면 접미어 추가
+      if (isRepeatedResponse(responseText)) {
+        const variants = ['알겠습니다, 선생님.', '진행하겠습니다.', '시작하겠습니다, 선생님.', '바로 실행하겠습니다.'];
+        responseText = variants[Math.floor(Math.random() * variants.length)] + ' ' + responseText.slice(0, 20) + '…';
+      }
+      trackResponse(responseText);
       conversationHistory.push({ role: 'assistant', content: responseText });
       saveConversationEntry('assistant', responseText);
       autoExtractAndSave(userMessage, responseText);
-      const action = buildActionFromFunction(fnName, fnArgs);
+      const action = buildActionFromFunction(fnName, { ...fnArgs, response: responseText });
       lastActionType = action.type;
       return action;
     }
-
     // 일반 텍스트 응답
     const messageItem = outputItems.find((item: { type: string }) => item.type === 'message');
-    const reply = messageItem?.content?.[0]?.text ?? '죄송합니다, 잠시 연결이 불안정합니다.';
+    let reply = messageItem?.content?.[0]?.text ?? '죄송합니다, 잠시 연결이 불안정합니다.';
+    // 반복 응답 방지
+    if (isRepeatedResponse(reply)) {
+      console.warn('[JARVIS] 반복 응답 감지, 수정 중...');
+      reply = reply + ' (다른 관점에서 말씨드리면, ' + ['더 구체적인 질문을 해주세요.', '어떤 작업을 원하시나요?', '다른 요청이 있으시면 말씨주세요.'][Math.floor(Math.random() * 3)] + ')';
+    }
+    trackResponse(reply);
     conversationHistory.push({ role: 'assistant', content: reply });
     saveConversationEntry('assistant', reply);
     autoExtractAndSave(userMessage, reply);

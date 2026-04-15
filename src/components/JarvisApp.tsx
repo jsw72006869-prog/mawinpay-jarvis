@@ -376,6 +376,11 @@ export default function JarvisApp() {
         const doneText = `네이버 ${source === 'cafe' ? '카페' : '블로그'}에서 '${keyword}' 검색 완료. ${result.items.length}건 수집, 이메일 ${emailCount}건, 이웃수 정보 ${neighborInfo}건 포함하여 구글 시트에 저장했습니다, 선생님.`;
         setState('speaking');
         addMessage('jarvis', doneText, true); // 작업 완료 메시지 → 스파클링 효과
+        // 수집 완료 파티클 폭발
+        setClapBurst(true);
+        setTimeout(() => setClapBurst(false), 120);
+        setTimeout(() => { setClapBurst(true); setTimeout(() => setClapBurst(false), 120); }, 450);
+        setTimeout(() => { setClapBurst(true); setTimeout(() => setClapBurst(false), 120); }, 900);
         startSpeakingLevel();
         await new Promise<void>(resolve => {
           speak(doneText, undefined, () => { stopSpeakingLevel(); resolve(); });
@@ -451,6 +456,13 @@ export default function JarvisApp() {
     // 작업 완료 타입이면 스파클링 효과 적용
     const isCompletionMsg = isWorkingType && !!action?.workingMessage;
     addMessage('jarvis', text, isCompletionMsg);
+    // 수집/이메일 발송 완료 시 파티클 폭발 효과 (clapBurst 3회 연속)
+    if (isCompletionMsg) {
+      setClapBurst(true);
+      setTimeout(() => setClapBurst(false), 120);
+      setTimeout(() => { setClapBurst(true); setTimeout(() => setClapBurst(false), 120); }, 450);
+      setTimeout(() => { setClapBurst(true); setTimeout(() => setClapBurst(false), 120); }, 900);
+    }
     startSpeakingLevel();
 
     const followUp = action?.followUp;
