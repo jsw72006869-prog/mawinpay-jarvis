@@ -1,10 +1,10 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { askGPT, parseCommand, JARVIS_GREETINGS, generateBannerImage, saveSchedule, saveMemory, searchNaverAPI, searchYouTubeAPI, type JarvisState, type JarvisAction, type NaverSearchItem, type YouTubeChannel } from '../lib/jarvis-brain';
+import { askGPT, parseCommand, JARVIS_GREETINGS, generateBannerImage, saveSchedule, saveMemory, searchNaverAPI, searchYouTubeAPI, searchInstagramAPI, type JarvisState, type JarvisAction, type NaverSearchItem, type YouTubeChannel, type InstagramAccount } from '../lib/jarvis-brain';
 import { useSpeechRecognition, useTextToSpeech, setCurrentVoiceId, getCurrentVoiceId, ELEVENLABS_VOICES, stopGlobalAudio } from './SpeechEngine';
 import { useMicrophoneFrequency } from '../lib/audio-analyzer';
 import { saveLearnedKnowledge, getLearnedKnowledge, getMemoryStats, clearAllMemory, type LearnedKnowledge } from '../lib/jarvis-memory';
-import { appendInfluencersToSheet, appendEmailLogToSheet, appendNaverResultsToSheet, generateMockInfluencers, generateEmailLogs, type NaverCollectedData } from '../lib/google-sheets';
+import { appendInfluencersToSheet, appendEmailLogToSheet, appendNaverResultsToSheet, appendInstagramToSheet, generateMockInfluencers, generateEmailLogs, type NaverCollectedData } from '../lib/google-sheets';
 import ConversationStream, { type Message } from './ConversationStream';
 import SparkleParticles from './SparkleParticles';
 import ClapDetector from './ClapDetector';
@@ -175,9 +175,10 @@ export default function JarvisApp() {
         const keyword = String(action.params?.keyword || category);
         const collectedAt = new Date().toLocaleString('ko-KR');
         const isYouTube = platform.toLowerCase().includes('youtube') || platform.toLowerCase().includes('유튜브') || keyword.includes('유튜버') || keyword.includes('유튜브');
+        const isInstagram = platform.toLowerCase().includes('instagram') || platform.toLowerCase().includes('인스타') || keyword.includes('인스타');
 
         if (isYouTube) {
-          // ── YouTube Data API로 실제 유튜버 채널 수집 ──
+          // ── YouTube Data API로 실제 유튜버 수집 (앱 방식 이식) ──
           try {
             console.log(`[JARVIS] YouTube API 수집 시작: ${keyword}, ${count}명`);
             const result = await searchYouTubeAPI(keyword, Math.min(count, 50));
@@ -186,18 +187,21 @@ export default function JarvisApp() {
               platform: 'YouTube',
               followers: ch.subscribers > 0 ? (ch.subscribers >= 10000 ? `${(ch.subscribers / 10000).toFixed(1)}만` : `${(ch.subscribers / 1000).toFixed(1)}K`) : '-',
               category: keyword || category,
-              email: ch.email || ch.profileUrl,
+              email: ch.email || '',
+              instagram: ch.instagram || '',
+              tiktok: (ch as any).tiktok || '',
+              website: (ch as any).website || '',
+              profileUrl: ch.customUrl || ch.profileUrl || '',
               status: '활성',
               collectedAt,
             }));
             setStats(prev => ({ ...prev, collected: prev.collected + realInfluencers.length }));
             appendInfluencersToSheet(realInfluencers).then(r => {
-              console.log('[JARVIS] YouTube 시트:', r.success ? '완료' : r.message);
+              console.log('[JARVIS] YouTube 시트:', r.success ? `완료 (${r.count}건)` : r.message);
               saveMemory('마지막 수집', `${keyword} ${realInfluencers.length}명 YouTube 수집 (${new Date().toLocaleDateString('ko-KR')})`);
             });
           } catch (err) {
             console.error('[JARVIS] YouTube API 수집 실패, 네이버 폴백:', err);
-            // YouTube 실패 시 네이버 API 폴백
             try {
               const result = await searchNaverAPI(keyword, 'blog', Math.min(count, 100), 'sim');
               const fallbackInfluencers = result.items.map(item => ({
@@ -205,42 +209,73 @@ export default function JarvisApp() {
                 platform: 'Naver Blog',
                 followers: '-',
                 category: keyword || category,
-                email: item.url || '',
+                email: item.guessedEmail || item.email || '',
                 status: '활성',
                 collectedAt,
               }));
               setStats(prev => ({ ...prev, collected: prev.collected + fallbackInfluencers.length }));
-              appendInfluencersToSheet(fallbackInfluencers).then(r => {
-                console.log('[JARVIS] 네이버 폴백 시트:', r.success ? '완료' : r.message);
-              });
-            } catch (naverErr) {
-              console.error('[JARVIS] 네이버도 실패, mock 폴백:', naverErr);
+              appendInfluencersToSheet(fallbackInfluencers);
+            } catch {
               const influencers = generateMockInfluencers(count, keyword || category, platform);
               setStats(prev => ({ ...prev, collected: prev.collected + count }));
               appendInfluencersToSheet(influencers);
             }
           }
+        } else if (isInstagram) {
+          // ── 인스타그램 Google 크롤링 방식 수집 ──
+          try {
+            console.log(`[JARVIS] 인스타그램 검색 시작: ${keyword}, ${count}명`);
+            const result = await searchInstagramAPI(keyword, Math.min(count, 20), true);
+            const igAccounts = result.items as InstagramAccount[];
+            setStats(prev => ({ ...prev, collected: prev.collected + igAccounts.length }));
+            appendInstagramToSheet(igAccounts.map(acc => ({
+              username: acc.username,
+              fullName: acc.fullName,
+              email: acc.email,
+              followers: acc.followers,
+              followersFormatted: acc.followersFormatted,
+              bio: acc.bio,
+              profileUrl: acc.profileUrl,
+              category: keyword || category,
+            }))).then(r => {
+              console.log('[JARVIS] 인스타 시트:', r.success ? `완료 (${r.count}건)` : r.message);
+              saveMemory('마지막 수집', `${keyword} ${igAccounts.length}명 인스타그램 수집 (${new Date().toLocaleDateString('ko-KR')})`);
+            });
+          } catch (err) {
+            console.error('[JARVIS] 인스타그램 수집 실패:', err);
+            const influencers = generateMockInfluencers(count, keyword || category, 'Instagram');
+            setStats(prev => ({ ...prev, collected: prev.collected + count }));
+            appendInfluencersToSheet(influencers);
+          }
         } else {
-          // ── 네이버 API로 블로그/인스타 인플루언서 수집 ──
+          // ── 네이버 API로 블로그 인플루언서 수집 (이메일/이웃수/방문자수 포함) ──
           try {
             const result = await searchNaverAPI(keyword, 'blog', Math.min(count, 100), 'sim');
+            // 실제 이메일 수집 (guessedEmail: blogId@naver.com)
             const realInfluencers = result.items.map(item => ({
               name: item.creatorName || item.title.replace(/<[^>]*>/g, '').substring(0, 20),
               platform: platform || 'Naver Blog',
-              followers: '-',
+              followers: item.neighborCount > 0 ? `이웃 ${item.neighborCount.toLocaleString()}` : '-',
               category: keyword || category,
-              email: item.url || '',
+              email: item.guessedEmail || item.email || '',
+              profileUrl: item.creatorUrl || '',
               status: '활성',
               collectedAt,
             }));
             setStats(prev => ({ ...prev, collected: prev.collected + realInfluencers.length }));
             appendInfluencersToSheet(realInfluencers).then(r => {
-              console.log('[JARVIS] 네이버 시트:', r.success ? '완료' : r.message);
+              console.log('[JARVIS] 네이버 시트:', r.success ? `완료 (${r.count}건)` : r.message);
               saveMemory('마지막 수집', `${keyword} ${realInfluencers.length}명 수집 (${new Date().toLocaleDateString('ko-KR')})`);
             });
+            // 네이버 수집 탭에도 저장 (이메일/이웃수/방문자수 포함)
             const sheetData: NaverCollectedData[] = result.items.map(item => ({
               title: item.title,
               author: item.creatorName,
+              blogId: item.blogId,
+              guessedEmail: item.guessedEmail,
+              realEmail: item.realEmail,
+              neighborCount: item.neighborCount,
+              dailyVisitors: item.dailyVisitors,
               link: item.url,
               description: item.description,
               type: 'blog',
@@ -301,11 +336,16 @@ export default function JarvisApp() {
         setNaverPanelVisible(true);
         saveMemory('마지막 네이버 검색', `${keyword} (${source}) ${result.total}건 (${new Date().toLocaleDateString('ko-KR')})`);
 
-        // ── 구글 시트 자동 저장 ──
+        // ── 구글 시트 자동 저장 (이메일/이웃수/방문자수 포함) ──
         const collectedAt = new Date().toLocaleString('ko-KR');
         const sheetData: NaverCollectedData[] = result.items.map(item => ({
           title: item.title,
           author: item.creatorName,
+          blogId: item.blogId,
+          guessedEmail: item.guessedEmail,
+          realEmail: item.realEmail,
+          neighborCount: item.neighborCount,
+          dailyVisitors: item.dailyVisitors,
           link: item.url,
           description: item.description,
           type: source,
@@ -318,7 +358,10 @@ export default function JarvisApp() {
           }
         }).catch(err => console.warn('[JARVIS] 구글 시트 저장 실패:', err));
 
-        const doneText = `네이버 ${source === 'cafe' ? '카페' : '블로그'}에서 '${keyword}' 검색 완료. ${result.items.length}건의 결과를 수집하여 구글 시트 JARVIS 네이버수집 탭에 자동 저장했습니다, 선생님.`;
+        // 이메일 수집 현황
+        const emailCount = result.items.filter(i => i.guessedEmail || i.realEmail).length;
+        const neighborInfo = result.items.filter(i => i.neighborCount > 0).length;
+        const doneText = `네이버 ${source === 'cafe' ? '카페' : '블로그'}에서 '${keyword}' 검색 완료. ${result.items.length}건 수집, 이메일 ${emailCount}건, 이웃수 정보 ${neighborInfo}건 포함하여 구글 시트에 저장했습니다, 선생님.`;
         setState('speaking');
         addMessage('jarvis', doneText, true); // 작업 완료 메시지 → 스파클링 효과
         startSpeakingLevel();

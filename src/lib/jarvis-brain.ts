@@ -479,6 +479,13 @@ export interface NaverSearchItem {
   url: string;
   creatorName: string;
   creatorUrl: string;
+  blogId: string;
+  email: string;
+  guessedEmail: string;
+  realEmail: string;
+  neighborCount: number;
+  dailyVisitors: number;
+  profileDesc: string;
   description: string;
   postDate: string;
 }
@@ -532,6 +539,37 @@ export async function searchYouTubeAPI(
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
     throw new Error(err.message || `YouTube API 오류: ${res.status}`);
+  }
+  return res.json();
+}
+
+// ── 인스타그램 계정 검색 (Google 크롤링 방식) ──
+export interface InstagramAccount {
+  username: string;
+  profileUrl: string;
+  followers: number;
+  followersFormatted: string;
+  bio: string;
+  email: string;
+  fullName: string;
+  isVerified: boolean;
+  source: string;
+}
+
+export async function searchInstagramAPI(
+  keyword: string,
+  maxResults: number = 10,
+  fetchProfile: boolean = false
+): Promise<{ total: number; keyword: string; items: InstagramAccount[] }> {
+  const apiBase = import.meta.env.PROD
+    ? ''
+    : 'https://mawinpay-jarvis.vercel.app';
+
+  const url = `${apiBase}/api/instagram-search?keyword=${encodeURIComponent(keyword)}&maxResults=${maxResults}&fetchProfile=${fetchProfile}`;
+  const res = await fetch(url);
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({})) as any;
+    throw new Error(err.message || `Instagram 검색 오류: ${res.status}`);
   }
   return res.json();
 }
