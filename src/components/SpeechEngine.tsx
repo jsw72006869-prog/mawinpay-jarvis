@@ -317,6 +317,17 @@ export function useSpeechRecognition({ onResult, onStart, onEnd, isListening }: 
 }
 
 // ── ElevenLabs TTS ──
+// 전역 오디오 인스턴스 (음성 인식 시 즉시 중단용)
+let globalAudioRef: HTMLAudioElement | null = null;
+export function stopGlobalAudio() {
+  if (globalAudioRef) {
+    try { globalAudioRef.pause(); } catch { /* ignore */ }
+    globalAudioRef.src = '';
+    globalAudioRef = null;
+  }
+  window.speechSynthesis?.cancel();
+}
+
 const VOICE_STORAGE_KEY = 'jarvis_voice_id';
 const DEFAULT_VOICE_ID = 'pNInz6obpgDQGcFmaJgB'; // Adam
 
@@ -368,21 +379,25 @@ async function speakElevenLabs(
     const blob = await res.blob();
     const url = URL.createObjectURL(blob);
     const audio = new Audio(url);
+    globalAudioRef = audio;
 
     await new Promise<void>((resolve) => {
       audio.onended = () => {
         console.log('[TTS] 재생 완료');
         URL.revokeObjectURL(url);
+        if (globalAudioRef === audio) globalAudioRef = null;
         resolve();
       };
       audio.onerror = (e) => {
         console.warn('[TTS] 재생 오류:', e);
         URL.revokeObjectURL(url);
+        if (globalAudioRef === audio) globalAudioRef = null;
         resolve();
       };
       audio.play().catch((e) => {
         console.warn('[TTS] play() 실패:', e);
         URL.revokeObjectURL(url);
+        if (globalAudioRef === audio) globalAudioRef = null;
         resolve();
       });
     });
@@ -457,7 +472,7 @@ export function useTextToSpeech() {
 
   const stop = useCallback(() => {
     isSpeakingRef.current = false;
-    window.speechSynthesis?.cancel();
+    stopGlobalAudio();
   }, []);
 
   return { speak, stop };

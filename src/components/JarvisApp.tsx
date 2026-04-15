@@ -1,7 +1,7 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { askGPT, parseCommand, JARVIS_GREETINGS, generateBannerImage, saveSchedule, saveMemory, searchNaverAPI, searchYouTubeAPI, type JarvisState, type JarvisAction, type NaverSearchItem, type YouTubeChannel } from '../lib/jarvis-brain';
-import { useSpeechRecognition, useTextToSpeech, setCurrentVoiceId, getCurrentVoiceId, ELEVENLABS_VOICES } from './SpeechEngine';
+import { useSpeechRecognition, useTextToSpeech, setCurrentVoiceId, getCurrentVoiceId, ELEVENLABS_VOICES, stopGlobalAudio } from './SpeechEngine';
 import { useMicrophoneFrequency } from '../lib/audio-analyzer';
 import { saveLearnedKnowledge, getLearnedKnowledge, getMemoryStats, clearAllMemory, type LearnedKnowledge } from '../lib/jarvis-memory';
 import { appendInfluencersToSheet, appendEmailLogToSheet, appendNaverResultsToSheet, generateMockInfluencers, generateEmailLogs, type NaverCollectedData } from '../lib/google-sheets';
@@ -148,8 +148,8 @@ export default function JarvisApp() {
     return () => { window.removeEventListener('mousemove', move); cursor.remove(); dot.remove(); };
   }, []);
 
-  const addMessage = useCallback((role: 'user' | 'jarvis', text: string) => {
-    setMessages(prev => [...prev, { id: Date.now().toString(), role, text, timestamp: new Date() }].slice(-8));
+  const addMessage = useCallback((role: 'user' | 'jarvis', text: string, isCompletion = false) => {
+    setMessages(prev => [...prev, { id: Date.now().toString(), role, text, timestamp: new Date(), isCompletion }].slice(-8));
   }, []);
 
   const jarvisRespond = useCallback(async (text: string, action?: JarvisAction) => {
@@ -320,7 +320,7 @@ export default function JarvisApp() {
 
         const doneText = `네이버 ${source === 'cafe' ? '카페' : '블로그'}에서 '${keyword}' 검색 완료. ${result.items.length}건의 결과를 수집하여 구글 시트 JARVIS 네이버수집 탭에 자동 저장했습니다, 선생님.`;
         setState('speaking');
-        addMessage('jarvis', doneText);
+        addMessage('jarvis', doneText, true); // 작업 완료 메시지 → 스파클링 효과
         startSpeakingLevel();
         await new Promise<void>(resolve => {
           speak(doneText, undefined, () => { stopSpeakingLevel(); resolve(); });
@@ -393,7 +393,9 @@ export default function JarvisApp() {
 
     // ── 메인 응답 발화 ──
     setState('speaking');
-    addMessage('jarvis', text);
+    // 작업 완료 타입이면 스파클링 효과 적용
+    const isCompletionMsg = isWorkingType && !!action?.workingMessage;
+    addMessage('jarvis', text, isCompletionMsg);
     startSpeakingLevel();
 
     const followUp = action?.followUp;
@@ -429,13 +431,16 @@ export default function JarvisApp() {
 
   const handleSpeechResult = useCallback(async (transcript: string) => {
     if (!transcript.trim()) return;
-    // speaking/thinking 상태에서는 무시 (TTS 에코 방지)
     const currentState = stateRef.current;
+    console.log('[JARVIS] 🎤 음성 명령 수신 (상태:', currentState, '):', transcript);
+    // 음성 인식 시 JARVIS가 말하는 중이면 즉시 중단
     if (currentState === 'speaking' || currentState === 'thinking' || currentState === 'working') {
-      console.log('[JARVIS] 현재 상태에서 음성 입력 무시:', currentState);
-      return;
+      console.log('[JARVIS] TTS 즉시 중단 후 사용자 명령 처리');
+      stopGlobalAudio(); // TTS 즉시 중단
+      stopSpeakingLevel();
+      // 잠시 대기 후 명령 처리
+      await new Promise(r => setTimeout(r, 200));
     }
-    console.log('[JARVIS] 🎤 음성 명령 수신:', transcript);
     // 1. 즉시 STT 중단
     setIsListening(false);
     // 2. thinking 상태 전환
