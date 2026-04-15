@@ -69,25 +69,30 @@ export default function ClapDetector({ onClap, onAudioLevel, enabled, releaseStr
       if (enabledRef.current) {
         onAudioLevelRef.current(Math.min(rms * 4, 1));
 
-        const threshold = 0.20;
+        const threshold = 0.15; // 낮춰서 더 잘 감지
         const now = Date.now();
-        const MIN_CLAP_GAP = 250; // 한 박수의 여러 피크 무시 (250ms)
+        const MIN_CLAP_GAP = 400; // 박수 1번의 여러 피크 무시 (400ms)
+        const CLAP_WINDOW = 3000; // 3초 안에 2번 박수 쳐야 활성화
 
         if (rms > threshold && now - lastClapRef.current > MIN_CLAP_GAP) {
           lastClapRef.current = now;
           clapCountRef.current += 1;
           console.log(`[ClapDetector] 박수 감지! count=${clapCountRef.current}, rms=${rms.toFixed(3)}`);
 
-          if (clapWindowTimerRef.current) clearTimeout(clapWindowTimerRef.current);
-          clapWindowTimerRef.current = setTimeout(() => {
-            console.log('[ClapDetector] 박수 윈도우 만료 — count 리셋');
-            clapCountRef.current = 0;
-          }, 2000); // 2초 윈도우 (이전 1초 → 2초)
+          // 첫 번째 박수 시 윈도우 타이머 시작 (두 번째 박수 기다림)
+          if (clapCountRef.current === 1) {
+            if (clapWindowTimerRef.current) clearTimeout(clapWindowTimerRef.current);
+            clapWindowTimerRef.current = setTimeout(() => {
+              console.log('[ClapDetector] 박수 윈도우 만료 — count 리셋');
+              clapCountRef.current = 0;
+            }, CLAP_WINDOW);
+          }
 
           if (clapCountRef.current >= 2) {
             console.log('[ClapDetector] ✅ 박수 2회 감지! onClap 호출');
             clapCountRef.current = 0;
             if (clapWindowTimerRef.current) clearTimeout(clapWindowTimerRef.current);
+            clapWindowTimerRef.current = null;
             onClapRef.current();
           }
         }
