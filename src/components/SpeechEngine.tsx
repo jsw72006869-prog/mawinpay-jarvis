@@ -1,4 +1,5 @@
-// SpeechEngine.tsx — v6: 마이크 트랙 비활성화 방식 + 강화된 디버그 로깅
+// SpeechEngine.tsx — v7: Whisper API 기반 STT (Web Speech API 완전 제거)
+// ClapDetector 마이크 충돌 문제를 원천 해결: 별도 getUserMedia로 녹음 후 Whisper로 전송
 import { useEffect, useRef, useCallback } from 'react';
 import { ELEVENLABS_VOICES } from '../lib/jarvis-brain';
 
@@ -14,13 +15,20 @@ interface SpeechEngineProps {
   isListening: boolean;
 }
 
-// ── 음성 인식 훅 (v6: 마이크 트랙 비활성화 방식 + 강화 로깅) ──
+// ── Whisper API 기반 음성 인식 훅 ──
 export function useSpeechRecognition({ onResult, onStart, onEnd, isListening }: SpeechEngineProps) {
-  const recRef = useRef<any>(null);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const streamRef = useRef<MediaStream | null>(null);
+  const chunksRef = useRef<Blob[]>([]);
   const isRunningRef = useRef(false);
   const shouldListenRef = useRef(false);
-  const restartTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const startAttemptRef = useRef(0);
+  const silenceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const recordingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const analyserRef = useRef<AnalyserNode | null>(null);
+  const audioContextRef = useRef<AudioContext | null>(null);
+  const animFrameRef = useRef<number>(0);
+  const lastSoundTimeRef = useRef<number>(0);
+  const hasSpokenRef = useRef(false);
 
   const onResultRef = useRef(onResult);
   const onStartRef = useRef(onStart);
@@ -29,198 +37,283 @@ export function useSpeechRecognition({ onResult, onStart, onEnd, isListening }: 
   useEffect(() => { onStartRef.current = onStart; });
   useEffect(() => { onEndRef.current = onEnd; });
 
-  const clearRestartTimer = useCallback(() => {
-    if (restartTimerRef.current) {
-      clearTimeout(restartTimerRef.current);
-      restartTimerRef.current = null;
+  const cleanup = useCallback(() => {
+    if (silenceTimerRef.current) {
+      clearTimeout(silenceTimerRef.current);
+      silenceTimerRef.current = null;
+    }
+    if (recordingTimerRef.current) {
+      clearTimeout(recordingTimerRef.current);
+      recordingTimerRef.current = null;
+    }
+    if (animFrameRef.current) {
+      cancelAnimationFrame(animFrameRef.current);
+      animFrameRef.current = 0;
+    }
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+      try { mediaRecorderRef.current.stop(); } catch { /* ignore */ }
+    }
+    mediaRecorderRef.current = null;
+    if (audioContextRef.current) {
+      audioContextRef.current.close().catch(() => {});
+      audioContextRef.current = null;
+    }
+    analyserRef.current = null;
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach(t => t.stop());
+      streamRef.current = null;
+    }
+    chunksRef.current = [];
+    isRunningRef.current = false;
+    hasSpokenRef.current = false;
+  }, []);
+
+  // Whisper API로 오디오 전송
+  const transcribeAudio = useCallback(async (audioBlob: Blob): Promise<string | null> => {
+    const apiKey = import.meta.env.VITE_OPENAI_API_KEY;
+    if (!apiKey) {
+      console.error('[STT] OpenAI API 키 없음 — Whisper 사용 불가');
+      return null;
+    }
+
+    console.log(`[STT] 📤 Whisper API 전송 (${(audioBlob.size / 1024).toFixed(1)}KB)`);
+
+    try {
+      const formData = new FormData();
+      formData.append('file', audioBlob, 'audio.webm');
+      formData.append('model', 'whisper-1');
+      formData.append('language', 'ko');
+      formData.append('response_format', 'json');
+
+      const res = await fetch('https://api.openai.com/v1/audio/transcriptions', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${apiKey}`,
+        },
+        body: formData,
+      });
+
+      if (!res.ok) {
+        const errText = await res.text().catch(() => '');
+        console.error('[STT] Whisper API 오류:', res.status, errText);
+        return null;
+      }
+
+      const data = await res.json();
+      const text = data.text?.trim() || '';
+      console.log(`[STT] 🎤 Whisper 인식 결과: "${text}"`);
+      return text || null;
+    } catch (err) {
+      console.error('[STT] Whisper API 호출 실패:', err);
+      return null;
     }
   }, []);
 
-  const safeStop = useCallback(() => {
-    clearRestartTimer();
-    if (!recRef.current) return;
+  // 녹음 시작
+  const startRecording = useCallback(async () => {
+    if (isRunningRef.current) return;
+    
+    console.log('[STT] 🚀 Whisper 녹음 시작');
+
     try {
-      recRef.current.abort();
-    } catch { /* ignore */ }
-    isRunningRef.current = false;
-  }, [clearRestartTimer]);
-
-  // recognition 인스턴스 초기화 (1회)
-  useEffect(() => {
-    const API = window.SpeechRecognition || window.webkitSpeechRecognition;
-    if (!API) {
-      console.warn('[STT] Web Speech API 미지원');
-      return;
-    }
-
-    const rec = new API();
-    rec.lang = 'ko-KR';
-    rec.continuous = false;  // ★ false로 변경: 한 문장씩 인식 후 자동 재시작
-    rec.interimResults = true;  // ★ 중간 결과도 표시 (디버깅용)
-    rec.maxAlternatives = 1;
-
-    rec.onstart = () => {
-      console.log('[STT] ✅ 인식 시작됨');
-      isRunningRef.current = true;
-      startAttemptRef.current = 0;
-    };
-
-    rec.onaudiostart = () => {
-      console.log('[STT] 🎙️ 오디오 캡처 시작');
-      onStartRef.current();
-    };
-
-    rec.onsoundstart = () => {
-      console.log('[STT] 🔊 소리 감지됨');
-    };
-
-    rec.onspeechstart = () => {
-      console.log('[STT] 🗣️ 음성 감지됨 (사용자가 말하고 있음)');
-    };
-
-    rec.onspeechend = () => {
-      console.log('[STT] 🗣️ 음성 종료됨 (사용자가 말을 멈춤)');
-    };
-
-    rec.onsoundend = () => {
-      console.log('[STT] 🔇 소리 종료됨');
-    };
-
-    rec.onaudioend = () => {
-      console.log('[STT] 🎙️ 오디오 캡처 종료');
-    };
-
-    rec.onresult = (event: any) => {
-      try {
-        console.log('[STT] 📝 onresult 이벤트 발생, resultIndex:', event.resultIndex, 'results.length:', event.results.length);
-        for (let i = event.resultIndex; i < event.results.length; i++) {
-          const result = event.results[i];
-          const text = result[0].transcript.trim();
-          const confidence = result[0].confidence;
-          
-          if (result.isFinal) {
-            console.log(`[STT] 🎤 최종 인식 결과: "${text}" (신뢰도: ${(confidence * 100).toFixed(1)}%)`);
-            if (text) {
-              onResultRef.current(text);
-            }
-          } else {
-            console.log(`[STT] 💬 중간 결과: "${text}"`);
-          }
+      // 새로운 마이크 스트림 획득 (ClapDetector가 해제한 후)
+      const stream = await navigator.mediaDevices.getUserMedia({ 
+        audio: {
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true,
         }
-      } catch (e) {
-        console.error('[STT] onresult 오류:', e);
-      }
-    };
+      });
+      streamRef.current = stream;
 
-    rec.onnomatch = () => {
-      console.log('[STT] ❓ 인식 실패 (no match)');
-    };
+      // 오디오 분석기 설정 (음성 감지용)
+      const audioContext = new AudioContext();
+      audioContextRef.current = audioContext;
+      const analyser = audioContext.createAnalyser();
+      analyser.fftSize = 512;
+      analyser.smoothingTimeConstant = 0.3;
+      analyserRef.current = analyser;
+      const source = audioContext.createMediaStreamSource(stream);
+      source.connect(analyser);
 
-    rec.onend = () => {
-      console.log('[STT] 종료됨. shouldListen:', shouldListenRef.current);
-      isRunningRef.current = false;
+      // MediaRecorder 설정
+      const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus') 
+        ? 'audio/webm;codecs=opus' 
+        : 'audio/webm';
+      
+      const recorder = new MediaRecorder(stream, { mimeType });
+      mediaRecorderRef.current = recorder;
+      chunksRef.current = [];
+      hasSpokenRef.current = false;
+      lastSoundTimeRef.current = Date.now();
 
-      if (shouldListenRef.current) {
-        // 자동 재시작 (continuous=false이므로 한 문장 후 자동 종료됨)
-        clearRestartTimer();
-        restartTimerRef.current = setTimeout(() => {
-          if (shouldListenRef.current && !isRunningRef.current) {
-            try {
-              console.log('[STT] 🔄 자동 재시작 (다음 문장 대기)');
-              rec.start();
-            } catch (e: any) {
-              console.warn('[STT] 재시작 실패:', e?.message);
-            }
-          }
-        }, 200);
-        return;
-      }
+      recorder.ondataavailable = (e) => {
+        if (e.data.size > 0) {
+          chunksRef.current.push(e.data);
+        }
+      };
 
-      onEndRef.current();
-    };
-
-    rec.onerror = (event: any) => {
-      console.warn('[STT] ⚠️ 오류:', event.error, event.message || '');
-      isRunningRef.current = false;
-
-      if (event.error === 'not-allowed') {
-        startAttemptRef.current++;
-        console.error(`[STT] ❌ 마이크 권한 거부 (시도 ${startAttemptRef.current})`);
+      recorder.onstop = async () => {
+        console.log('[STT] 🛑 녹음 중단, 청크 수:', chunksRef.current.length);
         
-        if (startAttemptRef.current >= 8) {
-          console.error('[STT] 마이크 권한 재시도 한도 초과 — 포기');
-          shouldListenRef.current = false;
-          onEndRef.current();
+        // 스트림 정리
+        if (audioContextRef.current) {
+          audioContextRef.current.close().catch(() => {});
+          audioContextRef.current = null;
+        }
+        analyserRef.current = null;
+        if (streamRef.current) {
+          streamRef.current.getTracks().forEach(t => t.stop());
+          streamRef.current = null;
+        }
+        isRunningRef.current = false;
+
+        if (chunksRef.current.length === 0 || !hasSpokenRef.current) {
+          console.log('[STT] 음성 없음 — 재시작');
+          chunksRef.current = [];
+          if (shouldListenRef.current) {
+            setTimeout(() => {
+              if (shouldListenRef.current && !isRunningRef.current) {
+                startRecording();
+              }
+            }, 300);
+          }
           return;
         }
 
-        const delay = 500 + (500 * startAttemptRef.current);
-        clearRestartTimer();
-        restartTimerRef.current = setTimeout(() => {
-          if (shouldListenRef.current && !isRunningRef.current) {
-            try {
-              console.log(`[STT] 🔄 not-allowed 재시도 ${startAttemptRef.current + 1}`);
-              rec.start();
-            } catch { /* ignore */ }
+        const audioBlob = new Blob(chunksRef.current, { type: mimeType });
+        chunksRef.current = [];
+
+        // 최소 크기 체크
+        if (audioBlob.size < 1000) {
+          console.log('[STT] 오디오 너무 짧음 — 재시작');
+          if (shouldListenRef.current) {
+            setTimeout(() => {
+              if (shouldListenRef.current && !isRunningRef.current) {
+                startRecording();
+              }
+            }, 300);
           }
-        }, delay);
-        return;
-      }
+          return;
+        }
 
-      if (event.error === 'no-speech') {
-        console.log('[STT] 🤫 음성 없음 — 재시작');
-      }
+        // Whisper API로 전송
+        const text = await transcribeAudio(audioBlob);
+        
+        if (text) {
+          onResultRef.current(text);
+          // onResult 호출 후에는 JarvisApp이 isListening=false로 설정하므로
+          // 여기서 재시작하지 않음
+        } else if (shouldListenRef.current) {
+          console.log('[STT] 인식 실패 — 재시작');
+          setTimeout(() => {
+            if (shouldListenRef.current && !isRunningRef.current) {
+              startRecording();
+            }
+          }, 500);
+        }
+      };
 
-      // no-speech, aborted 등은 재시작
+      // 녹음 시작 (100ms 간격으로 데이터 수집)
+      recorder.start(100);
+      isRunningRef.current = true;
+      onStartRef.current();
+      console.log('[STT] ✅ MediaRecorder 시작됨');
+
+      // 음성 감지 루프
+      const bufferLength = analyser.frequencyBinCount;
+      const dataArray = new Uint8Array(bufferLength);
+      const SPEECH_THRESHOLD = 0.04;
+      const SILENCE_DURATION = 2000; // 2초 무음 후 녹음 중단
+
+      const detectSpeech = () => {
+        if (!analyserRef.current || !isRunningRef.current) return;
+        
+        analyserRef.current.getByteTimeDomainData(dataArray);
+        let sum = 0;
+        for (let i = 0; i < bufferLength; i++) {
+          const val = (dataArray[i] - 128) / 128;
+          sum += val * val;
+        }
+        const rms = Math.sqrt(sum / bufferLength);
+
+        if (rms > SPEECH_THRESHOLD) {
+          lastSoundTimeRef.current = Date.now();
+          if (!hasSpokenRef.current) {
+            hasSpokenRef.current = true;
+            console.log('[STT] 🗣️ 음성 감지됨');
+          }
+        }
+
+        // 음성이 감지된 후 2초 무음이면 녹음 중단
+        if (hasSpokenRef.current && Date.now() - lastSoundTimeRef.current > SILENCE_DURATION) {
+          console.log('[STT] 🔇 2초 무음 감지 → 녹음 중단 → Whisper 전송');
+          if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') {
+            cancelAnimationFrame(animFrameRef.current);
+            animFrameRef.current = 0;
+            if (recordingTimerRef.current) {
+              clearTimeout(recordingTimerRef.current);
+              recordingTimerRef.current = null;
+            }
+            mediaRecorderRef.current.stop();
+            return;
+          }
+        }
+
+        animFrameRef.current = requestAnimationFrame(detectSpeech);
+      };
+
+      detectSpeech();
+
+      // 최대 녹음 시간 (15초)
+      recordingTimerRef.current = setTimeout(() => {
+        if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') {
+          console.log('[STT] ⏱️ 최대 녹음 시간 도달 (15초)');
+          cancelAnimationFrame(animFrameRef.current);
+          animFrameRef.current = 0;
+          mediaRecorderRef.current.stop();
+        }
+      }, 15000);
+
+    } catch (err) {
+      console.error('[STT] 녹음 시작 실패:', err);
+      isRunningRef.current = false;
+      
       if (shouldListenRef.current) {
-        clearRestartTimer();
-        restartTimerRef.current = setTimeout(() => {
+        setTimeout(() => {
           if (shouldListenRef.current && !isRunningRef.current) {
-            try { rec.start(); } catch { /* ignore */ }
+            startRecording();
           }
-        }, 300);
+        }, 1000);
       }
-    };
+    }
+  }, [transcribeAudio]);
 
-    recRef.current = rec;
-
-    return () => {
-      clearRestartTimer();
-      try { rec.abort(); } catch { /* ignore */ }
-    };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  // isListening 변경 시 start/stop
+  // isListening 변경 시 녹음 시작/중단
   useEffect(() => {
     const prev = shouldListenRef.current;
     shouldListenRef.current = isListening;
 
     if (isListening && !prev) {
-      clearRestartTimer();
-      startAttemptRef.current = 0;
-
-      // ★ ClapDetector가 마이크 트랙을 비활성화한 후 STT 시작
-      // 1500ms 딜레이: 마이크 트랙 비활성화 + AudioContext suspend 완료 대기
-      restartTimerRef.current = setTimeout(() => {
-        if (!shouldListenRef.current) return;
-        if (!isRunningRef.current && recRef.current) {
-          try {
-            console.log('[STT] 🚀 STT 시작 (1500ms 딜레이 후)');
-            recRef.current.start();
-          } catch (e: any) {
-            console.warn('[STT] start() 실패:', e?.message);
-            if (e?.message?.includes('already started')) {
-              isRunningRef.current = true;
-            }
-          }
+      // ClapDetector가 스트림을 해제한 후 500ms 대기 후 녹음 시작
+      const timer = setTimeout(() => {
+        if (shouldListenRef.current && !isRunningRef.current) {
+          startRecording();
         }
-      }, 1500);
+      }, 500);
+      
+      return () => clearTimeout(timer);
     } else if (!isListening && prev) {
-      safeStop();
+      cleanup();
+      onEndRef.current();
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isListening]);
+
+  // 컴포넌트 언마운트 시 정리
+  useEffect(() => {
+    return () => cleanup();
+  }, [cleanup]);
 }
 
 // ── ElevenLabs TTS ──
