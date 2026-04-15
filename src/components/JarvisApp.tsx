@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { askGPT, parseCommand, JARVIS_GREETINGS, generateBannerImage, saveSchedule, saveMemory, searchNaverAPI, type JarvisState, type JarvisAction, type NaverSearchItem } from '../lib/jarvis-brain';
 import { useSpeechRecognition, useTextToSpeech, setCurrentVoiceId, getCurrentVoiceId, ELEVENLABS_VOICES } from './SpeechEngine';
 import { saveLearnedKnowledge, getLearnedKnowledge, getMemoryStats, clearAllMemory, type LearnedKnowledge } from '../lib/jarvis-memory';
-import { appendInfluencersToSheet, appendEmailLogToSheet, generateMockInfluencers, generateEmailLogs } from '../lib/google-sheets';
+import { appendInfluencersToSheet, appendEmailLogToSheet, appendNaverResultsToSheet, generateMockInfluencers, generateEmailLogs, type NaverCollectedData } from '../lib/google-sheets';
 import ConversationStream, { type Message } from './ConversationStream';
 import SparkleParticles from './SparkleParticles';
 import ClapDetector from './ClapDetector';
@@ -248,7 +248,24 @@ export default function JarvisApp() {
         setNaverPanelVisible(true);
         saveMemory('마지막 네이버 검색', `${keyword} (${source}) ${result.total}건 (${new Date().toLocaleDateString('ko-KR')})`);
 
-        const doneText = `네이버 ${source === 'cafe' ? '카페' : '블로그'}에서 '${keyword}' 검색 완료. ${result.total}건의 결과를 수집했습니다, 선생님. 오른쪽 패널에서 확인하실 수 있습니다.`;
+        // ── 구글 시트 자동 저장 ──
+        const collectedAt = new Date().toLocaleString('ko-KR');
+        const sheetData: NaverCollectedData[] = result.items.map(item => ({
+          title: item.title,
+          author: item.creatorName,
+          link: item.url,
+          description: item.description,
+          type: source,
+          keyword,
+          collectedAt,
+        }));
+        appendNaverResultsToSheet(sheetData).then(res => {
+          if (res.success) {
+            console.log(`[JARVIS] 구글 시트 자동 저장 완료: ${res.count}건`);
+          }
+        }).catch(err => console.warn('[JARVIS] 구글 시트 저장 실패:', err));
+
+        const doneText = `네이버 ${source === 'cafe' ? '카페' : '블로그'}에서 '${keyword}' 검색 완료. ${result.items.length}건의 결과를 수집하여 구글 시트 JARVIS 네이버수집 탭에 자동 저장했습니다, 선생님.`;
         setState('speaking');
         addMessage('jarvis', doneText);
         startSpeakingLevel();
@@ -1272,6 +1289,31 @@ export default function JarvisApp() {
 
             {/* 하단 버튼 */}
             <div style={{ padding: '8px 14px', borderTop: `1px solid ${THEME.blue}22`, display: 'flex', gap: 6 }}>
+              <div
+                onClick={async () => {
+                  const collectedAt = new Date().toLocaleString('ko-KR');
+                  const sheetData: NaverCollectedData[] = naverResults.map(item => ({
+                    title: item.title,
+                    author: item.creatorName,
+                    link: item.url,
+                    description: item.description,
+                    type: 'blog',
+                    keyword: naverKeyword,
+                    collectedAt,
+                  }));
+                  const res = await appendNaverResultsToSheet(sheetData);
+                  const msg = res.success
+                    ? `${res.count}건 구글 시트 저장 완료`
+                    : '구글 시트 저장 실패 (Webhook URL 확인 필요)';
+                  addMessage('jarvis', msg);
+                  speak(msg);
+                }}
+                style={{
+                  flex: 1, padding: '6px', textAlign: 'center', cursor: 'pointer',
+                  background: `rgba(3,199,90,0.12)`, border: `1px solid rgba(3,199,90,0.4)`,
+                  fontFamily: 'Orbitron, monospace', color: '#03c75a', fontSize: '0.38rem', letterSpacing: '0.15em',
+                }}
+              >시트 저장</div>
               <div
                 onClick={() => {
                   const csv = [

@@ -84,6 +84,52 @@ export async function appendEmailLogToSheet(
   }
 }
 
+// 네이버 수집 결과 데이터 타입
+export interface NaverCollectedData {
+  title: string;        // 블로그/카페 제목
+  author: string;       // 작성자 (블로거 ID)
+  link: string;         // 원문 링크
+  description: string;  // 요약 설명
+  type: string;         // 'blog' | 'cafe'
+  keyword: string;      // 검색 키워드
+  collectedAt: string;  // 수집 일시
+}
+
+// 네이버 수집 결과를 구글 시트 'JARVIS_네이버수집' 탭에 저장
+export async function appendNaverResultsToSheet(
+  results: NaverCollectedData[],
+  sheetName = 'JARVIS_네이버수집'
+): Promise<{ success: boolean; count: number; message: string }> {
+  if (!WEBHOOK_URL) {
+    console.warn('[JARVIS] 구글 시트 웹훅 URL이 설정되지 않았습니다.');
+    return { success: false, count: 0, message: '구글 시트 웹훅 URL이 설정되지 않았습니다.' };
+  }
+
+  try {
+    await fetch(WEBHOOK_URL, {
+      method: 'POST',
+      mode: 'no-cors',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        action: 'appendNaverResults',
+        sheetName,
+        data: results,
+        timestamp: new Date().toISOString(),
+      }),
+    });
+
+    console.log(`[JARVIS] 네이버 수집 결과 ${results.length}건 구글 시트 전송 완료`);
+    return {
+      success: true,
+      count: results.length,
+      message: `${results.length}건의 네이버 수집 데이터가 구글 시트 '${sheetName}' 탭에 저장되었습니다.`,
+    };
+  } catch (error) {
+    console.error('[JARVIS] 네이버 결과 전송 오류:', error);
+    return { success: false, count: 0, message: '구글 시트 전송 중 오류가 발생했습니다.' };
+  }
+}
+
 // 더미 인플루언서 데이터 생성 (실제 수집 시뮬레이션)
 export function generateMockInfluencers(count: number, category: string, platform: string): InfluencerData[] {
   const names = [
@@ -155,6 +201,21 @@ function doPost(e) {
       }
       data.data.forEach(row => {
         sheet.appendRow([row.name, row.platform, row.followers, row.category, row.email, row.status, row.collectedAt]);
+      });
+    }
+    
+    if (data.action === 'appendNaverResults') {
+      let sheet = ss.getSheetByName(data.sheetName);
+      if (!sheet) {
+        sheet = ss.insertSheet(data.sheetName);
+        sheet.appendRow(['제목', '작성자', '링크', '요약', '유형', '키워드', '수집일시']);
+        sheet.getRange(1, 1, 1, 7).setFontWeight('bold').setBackground('#03c75a').setFontColor('#ffffff');
+        sheet.setColumnWidth(1, 300);
+        sheet.setColumnWidth(3, 250);
+        sheet.setColumnWidth(4, 350);
+      }
+      data.data.forEach(row => {
+        sheet.appendRow([row.title, row.author, row.link, row.description, row.type, row.keyword, row.collectedAt]);
       });
     }
     
