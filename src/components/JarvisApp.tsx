@@ -400,12 +400,8 @@ export default function JarvisApp() {
     },
     onEnd: () => {
       console.log('[JARVIS] STT onEnd, state:', stateRef.current);
-      // STT가 끝났을 때 listening 상태면 idle로 (음성 인식 결과 없이 종료된 경우)
-      // 단, handleSpeechResult가 이미 state를 thinking으로 바꿨으면 건드리지 않음
-      if (stateRef.current === 'listening') {
-        setState('idle');
-        setIsListening(false);
-      }
+      // STT가 종료되어도 SpeechEngine이 자동 재시작하므로
+      // 여기서는 idle로 전환하지 않음 (listening 상태 유지)
     },
     isListening,
   });

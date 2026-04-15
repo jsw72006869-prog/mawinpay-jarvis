@@ -71,15 +71,55 @@ export function useSpeechRecognition({ onResult, onStart, onEnd, isListening }: 
     rec.onend = () => {
       console.log('[JARVIS STT] 종료됨. shouldListen:', shouldListenRef.current);
       isActiveRef.current = false;
+
+      // 자동 재시작: shouldListen이 여전히 true면 STT를 다시 시작
+      // (continuous=false라서 한 번 인식 후 자동 종료되기 때문)
+      if (shouldListenRef.current) {
+        console.log('[JARVIS STT] 자동 재시작 예약 (shouldListen=true)');
+        setTimeout(() => {
+          if (!shouldListenRef.current) return;
+          if (isActiveRef.current) return;
+          try {
+            console.log('[JARVIS STT] 자동 재시작 recognition.start()');
+            rec.start();
+          } catch (e: any) {
+            console.warn('[JARVIS STT] 자동 재시작 실패:', e?.message);
+            isActiveRef.current = false;
+            onEndRef.current();
+          }
+        }, 200);
+        return; // onEnd 호출 안 함 (재시작하므로)
+      }
+
       onEndRef.current();
     };
 
     rec.onerror = (event: any) => {
       console.warn('[JARVIS STT] 오류:', event.error);
       isActiveRef.current = false;
+
       if (event.error === 'not-allowed') {
         console.error('[JARVIS STT] 마이크 권한이 거부되었습니다.');
+        onEndRef.current();
+        return;
       }
+
+      // no-speech, aborted 등의 오류에서도 shouldListen이면 재시작
+      if (shouldListenRef.current && event.error !== 'not-allowed') {
+        console.log('[JARVIS STT] 오류 후 자동 재시작 예약');
+        setTimeout(() => {
+          if (!shouldListenRef.current) return;
+          if (isActiveRef.current) return;
+          try {
+            rec.start();
+          } catch (e: any) {
+            console.warn('[JARVIS STT] 오류 후 재시작 실패:', e?.message);
+            onEndRef.current();
+          }
+        }, 500);
+        return;
+      }
+
       onEndRef.current();
     };
 
