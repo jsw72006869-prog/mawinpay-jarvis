@@ -1,4 +1,4 @@
-// SpeechEngine.tsx — 안정적인 음성 인식 + ElevenLabs TTS (완전 재작성)
+// SpeechEngine.tsx — 안정적인 음성 인식 + ElevenLabs TTS (v3 완전 재작성)
 import { useEffect, useRef, useCallback } from 'react';
 import { ELEVENLABS_VOICES } from '../lib/jarvis-brain';
 
@@ -15,13 +15,12 @@ interface SpeechEngineProps {
   isListening: boolean;
 }
 
-// ── 음성 인식 훅 ──
+// ── 음성 인식 훅 (v3: continuous=true 기반) ──
 export function useSpeechRecognition({ onResult, onStart, onEnd, isListening }: SpeechEngineProps) {
   const recRef = useRef<any>(null);
-  const isActiveRef = useRef(false);
+  const isRunningRef = useRef(false);
   const shouldListenRef = useRef(false);
-  const processingRef = useRef(false); // onResult 처리 중 플래그
-  const startTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const restartTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // 콜백 최신 참조 유지
   const onResultRef = useRef(onResult);
@@ -31,72 +30,104 @@ export function useSpeechRecognition({ onResult, onStart, onEnd, isListening }: 
   useEffect(() => { onStartRef.current = onStart; });
   useEffect(() => { onEndRef.current = onEnd; });
 
+  const clearRestartTimer = useCallback(() => {
+    if (restartTimerRef.current) {
+      clearTimeout(restartTimerRef.current);
+      restartTimerRef.current = null;
+    }
+  }, []);
+
+  const safeStart = useCallback(() => {
+    clearRestartTimer();
+    if (!recRef.current) return;
+    if (isRunningRef.current) return;
+    if (!shouldListenRef.current) return;
+
+    try {
+      console.log('[STT] safeStart() 호출');
+      recRef.current.start();
+    } catch (e: any) {
+      console.warn('[STT] start() 실패:', e?.message);
+      // 이미 실행 중인 경우 무시
+      if (e?.message?.includes('already started')) {
+        isRunningRef.current = true;
+        return;
+      }
+      // 다른 오류면 재시도
+      isRunningRef.current = false;
+      restartTimerRef.current = setTimeout(() => {
+        if (shouldListenRef.current) safeStart();
+      }, 500);
+    }
+  }, [clearRestartTimer]);
+
+  const safeStop = useCallback(() => {
+    clearRestartTimer();
+    if (!recRef.current) return;
+    if (!isRunningRef.current) return;
+
+    try {
+      console.log('[STT] safeStop() 호출');
+      recRef.current.stop();
+    } catch (e: any) {
+      console.warn('[STT] stop() 실패:', e?.message);
+      isRunningRef.current = false;
+    }
+  }, [clearRestartTimer]);
+
   // recognition 인스턴스 초기화 (1회)
   useEffect(() => {
     const API = window.SpeechRecognition || window.webkitSpeechRecognition;
     if (!API) {
-      console.warn('[JARVIS] Web Speech API 미지원 — Chrome을 사용해주세요.');
+      console.warn('[STT] Web Speech API 미지원 — Chrome을 사용해주세요.');
       return;
     }
 
     const rec = new API();
     rec.lang = 'ko-KR';
-    rec.continuous = false;
-    rec.interimResults = false;
+    rec.continuous = true;        // ★ 핵심: 연속 인식 모드
+    rec.interimResults = false;   // 최종 결과만
     rec.maxAlternatives = 1;
 
     rec.onstart = () => {
-      console.log('[JARVIS STT] 시작됨');
-      isActiveRef.current = true;
+      console.log('[STT] ✅ 인식 시작됨');
+      isRunningRef.current = true;
       onStartRef.current();
     };
 
     rec.onresult = (event: any) => {
       try {
-        const results = event.results;
-        for (let i = event.resultIndex; i < results.length; i++) {
-          if (results[i].isFinal) {
-            const text = results[i][0].transcript.trim();
-            console.log('[JARVIS STT] 인식 완료:', text);
+        for (let i = event.resultIndex; i < event.results.length; i++) {
+          if (event.results[i].isFinal) {
+            const text = event.results[i][0].transcript.trim();
             if (text) {
-              // 결과 처리 중 플래그 설정 → onEnd에서 재시작 방지
-              processingRef.current = true;
+              console.log('[STT] 🎤 인식 결과:', text);
               onResultRef.current(text);
-              return;
             }
           }
         }
       } catch (e) {
-        console.error('[JARVIS STT] onresult 오류:', e);
+        console.error('[STT] onresult 오류:', e);
       }
     };
 
     rec.onend = () => {
-      console.log('[JARVIS STT] 종료됨. shouldListen:', shouldListenRef.current, 'processing:', processingRef.current);
-      isActiveRef.current = false;
+      console.log('[STT] 종료됨. shouldListen:', shouldListenRef.current);
+      isRunningRef.current = false;
 
-      // onResult가 처리 중이면 재시작하지 않음 (handleSpeechResult가 완료 후 isListening을 다시 true로 설정함)
-      if (processingRef.current) {
-        console.log('[JARVIS STT] 결과 처리 중 — 재시작 안 함');
-        processingRef.current = false;
-        return;
-      }
-
-      // 음성 인식 결과 없이 종료된 경우 (no-speech 타임아웃 등)
-      // shouldListen이 true면 자동 재시작하여 계속 듣기
+      // continuous=true여도 브라우저가 자동 종료할 수 있음 (no-speech 타임아웃 등)
+      // shouldListen이 true면 자동 재시작
       if (shouldListenRef.current) {
-        console.log('[JARVIS STT] 자동 재시작 예약 (shouldListen=true)');
-        setTimeout(() => {
-          if (!shouldListenRef.current) return;
-          if (isActiveRef.current) return;
-          if (processingRef.current) return;
-          try {
-            console.log('[JARVIS STT] 자동 재시작 recognition.start()');
-            rec.start();
-          } catch (e: any) {
-            console.warn('[JARVIS STT] 자동 재시작 실패:', e?.message);
-            isActiveRef.current = false;
-            onEndRef.current();
+        console.log('[STT] 자동 재시작 예약');
+        restartTimerRef.current = setTimeout(() => {
+          if (shouldListenRef.current && !isRunningRef.current) {
+            try {
+              console.log('[STT] 자동 재시작 실행');
+              rec.start();
+            } catch (e: any) {
+              console.warn('[STT] 재시작 실패:', e?.message);
+              isRunningRef.current = false;
+            }
           }
         }, 300);
         return;
@@ -106,29 +137,28 @@ export function useSpeechRecognition({ onResult, onStart, onEnd, isListening }: 
     };
 
     rec.onerror = (event: any) => {
-      console.warn('[JARVIS STT] 오류:', event.error);
-      isActiveRef.current = false;
+      console.warn('[STT] 오류:', event.error);
+      isRunningRef.current = false;
 
       if (event.error === 'not-allowed') {
-        console.error('[JARVIS STT] 마이크 권한이 거부되었습니다.');
+        console.error('[STT] ❌ 마이크 권한 거부');
         onEndRef.current();
         return;
       }
 
-      // no-speech, aborted 등의 오류에서도 shouldListen이면 재시작
-      if (shouldListenRef.current && !processingRef.current) {
-        console.log('[JARVIS STT] 오류 후 자동 재시작 예약');
-        setTimeout(() => {
-          if (!shouldListenRef.current) return;
-          if (isActiveRef.current) return;
-          if (processingRef.current) return;
-          try {
-            rec.start();
-          } catch (e: any) {
-            console.warn('[JARVIS STT] 오류 후 재시작 실패:', e?.message);
-            onEndRef.current();
+      // aborted는 의도적 중단이므로 shouldListen 확인 후 재시작
+      // no-speech는 타임아웃이므로 재시작
+      if (shouldListenRef.current) {
+        const delay = event.error === 'aborted' ? 200 : 500;
+        restartTimerRef.current = setTimeout(() => {
+          if (shouldListenRef.current && !isRunningRef.current) {
+            try {
+              rec.start();
+            } catch (e: any) {
+              console.warn('[STT] 오류 후 재시작 실패:', e?.message);
+            }
           }
-        }, 500);
+        }, delay);
         return;
       }
 
@@ -138,50 +168,32 @@ export function useSpeechRecognition({ onResult, onStart, onEnd, isListening }: 
     recRef.current = rec;
 
     return () => {
-      if (startTimerRef.current) clearTimeout(startTimerRef.current);
+      clearRestartTimer();
       try { rec.abort(); } catch { /* ignore */ }
     };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // isListening 변경 시 start/stop
   useEffect(() => {
+    const prev = shouldListenRef.current;
     shouldListenRef.current = isListening;
 
-    if (startTimerRef.current) {
-      clearTimeout(startTimerRef.current);
-      startTimerRef.current = null;
+    if (isListening && !prev) {
+      // 시작 요청: 약간의 딜레이 후 시작 (TTS 에코 방지)
+      clearRestartTimer();
+      restartTimerRef.current = setTimeout(() => {
+        safeStart();
+      }, 200);
+    } else if (!isListening && prev) {
+      // 중단 요청
+      safeStop();
     }
-
-    if (isListening) {
-      if (!isActiveRef.current && recRef.current) {
-        // 약간의 딜레이 후 시작 (이전 오디오 재생 완료 보장)
-        startTimerRef.current = setTimeout(() => {
-          if (!shouldListenRef.current) return;
-          if (isActiveRef.current) return;
-          try {
-            console.log('[JARVIS STT] recognition.start() 호출');
-            recRef.current.start();
-          } catch (e: any) {
-            console.warn('[JARVIS STT] start() 실패:', e?.message);
-            isActiveRef.current = false;
-          }
-        }, 300);
-      }
-    } else {
-      if (isActiveRef.current && recRef.current) {
-        try {
-          recRef.current.stop();
-          console.log('[JARVIS STT] recognition.stop() 호출');
-        } catch (e) {
-          console.warn('[JARVIS STT] stop() 실패:', e);
-        }
-      }
-    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isListening]);
 }
 
 // ── ElevenLabs TTS ──
-// 현재 선택된 목소리 ID (localStorage에 저장)
 const VOICE_STORAGE_KEY = 'jarvis_voice_id';
 const DEFAULT_VOICE_ID = 'pNInz6obpgDQGcFmaJgB'; // Adam
 
@@ -191,17 +203,16 @@ export function getCurrentVoiceId(): string {
 
 export function setCurrentVoiceId(voiceId: string): void {
   localStorage.setItem(VOICE_STORAGE_KEY, voiceId);
-  console.log('[JARVIS TTS] 목소리 변경됨:', voiceId);
+  console.log('[TTS] 목소리 변경됨:', voiceId);
 }
 
 async function speakElevenLabs(
   text: string,
   apiKey: string,
-  onEnd: () => void,
   voiceIdOverride?: string
 ): Promise<void> {
   const ELEVENLABS_VOICE_ID = voiceIdOverride || getCurrentVoiceId();
-  console.log('[JARVIS TTS] ElevenLabs 요청:', text.substring(0, 60));
+  console.log('[TTS] ElevenLabs 요청:', text.substring(0, 60));
   try {
     const res = await fetch(
       `https://api.elevenlabs.io/v1/text-to-speech/${ELEVENLABS_VOICE_ID}/stream`,
@@ -227,7 +238,7 @@ async function speakElevenLabs(
 
     if (!res.ok) {
       const errText = await res.text().catch(() => '');
-      console.error('[JARVIS TTS] ElevenLabs 오류:', res.status, errText);
+      console.error('[TTS] ElevenLabs 오류:', res.status, errText);
       throw new Error(`ElevenLabs ${res.status}`);
     }
 
@@ -237,28 +248,25 @@ async function speakElevenLabs(
 
     await new Promise<void>((resolve) => {
       audio.onended = () => {
-        console.log('[JARVIS TTS] 재생 완료');
+        console.log('[TTS] 재생 완료');
         URL.revokeObjectURL(url);
         resolve();
       };
       audio.onerror = (e) => {
-        console.warn('[JARVIS TTS] 재생 오류:', e);
+        console.warn('[TTS] 재생 오류:', e);
         URL.revokeObjectURL(url);
         resolve();
       };
       audio.play().catch((e) => {
-        console.warn('[JARVIS TTS] play() 실패:', e);
+        console.warn('[TTS] play() 실패:', e);
         URL.revokeObjectURL(url);
         resolve();
       });
     });
 
   } catch (err) {
-    console.error('[JARVIS TTS] ElevenLabs 실패, Web Speech 폴백:', err);
+    console.error('[TTS] ElevenLabs 실패, Web Speech 폴백:', err);
     await speakWebSpeech(text);
-  } finally {
-    console.log('[JARVIS TTS] onEnd 호출');
-    onEnd();
   }
 }
 
@@ -281,14 +289,8 @@ function speakWebSpeech(text: string): Promise<void> {
       utterance.pitch = 0.8;
       utterance.volume = 1.0;
 
-      utterance.onend = () => {
-        console.log('[JARVIS TTS] Web Speech 완료');
-        resolve();
-      };
-      utterance.onerror = () => {
-        console.warn('[JARVIS TTS] Web Speech 오류');
-        resolve();
-      };
+      utterance.onend = () => resolve();
+      utterance.onerror = () => resolve();
 
       window.speechSynthesis.speak(utterance);
     }, 100);
@@ -306,26 +308,26 @@ export function useTextToSpeech() {
     voiceIdOverride?: string
   ) => {
     if (isSpeakingRef.current) {
-      console.warn('[JARVIS TTS] 이미 재생 중 — 스킵');
+      console.warn('[TTS] 이미 재생 중 — 스킵');
       onEnd?.();
       return;
     }
 
     isSpeakingRef.current = true;
-    console.log('[JARVIS TTS] speak() 시작:', text.substring(0, 60));
+    console.log('[TTS] speak() 시작:', text.substring(0, 60));
 
     const apiKey = import.meta.env.VITE_ELEVENLABS_API_KEY;
 
     try {
       if (apiKey) {
-        await speakElevenLabs(text, apiKey, () => {}, voiceIdOverride);
+        await speakElevenLabs(text, apiKey, voiceIdOverride);
       } else {
-        console.log('[JARVIS TTS] ElevenLabs 키 없음 — Web Speech 사용');
+        console.log('[TTS] ElevenLabs 키 없음 — Web Speech 사용');
         await speakWebSpeech(text);
       }
     } finally {
       isSpeakingRef.current = false;
-      console.log('[JARVIS TTS] speak() 완료, onEnd 호출');
+      console.log('[TTS] speak() 완료');
       onEnd?.();
     }
   }, []);

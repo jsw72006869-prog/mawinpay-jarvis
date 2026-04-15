@@ -376,19 +376,29 @@ export default function JarvisApp() {
 
   const handleSpeechResult = useCallback(async (transcript: string) => {
     if (!transcript.trim()) return;
-    console.log('[JARVIS] 음성 명령 수신:', transcript);
-    // 즉시 listening 중단 및 thinking 상태 전환
+    // speaking/thinking 상태에서는 무시 (TTS 에코 방지)
+    const currentState = stateRef.current;
+    if (currentState === 'speaking' || currentState === 'thinking' || currentState === 'working') {
+      console.log('[JARVIS] 현재 상태에서 음성 입력 무시:', currentState);
+      return;
+    }
+    console.log('[JARVIS] 🎤 음성 명령 수신:', transcript);
+    // 1. 즉시 STT 중단
     setIsListening(false);
+    // 2. thinking 상태 전환
     setState('thinking');
+    // 3. 사용자 메시지 표시
     addMessage('user', transcript);
     try {
-      // GPT-4o API 호출 (폴백: 로컬 파서)
+      // 4. GPT-4o API 호출 (폴백: 로컬 파서)
       const action = await askGPT(transcript).catch(() => parseCommand(transcript));
       console.log('[JARVIS] GPT 응답 액션:', action.type, action.response.substring(0, 60));
+      // 5. 응답 처리 (TTS 재생 + 후속 처리)
       await jarvisRespond(action.response, action);
     } catch (err) {
       console.error('[JARVIS] handleSpeechResult 오류:', err);
       // 오류 시에도 반드시 listening 상태로 복구
+      await new Promise(r => setTimeout(r, 500));
       setState('listening');
       setIsListening(true);
     }
@@ -459,6 +469,8 @@ export default function JarvisApp() {
       setIsListening(true);
       activatingRef.current = false;
     } else if (s === 'listening') {
+      // 박수로 비활성화 — 쿨다운 보호 (활성화 직후 바로 비활성화 방지)
+      console.log('[JARVIS] 박수 → listening → idle 전환');
       setIsListening(false);
       setState('idle');
     }
@@ -477,7 +489,7 @@ export default function JarvisApp() {
       <SparkleParticles state={state} audioLevel={micLevel} speakingLevel={speakingLevel} clapBurst={clapBurst} />
 
       {/* ── 박수 감지 ── */}
-      <ClapDetector onClap={handleActivate} onAudioLevel={setMicLevel} enabled={true} />
+      <ClapDetector onClap={handleActivate} onAudioLevel={setMicLevel} enabled={state === 'idle' || state === 'listening'} />
 
       {/* ── 배경 방사형 그라디언트 ── */}
       <div style={{ position: 'fixed', inset: 0, pointerEvents: 'none', zIndex: 1 }}>
