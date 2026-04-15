@@ -1,7 +1,7 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { askGPT, parseCommand, JARVIS_GREETINGS, generateBannerImage, saveSchedule, saveMemory, searchNaverAPI, searchYouTubeAPI, searchInstagramAPI, type JarvisState, type JarvisAction, type NaverSearchItem, type YouTubeChannel, type InstagramAccount } from '../lib/jarvis-brain';
-import { useSpeechRecognition, useTextToSpeech, setCurrentVoiceId, getCurrentVoiceId, ELEVENLABS_VOICES, stopGlobalAudio } from './SpeechEngine';
+import { useSpeechRecognition, useTextToSpeech, useBargein, setCurrentVoiceId, getCurrentVoiceId, ELEVENLABS_VOICES, stopGlobalAudio } from './SpeechEngine';
 import { useMicrophoneFrequency } from '../lib/audio-analyzer';
 import { saveLearnedKnowledge, getLearnedKnowledge, getMemoryStats, clearAllMemory, type LearnedKnowledge } from '../lib/jarvis-memory';
 import { appendInfluencersToSheet, appendEmailLogToSheet, appendNaverResultsToSheet, appendInstagramToSheet, generateMockInfluencers, generateEmailLogs, type NaverCollectedData } from '../lib/google-sheets';
@@ -112,6 +112,18 @@ export default function JarvisApp() {
     if (speakingTimerRef.current) clearInterval(speakingTimerRef.current);
     setSpeakingLevel(0);
   }, []);
+
+  // ── Barge-in: JARVIS 말하는 중 사용자 발화 감지 → TTS 즉시 중단 + listening 전환 ──
+  useBargein(
+    state === 'speaking',
+    useCallback(() => {
+      console.log('[JARVIS] Barge-in 감지 → TTS 중단 후 listening 전환');
+      stopGlobalAudio();
+      stopSpeakingLevel();
+      setState('listening');
+      setIsListening(true);
+    }, [stopSpeakingLevel])
+  );
 
   // ── 시계 ──
   useEffect(() => {

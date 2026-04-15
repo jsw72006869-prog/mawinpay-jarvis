@@ -478,6 +478,78 @@ function speakWebSpeech(text: string): Promise<void> {
   });
 }
 
+// ── Barge-in 감지 훅 ── (JARVIS 말하는 중 사용자 발화 감지 → TTS 즉시 중단)
+export function useBargein(enabled: boolean, onBargeIn: () => void) {
+  const streamRef = useRef<MediaStream | null>(null);
+  const audioCtxRef = useRef<AudioContext | null>(null);
+  const animRef = useRef<number>(0);
+  const onBargeInRef = useRef(onBargeIn);
+  useEffect(() => { onBargeInRef.current = onBargeIn; });
+
+  useEffect(() => {
+    if (!enabled) {
+      // 정리
+      if (animRef.current) cancelAnimationFrame(animRef.current);
+      if (audioCtxRef.current) { audioCtxRef.current.close().catch(() => {}); audioCtxRef.current = null; }
+      if (streamRef.current) { streamRef.current.getTracks().forEach(t => t.stop()); streamRef.current = null; }
+      return;
+    }
+
+    let active = true;
+    let triggered = false;
+    const BARGE_THRESHOLD = 0.06; // 발화 감지 임계값
+    const BARGE_SUSTAIN = 300; // 300ms 이상 지속 시 barge-in
+    let aboveThresholdSince = 0;
+
+    navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true } })
+      .then(stream => {
+        if (!active) { stream.getTracks().forEach(t => t.stop()); return; }
+        streamRef.current = stream;
+        const ctx = new AudioContext();
+        audioCtxRef.current = ctx;
+        const analyser = ctx.createAnalyser();
+        analyser.fftSize = 256;
+        analyser.smoothingTimeConstant = 0.4;
+        const src = ctx.createMediaStreamSource(stream);
+        src.connect(analyser);
+        const buf = new Uint8Array(analyser.frequencyBinCount);
+
+        const detect = () => {
+          if (!active || triggered) return;
+          analyser.getByteTimeDomainData(buf);
+          let sum = 0;
+          for (let i = 0; i < buf.length; i++) {
+            const v = (buf[i] - 128) / 128;
+            sum += v * v;
+          }
+          const rms = Math.sqrt(sum / buf.length);
+
+          if (rms > BARGE_THRESHOLD) {
+            if (aboveThresholdSince === 0) aboveThresholdSince = Date.now();
+            if (Date.now() - aboveThresholdSince > BARGE_SUSTAIN) {
+              triggered = true;
+              console.log('[Barge-in] 🗣️ 사용자 발화 감지 → TTS 중단');
+              onBargeInRef.current();
+              return;
+            }
+          } else {
+            aboveThresholdSince = 0;
+          }
+          animRef.current = requestAnimationFrame(detect);
+        };
+        animRef.current = requestAnimationFrame(detect);
+      })
+      .catch(err => console.warn('[Barge-in] 마이크 접근 실패:', err));
+
+    return () => {
+      active = false;
+      if (animRef.current) cancelAnimationFrame(animRef.current);
+      if (audioCtxRef.current) { audioCtxRef.current.close().catch(() => {}); audioCtxRef.current = null; }
+      if (streamRef.current) { streamRef.current.getTracks().forEach(t => t.stop()); streamRef.current = null; }
+    };
+  }, [enabled]);
+}
+
 // ── TTS 훅 ──
 export function useTextToSpeech() {
   const isSpeakingRef = useRef(false);
