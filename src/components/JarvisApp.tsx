@@ -95,33 +95,7 @@ export default function JarvisApp() {
   const isListeningRef = useRef(isListening);
   isListeningRef.current = isListening;
 
-  // ── 마이크 레벨 분석 ──
-  const micContextRef = useRef<AudioContext | null>(null);
-  const micFrameRef = useRef<number>(0);
-
-  const startMicAnalysis = useCallback(async () => {
-    try {
-      if (micContextRef.current) return;
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
-      const ctx = new AudioContext();
-      micContextRef.current = ctx;
-      const analyser = ctx.createAnalyser();
-      analyser.fftSize = 256;
-      analyser.smoothingTimeConstant = 0.8;
-      const source = ctx.createMediaStreamSource(stream);
-      source.connect(analyser);
-      const data = new Uint8Array(analyser.frequencyBinCount);
-      const tick = () => {
-        analyser.getByteFrequencyData(data);
-        const avg = data.reduce((s, v) => s + v, 0) / data.length;
-        setMicLevel(Math.min(avg / 90, 1));
-        micFrameRef.current = requestAnimationFrame(tick);
-      };
-      tick();
-    } catch (e) {
-      console.warn('[JARVIS] 마이크 분석 실패:', e);
-    }
-  }, []);
+  // ── 마이크 레벨은 ClapDetector의 onAudioLevel로 전달받음 (별도 getUserMedia 불필요) ──
 
   // ── TTS 레벨 시뮬레이션 ──
   const speakingTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -431,7 +405,6 @@ export default function JarvisApp() {
 
     if (s === 'idle') {
       activatingRef.current = true;
-      startMicAnalysis();
 
       // 시그니처 응답: GPT 대기 없이 즉시 재생
       const sigResponse = SIGNATURE_RESPONSES[Math.floor(Math.random() * SIGNATURE_RESPONSES.length)];
@@ -474,7 +447,7 @@ export default function JarvisApp() {
       setIsListening(false);
       setState('idle');
     }
-  }, [isInitialized, addMessage, speak, startMicAnalysis, startSpeakingLevel, stopSpeakingLevel]);
+  }, [isInitialized, addMessage, speak, startSpeakingLevel, stopSpeakingLevel]);
 
   useEffect(() => { if (state !== 'listening') setMicLevel(0); }, [state]);
 
@@ -489,8 +462,8 @@ export default function JarvisApp() {
       <SparkleParticles state={state} audioLevel={micLevel} speakingLevel={speakingLevel} clapBurst={clapBurst} />
 
       {/* ── 박수 감지 ── */}
-      <ClapDetector onClap={handleActivate} onAudioLevel={setMicLevel} enabled={state === 'idle' || state === 'listening'} />
-      {/* ClapDetector는 항상 마운트 — enabled=false일 때 감지만 비활성, 마이크 스트림은 유지 */}
+      <ClapDetector onClap={handleActivate} onAudioLevel={setMicLevel} enabled={state === 'idle'} releaseStream={isListening || state === 'speaking' || state === 'thinking' || state === 'working'} />
+      {/* ClapDetector: idle에서만 박수 감지, STT/TTS 중에는 마이크 스트림 완전 해제 */}
 
       {/* ── 배경 방사형 그라디언트 ── */}
       <div style={{ position: 'fixed', inset: 0, pointerEvents: 'none', zIndex: 1 }}>
