@@ -231,24 +231,43 @@ export default function JarvisApp() {
 
   const handleSpeechResult = useCallback(async (transcript: string) => {
     if (!transcript.trim()) return;
-    addMessage('user', transcript);
+    console.log('[JARVIS] 음성 명령 수신:', transcript);
+    // 즉시 listening 중단 및 thinking 상태 전환
     setIsListening(false);
     setState('thinking');
-    // GPT-4o API 호출 (폴백: 로컬 파서)
-    const action = await askGPT(transcript).catch(() => parseCommand(transcript));
-    jarvisRespond(action.response, action);
+    addMessage('user', transcript);
+    try {
+      // GPT-4o API 호출 (폴백: 로컬 파서)
+      const action = await askGPT(transcript).catch(() => parseCommand(transcript));
+      console.log('[JARVIS] GPT 응답 액션:', action.type, action.response.substring(0, 60));
+      await jarvisRespond(action.response, action);
+    } catch (err) {
+      console.error('[JARVIS] handleSpeechResult 오류:', err);
+      // 오류 시에도 반드시 listening 상태로 복구
+      setState('listening');
+      setIsListening(true);
+    }
   }, [addMessage, jarvisRespond]);
 
   useSpeechRecognition({
     onResult: handleSpeechResult,
-    onStart: () => setState('listening'),
+    onStart: () => {
+      console.log('[JARVIS] STT onStart → listening');
+      setState('listening');
+    },
     onEnd: () => {
-      if (stateRef.current === 'listening') { setState('idle'); setIsListening(false); }
+      console.log('[JARVIS] STT onEnd, state:', stateRef.current);
+      // STT가 끝났을 때 listening 상태면 idle로 (음성 인식 결과 없이 종료된 경우)
+      // 단, handleSpeechResult가 이미 state를 thinking으로 바꿨으면 건드리지 않음
+      if (stateRef.current === 'listening') {
+        setState('idle');
+        setIsListening(false);
+      }
     },
     isListening,
   });
 
-  const handleActivate = useCallback(() => {
+  const handleActivate = useCallback(async () => {
     const s = stateRef.current;
     if (s === 'speaking' || s === 'working' || s === 'thinking') return;
 
@@ -264,7 +283,17 @@ export default function JarvisApp() {
         setState('speaking');
         addMessage('jarvis', greeting);
         startSpeakingLevel();
-        speak(greeting, undefined, () => { stopSpeakingLevel(); setState('listening'); setIsListening(true); });
+        // await로 TTS 완료 보장
+        await new Promise<void>(resolve => {
+          speak(greeting, undefined, () => {
+            stopSpeakingLevel();
+            resolve();
+          });
+        });
+        // TTS 완료 후 반드시 listening 상태로 전환
+        console.log('[JARVIS] 인사 완료 → listening 전환');
+        setState('listening');
+        setIsListening(true);
       } else {
         setState('listening');
         setIsListening(true);
