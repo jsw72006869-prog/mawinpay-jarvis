@@ -1,6 +1,6 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { askGPT, parseCommand, JARVIS_GREETINGS, type JarvisState, type JarvisAction } from '../lib/jarvis-brain';
+import { askGPT, parseCommand, JARVIS_GREETINGS, generateBannerImage, saveSchedule, saveMemory, type JarvisState, type JarvisAction } from '../lib/jarvis-brain';
 import { useSpeechRecognition, useTextToSpeech } from './SpeechEngine';
 import { appendInfluencersToSheet, appendEmailLogToSheet, generateMockInfluencers, generateEmailLogs } from '../lib/google-sheets';
 import ConversationStream, { type Message } from './ConversationStream';
@@ -50,6 +50,8 @@ export default function JarvisApp() {
     message: string;
   }>({ visible: false, type: null, progress: 0, message: '' });
   const [stats, setStats] = useState({ collected: 247, emailsSent: 183, responseRate: 23.5, contracts: 4 });
+  const [bannerImage, setBannerImage] = useState<string | null>(null);
+  const [schedules, setSchedules] = useState<{ task: string; time: string }[]>([]);
   const [isInitialized, setIsInitialized] = useState(false);
   const [showHint, setShowHint] = useState(false);
   const [currentTime, setCurrentTime] = useState('');
@@ -161,15 +163,35 @@ export default function JarvisApp() {
         const count = Number(action.params?.count) || 50;
         const category = String(action.params?.category || '전체');
         const platform = String(action.params?.platform || '');
+        const keyword = String(action.params?.keyword || '');
         setStats(prev => ({ ...prev, collected: prev.collected + count }));
-        const influencers = generateMockInfluencers(count, category, platform);
-        appendInfluencersToSheet(influencers).then(r => console.log('[JARVIS] 시트:', r.success ? '완료' : r.message));
+        const influencers = generateMockInfluencers(count, keyword || category, platform);
+        appendInfluencersToSheet(influencers).then(r => {
+          console.log('[JARVIS] 시트:', r.success ? '완료' : r.message);
+          saveMemory('마지막 수집', `${keyword || category} ${count}명 (${new Date().toLocaleDateString('ko-KR')})`);
+        });
       } else if (action.type === 'send_email') {
-        const count = Number(action.params?.count) || 47;
+        const count = Number(action.params?.count) || 50;
         setStats(prev => ({ ...prev, emailsSent: prev.emailsSent + count }));
         const template = String(action.params?.template || '협업 제안');
         const logs = generateEmailLogs(generateMockInfluencers(count, '전체', ''), template);
-        appendEmailLogToSheet(logs).then(r => console.log('[JARVIS] 이메일 로그:', r.message));
+        appendEmailLogToSheet(logs).then(r => {
+          console.log('[JARVIS] 이메일 로그:', r.message);
+          saveMemory('마지막 이메일 발송', `${count}명 ${template} (${new Date().toLocaleDateString('ko-KR')})`);
+        });
+      } else if (action.type === 'create_banner') {
+        const prompt = String(action.params?.prompt || 'influencer marketing campaign');
+        const style = String(action.params?.style || 'modern');
+        const imageUrl = await generateBannerImage(prompt, style);
+        if (imageUrl) {
+          setBannerImage(imageUrl);
+          saveMemory('마지막 배너', `${prompt} (${new Date().toLocaleDateString('ko-KR')})`);
+        }
+      } else if (action.type === 'schedule') {
+        const task = String(action.params?.task || '');
+        const time = String(action.params?.time || '내일 오전 9시');
+        const saved = saveSchedule(task, time);
+        setSchedules(prev => [...prev, { task: saved.task, time: saved.time }]);
       }
     }
 
@@ -572,6 +594,78 @@ export default function JarvisApp() {
       <AnimatePresence>
         {dataPanel.visible && (
           <HoloDataPanel type={dataPanel.type} progress={dataPanel.progress} message={dataPanel.message} />
+        )}
+      </AnimatePresence>
+
+      {/* ── DALL-E 배너 이미지 팝업 ── */}
+      <AnimatePresence>
+        {bannerImage && (
+          <motion.div
+            initial={{ opacity: 0, scale: 0.85 }}
+            animate={{ opacity: 1, scale: 1 }}
+            exit={{ opacity: 0, scale: 0.85 }}
+            style={{
+              position: 'fixed', inset: 0, zIndex: 60,
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              background: 'rgba(6,10,18,0.88)',
+              backdropFilter: 'blur(12px)',
+            }}
+            onClick={() => setBannerImage(null)}
+          >
+            <div style={{ position: 'relative', maxWidth: '80vw', maxHeight: '80vh' }}>
+              <div style={{
+                position: 'absolute', top: -28, left: 0,
+                fontFamily: 'Orbitron, monospace',
+                color: THEME.gold, fontSize: '0.55rem', letterSpacing: '0.3em',
+              }}>AI GENERATED BANNER — CLICK TO CLOSE</div>
+              <img
+                src={bannerImage}
+                alt="AI Generated Banner"
+                style={{
+                  maxWidth: '80vw', maxHeight: '75vh',
+                  border: `1px solid ${THEME.gold}44`,
+                  boxShadow: `0 0 60px ${THEME.gold}22`,
+                  display: 'block',
+                }}
+              />
+              <div style={{
+                position: 'absolute', bottom: -28, right: 0,
+                fontFamily: 'Orbitron, monospace',
+                color: THEME.textDim, fontSize: '0.45rem', letterSpacing: '0.2em',
+              }}>DALL-E 3 · MAWINPAY INTELLIGENCE</div>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* ── 스케줄 알림 ── */}
+      <AnimatePresence>
+        {schedules.length > 0 && (
+          <motion.div
+            initial={{ opacity: 0, x: 40 }}
+            animate={{ opacity: 1, x: 0 }}
+            exit={{ opacity: 0, x: 40 }}
+            style={{
+              position: 'fixed', top: 80, right: 28,
+              zIndex: 35, pointerEvents: 'none',
+            }}
+          >
+            {schedules.slice(-3).map((s, i) => (
+              <div key={i} style={{
+                background: 'rgba(6,10,18,0.9)',
+                border: `1px solid #9B8EC444`,
+                borderLeft: '2px solid #9B8EC4',
+                padding: '8px 14px',
+                marginBottom: 6,
+                backdropFilter: 'blur(8px)',
+                maxWidth: 200,
+              }}>
+                <div style={{ fontFamily: 'Orbitron, monospace', color: '#9B8EC4', fontSize: '0.38rem', letterSpacing: '0.2em' }}>SCHEDULED</div>
+                <div style={{ color: THEME.text, fontSize: '0.55rem', marginTop: 2 }}>{s.task.substring(0, 30)}</div>
+                <div style={{ color: THEME.textDim, fontSize: '0.45rem', marginTop: 2 }}>{s.time}</div>
+              </div>
+            ))}
+          </motion.div>
         )}
       </AnimatePresence>
     </main>
