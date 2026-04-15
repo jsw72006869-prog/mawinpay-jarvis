@@ -89,9 +89,13 @@ export function useSpeechRecognition({ onResult, onStart, onEnd, isListening }: 
     rec.interimResults = false;   // 최종 결과만
     rec.maxAlternatives = 1;
 
+    let notAllowedRetries = 0;
+    const MAX_NOT_ALLOWED_RETRIES = 3;
+
     rec.onstart = () => {
-      console.log('[STT] ✅ 인식 시작됨');
+      console.log('[STT] \u2705 \uc778\uc2dd \uc2dc\uc791\ub428');
       isRunningRef.current = true;
+      notAllowedRetries = 0; // \uc131\uacf5\uc801\uc73c\ub85c \uc2dc\uc791\ub418\uba74 \uce74\uc6b4\ud130 \ub9ac\uc14b
       onStartRef.current();
     };
 
@@ -141,10 +145,30 @@ export function useSpeechRecognition({ onResult, onStart, onEnd, isListening }: 
       isRunningRef.current = false;
 
       if (event.error === 'not-allowed') {
-        console.error('[STT] ❌ 마이크 권한 거부');
-        onEndRef.current();
+        notAllowedRetries++;
+        console.error(`[STT] ❌ 마이크 권한 거부 (${notAllowedRetries}/${MAX_NOT_ALLOWED_RETRIES})`);
+        if (notAllowedRetries >= MAX_NOT_ALLOWED_RETRIES) {
+          console.error('[STT] 마이크 권한 재시도 한도 초과 — 대기 후 재시도');
+          // 3초 후 한 번 더 시도 (사용자가 권한을 허용했을 수 있음)
+          restartTimerRef.current = setTimeout(() => {
+            notAllowedRetries = 0;
+            if (shouldListenRef.current && !isRunningRef.current) {
+              try { rec.start(); } catch { /* ignore */ }
+            }
+          }, 3000);
+          return;
+        }
+        // 짧은 딜레이 후 재시도 (마이크가 아직 해제 안 됐을 수 있음)
+        restartTimerRef.current = setTimeout(() => {
+          if (shouldListenRef.current && !isRunningRef.current) {
+            try { rec.start(); } catch { /* ignore */ }
+          }
+        }, 800);
         return;
       }
+
+      // 성공적으로 시작되면 카운터 리셋
+      notAllowedRetries = 0;
 
       // aborted는 의도적 중단이므로 shouldListen 확인 후 재시작
       // no-speech는 타임아웃이므로 재시작

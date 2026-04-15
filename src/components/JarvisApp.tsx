@@ -490,6 +490,7 @@ export default function JarvisApp() {
 
       {/* ── 박수 감지 ── */}
       <ClapDetector onClap={handleActivate} onAudioLevel={setMicLevel} enabled={state === 'idle' || state === 'listening'} />
+      {/* ClapDetector는 항상 마운트 — enabled=false일 때 감지만 비활성, 마이크 스트림은 유지 */}
 
       {/* ── 배경 방사형 그라디언트 ── */}
       <div style={{ position: 'fixed', inset: 0, pointerEvents: 'none', zIndex: 1 }}>
