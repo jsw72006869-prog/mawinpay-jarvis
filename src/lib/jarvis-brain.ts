@@ -69,7 +69,7 @@ export const ELEVENLABS_VOICES = [
 ];
 
 // ── GPT-4o Function Calling 정의 ──
-const JARVIS_FUNCTIONS = [
+const JARVIS_FUNCTIONS_DEF = [
   {
     name: 'collect_influencers',
     description: '인플루언서를 수집하거나 검색할 때 호출.',
@@ -175,9 +175,15 @@ const JARVIS_FUNCTIONS = [
   },
 ];
 
+// tools 형식으로 변환 (functions는 구버전)
+const JARVIS_TOOLS = JARVIS_FUNCTIONS_DEF.map(fn => ({
+  type: 'function' as const,
+  function: fn,
+}));
+
 // ── OpenAI Custom GPT 프롬프트 ID (JARVIS v3.0 바이럴 마케팅 에디션) ──
-const CUSTOM_GPT_PROMPT_ID = 'pmpt_69df568160ec8194b0b9a5c9d64fcf49079f5c50ec884fff';
-const CUSTOM_GPT_VERSION = '2';
+const STORED_PROMPT_ID = 'pmpt_69df568160ec8194b0b9a5c9d64fcf49079f5c50ec884fff';
+const STORED_PROMPT_VERSION = '4'; // OpenAI 대시보드에서 관리되는 버전
 
 // ── 시스템 프롬프트 ──
 const SYSTEM_PROMPT = `You are JARVIS — the AI from Iron Man, now serving as the intelligent core of MAWINPAY, an influencer marketing automation platform.
@@ -276,45 +282,68 @@ export async function askGPT(userMessage: string): Promise<JarvisAction> {
     ? `\n\n[현재 세션: ${sessionTurnCount}번째 대화, 마지막 액션: ${lastActionType}]`
     : '';
 
+  // 메모리 + 컨텍스트를 추가 system 메시지로 구성
+  const contextAddition = [
+    memoryContext,
+    prevSessionContext,
+    learnedContext,
+    sessionContext,
+    `\n\n## ANTI-REPETITION\n- NEVER repeat the same sentence or phrase you already said in this conversation\n- Each response must be unique and advance the conversation\n- If you already greeted the user, do NOT greet again\n- Vary your sentence structures and vocabulary`,
+  ].filter(Boolean).join('');
+
+  // 대화 히스토리를 Responses API input 형식으로 변환
+  const inputMessages = [
+    // 컨텍스트 추가 (Stored Prompt에 없는 동적 정보)
+    ...(contextAddition ? [{ role: 'system', content: contextAddition }] : []),
+    // 현재 세션 대화 히스토리 (최근 10개)
+    ...conversationHistory.slice(-10).map(m => ({ role: m.role, content: m.content })),
+  ];
+
   try {
-    // OpenAI Custom GPT 프롬프트 사용 (바이럴 마케팅 전문 프롬프트)
-    const res = await fetch('https://api.openai.com/v1/chat/completions', {
+    // OpenAI Responses API + Stored Prompt ID 방식
+    const res = await fetch('https://api.openai.com/v1/responses', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         Authorization: `Bearer ${apiKey}`,
       },
       body: JSON.stringify({
-        model: 'gpt-5.4-mini',
-        messages: [
-          { role: 'system', content: SYSTEM_PROMPT + memoryContext + prevSessionContext + learnedContext + sessionContext + `\n\n[CUSTOM GPT PROMPT ID: ${CUSTOM_GPT_PROMPT_ID} v${CUSTOM_GPT_VERSION}]\n\n## ANTI-REPETITION\n- NEVER repeat the same sentence or phrase you already said in this conversation\n- Each response must be unique and advance the conversation\n- If you already greeted the user, do NOT greet again\n- Vary your sentence structures and vocabulary` },
-          ...conversationHistory.slice(-10), // 현재 세션 최근 10개만 사용 (중복 제거)
-        ],
-        functions: JARVIS_FUNCTIONS,
-        function_call: 'auto',
-        max_tokens: 500,
-        temperature: 0.7, // 적절한 밸런스 (너무 높으면 반복, 너무 낮으면 딱딱)
-        frequency_penalty: 0.6, // 반복 페널티
-        presence_penalty: 0.4, // 새로운 주제 장려
+        prompt: {
+          id: STORED_PROMPT_ID,
+          version: STORED_PROMPT_VERSION,
+        },
+        input: inputMessages,
+        tools: JARVIS_TOOLS,
+        tool_choice: 'auto',
+        max_output_tokens: 500,
+        temperature: 0.7,
+        frequency_penalty: 0.6,
+        presence_penalty: 0.4,
       }),
     });
 
-    if (!res.ok) throw new Error(`OpenAI API ${res.status}`);
+    if (!res.ok) {
+      const errBody = await res.text();
+      console.error('[JARVIS] Responses API 오류:', res.status, errBody);
+      throw new Error(`OpenAI Responses API ${res.status}: ${errBody}`);
+    }
 
     const data = await res.json();
-    const choice = data.choices?.[0];
-    const message = choice?.message;
+    console.log('[JARVIS] Responses API 응답:', JSON.stringify(data).slice(0, 200));
 
-    // Function Call 처리
-    if (message?.function_call) {
-      const fnName = message.function_call.name;
-      const fnArgs = JSON.parse(message.function_call.arguments || '{}');
+    // Responses API 응답 파싱
+    // output 배열에서 메시지 추출
+    const outputItems = data.output ?? [];
+    
+    // Tool Call 처리
+    const toolCallItem = outputItems.find((item: { type: string }) => item.type === 'function_call');
+    if (toolCallItem) {
+      const fnName = toolCallItem.name;
+      const fnArgs = JSON.parse(toolCallItem.arguments || '{}');
       console.log('[JARVIS] Function call:', fnName, fnArgs);
       const responseText = String(fnArgs.response || '');
       conversationHistory.push({ role: 'assistant', content: responseText });
-      // 영구 대화 로그에 저장
       saveConversationEntry('assistant', responseText);
-      // 핵심 정보 자동 추출
       autoExtractAndSave(userMessage, responseText);
       const action = buildActionFromFunction(fnName, fnArgs);
       lastActionType = action.type;
@@ -322,11 +351,10 @@ export async function askGPT(userMessage: string): Promise<JarvisAction> {
     }
 
     // 일반 텍스트 응답
-    const reply = message?.content ?? '죄송합니다, 잠시 연결이 불안정합니다.';
+    const messageItem = outputItems.find((item: { type: string }) => item.type === 'message');
+    const reply = messageItem?.content?.[0]?.text ?? '죄송합니다, 잠시 연결이 불안정합니다.';
     conversationHistory.push({ role: 'assistant', content: reply });
-    // 영구 대화 로그에 저장
     saveConversationEntry('assistant', reply);
-    // 핵심 정보 자동 추출
     autoExtractAndSave(userMessage, reply);
     lastActionType = 'chat';
     return { type: 'chat', response: reply };
