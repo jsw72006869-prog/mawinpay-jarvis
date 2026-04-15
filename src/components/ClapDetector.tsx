@@ -164,10 +164,16 @@ export default function ClapDetector({ onClap, onAudioLevel, enabled, releaseStr
       }).catch(() => {});
     } else {
       // STT가 끝났으므로 분석 재개
-      suspendedRef.current = false;
+      // ★ resume 후 1.5초 쿨다운: 잔여 오디오 데이터가 박수로 오감지되는 것 방지
       ctx.resume().then(() => {
-        console.log('[ClapDetector] AudioContext resumed');
-        startAnalysisLoop();
+        console.log('[ClapDetector] AudioContext resumed (쿨다운 1.5s)');
+        // 쿨다운: resume 직후의 잔여 데이터 무시
+        lastClapRef.current = Date.now() + 1500; // 1.5초 동안 박수 감지 억제
+        clapCountRef.current = 0;
+        setTimeout(() => {
+          suspendedRef.current = false;
+          startAnalysisLoop();
+        }, 1500);
       }).catch(() => {});
     }
   }, [releaseStream, startAnalysisLoop]);

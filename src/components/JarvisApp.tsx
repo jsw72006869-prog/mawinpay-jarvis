@@ -393,6 +393,7 @@ export default function JarvisApp() {
   });
 
   const activatingRef = useRef(false); // 중복 활성화 방지
+  const lastActivatedRef = useRef(0); // 활성화 시각 (쿨다운용)
 
   const handleActivate = useCallback(async () => {
     const s = stateRef.current;
@@ -435,14 +436,19 @@ export default function JarvisApp() {
       }
 
       // TTS 완료 후 충분한 딜레이 후 listening 상태로 전환
-      // (스피커에서 나온 음성이 마이크에 잡히지 않도록)
       await new Promise(r => setTimeout(r, 600));
       console.log('[JARVIS] 시그니처 완료 → listening 전환');
       setState('listening');
       setIsListening(true);
+      lastActivatedRef.current = Date.now(); // 쿨다운 시작
       activatingRef.current = false;
     } else if (s === 'listening') {
-      // 박수로 비활성화 — 쿨다운 보호 (활성화 직후 바로 비활성화 방지)
+      // ★ 쿨다운: 활성화 후 5초 이내에는 비활성화 방지
+      const elapsed = Date.now() - lastActivatedRef.current;
+      if (elapsed < 5000) {
+        console.log(`[JARVIS] 비활성화 쿨다운 중 (${Math.round(elapsed)}ms < 5000ms) — 무시`);
+        return;
+      }
       console.log('[JARVIS] 박수 → listening → idle 전환');
       setIsListening(false);
       setState('idle');
@@ -456,14 +462,18 @@ export default function JarvisApp() {
   return (
     <main
       style={{ position: 'fixed', inset: 0, overflow: 'hidden', background: THEME.bg, cursor: 'none' }}
-      onClick={handleActivate}
+      onClick={() => {
+        // idle 상태에서만 클릭으로 활성화 허용
+        // listening/speaking 등 상태에서는 클릭 무시 (오작동 방지)
+        if (stateRef.current === 'idle') handleActivate();
+      }}
     >
       {/* ── Three.js 파티클 배경 ── */}
       <SparkleParticles state={state} audioLevel={micLevel} speakingLevel={speakingLevel} clapBurst={clapBurst} />
 
       {/* ── 박수 감지 ── */}
-      <ClapDetector onClap={handleActivate} onAudioLevel={setMicLevel} enabled={state === 'idle'} releaseStream={isListening || state === 'speaking' || state === 'thinking' || state === 'working'} />
-      {/* ClapDetector: idle에서만 박수 감지, STT/TTS 중에는 마이크 스트림 완전 해제 */}
+      <ClapDetector onClap={handleActivate} onAudioLevel={setMicLevel} enabled={state === 'idle'} releaseStream={state !== 'idle'} />
+      {/* ClapDetector: idle에서만 박수 감지 활성, idle이 아닌 모든 상태에서 AudioContext suspend */}
 
       {/* ── 배경 방사형 그라디언트 ── */}
       <div style={{ position: 'fixed', inset: 0, pointerEvents: 'none', zIndex: 1 }}>
