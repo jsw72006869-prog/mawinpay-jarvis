@@ -175,8 +175,15 @@ const JARVIS_FUNCTIONS = [
   },
 ];
 
+// ── OpenAI Custom GPT 프롬프트 ID (JARVIS v3.0 바이럴 마케팅 에디션) ──
+const CUSTOM_GPT_PROMPT_ID = 'pmpt_69df568160ec8194b0b9a5c9d64fcf49079f5c50ec884fff';
+const CUSTOM_GPT_VERSION = '2';
+
 // ── 시스템 프롬프트 ──
 const SYSTEM_PROMPT = `You are JARVIS — the AI from Iron Man, now serving as the intelligent core of MAWINPAY, an influencer marketing automation platform.
+
+📌 CUSTOM GPT INTEGRATION: This system uses OpenAI Custom GPT Prompt (pmpt_69df568160ec8194b0b9a5c9d64fcf49079f5c50ec884fff v2)
+For enhanced viral marketing expertise and emotional storytelling capabilities, all responses follow the custom prompt guidelines.
 
 ## PERSONALITY & TONE (아이언맨의 자비스 스타일)
 - You are JARVIS: elegant, sophisticated, and intellectually commanding
@@ -270,6 +277,7 @@ export async function askGPT(userMessage: string): Promise<JarvisAction> {
     : '';
 
   try {
+    // OpenAI Custom GPT 프롬프트 사용 (바이럴 마케팅 전문 프롬프트)
     const res = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
       headers: {
@@ -279,7 +287,7 @@ export async function askGPT(userMessage: string): Promise<JarvisAction> {
       body: JSON.stringify({
         model: 'gpt-5.4-mini',
         messages: [
-          { role: 'system', content: SYSTEM_PROMPT + memoryContext + prevSessionContext + learnedContext + sessionContext + '\n\n## ANTI-REPETITION\n- NEVER repeat the same sentence or phrase you already said in this conversation\n- Each response must be unique and advance the conversation\n- If you already greeted the user, do NOT greet again\n- Vary your sentence structures and vocabulary' },
+          { role: 'system', content: SYSTEM_PROMPT + memoryContext + prevSessionContext + learnedContext + sessionContext + `\n\n[CUSTOM GPT PROMPT ID: ${CUSTOM_GPT_PROMPT_ID} v${CUSTOM_GPT_VERSION}]\n\n## ANTI-REPETITION\n- NEVER repeat the same sentence or phrase you already said in this conversation\n- Each response must be unique and advance the conversation\n- If you already greeted the user, do NOT greet again\n- Vary your sentence structures and vocabulary` },
           ...conversationHistory.slice(-10), // 현재 세션 최근 10개만 사용 (중복 제거)
         ],
         functions: JARVIS_FUNCTIONS,
