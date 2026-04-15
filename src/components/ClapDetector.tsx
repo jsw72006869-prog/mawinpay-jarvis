@@ -69,18 +69,20 @@ export default function ClapDetector({ onClap, onAudioLevel, enabled, releaseStr
       if (enabledRef.current) {
         onAudioLevelRef.current(Math.min(rms * 4, 1));
 
-        const threshold = 0.28;
+        const threshold = 0.20;
         const now = Date.now();
+        const MIN_CLAP_GAP = 250; // 한 박수의 여러 피크 무시 (250ms)
 
-        if (rms > threshold && now - lastClapRef.current > 120) {
+        if (rms > threshold && now - lastClapRef.current > MIN_CLAP_GAP) {
           lastClapRef.current = now;
           clapCountRef.current += 1;
           console.log(`[ClapDetector] 박수 감지! count=${clapCountRef.current}, rms=${rms.toFixed(3)}`);
 
           if (clapWindowTimerRef.current) clearTimeout(clapWindowTimerRef.current);
           clapWindowTimerRef.current = setTimeout(() => {
+            console.log('[ClapDetector] 박수 윈도우 만료 — count 리셋');
             clapCountRef.current = 0;
-          }, 1000);
+          }, 2000); // 2초 윈도우 (이전 1초 → 2초)
 
           if (clapCountRef.current >= 2) {
             console.log('[ClapDetector] ✅ 박수 2회 감지! onClap 호출');
