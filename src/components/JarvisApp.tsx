@@ -140,13 +140,13 @@ export default function JarvisApp() {
   }, []);
 
   const addMessage = useCallback((role: 'user' | 'jarvis', text: string) => {
-    setMessages(prev => [...prev, { id: Date.now().toString(), role, text, timestamp: new Date() }].slice(-5));
+    setMessages(prev => [...prev, { id: Date.now().toString(), role, text, timestamp: new Date() }].slice(-8));
   }, []);
 
   const jarvisRespond = useCallback(async (text: string, action?: JarvisAction) => {
     setIsTyping(true);
     setState('thinking');
-    await new Promise(r => setTimeout(r, 700 + Math.random() * 500));
+    await new Promise(r => setTimeout(r, 600 + Math.random() * 400));
     setIsTyping(false);
 
     const isWorkingType = action?.type === 'collect' || action?.type === 'send_email' || action?.type === 'create_banner' || action?.type === 'report';
@@ -154,10 +154,10 @@ export default function JarvisApp() {
       setState('working');
       setDataPanel({ visible: true, type: action.type as 'collect' | 'send_email' | 'create_banner' | 'report', progress: 0, message: action.workingMessage });
       for (let p = 0; p <= 100; p += 2) {
-        await new Promise(r => setTimeout(r, 55));
+        await new Promise(r => setTimeout(r, 45));
         setDataPanel(prev => ({ ...prev, progress: p }));
       }
-      await new Promise(r => setTimeout(r, 500));
+      await new Promise(r => setTimeout(r, 400));
       setDataPanel(prev => ({ ...prev, visible: false }));
       if (action.type === 'collect') {
         const count = Number(action.params?.count) || 50;
@@ -195,14 +195,38 @@ export default function JarvisApp() {
       }
     }
 
+    // ── 메인 응답 발화 ──
     setState('speaking');
     addMessage('jarvis', text);
     startSpeakingLevel();
-    speak(text, undefined, () => {
-      stopSpeakingLevel();
-      setState('listening');
-      setIsListening(true);
+
+    const followUp = action?.followUp;
+
+    await new Promise<void>(resolve => {
+      speak(text, undefined, () => {
+        stopSpeakingLevel();
+        resolve();
+      });
     });
+
+    // ── followUp 후속 질문 자동 발화 ──
+    if (followUp) {
+      await new Promise(r => setTimeout(r, 800)); // 자연스러운 호흡 간격
+      setState('speaking');
+      addMessage('jarvis', followUp);
+      startSpeakingLevel();
+      await new Promise<void>(resolve => {
+        speak(followUp, undefined, () => {
+          stopSpeakingLevel();
+          resolve();
+        });
+      });
+    }
+
+    // ── 응답 완료 후 자동으로 듣기 모드 전환 ──
+    await new Promise(r => setTimeout(r, 400));
+    setState('listening');
+    setIsListening(true);
   }, [addMessage, speak, startSpeakingLevel, stopSpeakingLevel]);
 
   const handleSpeechResult = useCallback(async (transcript: string) => {
@@ -505,7 +529,7 @@ export default function JarvisApp() {
       <div style={{
         position: 'fixed', bottom: 0,
         left: '50%', transform: 'translateX(-50%)',
-        width: '100%', maxWidth: '680px',
+        width: '100%', maxWidth: '760px',
         padding: '0 28px 56px',
         zIndex: 25, pointerEvents: 'none',
       }}>
