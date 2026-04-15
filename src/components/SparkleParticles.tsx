@@ -141,10 +141,10 @@ export default function SparkleParticles({ state, audioLevel, speakingLevel, cla
       free[i * 3 + 1] = pos[i * 3 + 1];
       free[i * 3 + 2] = pos[i * 3 + 2];
 
-      // 초기 속도: 매우 작게
-      vel[i * 3]     = (Math.random() - 0.5) * 0.008;
-      vel[i * 3 + 1] = (Math.random() - 0.5) * 0.008;
-      vel[i * 3 + 2] = (Math.random() - 0.5) * 0.005;
+      // 초기 속도: 눈에 보이게
+      vel[i * 3]     = (Math.random() - 0.5) * 0.06;
+      vel[i * 3 + 1] = (Math.random() - 0.5) * 0.06;
+      vel[i * 3 + 2] = (Math.random() - 0.5) * 0.04;
 
       phase[i] = Math.random() * Math.PI * 2;
     }
@@ -237,10 +237,10 @@ export default function SparkleParticles({ state, audioLevel, speakingLevel, cla
       // 자유 목표 위치 업데이트 (perlin-like noise로 천천히 이동)
       for (let i = 0; i < COUNT; i++) {
         const ph = phase[i];
-        const slowT = t * 0.07; // 매우 느린 흐름
-        free[i * 3]     = free[i * 3]     + Math.sin(slowT * 0.8 + ph * 1.3) * 0.004;
-        free[i * 3 + 1] = free[i * 3 + 1] + Math.cos(slowT * 0.6 + ph * 0.9) * 0.003;
-        free[i * 3 + 2] = free[i * 3 + 2] + Math.sin(slowT * 0.5 + ph * 1.1) * 0.002;
+        const slowT = t * 0.22; // 눈에 보이는 흐름 속도
+        free[i * 3]     = free[i * 3]     + Math.sin(slowT * 0.9 + ph * 1.3) * 0.018;
+        free[i * 3 + 1] = free[i * 3 + 1] + Math.cos(slowT * 0.7 + ph * 0.9) * 0.015;
+        free[i * 3 + 2] = free[i * 3 + 2] + Math.sin(slowT * 0.55 + ph * 1.1) * 0.010;
 
         // 경계 반발 (구형 경계 r=28)
         const fx = free[i * 3], fy = free[i * 3 + 1], fz = free[i * 3 + 2];
@@ -263,7 +263,7 @@ export default function SparkleParticles({ state, audioLevel, speakingLevel, cla
         const tz = free[iz]     * (1 - faceBlend) + FACE_TARGETS[iz]     * faceBlend;
 
         // 스프링 힘 (목표 방향)
-        const springK = faceBlend > 0.1 ? 0.018 : 0.006;
+        const springK = faceBlend > 0.1 ? 0.022 : 0.010;
         const fx2 = (tx - px) * springK;
         const fy2 = (ty - py) * springK;
         const fz2 = (tz - pz) * springK;
@@ -272,22 +272,22 @@ export default function SparkleParticles({ state, audioLevel, speakingLevel, cla
         let ax = fx2, ay = fy2, az = fz2;
 
         if (curState === 'listening') {
-          // 중앙으로 살짝 당기기 + 마이크 진동
-          ax += -px * 0.003 + Math.sin(t * 3 + phase[i]) * audio * 0.08;
-          ay += -py * 0.003 + Math.cos(t * 2.5 + phase[i]) * audio * 0.08;
+          // 중앙으로 당기기 + 마이크 진동
+          ax += -px * 0.005 + Math.sin(t * 4 + phase[i]) * audio * 0.14;
+          ay += -py * 0.005 + Math.cos(t * 3.5 + phase[i]) * audio * 0.14;
         } else if (curState === 'speaking') {
           // 파동 확산
           const dist = Math.sqrt(px * px + py * py + pz * pz);
-          const wave = Math.sin(t * 2.5 - dist * 0.2 + phase[i]) * speaking * 0.06;
+          const wave = Math.sin(t * 3.0 - dist * 0.2 + phase[i]) * speaking * 0.10;
           if (dist > 0.1) {
             ax += (px / dist) * wave;
             ay += (py / dist) * wave;
             az += (pz / dist) * wave;
           }
         } else if (curState === 'thinking') {
-          // 부드러운 소용돌이
-          ax += -py * 0.002;
-          ay +=  px * 0.002;
+          // 소용돌이
+          ax += -py * 0.004;
+          ay +=  px * 0.004;
         }
 
         // 폭발 힘
@@ -299,14 +299,14 @@ export default function SparkleParticles({ state, audioLevel, speakingLevel, cla
         }
 
         // 속도 업데이트 (감쇠)
-        const damping = faceBlend > 0.5 ? 0.88 : 0.96;
+        const damping = faceBlend > 0.5 ? 0.90 : 0.97;
         vel[ix] = vel[ix] * damping + ax;
         vel[iy] = vel[iy] * damping + ay;
         vel[iz] = vel[iz] * damping + az;
 
         // 속도 제한
         const speed = Math.sqrt(vel[ix] ** 2 + vel[iy] ** 2 + vel[iz] ** 2);
-        const maxSpeed = faceBlend > 0.5 ? 0.4 : 0.18;
+        const maxSpeed = faceBlend > 0.5 ? 0.5 : 0.35;
         if (speed > maxSpeed) {
           vel[ix] *= maxSpeed / speed;
           vel[iy] *= maxSpeed / speed;
@@ -333,9 +333,9 @@ export default function SparkleParticles({ state, audioLevel, speakingLevel, cla
         mat.uniforms.uBurst.value = burstRef.current;
       }
 
-      // 카메라: 매우 느리고 우아하게
-      camera.position.x = Math.sin(t * 0.02) * 2.0;
-      camera.position.y = Math.cos(t * 0.015) * 1.0;
+      // 카메라: 느리고 우아하게
+      camera.position.x = Math.sin(t * 0.04) * 2.5;
+      camera.position.y = Math.cos(t * 0.03) * 1.2;
       camera.lookAt(0, 0, 0);
 
       renderer.render(scene, camera);
