@@ -1,4 +1,4 @@
-// SpeechEngine.tsx — v5: ensureMicPermission 제거, Web Speech API 자체 마이크 접근
+// SpeechEngine.tsx — v6: 마이크 트랙 비활성화 방식 + 강화된 디버그 로깅
 import { useEffect, useRef, useCallback } from 'react';
 import { ELEVENLABS_VOICES } from '../lib/jarvis-brain';
 
@@ -14,7 +14,7 @@ interface SpeechEngineProps {
   isListening: boolean;
 }
 
-// ── 음성 인식 훅 (v5: getUserMedia 호출 완전 제거) ──
+// ── 음성 인식 훅 (v6: 마이크 트랙 비활성화 방식 + 강화 로깅) ──
 export function useSpeechRecognition({ onResult, onStart, onEnd, isListening }: SpeechEngineProps) {
   const recRef = useRef<any>(null);
   const isRunningRef = useRef(false);
@@ -55,31 +55,56 @@ export function useSpeechRecognition({ onResult, onStart, onEnd, isListening }: 
 
     const rec = new API();
     rec.lang = 'ko-KR';
-    rec.continuous = true;
-    rec.interimResults = false;
+    rec.continuous = false;  // ★ false로 변경: 한 문장씩 인식 후 자동 재시작
+    rec.interimResults = true;  // ★ 중간 결과도 표시 (디버깅용)
     rec.maxAlternatives = 1;
 
     rec.onstart = () => {
       console.log('[STT] ✅ 인식 시작됨');
       isRunningRef.current = true;
-      startAttemptRef.current = 0; // 성공하면 카운터 리셋
+      startAttemptRef.current = 0;
     };
 
-    // 오디오가 시작되면 onStart 호출 (실제로 마이크가 작동 중)
     rec.onaudiostart = () => {
       console.log('[STT] 🎙️ 오디오 캡처 시작');
       onStartRef.current();
     };
 
+    rec.onsoundstart = () => {
+      console.log('[STT] 🔊 소리 감지됨');
+    };
+
+    rec.onspeechstart = () => {
+      console.log('[STT] 🗣️ 음성 감지됨 (사용자가 말하고 있음)');
+    };
+
+    rec.onspeechend = () => {
+      console.log('[STT] 🗣️ 음성 종료됨 (사용자가 말을 멈춤)');
+    };
+
+    rec.onsoundend = () => {
+      console.log('[STT] 🔇 소리 종료됨');
+    };
+
+    rec.onaudioend = () => {
+      console.log('[STT] 🎙️ 오디오 캡처 종료');
+    };
+
     rec.onresult = (event: any) => {
       try {
+        console.log('[STT] 📝 onresult 이벤트 발생, resultIndex:', event.resultIndex, 'results.length:', event.results.length);
         for (let i = event.resultIndex; i < event.results.length; i++) {
-          if (event.results[i].isFinal) {
-            const text = event.results[i][0].transcript.trim();
+          const result = event.results[i];
+          const text = result[0].transcript.trim();
+          const confidence = result[0].confidence;
+          
+          if (result.isFinal) {
+            console.log(`[STT] 🎤 최종 인식 결과: "${text}" (신뢰도: ${(confidence * 100).toFixed(1)}%)`);
             if (text) {
-              console.log('[STT] 🎤 인식 결과:', text);
               onResultRef.current(text);
             }
+          } else {
+            console.log(`[STT] 💬 중간 결과: "${text}"`);
           }
         }
       } catch (e) {
@@ -87,23 +112,27 @@ export function useSpeechRecognition({ onResult, onStart, onEnd, isListening }: 
       }
     };
 
+    rec.onnomatch = () => {
+      console.log('[STT] ❓ 인식 실패 (no match)');
+    };
+
     rec.onend = () => {
       console.log('[STT] 종료됨. shouldListen:', shouldListenRef.current);
       isRunningRef.current = false;
 
       if (shouldListenRef.current) {
-        // 자동 재시작 (브라우저가 no-speech 타임아웃으로 종료한 경우)
+        // 자동 재시작 (continuous=false이므로 한 문장 후 자동 종료됨)
         clearRestartTimer();
         restartTimerRef.current = setTimeout(() => {
           if (shouldListenRef.current && !isRunningRef.current) {
             try {
-              console.log('[STT] 자동 재시작 (onend)');
+              console.log('[STT] 🔄 자동 재시작 (다음 문장 대기)');
               rec.start();
             } catch (e: any) {
               console.warn('[STT] 재시작 실패:', e?.message);
             }
           }
-        }, 300);
+        }, 200);
         return;
       }
 
@@ -111,14 +140,13 @@ export function useSpeechRecognition({ onResult, onStart, onEnd, isListening }: 
     };
 
     rec.onerror = (event: any) => {
-      console.warn('[STT] 오류:', event.error);
+      console.warn('[STT] ⚠️ 오류:', event.error, event.message || '');
       isRunningRef.current = false;
 
       if (event.error === 'not-allowed') {
         startAttemptRef.current++;
         console.error(`[STT] ❌ 마이크 권한 거부 (시도 ${startAttemptRef.current})`);
         
-        // 최대 8회까지 재시도 (ClapDetector 스트림 해제 대기)
         if (startAttemptRef.current >= 8) {
           console.error('[STT] 마이크 권한 재시도 한도 초과 — 포기');
           shouldListenRef.current = false;
@@ -126,18 +154,21 @@ export function useSpeechRecognition({ onResult, onStart, onEnd, isListening }: 
           return;
         }
 
-        // 점점 늘어나는 딜레이로 재시도 (getUserMedia 호출 없이 STT만 재시도)
         const delay = 500 + (500 * startAttemptRef.current);
         clearRestartTimer();
         restartTimerRef.current = setTimeout(() => {
           if (shouldListenRef.current && !isRunningRef.current) {
             try {
-              console.log(`[STT] not-allowed 재시도 ${startAttemptRef.current + 1}`);
+              console.log(`[STT] 🔄 not-allowed 재시도 ${startAttemptRef.current + 1}`);
               rec.start();
             } catch { /* ignore */ }
           }
         }, delay);
         return;
+      }
+
+      if (event.error === 'no-speech') {
+        console.log('[STT] 🤫 음성 없음 — 재시작');
       }
 
       // no-speech, aborted 등은 재시작
@@ -147,7 +178,7 @@ export function useSpeechRecognition({ onResult, onStart, onEnd, isListening }: 
           if (shouldListenRef.current && !isRunningRef.current) {
             try { rec.start(); } catch { /* ignore */ }
           }
-        }, 500);
+        }, 300);
       }
     };
 
@@ -169,13 +200,13 @@ export function useSpeechRecognition({ onResult, onStart, onEnd, isListening }: 
       clearRestartTimer();
       startAttemptRef.current = 0;
 
-      // ★ 핵심: getUserMedia 호출 없이 Web Speech API만 시작
-      // ClapDetector가 스트림을 해제한 후 충분한 딜레이(1000ms) 후 시작
+      // ★ ClapDetector가 마이크 트랙을 비활성화한 후 STT 시작
+      // 1500ms 딜레이: 마이크 트랙 비활성화 + AudioContext suspend 완료 대기
       restartTimerRef.current = setTimeout(() => {
         if (!shouldListenRef.current) return;
         if (!isRunningRef.current && recRef.current) {
           try {
-            console.log('[STT] 🚀 STT 시작 (1000ms 딜레이 후)');
+            console.log('[STT] 🚀 STT 시작 (1500ms 딜레이 후)');
             recRef.current.start();
           } catch (e: any) {
             console.warn('[STT] start() 실패:', e?.message);
@@ -184,7 +215,7 @@ export function useSpeechRecognition({ onResult, onStart, onEnd, isListening }: 
             }
           }
         }
-      }, 1000); // ClapDetector 스트림 해제 후 브라우저가 마이크를 완전히 해제할 시간
+      }, 1500);
     } else if (!isListening && prev) {
       safeStop();
     }
