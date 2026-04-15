@@ -471,6 +471,38 @@ export async function searchNaverAPI(
   return res.json();
 }
 
+// ── YouTube Data API 검색 ──
+export interface YouTubeChannel {
+  channelId: string;
+  name: string;
+  description: string;
+  thumbnailUrl: string;
+  subscribers: number;
+  videoCount: number;
+  viewCount: number;
+  profileUrl: string;
+  email: string;
+  instagram: string;
+  country: string;
+}
+
+export async function searchYouTubeAPI(
+  keyword: string,
+  maxResults: number = 10
+): Promise<{ total: number; keyword: string; items: YouTubeChannel[] }> {
+  const apiBase = import.meta.env.PROD
+    ? ''
+    : 'https://mawinpay-jarvis.vercel.app';
+
+  const url = `${apiBase}/api/youtube-search?keyword=${encodeURIComponent(keyword)}&maxResults=${maxResults}`;
+  const res = await fetch(url);
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.message || `YouTube API 오류: ${res.status}`);
+  }
+  return res.json();
+}
+
 export function saveSchedule(task: string, time: string): ScheduledTask {
   const schedules: ScheduledTask[] = JSON.parse(localStorage.getItem('jarvis_schedules') || '[]');
   const newTask: ScheduledTask = {
