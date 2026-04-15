@@ -12,80 +12,129 @@ interface SparkleParticlesProps {
   clapBurst: boolean;
 }
 
-// ── 버텍스 셰이더 ──
+// ── 버텍스 셸이더 (강화됨) ──
 const VERT = `
   attribute float aSize;
   attribute float aBrightness;
   attribute vec3  aColor;
   attribute float aPhase;
+  attribute float aType; // 0=일반, 1=네빨리는 점, 2=큰 광소
 
   uniform float uTime;
   uniform float uAudioLevel;
   uniform float uSpeakingLevel;
   uniform float uBurst;
   uniform float uFaceBlend;
-  uniform float uEntryPhase; // 0=없음, 1=폭발, 2=소용돌이, 3=수렴
+  uniform float uEntryPhase;
 
   varying float vBrightness;
   varying vec3  vColor;
+  varying float vType;
 
   void main() {
     vec4 mvPos = modelViewMatrix * vec4(position, 1.0);
     gl_Position = projectionMatrix * mvPos;
 
     float dist = max(-mvPos.z, 0.1);
-    float sizeBoost = 1.0
-      + uAudioLevel    * 0.7
-      + uSpeakingLevel * 0.9
-      + uBurst         * 2.5
-      + uFaceBlend     * 0.5
-      + uEntryPhase    * 0.8;
-    gl_PointSize = aSize * sizeBoost * (300.0 / dist);
-    gl_PointSize = clamp(gl_PointSize, 0.5, 7.0);
 
-    float entryGlow = uEntryPhase * 0.6;
+    // 타입별 크기 차등
+    float typeScale = aType < 0.5 ? 1.0 : (aType < 1.5 ? 2.2 : 4.5);
+
+    float sizeBoost = 1.0
+      + uAudioLevel    * 1.2
+      + uSpeakingLevel * 1.6
+      + uBurst         * 4.0
+      + uFaceBlend     * 0.8
+      + uEntryPhase    * 1.2;
+    gl_PointSize = aSize * sizeBoost * typeScale * (320.0 / dist);
+    gl_PointSize = clamp(gl_PointSize, 0.3, 14.0);
+
+    // 맥동 효과
+    float pulse = 0.5 + 0.5 * sin(uTime * 2.5 + aPhase);
+    float entryGlow = uEntryPhase * 0.8;
     vBrightness = aBrightness
-      * (0.55 + uAudioLevel * 0.35 + uSpeakingLevel * 0.5
-         + uBurst * 0.8 + uFaceBlend * 0.5 + entryGlow);
+      * (0.4 + uAudioLevel * 0.5 + uSpeakingLevel * 0.7
+         + uBurst * 1.2 + uFaceBlend * 0.6 + entryGlow
+         + pulse * 0.15);
     vColor = aColor;
+    vType = aType;
   }
 `;
 
-// ── 프래그먼트 셰이더 ──
+// ── 프래그먼트 셸이더 (강화됨 — 더 화려한 스파클) ──
 const FRAG = `
   varying float vBrightness;
   varying vec3  vColor;
+  varying float vType;
 
   void main() {
     vec2 uv = gl_PointCoord - 0.5;
     float d = length(uv);
 
-    float core = 1.0 - smoothstep(0.0, 0.22, d);
-    float glow = exp(-d * 7.0) * 0.45;
-    float ray1 = max(0.0, 1.0 - abs(uv.x) * 20.0) * max(0.0, 1.0 - abs(uv.y) * 5.0) * 0.3;
-    float ray2 = max(0.0, 1.0 - abs(uv.y) * 20.0) * max(0.0, 1.0 - abs(uv.x) * 5.0) * 0.3;
+    float core, glow, alpha;
 
-    float alpha = (core + glow + ray1 + ray2) * vBrightness;
-    if (alpha < 0.008) discard;
+    if (vType < 0.5) {
+      // 일반 파티클: 스파크 + 광리
+      core = 1.0 - smoothstep(0.0, 0.20, d);
+      glow = exp(-d * 5.5) * 0.6;
+      float ray1 = max(0.0, 1.0 - abs(uv.x) * 18.0) * max(0.0, 1.0 - abs(uv.y) * 4.0) * 0.4;
+      float ray2 = max(0.0, 1.0 - abs(uv.y) * 18.0) * max(0.0, 1.0 - abs(uv.x) * 4.0) * 0.4;
+      float diag1 = max(0.0, 1.0 - abs(uv.x + uv.y) * 14.0) * max(0.0, 1.0 - abs(uv.x - uv.y) * 14.0) * 0.25;
+      alpha = (core + glow + ray1 + ray2 + diag1) * vBrightness;
+    } else if (vType < 1.5) {
+      // 네빨리는 점: 소프트 원형
+      core = 1.0 - smoothstep(0.0, 0.35, d);
+      glow = exp(-d * 4.0) * 0.5;
+      alpha = (core + glow) * vBrightness * 0.8;
+    } else {
+      // 큰 광소: 넓게 퍼지는 대형 발광
+      core = 1.0 - smoothstep(0.0, 0.15, d);
+      glow = exp(-d * 2.8) * 0.7;
+      float outerGlow = exp(-d * 1.2) * 0.3;
+      alpha = (core + glow + outerGlow) * vBrightness * 1.2;
+    }
 
-    vec3 col = mix(vColor, vec3(1.0), core * 0.65);
-    gl_FragColor = vec4(col, clamp(alpha, 0.0, 0.95));
+    if (alpha < 0.006) discard;
+
+    // 중심은 흰색에 가깝게, 바깥은 색상 유지
+    vec3 col = mix(vColor, vec3(1.0), core * 0.75);
+    // 추가 색상 시프트 (더 화려하게)
+    col = mix(col, col * 1.3, glow * 0.4);
+    gl_FragColor = vec4(col, clamp(alpha, 0.0, 1.0));
   }
 `;
 
-const COUNT = 12000;
+const COUNT = 30000; // 파티클 수 3만개
 
+// 더 화려한 색상 팔레트 (금색 + 청색 + 하연 + 연보라 + 하는색)
 const PALETTE = [
-  new THREE.Color(0x4A90E2),
-  new THREE.Color(0x7BB3F0),
+  // 금색 계열
   new THREE.Color(0xC8A96E),
   new THREE.Color(0xE8D5A3),
-  new THREE.Color(0xD4E8FF),
+  new THREE.Color(0xFFD700),
+  new THREE.Color(0xFFA500),
+  new THREE.Color(0xFFEC8B),
+  // 청색 계열
+  new THREE.Color(0x4A90E2),
+  new THREE.Color(0x00BFFF),
+  new THREE.Color(0x87CEEB),
+  new THREE.Color(0x1E90FF),
+  new THREE.Color(0x00CED1),
+  // 하연 계열
   new THREE.Color(0xFFFFFF),
-  new THREE.Color(0x8FB8E8),
-  new THREE.Color(0xB8D4F0),
-  new THREE.Color(0xA0C4FF),
-  new THREE.Color(0xFFE8A0),
+  new THREE.Color(0xF0F8FF),
+  new THREE.Color(0xE0F0FF),
+  // 연보라/보라 계열
+  new THREE.Color(0x9B8EC4),
+  new THREE.Color(0xC084FC),
+  new THREE.Color(0xA78BFA),
+  new THREE.Color(0x818CF8),
+  // 에메랄드 청록
+  new THREE.Color(0x34D399),
+  new THREE.Color(0x6EE7B7),
+  // 노란 형광
+  new THREE.Color(0xFBBF24),
+  new THREE.Color(0xF59E0B),
 ];
 
 // 얼굴 형태 목표 좌표
@@ -182,9 +231,16 @@ export default function SparkleParticles({ state, audioLevel, speakingLevel, cla
     const brigs  = new Float32Array(COUNT);
     const colors = new Float32Array(COUNT * 3);
     const phases = new Float32Array(COUNT);
+    const types  = new Float32Array(COUNT); // 0=일반, 1=네빨리는, 2=큰 광소
     for (let i = 0; i < COUNT; i++) {
-      sizes[i]  = 0.6 + Math.random() * 1.8;
-      brigs[i]  = 0.2 + Math.random() * 0.65;
+      // 타입 분포: 80% 일반, 15% 네빨리는, 5% 큰 광소
+      const rand = Math.random();
+      types[i] = rand < 0.80 ? 0 : rand < 0.95 ? 1 : 2;
+      // 타입별 크기
+      if (types[i] === 0) sizes[i] = 0.4 + Math.random() * 1.4;
+      else if (types[i] === 1) sizes[i] = 0.3 + Math.random() * 0.8;
+      else sizes[i] = 0.8 + Math.random() * 1.2;
+      brigs[i]  = 0.15 + Math.random() * 0.75;
       phases[i] = phaseRef.current[i];
       const c = PALETTE[Math.floor(Math.random() * PALETTE.length)];
       colors[i * 3]     = c.r;
@@ -195,6 +251,7 @@ export default function SparkleParticles({ state, audioLevel, speakingLevel, cla
     geometry.setAttribute('aBrightness', new THREE.BufferAttribute(brigs,  1));
     geometry.setAttribute('aColor',      new THREE.BufferAttribute(colors, 3));
     geometry.setAttribute('aPhase',      new THREE.BufferAttribute(phases, 1));
+    geometry.setAttribute('aType',       new THREE.BufferAttribute(types,  1));
 
     const material = new THREE.ShaderMaterial({
       vertexShader:   VERT,

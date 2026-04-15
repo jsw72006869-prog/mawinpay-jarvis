@@ -1,4 +1,11 @@
 // jarvis-brain.ts — 진짜 대화형 JARVIS: 감정·맥락·자연스러운 흐름
+import {
+  saveConversationEntry,
+  getRecentConversationsForGPT,
+  getPreviousSessionSummary,
+  getLearnedKnowledgeContext,
+  autoExtractAndSave,
+} from './jarvis-memory';
 
 export type JarvisState = 'idle' | 'listening' | 'thinking' | 'speaking' | 'working';
 
@@ -16,10 +23,10 @@ export type JarvisAction = {
   followUp?: string; // JARVIS가 대화를 이어가기 위해 던지는 후속 질문
 };
 
-// ── 대화 히스토리 ──
+// ── 대화 히스토리 (세션 내) ──
 const conversationHistory: { role: 'user' | 'assistant'; content: string }[] = [];
 
-// ── 장기 메모리 ──
+// ── 장기 메모리 (키-밸류) ──
 const MEMORY_KEY = 'jarvis_memory';
 export function loadMemory(): Record<string, string> {
   try { return JSON.parse(localStorage.getItem(MEMORY_KEY) || '{}'); } catch { return {}; }
@@ -197,15 +204,23 @@ export async function askGPT(userMessage: string): Promise<JarvisAction> {
   if (!apiKey) return parseCommand(userMessage);
 
   sessionTurnCount++;
+  // 영구 대화 로그에 사용자 메시지 저장
+  saveConversationEntry('user', userMessage);
   conversationHistory.push({ role: 'user', content: userMessage });
   if (conversationHistory.length > 40) conversationHistory.splice(0, 2);
 
-  // 메모리 컨텍스트
+  // 메모리 컨텍스트 (키-밸류 장기 메모리)
   const memory = loadMemory();
   const memoryLines = Object.entries(memory).map(([k, v]) => `• ${k}: ${v}`).join('\n');
   const memoryContext = memoryLines
     ? `\n\n[장기 기억 — 이전 세션에서 기억된 정보]\n${memoryLines}`
     : '';
+
+  // 영구 대화 기억 컨텍스트 (이전 세션 대화 로그)
+  const prevSessionContext = getPreviousSessionSummary();
+
+  // 학습된 지식 컨텍스트
+  const learnedContext = getLearnedKnowledgeContext();
 
   // 세션 컨텍스트
   const sessionContext = sessionTurnCount > 1
@@ -222,8 +237,9 @@ export async function askGPT(userMessage: string): Promise<JarvisAction> {
       body: JSON.stringify({
         model: 'gpt-4o',
         messages: [
-          { role: 'system', content: SYSTEM_PROMPT + memoryContext + sessionContext },
-          ...conversationHistory,
+          { role: 'system', content: SYSTEM_PROMPT + memoryContext + prevSessionContext + learnedContext + sessionContext },
+          ...getRecentConversationsForGPT(15), // 영구 대화 기록에서 최근 15턴 추가
+          ...conversationHistory.slice(-6), // 현재 세션 최근 6개
         ],
         functions: JARVIS_FUNCTIONS,
         function_call: 'auto',
@@ -243,7 +259,12 @@ export async function askGPT(userMessage: string): Promise<JarvisAction> {
       const fnName = message.function_call.name;
       const fnArgs = JSON.parse(message.function_call.arguments || '{}');
       console.log('[JARVIS] Function call:', fnName, fnArgs);
-      conversationHistory.push({ role: 'assistant', content: fnArgs.response || '' });
+      const responseText = String(fnArgs.response || '');
+      conversationHistory.push({ role: 'assistant', content: responseText });
+      // 영구 대화 로그에 저장
+      saveConversationEntry('assistant', responseText);
+      // 핵심 정보 자동 추출
+      autoExtractAndSave(userMessage, responseText);
       const action = buildActionFromFunction(fnName, fnArgs);
       lastActionType = action.type;
       return action;
@@ -252,6 +273,10 @@ export async function askGPT(userMessage: string): Promise<JarvisAction> {
     // 일반 텍스트 응답
     const reply = message?.content ?? '죄송합니다, 잠시 연결이 불안정합니다.';
     conversationHistory.push({ role: 'assistant', content: reply });
+    // 영구 대화 로그에 저장
+    saveConversationEntry('assistant', reply);
+    // 핵심 정보 자동 추출
+    autoExtractAndSave(userMessage, reply);
     lastActionType = 'chat';
     return { type: 'chat', response: reply };
 

@@ -2,11 +2,23 @@ import { useState, useCallback, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { askGPT, parseCommand, JARVIS_GREETINGS, generateBannerImage, saveSchedule, saveMemory, type JarvisState, type JarvisAction } from '../lib/jarvis-brain';
 import { useSpeechRecognition, useTextToSpeech, setCurrentVoiceId, getCurrentVoiceId, ELEVENLABS_VOICES } from './SpeechEngine';
+import { saveLearnedKnowledge, getLearnedKnowledge, getMemoryStats, clearAllMemory, type LearnedKnowledge } from '../lib/jarvis-memory';
 import { appendInfluencersToSheet, appendEmailLogToSheet, generateMockInfluencers, generateEmailLogs } from '../lib/google-sheets';
 import ConversationStream, { type Message } from './ConversationStream';
 import SparkleParticles from './SparkleParticles';
 import ClapDetector from './ClapDetector';
 import HoloDataPanel from './HoloDataPanel';
+
+// ── 시그니처 응답 목록 (GPT 대기 없이 즉시 재생) ──
+const SIGNATURE_RESPONSES = [
+  'At your service, sir.',
+  'For you, sir, always.',
+  'Systems online and standing by, sir.',
+  'Always a pleasure to help, sir.',
+  "I've been expecting you, sir.",
+  'Ready and awaiting your command, sir.',
+  'Online and fully operational, sir.',
+];
 
 // ── 고급 색상 팔레트 ──
 const THEME = {
@@ -60,6 +72,17 @@ export default function JarvisApp() {
   const [currentVoiceName, setCurrentVoiceName] = useState(() => {
     const id = getCurrentVoiceId();
     return ELEVENLABS_VOICES.find(v => v.id === id)?.name || 'Adam';
+  });
+  const [settingsVisible, setSettingsVisible] = useState(false);
+  const [memoryPanelVisible, setMemoryPanelVisible] = useState(false);
+  const [learnedKnowledge, setLearnedKnowledge] = useState<LearnedKnowledge[]>(() => getLearnedKnowledge());
+  const [memoryStats, setMemoryStats] = useState(() => getMemoryStats());
+  const [settingsForm, setSettingsForm] = useState(() => {
+    const stored = JSON.parse(localStorage.getItem('jarvis_api_keys') || '{}');
+    return {
+      openaiKey: stored.openaiKey || '',
+      elevenLabsKey: stored.elevenLabsKey || '',
+    };
   });
 
   const { speak } = useTextToSpeech();
@@ -332,27 +355,37 @@ export default function JarvisApp() {
 
     if (s === 'idle') {
       startMicAnalysis();
+      // 시그니처 응답: GPT 대기 없이 즉시 재생
+      const sigResponse = SIGNATURE_RESPONSES[Math.floor(Math.random() * SIGNATURE_RESPONSES.length)];
+      setState('speaking');
+      addMessage('jarvis', sigResponse);
+      startSpeakingLevel();
+      await new Promise<void>(resolve => {
+        speak(sigResponse, undefined, () => {
+          stopSpeakingLevel();
+          resolve();
+        });
+      });
+
       if (!isInitialized) {
         setIsInitialized(true);
+        // 시그니처 후 인사말 추가
         const greeting = JARVIS_GREETINGS[Math.floor(Math.random() * JARVIS_GREETINGS.length)];
+        await new Promise(r => setTimeout(r, 400));
         setState('speaking');
         addMessage('jarvis', greeting);
         startSpeakingLevel();
-        // await로 TTS 완료 보장
         await new Promise<void>(resolve => {
           speak(greeting, undefined, () => {
             stopSpeakingLevel();
             resolve();
           });
         });
-        // TTS 완료 후 반드시 listening 상태로 전환
-        console.log('[JARVIS] 인사 완료 → listening 전환');
-        setState('listening');
-        setIsListening(true);
-      } else {
-        setState('listening');
-        setIsListening(true);
       }
+      // TTS 완료 후 반드시 listening 상태로 전환
+      console.log('[JARVIS] 시그니처 완료 → listening 전환');
+      setState('listening');
+      setIsListening(true);
     } else if (s === 'listening') {
       setIsListening(false);
       setState('idle');
@@ -856,6 +889,277 @@ export default function JarvisApp() {
                   letterSpacing: '0.2em',
                   borderTop: `1px solid ${THEME.gold}22`,
                   paddingTop: 8,
+                }}
+              >CLOSE</div>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* ── Settings 버튼 (좌상단) ── */}
+      <motion.div
+        initial={{ opacity: 0, y: -10 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 2, duration: 0.6 }}
+        style={{ position: 'fixed', top: 20, left: 28, zIndex: 50, display: 'flex', gap: 8 }}
+      >
+        <div
+          onClick={() => { setSettingsVisible(v => !v); setMemoryPanelVisible(false); }}
+          style={{
+            cursor: 'pointer',
+            background: 'rgba(6,10,18,0.8)',
+            border: `1px solid ${THEME.gold}33`,
+            padding: '5px 10px',
+            backdropFilter: 'blur(8px)',
+            fontFamily: 'Orbitron, monospace',
+            color: settingsVisible ? THEME.gold : THEME.textDim,
+            fontSize: '0.42rem',
+            letterSpacing: '0.2em',
+            transition: 'color 0.2s',
+          }}
+        >SETTINGS</div>
+        <div
+          onClick={() => { setMemoryPanelVisible(v => !v); setSettingsVisible(false); setMemoryStats(getMemoryStats()); setLearnedKnowledge(getLearnedKnowledge()); }}
+          style={{
+            cursor: 'pointer',
+            background: 'rgba(6,10,18,0.8)',
+            border: `1px solid #9B8EC433`,
+            padding: '5px 10px',
+            backdropFilter: 'blur(8px)',
+            fontFamily: 'Orbitron, monospace',
+            color: memoryPanelVisible ? '#9B8EC4' : THEME.textDim,
+            fontSize: '0.42rem',
+            letterSpacing: '0.2em',
+            transition: 'color 0.2s',
+          }}
+        >MEMORY</div>
+      </motion.div>
+
+      {/* ── Settings 패널 ── */}
+      <AnimatePresence>
+        {settingsVisible && (
+          <motion.div
+            initial={{ opacity: 0, y: -20 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -20 }}
+            style={{
+              position: 'fixed', top: 52, left: 28,
+              zIndex: 50, pointerEvents: 'auto',
+              minWidth: 320,
+            }}
+          >
+            <div style={{
+              background: 'rgba(6,10,18,0.97)',
+              border: `1px solid ${THEME.gold}44`,
+              borderTop: `2px solid ${THEME.gold}`,
+              padding: '16px',
+              backdropFilter: 'blur(20px)',
+            }}>
+              <div style={{ fontFamily: 'Orbitron, monospace', color: THEME.gold, fontSize: '0.5rem', letterSpacing: '0.3em', marginBottom: 14, borderBottom: `1px solid ${THEME.gold}22`, paddingBottom: 8 }}>SYSTEM SETTINGS</div>
+
+              {/* OpenAI Key */}
+              <div style={{ marginBottom: 12 }}>
+                <div style={{ fontFamily: 'Orbitron, monospace', color: THEME.textDim, fontSize: '0.38rem', letterSpacing: '0.2em', marginBottom: 4 }}>OPENAI API KEY</div>
+                <input
+                  type="password"
+                  placeholder="sk-..."
+                  value={settingsForm.openaiKey}
+                  onChange={e => setSettingsForm(f => ({ ...f, openaiKey: e.target.value }))}
+                  style={{
+                    width: '100%', padding: '6px 10px',
+                    background: 'rgba(255,255,255,0.04)',
+                    border: `1px solid ${THEME.gold}33`,
+                    color: THEME.text,
+                    fontFamily: 'monospace',
+                    fontSize: '0.55rem',
+                    outline: 'none',
+                    boxSizing: 'border-box',
+                  }}
+                />
+              </div>
+
+              {/* ElevenLabs Key */}
+              <div style={{ marginBottom: 14 }}>
+                <div style={{ fontFamily: 'Orbitron, monospace', color: THEME.textDim, fontSize: '0.38rem', letterSpacing: '0.2em', marginBottom: 4 }}>ELEVENLABS API KEY</div>
+                <input
+                  type="password"
+                  placeholder="여기에 ElevenLabs 키 입력..."
+                  value={settingsForm.elevenLabsKey}
+                  onChange={e => setSettingsForm(f => ({ ...f, elevenLabsKey: e.target.value }))}
+                  style={{
+                    width: '100%', padding: '6px 10px',
+                    background: 'rgba(255,255,255,0.04)',
+                    border: `1px solid ${THEME.gold}33`,
+                    color: THEME.text,
+                    fontFamily: 'monospace',
+                    fontSize: '0.55rem',
+                    outline: 'none',
+                    boxSizing: 'border-box',
+                  }}
+                />
+              </div>
+
+              {/* 저장 버튼 */}
+              <div style={{ display: 'flex', gap: 8 }}>
+                <div
+                  onClick={() => {
+                    const keys = {
+                      openaiKey: settingsForm.openaiKey,
+                      elevenLabsKey: settingsForm.elevenLabsKey,
+                    };
+                    localStorage.setItem('jarvis_api_keys', JSON.stringify(keys));
+                    setSettingsVisible(false);
+                    // 페이지 리로드로 적용
+                    setTimeout(() => window.location.reload(), 300);
+                  }}
+                  style={{
+                    flex: 1, padding: '7px', textAlign: 'center', cursor: 'pointer',
+                    background: `${THEME.gold}22`,
+                    border: `1px solid ${THEME.gold}55`,
+                    fontFamily: 'Orbitron, monospace',
+                    color: THEME.gold, fontSize: '0.42rem', letterSpacing: '0.2em',
+                  }}
+                >SAVE &amp; RELOAD</div>
+                <div
+                  onClick={() => setSettingsVisible(false)}
+                  style={{
+                    padding: '7px 14px', textAlign: 'center', cursor: 'pointer',
+                    border: `1px solid ${THEME.textDim}33`,
+                    fontFamily: 'Orbitron, monospace',
+                    color: THEME.textDim, fontSize: '0.42rem', letterSpacing: '0.2em',
+                  }}
+                >CANCEL</div>
+              </div>
+
+              <div style={{ marginTop: 10, fontFamily: 'Orbitron, monospace', color: THEME.textDim, fontSize: '0.35rem', letterSpacing: '0.1em', lineHeight: 1.6 }}>
+                키는 브라우저 LocalStorage에만 저장됩니다. 서버로 전송되지 않습니다.
+              </div>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* ── Memory 패널 ── */}
+      <AnimatePresence>
+        {memoryPanelVisible && (
+          <motion.div
+            initial={{ opacity: 0, y: -20 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -20 }}
+            style={{
+              position: 'fixed', top: 52, left: 28,
+              zIndex: 50, pointerEvents: 'auto',
+              minWidth: 300, maxHeight: '70vh', overflowY: 'auto',
+            }}
+          >
+            <div style={{
+              background: 'rgba(6,10,18,0.97)',
+              border: `1px solid #9B8EC444`,
+              borderTop: '2px solid #9B8EC4',
+              padding: '16px',
+              backdropFilter: 'blur(20px)',
+            }}>
+              <div style={{ fontFamily: 'Orbitron, monospace', color: '#9B8EC4', fontSize: '0.5rem', letterSpacing: '0.3em', marginBottom: 10, borderBottom: `1px solid #9B8EC422`, paddingBottom: 8 }}>MEMORY SYSTEM</div>
+
+              {/* 통계 */}
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 14 }}>
+                {[
+                  { label: 'TOTAL TURNS', value: memoryStats.totalTurns },
+                  { label: 'SESSIONS', value: memoryStats.totalSessions },
+                  { label: 'KNOWLEDGE', value: memoryStats.knowledgeCount },
+                  { label: 'SINCE', value: memoryStats.oldestEntry || 'NEW' },
+                ].map(stat => (
+                  <div key={stat.label} style={{ background: 'rgba(155,142,196,0.08)', border: '1px solid #9B8EC422', padding: '6px 8px' }}>
+                    <div style={{ fontFamily: 'Orbitron, monospace', color: THEME.textDim, fontSize: '0.32rem', letterSpacing: '0.2em' }}>{stat.label}</div>
+                    <div style={{ fontFamily: 'Orbitron, monospace', color: '#9B8EC4', fontSize: '0.6rem', marginTop: 2 }}>{stat.value}</div>
+                  </div>
+                ))}
+              </div>
+
+              {/* 학습된 지식 */}
+              {learnedKnowledge.length > 0 && (
+                <div style={{ marginBottom: 14 }}>
+                  <div style={{ fontFamily: 'Orbitron, monospace', color: THEME.textDim, fontSize: '0.38rem', letterSpacing: '0.2em', marginBottom: 8 }}>LEARNED KNOWLEDGE</div>
+                  {learnedKnowledge.map(k => (
+                    <div key={k.id} style={{ padding: '5px 8px', marginBottom: 4, background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)' }}>
+                      <div style={{ fontFamily: 'Orbitron, monospace', color: THEME.gold, fontSize: '0.4rem', letterSpacing: '0.1em' }}>{k.title}</div>
+                      <div style={{ color: THEME.text, fontSize: '0.5rem', marginTop: 2 }}>{k.content}</div>
+                      <div style={{ color: THEME.textDim, fontSize: '0.35rem', marginTop: 1 }}>{k.source === 'auto' ? 'AUTO-EXTRACTED' : 'MANUAL'}</div>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* 직접 지식 추가 */}
+              <div style={{ marginBottom: 14 }}>
+                <div style={{ fontFamily: 'Orbitron, monospace', color: THEME.textDim, fontSize: '0.38rem', letterSpacing: '0.2em', marginBottom: 6 }}>ADD KNOWLEDGE MANUALLY</div>
+                <div style={{ display: 'flex', gap: 6, marginBottom: 6 }}>
+                  <input
+                    id="know-title"
+                    placeholder="제목 (ex: 내 이름)"
+                    style={{
+                      flex: 1, padding: '5px 8px',
+                      background: 'rgba(255,255,255,0.04)',
+                      border: '1px solid rgba(255,255,255,0.1)',
+                      color: THEME.text, fontSize: '0.5rem', outline: 'none',
+                    }}
+                  />
+                  <input
+                    id="know-content"
+                    placeholder="내용"
+                    style={{
+                      flex: 2, padding: '5px 8px',
+                      background: 'rgba(255,255,255,0.04)',
+                      border: '1px solid rgba(255,255,255,0.1)',
+                      color: THEME.text, fontSize: '0.5rem', outline: 'none',
+                    }}
+                  />
+                </div>
+                <div style={{ display: 'flex', gap: 6 }}>
+                  <div
+                    onClick={() => {
+                      const titleEl = document.getElementById('know-title') as HTMLInputElement;
+                      const contentEl = document.getElementById('know-content') as HTMLInputElement;
+                      if (titleEl?.value && contentEl?.value) {
+                        saveLearnedKnowledge(titleEl.value, contentEl.value, 'manual');
+                        setLearnedKnowledge(getLearnedKnowledge());
+                        titleEl.value = ''; contentEl.value = '';
+                      }
+                    }}
+                    style={{
+                      flex: 1, padding: '6px', textAlign: 'center', cursor: 'pointer',
+                      background: 'rgba(155,142,196,0.15)',
+                      border: '1px solid #9B8EC455',
+                      fontFamily: 'Orbitron, monospace',
+                      color: '#9B8EC4', fontSize: '0.38rem', letterSpacing: '0.15em',
+                    }}
+                  >ADD</div>
+                  <div
+                    onClick={() => {
+                      if (confirm('모든 메모리를 삭제하시겠습니까?')) {
+                        clearAllMemory();
+                        setLearnedKnowledge([]);
+                        setMemoryStats(getMemoryStats());
+                      }
+                    }}
+                    style={{
+                      padding: '6px 10px', textAlign: 'center', cursor: 'pointer',
+                      border: '1px solid rgba(239,68,68,0.3)',
+                      fontFamily: 'Orbitron, monospace',
+                      color: '#EF4444', fontSize: '0.38rem', letterSpacing: '0.15em',
+                    }}
+                  >CLEAR ALL</div>
+                </div>
+              </div>
+
+              <div
+                onClick={() => setMemoryPanelVisible(false)}
+                style={{
+                  padding: '6px', textAlign: 'center', cursor: 'pointer',
+                  borderTop: '1px solid rgba(255,255,255,0.06)',
+                  paddingTop: 10, marginTop: 4,
+                  fontFamily: 'Orbitron, monospace',
+                  color: THEME.textDim, fontSize: '0.38rem', letterSpacing: '0.2em',
                 }}
               >CLOSE</div>
             </div>
