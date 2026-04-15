@@ -254,14 +254,15 @@ export async function askGPT(userMessage: string): Promise<JarvisAction> {
       body: JSON.stringify({
         model: 'gpt-4o',
         messages: [
-          { role: 'system', content: SYSTEM_PROMPT + memoryContext + prevSessionContext + learnedContext + sessionContext },
-          ...getRecentConversationsForGPT(15), // 영구 대화 기록에서 최근 15턴 추가
-          ...conversationHistory.slice(-6), // 현재 세션 최근 6개
+          { role: 'system', content: SYSTEM_PROMPT + memoryContext + prevSessionContext + learnedContext + sessionContext + '\n\n## ANTI-REPETITION\n- NEVER repeat the same sentence or phrase you already said in this conversation\n- Each response must be unique and advance the conversation\n- If you already greeted the user, do NOT greet again\n- Vary your sentence structures and vocabulary' },
+          ...conversationHistory.slice(-10), // 현재 세션 최근 10개만 사용 (중복 제거)
         ],
         functions: JARVIS_FUNCTIONS,
         function_call: 'auto',
         max_tokens: 500,
-        temperature: 0.85, // 더 자연스럽고 창의적인 응답
+        temperature: 0.7, // 적절한 밸런스 (너무 높으면 반복, 너무 낮으면 딱딱)
+        frequency_penalty: 0.6, // 반복 페널티
+        presence_penalty: 0.4, // 새로운 주제 장려
       }),
     });
 
