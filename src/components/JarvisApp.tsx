@@ -4,19 +4,18 @@ import { parseCommand, JARVIS_GREETINGS, type JarvisState, type JarvisAction } f
 import { useSpeechRecognition, useTextToSpeech } from './SpeechEngine';
 import { appendInfluencersToSheet, appendEmailLogToSheet, generateMockInfluencers, generateEmailLogs } from '../lib/google-sheets';
 import ConversationStream, { type Message } from './ConversationStream';
-import JarvisOrb from './JarvisOrb';
-import ParticleBackground from './ParticleBackground';
+import SparkleParticles from './SparkleParticles';
 import ClapDetector from './ClapDetector';
 import HoloDataPanel from './HoloDataPanel';
 import WaveformVisualizer from './WaveformVisualizer';
-import ScreenPulse from './ScreenPulse';
 
 export default function JarvisApp() {
   const [state, setState] = useState<JarvisState>('idle');
   const [messages, setMessages] = useState<Message[]>([]);
   const [isListening, setIsListening] = useState(false);
-  const [audioLevel, setAudioLevel] = useState(0);
-  const [clapDetected, setClapDetected] = useState(false);
+  const [micLevel, setMicLevel] = useState(0);
+  const [speakingLevel, setSpeakingLevel] = useState(0);
+  const [clapBurst, setClapBurst] = useState(false);
   const [isTyping, setIsTyping] = useState(false);
   const [dataPanel, setDataPanel] = useState<{
     visible: boolean;
@@ -41,7 +40,62 @@ export default function JarvisApp() {
   const isListeningRef = useRef(isListening);
   isListeningRef.current = isListening;
 
-  // 시계 업데이트
+  // ── 마이크 레벨 분석 (Web Audio API) ──
+  const micContextRef = useRef<AudioContext | null>(null);
+  const micAnalyserRef = useRef<AnalyserNode | null>(null);
+  const micStreamRef = useRef<MediaStream | null>(null);
+  const micFrameRef = useRef<number>(0);
+
+  const startMicAnalysis = useCallback(async () => {
+    try {
+      if (micContextRef.current) return; // 이미 실행 중
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+      micStreamRef.current = stream;
+      const ctx = new AudioContext();
+      micContextRef.current = ctx;
+      const analyser = ctx.createAnalyser();
+      analyser.fftSize = 256;
+      analyser.smoothingTimeConstant = 0.7;
+      micAnalyserRef.current = analyser;
+      const source = ctx.createMediaStreamSource(stream);
+      source.connect(analyser);
+      const data = new Uint8Array(analyser.frequencyBinCount);
+      const tick = () => {
+        analyser.getByteFrequencyData(data);
+        const avg = data.reduce((s, v) => s + v, 0) / data.length;
+        setMicLevel(Math.min(avg / 100, 1));
+        micFrameRef.current = requestAnimationFrame(tick);
+      };
+      tick();
+    } catch (e) {
+      console.warn('[JARVIS] 마이크 분석 실패:', e);
+    }
+  }, []);
+
+  const stopMicAnalysis = useCallback(() => {
+    cancelAnimationFrame(micFrameRef.current);
+    micStreamRef.current?.getTracks().forEach(t => t.stop());
+    micContextRef.current?.close();
+    micContextRef.current = null;
+    micAnalyserRef.current = null;
+    micStreamRef.current = null;
+    setMicLevel(0);
+  }, []);
+
+  // ── TTS 오디오 레벨 시뮬레이션 (SpeechSynthesis는 Web Audio 연결 불가) ──
+  const speakingTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const startSpeakingLevel = useCallback(() => {
+    if (speakingTimerRef.current) clearInterval(speakingTimerRef.current);
+    speakingTimerRef.current = setInterval(() => {
+      setSpeakingLevel(0.3 + Math.random() * 0.7);
+    }, 80);
+  }, []);
+  const stopSpeakingLevel = useCallback(() => {
+    if (speakingTimerRef.current) clearInterval(speakingTimerRef.current);
+    setSpeakingLevel(0);
+  }, []);
+
+  // ── 시계 업데이트 ──
   useEffect(() => {
     const update = () => {
       const now = new Date();
@@ -53,13 +107,13 @@ export default function JarvisApp() {
     return () => clearInterval(interval);
   }, []);
 
-  // 힌트 표시
+  // ── 힌트 표시 ──
   useEffect(() => {
     const timer = setTimeout(() => setShowHint(true), 2500);
     return () => clearTimeout(timer);
   }, []);
 
-  // 커스텀 커서
+  // ── 커스텀 커서 ──
   useEffect(() => {
     const cursor = document.createElement('div');
     cursor.className = 'jarvis-cursor';
@@ -84,7 +138,6 @@ export default function JarvisApp() {
   const addMessage = useCallback((role: 'user' | 'jarvis', text: string) => {
     setMessages(prev => {
       const updated = [...prev, { id: Date.now().toString(), role, text, timestamp: new Date() }];
-      // 최대 6개 메시지만 유지
       return updated.slice(-6);
     });
   }, []);
@@ -110,35 +163,31 @@ export default function JarvisApp() {
         const category = String(action.params?.category || '전체');
         const platform = String(action.params?.platform || '');
         setStats(prev => ({ ...prev, collected: prev.collected + count }));
-        // 구글 시트에 자동 기록
         const influencers = generateMockInfluencers(count, category, platform);
         appendInfluencersToSheet(influencers).then(result => {
-          if (result.success) {
-            console.log('[JARVIS] 구글 시트 기록 완료:', result.message);
-          } else {
-            console.warn('[JARVIS] 구글 시트 기록 실패:', result.message);
-          }
+          console.log('[JARVIS] 구글 시트:', result.success ? '기록 완료' : '기록 실패 - ' + result.message);
         });
       } else if (action.type === 'send_email') {
         const count = Number(action.params?.count) || 47;
         setStats(prev => ({ ...prev, emailsSent: prev.emailsSent + count }));
-        // 이메일 발송 로그를 구글 시트에 기록
         const template = String(action.params?.template || '협업 제안');
         const dummyInfluencers = generateMockInfluencers(count, '전체', '');
         const logs = generateEmailLogs(dummyInfluencers, template);
         appendEmailLogToSheet(logs).then(result => {
-          console.log('[JARVIS] 이메일 로그 기록:', result.message);
+          console.log('[JARVIS] 이메일 로그:', result.message);
         });
       }
     }
 
     setState('speaking');
     addMessage('jarvis', text);
+    startSpeakingLevel();
     speak(text, undefined, () => {
+      stopSpeakingLevel();
       setState('listening');
       setIsListening(true);
     });
-  }, [addMessage, speak]);
+  }, [addMessage, speak, startSpeakingLevel, stopSpeakingLevel]);
 
   const handleSpeechResult = useCallback((transcript: string) => {
     if (!transcript.trim()) return;
@@ -151,9 +200,7 @@ export default function JarvisApp() {
 
   useSpeechRecognition({
     onResult: handleSpeechResult,
-    onStart: () => {
-      setState('listening');
-    },
+    onStart: () => { setState('listening'); },
     onEnd: () => {
       if (stateRef.current === 'listening') {
         setState('idle');
@@ -167,8 +214,9 @@ export default function JarvisApp() {
     const currentState = stateRef.current;
     if (currentState === 'speaking' || currentState === 'working' || currentState === 'thinking') return;
 
-    setClapDetected(true);
-    setTimeout(() => setClapDetected(false), 800);
+    // 폭발 효과
+    setClapBurst(true);
+    setTimeout(() => setClapBurst(false), 100);
     setShowHint(false);
 
     if (currentState === 'idle') {
@@ -177,7 +225,9 @@ export default function JarvisApp() {
         const greeting = JARVIS_GREETINGS[Math.floor(Math.random() * JARVIS_GREETINGS.length)];
         setState('speaking');
         addMessage('jarvis', greeting);
+        startSpeakingLevel();
         speak(greeting, undefined, () => {
+          stopSpeakingLevel();
           setState('listening');
           setIsListening(true);
         });
@@ -185,11 +235,20 @@ export default function JarvisApp() {
         setState('listening');
         setIsListening(true);
       }
+      // 마이크 분석 시작
+      startMicAnalysis();
     } else if (currentState === 'listening') {
       setIsListening(false);
       setState('idle');
     }
-  }, [isInitialized, addMessage, speak]);
+  }, [isInitialized, addMessage, speak, startMicAnalysis, startSpeakingLevel, stopSpeakingLevel]);
+
+  // 상태가 listening이 아닐 때 마이크 레벨 0으로
+  useEffect(() => {
+    if (state !== 'listening') {
+      setMicLevel(0);
+    }
+  }, [state]);
 
   const stateLabel: Record<JarvisState, string> = {
     idle: '대기', listening: '음성 인식 중', thinking: '분석 중', speaking: '응답 중', working: '실행 중',
@@ -204,38 +263,113 @@ export default function JarvisApp() {
         position: 'fixed',
         inset: 0,
         overflow: 'hidden',
-        background: '#050A14',
-        backgroundImage: `
-          radial-gradient(ellipse at 50% 50%, rgba(0,102,255,0.04) 0%, transparent 60%),
-          linear-gradient(rgba(0,245,255,0.012) 1px, transparent 1px),
-          linear-gradient(90deg, rgba(0,245,255,0.012) 1px, transparent 1px)
-        `,
-        backgroundSize: 'auto, 50px 50px, 50px 50px',
+        background: '#020810',
+        cursor: 'none',
       }}
+      onClick={handleActivate}
     >
-      {/* ── 배경 레이어 ── */}
-      <ParticleBackground isActive={state !== 'idle'} />
-      <ScreenPulse state={state} clapDetected={clapDetected} />
-      <ClapDetector onClap={handleActivate} onAudioLevel={setAudioLevel} enabled={true} />
+      {/* ── Three.js 풀스크린 스파클 파티클 ── */}
+      <SparkleParticles
+        state={state}
+        audioLevel={micLevel}
+        speakingLevel={speakingLevel}
+        clapBurst={clapBurst}
+      />
 
-      {/* ── 중앙 배경 글로우 ── */}
-      <div style={{ position: 'fixed', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', pointerEvents: 'none', zIndex: 1 }}>
+      {/* ── 박수 감지기 (오디오 레벨 분리) ── */}
+      <ClapDetector onClap={handleActivate} onAudioLevel={setMicLevel} enabled={true} />
+
+      {/* ── 중앙 글로우 오버레이 ── */}
+      <div style={{ position: 'fixed', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', pointerEvents: 'none', zIndex: 2 }}>
         <motion.div
           style={{
-            width: '80vmin',
-            height: '80vmin',
+            width: '55vmin',
+            height: '55vmin',
             borderRadius: '50%',
             background: `radial-gradient(circle, ${
-              state === 'listening' ? 'rgba(255,107,53,0.07)' :
-              state === 'speaking' ? 'rgba(0,245,255,0.09)' :
-              state === 'working' ? 'rgba(34,197,94,0.06)' :
-              state === 'thinking' ? 'rgba(124,58,237,0.06)' :
-              'rgba(0,102,255,0.05)'
+              state === 'listening' ? 'rgba(255,107,53,0.12)' :
+              state === 'speaking'  ? 'rgba(0,245,255,0.14)' :
+              state === 'working'   ? 'rgba(34,197,94,0.10)' :
+              state === 'thinking'  ? 'rgba(124,58,237,0.10)' :
+              'rgba(0,102,255,0.08)'
             } 0%, transparent 70%)`,
+            filter: 'blur(20px)',
           }}
-          animate={{ scale: [1, 1.06, 1] }}
-          transition={{ duration: 5, repeat: Infinity, ease: 'easeInOut' }}
+          animate={{
+            scale: state === 'listening' ? [1, 1.15, 1] : state === 'speaking' ? [1, 1.2, 1] : [1, 1.05, 1],
+          }}
+          transition={{ duration: state === 'speaking' ? 0.4 : 3, repeat: Infinity, ease: 'easeInOut' }}
         />
+      </div>
+
+      {/* ── 중앙 JARVIS 코어 링 ── */}
+      <div style={{ position: 'fixed', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', pointerEvents: 'none', zIndex: 3 }}>
+        <motion.div
+          style={{
+            width: 'clamp(120px, 22vmin, 200px)',
+            height: 'clamp(120px, 22vmin, 200px)',
+            borderRadius: '50%',
+            border: `1.5px solid ${stateColor[state]}44`,
+            boxShadow: `0 0 40px ${stateColor[state]}33, inset 0 0 40px ${stateColor[state]}11`,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+          }}
+          animate={{ rotate: 360 }}
+          transition={{ duration: state === 'working' ? 2 : state === 'thinking' ? 4 : 12, repeat: Infinity, ease: 'linear' }}
+        >
+          {/* 내부 링 */}
+          <motion.div
+            style={{
+              width: '72%',
+              height: '72%',
+              borderRadius: '50%',
+              border: `1px solid ${stateColor[state]}66`,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+            }}
+            animate={{ rotate: -360 }}
+            transition={{ duration: state === 'working' ? 1.5 : 8, repeat: Infinity, ease: 'linear' }}
+          >
+            {/* 코어 */}
+            <motion.div
+              style={{
+                width: '55%',
+                height: '55%',
+                borderRadius: '50%',
+                background: `radial-gradient(circle, ${stateColor[state]}CC 0%, ${stateColor[state]}44 50%, transparent 100%)`,
+                boxShadow: `0 0 30px ${stateColor[state]}, 0 0 60px ${stateColor[state]}66`,
+              }}
+              animate={{
+                scale: state === 'listening'
+                  ? [1, 1 + micLevel * 0.8, 1]
+                  : state === 'speaking'
+                  ? [1, 1 + speakingLevel * 0.6, 1]
+                  : [1, 1.08, 1],
+              }}
+              transition={{ duration: state === 'listening' ? 0.1 : 0.8, repeat: Infinity }}
+            />
+          </motion.div>
+        </motion.div>
+
+        {/* 상태 텍스트 - 코어 아래 */}
+        <div style={{ position: 'absolute', top: 'calc(50% + clamp(70px, 13vmin, 115px))', textAlign: 'center' }}>
+          <motion.div
+            key={state}
+            initial={{ opacity: 0, y: 5 }}
+            animate={{ opacity: 1, y: 0 }}
+            style={{
+              fontFamily: 'Orbitron, monospace',
+              color: stateColor[state],
+              fontSize: 'clamp(0.55rem, 1.2vw, 0.75rem)',
+              letterSpacing: '0.3em',
+              textShadow: `0 0 12px ${stateColor[state]}`,
+            }}
+          >
+            {stateLabel[state].toUpperCase()}
+          </motion.div>
+        </div>
       </div>
 
       {/* ── 상단 헤더 ── */}
@@ -252,10 +386,10 @@ export default function JarvisApp() {
         <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between' }}>
           {/* 좌측 — 시간 */}
           <div>
-            <div style={{ fontFamily: 'Orbitron, monospace', color: 'rgba(0,245,255,0.6)', fontSize: '0.9rem', letterSpacing: '0.12em' }}>
+            <div style={{ fontFamily: 'Orbitron, monospace', color: 'rgba(0,245,255,0.55)', fontSize: '0.88rem', letterSpacing: '0.12em' }}>
               {currentTime}
             </div>
-            <div style={{ fontFamily: 'Orbitron, monospace', color: 'rgba(100,116,139,0.4)', fontSize: '0.58rem', letterSpacing: '0.1em', marginTop: '2px' }}>
+            <div style={{ fontFamily: 'Orbitron, monospace', color: 'rgba(100,116,139,0.35)', fontSize: '0.55rem', letterSpacing: '0.1em', marginTop: '2px' }}>
               {currentDate}
             </div>
           </div>
@@ -266,15 +400,14 @@ export default function JarvisApp() {
               fontFamily: 'Orbitron, monospace',
               color: '#00F5FF',
               fontSize: 'clamp(1.1rem, 2.5vw, 1.8rem)',
-              letterSpacing: '0.45em',
-              fontWeight: 900,
+              letterSpacing: '0.35em',
               textShadow: '0 0 20px rgba(0,245,255,0.9), 0 0 50px rgba(0,245,255,0.4)',
               margin: 0,
             }}>
               MAWINPAY
             </h1>
-            <p style={{ fontFamily: 'Orbitron, monospace', color: 'rgba(100,116,139,0.45)', fontSize: '0.5rem', letterSpacing: '0.6em', marginTop: '4px' }}>
-              INTELLIGENCE SYSTEM v2.0
+            <p style={{ fontFamily: 'Orbitron, monospace', color: 'rgba(100,116,139,0.4)', fontSize: '0.48rem', letterSpacing: '0.55em', marginTop: '4px' }}>
+              INTELLIGENCE SYSTEM v3.0
             </p>
           </div>
 
@@ -282,43 +415,21 @@ export default function JarvisApp() {
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
             <motion.div
               style={{
-                width: 9, height: 9, borderRadius: '50%',
+                width: 8, height: 8, borderRadius: '50%',
                 backgroundColor: stateColor[state],
                 boxShadow: `0 0 10px ${stateColor[state]}`,
               }}
-              animate={{ scale: state !== 'idle' ? [1, 1.5, 1] : [1, 1.1, 1] }}
-              transition={{ duration: 0.8, repeat: Infinity }}
+              animate={{ scale: state !== 'idle' ? [1, 1.6, 1] : [1, 1.1, 1] }}
+              transition={{ duration: 0.7, repeat: Infinity }}
             />
-            <span style={{ fontFamily: 'Orbitron, monospace', color: stateColor[state], fontSize: '0.62rem', letterSpacing: '0.2em' }}>
+            <span style={{ fontFamily: 'Orbitron, monospace', color: stateColor[state], fontSize: '0.6rem', letterSpacing: '0.2em' }}>
               {stateLabel[state]}
             </span>
           </div>
         </div>
       </motion.div>
 
-      {/* ── JARVIS 오브 — 화면 완전 중앙 ── */}
-      <div
-        style={{
-          position: 'fixed',
-          inset: 0,
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          zIndex: 10,
-        }}
-        onClick={handleActivate}
-      >
-        <motion.div
-          initial={{ opacity: 0, scale: 0.05 }}
-          animate={{ opacity: 1, scale: 1 }}
-          transition={{ delay: 0.4, type: 'spring', damping: 14, stiffness: 45 }}
-          style={{ cursor: 'none' }}
-        >
-          <JarvisOrb state={state} audioLevel={audioLevel} />
-        </motion.div>
-      </div>
-
-      {/* ── 파형 시각화 — 오브 아래 오버레이 ── */}
+      {/* ── 파형 시각화 ── */}
       <AnimatePresence>
         {(state === 'listening' || state === 'speaking') && (
           <motion.div
@@ -336,14 +447,14 @@ export default function JarvisApp() {
           >
             <WaveformVisualizer
               isVisible={true}
-              audioLevel={audioLevel}
+              audioLevel={state === 'listening' ? micLevel : speakingLevel}
               color={state === 'listening' ? '#FF6B35' : '#00F5FF'}
             />
           </motion.div>
         )}
       </AnimatePresence>
 
-      {/* ── 대화 스트림 — 하단 오버레이 ── */}
+      {/* ── 대화 스트림 ── */}
       <div
         style={{
           position: 'fixed',
@@ -369,7 +480,7 @@ export default function JarvisApp() {
           )}
         </AnimatePresence>
 
-        {/* 힌트 텍스트 */}
+        {/* 힌트 */}
         <AnimatePresence>
           {showHint && messages.length === 0 && (
             <motion.div
@@ -379,12 +490,12 @@ export default function JarvisApp() {
               style={{ textAlign: 'center', marginTop: 8 }}
             >
               <motion.p
-                animate={{ opacity: [0.35, 0.75, 0.35] }}
+                animate={{ opacity: [0.3, 0.7, 0.3] }}
                 transition={{ duration: 2.5, repeat: Infinity }}
                 style={{
                   fontFamily: 'Orbitron, monospace',
-                  color: 'rgba(0,245,255,0.55)',
-                  fontSize: 'clamp(0.55rem, 1.2vw, 0.72rem)',
+                  color: 'rgba(0,245,255,0.5)',
+                  fontSize: 'clamp(0.52rem, 1.1vw, 0.68rem)',
                   letterSpacing: '0.25em',
                   margin: 0,
                 }}
@@ -410,7 +521,7 @@ export default function JarvisApp() {
           pointerEvents: 'none',
         }}
       >
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
           {[
             { label: 'COLLECTED', value: stats.collected, unit: '명', color: '#00F5FF' },
             { label: 'EMAILS', value: stats.emailsSent, unit: '통', color: '#0066FF' },
@@ -420,17 +531,18 @@ export default function JarvisApp() {
             <div
               key={item.label}
               style={{
-                background: 'rgba(5,10,20,0.85)',
-                border: `1px solid ${item.color}22`,
-                borderLeft: `2px solid ${item.color}`,
-                padding: '8px 12px',
-                minWidth: '110px',
+                background: 'rgba(2,8,16,0.8)',
+                border: `1px solid ${item.color}1A`,
+                borderLeft: `2px solid ${item.color}99`,
+                padding: '7px 11px',
+                minWidth: '105px',
+                backdropFilter: 'blur(4px)',
               }}
             >
-              <div style={{ fontFamily: 'Orbitron, monospace', color: 'rgba(100,116,139,0.5)', fontSize: '0.45rem', letterSpacing: '0.2em' }}>
+              <div style={{ fontFamily: 'Orbitron, monospace', color: 'rgba(100,116,139,0.45)', fontSize: '0.42rem', letterSpacing: '0.2em' }}>
                 {item.label}
               </div>
-              <div style={{ fontFamily: 'Orbitron, monospace', color: item.color, fontSize: '1.1rem', fontWeight: 700, textShadow: `0 0 8px ${item.color}60` }}>
+              <div style={{ fontFamily: 'Orbitron, monospace', color: item.color, fontSize: '1.05rem', fontWeight: 700, textShadow: `0 0 8px ${item.color}55` }}>
                 {item.value}{item.unit}
               </div>
             </div>
@@ -452,23 +564,23 @@ export default function JarvisApp() {
         <div style={{ display: 'flex', justifyContent: 'center', gap: '28px' }}>
           {[
             { label: 'NEURAL NET', active: state !== 'idle', color: '#00F5FF' },
-            { label: 'VOICE AI', active: state === 'listening' || state === 'speaking', color: '#FF6B35' },
-            { label: 'DATA SYNC', active: state === 'working', color: '#22C55E' },
+            { label: 'VOICE AI',   active: state === 'listening' || state === 'speaking', color: '#FF6B35' },
+            { label: 'DATA SYNC',  active: state === 'working', color: '#22C55E' },
           ].map(item => (
             <div key={item.label} style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
               <motion.div
                 style={{
                   width: 5, height: 5, borderRadius: '50%',
-                  backgroundColor: item.active ? item.color : 'rgba(100,116,139,0.25)',
+                  backgroundColor: item.active ? item.color : 'rgba(100,116,139,0.2)',
                   boxShadow: item.active ? `0 0 6px ${item.color}` : 'none',
                 }}
-                animate={item.active ? { scale: [1, 1.4, 1] } : {}}
+                animate={item.active ? { scale: [1, 1.5, 1] } : {}}
                 transition={{ duration: 0.9, repeat: Infinity }}
               />
               <span style={{
                 fontFamily: 'Orbitron, monospace',
-                color: item.active ? item.color : 'rgba(100,116,139,0.25)',
-                fontSize: '0.5rem',
+                color: item.active ? item.color : 'rgba(100,116,139,0.2)',
+                fontSize: '0.48rem',
                 letterSpacing: '0.18em',
               }}>
                 {item.label}
