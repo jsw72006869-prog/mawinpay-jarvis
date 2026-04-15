@@ -15,6 +15,41 @@ interface SpeechEngineProps {
   isListening: boolean;
 }
 
+// ── 한국어 STT 후처리 교정 ──
+// Whisper가 자주 틀리는 패턴을 자동 교정
+function correctKoreanSTT(text: string): string {
+  const corrections: [RegExp, string][] = [
+    // 명령어 교정
+    [/내기\s*해/g, '대기해'],
+    [/내기\s*하/g, '대기하'],
+    [/대기\s*해줘/g, '대기해'],
+    [/수지\s*해/g, '수집해'],
+    [/수집\s*해줘/g, '수집해'],
+    [/검색\s*해줘/g, '검색해'],
+    [/보내\s*줘/g, '보내줘'],
+    [/찾아\s*줘/g, '찾아줘'],
+    [/저장\s*해줘/g, '저장해'],
+    [/시작\s*해줘/g, '시작해'],
+    [/중단\s*해줘/g, '중단해'],
+    [/확인\s*해줘/g, '확인해'],
+    // 플랫폼 이름 교정
+    [/인스타/g, '인스타그램'],
+    [/유투브/g, '유튜브'],
+    [/유투버/g, '유튜버'],
+    [/네이버블로그/g, '네이버 블로그'],
+    // 자비스 호칭 교정
+    [/자비\s*스/g, '자비스'],
+    [/재비스/g, '자비스'],
+    [/재비\s*스/g, '자비스'],
+  ];
+  
+  let result = text;
+  for (const [pattern, replacement] of corrections) {
+    result = result.replace(pattern, replacement);
+  }
+  return result;
+}
+
 // ── Whisper API 기반 음성 인식 훅 ──
 export function useSpeechRecognition({ onResult, onStart, onEnd, isListening }: SpeechEngineProps) {
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
@@ -84,6 +119,9 @@ export function useSpeechRecognition({ onResult, onStart, onEnd, isListening }: 
       formData.append('model', 'whisper-1');
       formData.append('language', 'ko');
       formData.append('response_format', 'json');
+      formData.append('temperature', '0');
+      // 자주 쓰는 명령어/단어 힌트 → Whisper 인식 정확도 향상
+      formData.append('prompt', '자비스, 대기해, 수집해, 검색해, 보내줘, 찾아줘, 저장해, 시작해, 중단해, 확인해, 유튜버, 블로거, 인플루언서, 인스타그램, 네이버, 이메일, 구독자, 팔로워, 맛집, 뷰티, 패션, 여행, 협업, 마케팅, 수집, 발송, 목록, 시트, 구글, 자동화');
 
       const res = await fetch('https://api.openai.com/v1/audio/transcriptions', {
         method: 'POST',
@@ -100,8 +138,13 @@ export function useSpeechRecognition({ onResult, onStart, onEnd, isListening }: 
       }
 
       const data = await res.json();
-      const text = data.text?.trim() || '';
-      console.log(`[STT] 🎤 Whisper 인식 결과: "${text}"`);
+      const rawText = data.text?.trim() || '';
+      const text = correctKoreanSTT(rawText);
+      if (rawText !== text) {
+        console.log(`[STT] 🔧 교정: "${rawText}" → "${text}"`);
+      } else {
+        console.log(`[STT] 🎤 Whisper 인식 결과: "${text}"`);
+      }
       return text || null;
     } catch (err) {
       console.error('[STT] Whisper API 호출 실패:', err);
