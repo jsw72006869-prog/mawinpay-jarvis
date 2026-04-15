@@ -4,7 +4,8 @@ export type JarvisState = 'idle' | 'listening' | 'thinking' | 'speaking' | 'work
 
 export type JarvisActionType =
   | 'collect' | 'send_email' | 'create_banner' | 'report'
-  | 'schedule' | 'help' | 'greeting' | 'status' | 'confirm' | 'chat' | 'unknown';
+  | 'schedule' | 'help' | 'greeting' | 'status' | 'confirm' | 'chat'
+  | 'change_voice' | 'list_voices' | 'unknown';
 
 export type JarvisAction = {
   type: JarvisActionType;
@@ -33,6 +34,32 @@ export function clearMemory() { localStorage.removeItem(MEMORY_KEY); }
 // ── 대화 세션 통계 ──
 let sessionTurnCount = 0;
 let lastActionType: JarvisActionType = 'unknown';
+
+// ── ElevenLabs 목소리 목록 ──
+export const ELEVENLABS_VOICES = [
+  { id: 'pNInz6obpgDQGcFmaJgB', name: 'Adam',    gender: '남성', accent: '미국',  age: '중년', desc: '지배적이고 단호한 목소리' },
+  { id: 'CwhRBWXzGAHq8TQ4Fs17', name: 'Roger',   gender: '남성', accent: '미국',  age: '중년', desc: '여유롭고 캐주얼한 공명감' },
+  { id: 'IKne3meq5aSn9XLyUdCD', name: 'Charlie', gender: '남성', accent: '호주',  age: '청년', desc: '깊고 자신감 있고 에너지 넘침' },
+  { id: 'JBFqnCBsd6RMkjVDRZzb', name: 'George',  gender: '남성', accent: '영국',  age: '중년', desc: '따뜻하고 매력적인 스토리텔러 - 자비스 최추천' },
+  { id: 'N2lVS1w4EtoT3dr4eOWO', name: 'Callum',  gender: '남성', accent: '미국',  age: '중년', desc: '허스키한 트릭스터 느낌' },
+  { id: 'SOYHLrjzK2X1ezoPC6cr', name: 'Harry',   gender: '남성', accent: '미국',  age: '청년', desc: '강렬한 전사 느낌' },
+  { id: 'TX3LPaxmHKxFdv7VOQHJ', name: 'Liam',    gender: '남성', accent: '미국',  age: '청년', desc: '에너지 넘치는 소셜미디어 크리에이터' },
+  { id: 'bIHbv24MWmeRgasZH58o', name: 'Will',    gender: '남성', accent: '미국',  age: '청년', desc: '편안한 낙관주의자' },
+  { id: 'cjVigY5qzO86Huf0OWal', name: 'Eric',    gender: '남성', accent: '미국',  age: '중년', desc: '부드럽고 신뢰감 있음' },
+  { id: 'iP95p4xoKVk53GoZ742B', name: 'Chris',   gender: '남성', accent: '미국',  age: '중년', desc: '매력적이고 친근한 느낌' },
+  { id: 'nPczCjzI2devNBz1zQrb', name: 'Brian',   gender: '남성', accent: '미국',  age: '중년', desc: '깊고 공명감 있고 편안함' },
+  { id: 'onwK4e9ZLuTAKqWW03F9', name: 'Daniel',  gender: '남성', accent: '영국',  age: '중년', desc: '안정적인 방송인 느낌 - 자비스 추천' },
+  { id: 'pqHfZKP75CvOlQylNhV4', name: 'Bill',    gender: '남성', accent: '미국',  age: '노년', desc: '현명하고 성숙하고 균형 잡힌' },
+  { id: 'BtWabtumIemAotTjP5sk', name: 'Robert',  gender: '남성', accent: '미국',  age: '중년', desc: '차분하고 명확하고 전문적' },
+  { id: 'EXAVITQu4vr4xnSDxMaL', name: 'Sarah',   gender: '여성', accent: '미국',  age: '청년', desc: '성숙하고 안심감 있고 자신감' },
+  { id: 'FGY2WhTYpPnrIDTdsKH5', name: 'Laura',   gender: '여성', accent: '미국',  age: '청년', desc: '열정적이고 독특한 개성' },
+  { id: 'Xb7hH8MSUJpSbSDYk0k2', name: 'Alice',   gender: '여성', accent: '영국',  age: '중년', desc: '명확하고 참여감 있는 교육자' },
+  { id: 'XrExE9yKIg1WjnnlVkGX', name: 'Matilda', gender: '여성', accent: '미국',  age: '중년', desc: '지식있고 전문적' },
+  { id: 'cgSgspJ2msm6clMCkdW9', name: 'Jessica', gender: '여성', accent: '미국',  age: '청년', desc: '발랄하고 밝고 따뜻함' },
+  { id: 'hpp4J3VqNfWAUOO0d1Us', name: 'Bella',   gender: '여성', accent: '미국',  age: '중년', desc: '전문적이고 밝고 따뜻함' },
+  { id: 'pFZP5JQG7iQjIQuC4Bku', name: 'Lily',    gender: '여성', accent: '영국',  age: '중년', desc: '벨벳 같은 여배우 느낌' },
+  { id: 'SAz9YHcvj6GT2YYXdXww', name: 'River',   gender: '중성', accent: '미국',  age: '중년', desc: '편안하고 중립적이고 정보 전달에 적합' },
+];
 
 // ── GPT-4o Function Calling 정의 ──
 const JARVIS_FUNCTIONS = [
@@ -96,7 +123,7 @@ const JARVIS_FUNCTIONS = [
   },
   {
     name: 'schedule_campaign',
-    description: '캠페인이나 작업을 특정 시간에 예약할 때 호출.',
+    description: '캐맨페인이나 작업을 특정 시간에 예약할 때 호출.',
     parameters: {
       type: 'object',
       properties: {
@@ -106,6 +133,21 @@ const JARVIS_FUNCTIONS = [
         follow_up: { type: 'string', description: '예약 후 이어서 할 제안' },
       },
       required: ['task', 'response'],
+    },
+  },
+  {
+    name: 'change_voice',
+    description: '사용자가 JARVIS의 목소리를 변경하거나, 사용 가능한 목소리 목록을 요청하거나, 특정 조건(영국 억양, 여성, 남성, 지적인, 따뜻한 등)으로 목소리를 추천할 때 호출.',
+    parameters: {
+      type: 'object',
+      properties: {
+        voice_id: { type: 'string', description: '변경할 ElevenLabs voice_id. 목록 조회만 원하면 비워두어도 됨.' },
+        voice_name: { type: 'string', description: '목소리 이름 (George, Daniel, Adam 등)' },
+        action: { type: 'string', enum: ['change', 'list', 'recommend'], description: 'change=변경, list=목록보여주기, recommend=추천' },
+        response: { type: 'string', description: 'JARVIS 응답 (한국어, 새 목소리로 샘플을 들려주겠다고 안내)' },
+        follow_up: { type: 'string', description: '목소리 변경 후 이어서 할 안내' },
+      },
+      required: ['action', 'response'],
     },
   },
 ];
@@ -276,6 +318,29 @@ function buildActionFromFunction(fnName: string, args: Record<string, string | n
         response: String(args.response),
         followUp,
       };
+    case 'change_voice': {
+      const action = String(args.action || 'list');
+      const voiceName = String(args.voice_name || '');
+      const voiceId = String(args.voice_id || '');
+      // voice_id 직접 지정 or voice_name으로 검색
+      let resolvedId = voiceId;
+      if (!resolvedId && voiceName) {
+        const found = ELEVENLABS_VOICES.find(v =>
+          v.name.toLowerCase() === voiceName.toLowerCase()
+        );
+        if (found) resolvedId = found.id;
+      }
+      return {
+        type: 'change_voice',
+        params: {
+          action,
+          voice_id: resolvedId,
+          voice_name: voiceName,
+        },
+        response: String(args.response),
+        followUp: args.follow_up ? String(args.follow_up) : undefined,
+      };
+    }
     default:
       return { type: 'unknown', response: String(args.response || '') };
   }

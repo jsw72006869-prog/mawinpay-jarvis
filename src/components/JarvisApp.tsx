@@ -1,7 +1,7 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { askGPT, parseCommand, JARVIS_GREETINGS, generateBannerImage, saveSchedule, saveMemory, type JarvisState, type JarvisAction } from '../lib/jarvis-brain';
-import { useSpeechRecognition, useTextToSpeech } from './SpeechEngine';
+import { useSpeechRecognition, useTextToSpeech, setCurrentVoiceId, getCurrentVoiceId, ELEVENLABS_VOICES } from './SpeechEngine';
 import { appendInfluencersToSheet, appendEmailLogToSheet, generateMockInfluencers, generateEmailLogs } from '../lib/google-sheets';
 import ConversationStream, { type Message } from './ConversationStream';
 import SparkleParticles from './SparkleParticles';
@@ -56,6 +56,11 @@ export default function JarvisApp() {
   const [showHint, setShowHint] = useState(false);
   const [currentTime, setCurrentTime] = useState('');
   const [currentDate, setCurrentDate] = useState('');
+  const [voiceListVisible, setVoiceListVisible] = useState(false);
+  const [currentVoiceName, setCurrentVoiceName] = useState(() => {
+    const id = getCurrentVoiceId();
+    return ELEVENLABS_VOICES.find(v => v.id === id)?.name || 'Adam';
+  });
 
   const { speak } = useTextToSpeech();
   const stateRef = useRef(state);
@@ -192,6 +197,56 @@ export default function JarvisApp() {
         const time = String(action.params?.time || '내일 오전 9시');
         const saved = saveSchedule(task, time);
         setSchedules(prev => [...prev, { task: saved.task, time: saved.time }]);
+      }
+    }
+
+    // ── 목소리 변경 액션 ──
+    if (action?.type === 'change_voice') {
+      const voiceAction = String(action.params?.action || 'list');
+      const voiceId = String(action.params?.voice_id || '');
+      const voiceName = String(action.params?.voice_name || '');
+
+      if (voiceAction === 'change' && voiceId) {
+        // 목소리 실제 변경
+        setCurrentVoiceId(voiceId);
+        const found = ELEVENLABS_VOICES.find(v => v.id === voiceId);
+        const newName = found?.name || voiceName;
+        setCurrentVoiceName(newName);
+        console.log('[JARVIS] 목소리 변경됨:', newName);
+
+        // 메인 응답을 새 목소리로 재생
+        setState('speaking');
+        addMessage('jarvis', action.response);
+        startSpeakingLevel();
+        await new Promise<void>(resolve => {
+          speak(action.response, undefined, () => {
+            stopSpeakingLevel();
+            resolve();
+          }, voiceId); // 새 목소리 ID로 재생
+        });
+
+        // 샘플 멘트 재생
+        const sampleText = `이 목소리는 어때세요, 선생님? ${newName} 목소리로 설정되었습니다. 마음에 드시면 계속 사용하겠습니다.`;
+        await new Promise(r => setTimeout(r, 600));
+        setState('speaking');
+        addMessage('jarvis', sampleText);
+        startSpeakingLevel();
+        await new Promise<void>(resolve => {
+          speak(sampleText, undefined, () => {
+            stopSpeakingLevel();
+            resolve();
+          }, voiceId);
+        });
+
+        // 응답 후 듣기 모드
+        await new Promise(r => setTimeout(r, 400));
+        setState('listening');
+        setIsListening(true);
+        return; // 이미 응답 처리했으므로 이하 실행 안 함
+      } else if (voiceAction === 'recommend' || voiceAction === 'list') {
+        // 목소리 목록을 화면에 표시 (voiceListVisible 상태)
+        setVoiceListVisible(true);
+        setTimeout(() => setVoiceListVisible(false), 15000); // 15초 후 자동 숨김
       }
     }
 
@@ -686,6 +741,123 @@ export default function JarvisApp() {
                 fontFamily: 'Orbitron, monospace',
                 color: THEME.textDim, fontSize: '0.45rem', letterSpacing: '0.2em',
               }}>DALL-E 3 · MAWINPAY INTELLIGENCE</div>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* ── 현재 목소리 표시 (우상단) ── */}
+      <motion.div
+        initial={{ opacity: 0, x: 20 }}
+        animate={{ opacity: 1, x: 0 }}
+        transition={{ delay: 1.5, duration: 0.8 }}
+        style={{
+          position: 'fixed', top: 24, right: 28,
+          zIndex: 30, pointerEvents: 'none',
+        }}
+      >
+        <div style={{
+          background: 'rgba(6,10,18,0.75)',
+          border: `1px solid ${THEME.gold}22`,
+          borderLeft: `2px solid ${THEME.gold}55`,
+          padding: '6px 12px',
+          backdropFilter: 'blur(8px)',
+        }}>
+          <div style={{ fontFamily: 'Orbitron, monospace', color: THEME.textDim, fontSize: '0.38rem', letterSpacing: '0.22em', marginBottom: '2px' }}>VOICE</div>
+          <div style={{ fontFamily: 'Orbitron, monospace', color: THEME.gold, fontSize: '0.65rem', letterSpacing: '0.1em' }}>{currentVoiceName}</div>
+        </div>
+      </motion.div>
+
+      {/* ── 목소리 목록 패널 ── */}
+      <AnimatePresence>
+        {voiceListVisible && (
+          <motion.div
+            initial={{ opacity: 0, x: 40 }}
+            animate={{ opacity: 1, x: 0 }}
+            exit={{ opacity: 0, x: 40 }}
+            style={{
+              position: 'fixed', top: 70, right: 28,
+              zIndex: 40, pointerEvents: 'auto',
+              maxHeight: '70vh', overflowY: 'auto',
+            }}
+          >
+            <div style={{
+              background: 'rgba(6,10,18,0.95)',
+              border: `1px solid ${THEME.gold}33`,
+              borderLeft: `2px solid ${THEME.gold}`,
+              padding: '12px',
+              backdropFilter: 'blur(16px)',
+              minWidth: 220,
+            }}>
+              <div style={{
+                fontFamily: 'Orbitron, monospace',
+                color: THEME.gold,
+                fontSize: '0.5rem',
+                letterSpacing: '0.3em',
+                marginBottom: '10px',
+                borderBottom: `1px solid ${THEME.gold}22`,
+                paddingBottom: '6px',
+              }}>VOICE SELECTION</div>
+              {ELEVENLABS_VOICES.map(v => (
+                <div
+                  key={v.id}
+                  onClick={() => {
+                    setCurrentVoiceId(v.id);
+                    setCurrentVoiceName(v.name);
+                    setVoiceListVisible(false);
+                    const sampleText = `안녕하세요, 선생님. ${v.name} 목소리로 변경되었습니다.`;
+                    addMessage('jarvis', sampleText);
+                    setState('speaking');
+                    startSpeakingLevel();
+                    speak(sampleText, undefined, () => {
+                      stopSpeakingLevel();
+                      setState('listening');
+                      setIsListening(true);
+                    }, v.id);
+                  }}
+                  style={{
+                    padding: '6px 8px',
+                    marginBottom: 4,
+                    cursor: 'pointer',
+                    background: currentVoiceName === v.name ? `${THEME.gold}15` : 'transparent',
+                    border: currentVoiceName === v.name ? `1px solid ${THEME.gold}44` : '1px solid transparent',
+                    transition: 'all 0.2s',
+                  }}
+                  onMouseEnter={e => { (e.currentTarget as HTMLDivElement).style.background = `${THEME.gold}10`; }}
+                  onMouseLeave={e => { (e.currentTarget as HTMLDivElement).style.background = currentVoiceName === v.name ? `${THEME.gold}15` : 'transparent'; }}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <div style={{
+                      width: 5, height: 5, borderRadius: '50%',
+                      background: currentVoiceName === v.name ? THEME.gold : THEME.textDim,
+                      flexShrink: 0,
+                    }} />
+                    <div>
+                      <div style={{ fontFamily: 'Orbitron, monospace', color: currentVoiceName === v.name ? THEME.gold : THEME.text, fontSize: '0.6rem', letterSpacing: '0.1em' }}>
+                        {v.name}
+                      </div>
+                      <div style={{ color: THEME.textDim, fontSize: '0.45rem', marginTop: 1 }}>
+                        {v.gender} · {v.accent}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              ))}
+              <div
+                onClick={() => setVoiceListVisible(false)}
+                style={{
+                  marginTop: 8,
+                  padding: '5px 8px',
+                  textAlign: 'center',
+                  cursor: 'pointer',
+                  fontFamily: 'Orbitron, monospace',
+                  color: THEME.textDim,
+                  fontSize: '0.42rem',
+                  letterSpacing: '0.2em',
+                  borderTop: `1px solid ${THEME.gold}22`,
+                  paddingTop: 8,
+                }}
+              >CLOSE</div>
             </div>
           </motion.div>
         )}

@@ -1,5 +1,9 @@
 // SpeechEngine.tsx — 안정적인 음성 인식 + ElevenLabs TTS (완전 재작성)
 import { useEffect, useRef, useCallback } from 'react';
+import { ELEVENLABS_VOICES } from '../lib/jarvis-brain';
+
+// re-export for convenience
+export { ELEVENLABS_VOICES };
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 declare const window: any;
@@ -125,13 +129,26 @@ export function useSpeechRecognition({ onResult, onStart, onEnd, isListening }: 
 }
 
 // ── ElevenLabs TTS ──
-const ELEVENLABS_VOICE_ID = 'pNInz6obpgDQGcFmaJgB'; // Adam
+// 현재 선택된 목소리 ID (localStorage에 저장)
+const VOICE_STORAGE_KEY = 'jarvis_voice_id';
+const DEFAULT_VOICE_ID = 'pNInz6obpgDQGcFmaJgB'; // Adam
+
+export function getCurrentVoiceId(): string {
+  return localStorage.getItem(VOICE_STORAGE_KEY) || DEFAULT_VOICE_ID;
+}
+
+export function setCurrentVoiceId(voiceId: string): void {
+  localStorage.setItem(VOICE_STORAGE_KEY, voiceId);
+  console.log('[JARVIS TTS] 목소리 변경됨:', voiceId);
+}
 
 async function speakElevenLabs(
   text: string,
   apiKey: string,
-  onEnd: () => void
+  onEnd: () => void,
+  voiceIdOverride?: string
 ): Promise<void> {
+  const ELEVENLABS_VOICE_ID = voiceIdOverride || getCurrentVoiceId();
   console.log('[JARVIS TTS] ElevenLabs 요청:', text.substring(0, 60));
   try {
     const res = await fetch(
@@ -233,7 +250,8 @@ export function useTextToSpeech() {
   const speak = useCallback(async (
     text: string,
     _onStart?: () => void,
-    onEnd?: () => void
+    onEnd?: () => void,
+    voiceIdOverride?: string
   ) => {
     if (isSpeakingRef.current) {
       console.warn('[JARVIS TTS] 이미 재생 중 — 스킵');
@@ -248,7 +266,7 @@ export function useTextToSpeech() {
 
     try {
       if (apiKey) {
-        await speakElevenLabs(text, apiKey, () => {});
+        await speakElevenLabs(text, apiKey, () => {}, voiceIdOverride);
       } else {
         console.log('[JARVIS TTS] ElevenLabs 키 없음 — Web Speech 사용');
         await speakWebSpeech(text);
