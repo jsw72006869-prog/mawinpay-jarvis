@@ -1,4 +1,4 @@
-import type { VercelRequest, VercelResponse } from '@vercel/node';
+// Vercel Serverless Function (CommonJS 방식)
 
 const NAVER_BLOG_API = 'https://openapi.naver.com/v1/search/blog.json';
 const NAVER_CAFE_API = 'https://openapi.naver.com/v1/search/cafearticle.json';
@@ -77,7 +77,7 @@ function stripHtml(str: string): string {
   return str.replace(/<[^>]*>/g, '').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&#39;/g, "'").trim();
 }
 
-export default async function handler(req: VercelRequest, res: VercelResponse) {
+module.exports = async function handler(req: any, res: any) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');

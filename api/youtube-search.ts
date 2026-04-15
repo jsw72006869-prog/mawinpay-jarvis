@@ -1,4 +1,4 @@
-import type { VercelRequest, VercelResponse } from '@vercel/node';
+// Vercel Serverless Function (CommonJS 방식)
 
 const YT_SEARCH_URL = 'https://www.googleapis.com/youtube/v3/search';
 const YT_CHANNELS_URL = 'https://www.googleapis.com/youtube/v3/channels';
@@ -74,7 +74,7 @@ async function searchInstagramViaGoogle(creatorName: string): Promise<string> {
   }
 }
 
-export default async function handler(req: VercelRequest, res: VercelResponse) {
+module.exports = async function handler(req: any, res: any) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');

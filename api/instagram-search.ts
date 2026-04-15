@@ -1,4 +1,4 @@
-import type { VercelRequest, VercelResponse } from '@vercel/node';
+// Vercel Serverless Function (CommonJS 방식)
 
 // ── 인스타그램 계정 검색 (Google 크롤링 방식 - 앱 방식 이식) ──
 // 공식 API 없이 Google 검색으로 instagram.com/username 패턴 추출
@@ -94,7 +94,7 @@ async function fetchInstagramProfile(username: string): Promise<{
   }
 }
 
-export default async function handler(req: VercelRequest, res: VercelResponse) {
+module.exports = async function handler(req: any, res: any) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');

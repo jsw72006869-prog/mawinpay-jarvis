@@ -1,4 +1,4 @@
-import type { VercelRequest, VercelResponse } from '@vercel/node';
+// Vercel Serverless Function (CommonJS 방식)
 
 const SPREADSHEET_ID = '195rrBRA8VFgkpCRqb8Nssiu3HLI7ZYvarAxGtxCI57w';
 const INFLUENCER_SHEET = '인플루언서 목록';
@@ -116,7 +116,7 @@ async function appendRows(token: string, sheetName: string, rows: any[][]) {
   return result;
 }
 
-export default async function handler(req: VercelRequest, res: VercelResponse) {
+module.exports = async function handler(req: any, res: any) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
