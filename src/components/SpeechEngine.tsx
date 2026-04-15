@@ -1,4 +1,4 @@
-// SpeechEngine.tsx — v4: STT 시작 전 마이크 권한 확보 + 안정적 재시작
+// SpeechEngine.tsx — v5: ensureMicPermission 제거, Web Speech API 자체 마이크 접근
 import { useEffect, useRef, useCallback } from 'react';
 import { ELEVENLABS_VOICES } from '../lib/jarvis-brain';
 
@@ -14,24 +14,7 @@ interface SpeechEngineProps {
   isListening: boolean;
 }
 
-/**
- * 마이크 권한을 먼저 확보한 후 STT를 시작합니다.
- * ClapDetector가 마이크를 해제한 후 호출해야 합니다.
- */
-async function ensureMicPermission(): Promise<MediaStream | null> {
-  try {
-    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-    console.log('[STT] ✅ 마이크 권한 확보 성공');
-    // 즉시 해제 — Web Speech API가 자체적으로 마이크를 열 수 있도록
-    stream.getTracks().forEach(t => t.stop());
-    return stream;
-  } catch (e) {
-    console.error('[STT] ❌ 마이크 권한 확보 실패:', e);
-    return null;
-  }
-}
-
-// ── 음성 인식 훅 (v4: 마이크 권한 확보 후 시작) ──
+// ── 음성 인식 훅 (v5: getUserMedia 호출 완전 제거) ──
 export function useSpeechRecognition({ onResult, onStart, onEnd, isListening }: SpeechEngineProps) {
   const recRef = useRef<any>(null);
   const isRunningRef = useRef(false);
@@ -79,7 +62,12 @@ export function useSpeechRecognition({ onResult, onStart, onEnd, isListening }: 
     rec.onstart = () => {
       console.log('[STT] ✅ 인식 시작됨');
       isRunningRef.current = true;
-      startAttemptRef.current = 0;
+      startAttemptRef.current = 0; // 성공하면 카운터 리셋
+    };
+
+    // 오디오가 시작되면 onStart 호출 (실제로 마이크가 작동 중)
+    rec.onaudiostart = () => {
+      console.log('[STT] 🎙️ 오디오 캡처 시작');
       onStartRef.current();
     };
 
@@ -105,16 +93,17 @@ export function useSpeechRecognition({ onResult, onStart, onEnd, isListening }: 
 
       if (shouldListenRef.current) {
         // 자동 재시작 (브라우저가 no-speech 타임아웃으로 종료한 경우)
+        clearRestartTimer();
         restartTimerRef.current = setTimeout(() => {
           if (shouldListenRef.current && !isRunningRef.current) {
             try {
-              console.log('[STT] 자동 재시작');
+              console.log('[STT] 자동 재시작 (onend)');
               rec.start();
             } catch (e: any) {
               console.warn('[STT] 재시작 실패:', e?.message);
             }
           }
-        }, 400);
+        }, 300);
         return;
       }
 
@@ -129,22 +118,23 @@ export function useSpeechRecognition({ onResult, onStart, onEnd, isListening }: 
         startAttemptRef.current++;
         console.error(`[STT] ❌ 마이크 권한 거부 (시도 ${startAttemptRef.current})`);
         
-        // 최대 5회까지만 재시도, 이후 포기
-        if (startAttemptRef.current >= 5) {
+        // 최대 8회까지 재시도 (ClapDetector 스트림 해제 대기)
+        if (startAttemptRef.current >= 8) {
           console.error('[STT] 마이크 권한 재시도 한도 초과 — 포기');
           shouldListenRef.current = false;
           onEndRef.current();
           return;
         }
 
-        // 점점 늘어나는 딜레이로 재시도
-        const delay = 1000 * startAttemptRef.current;
-        restartTimerRef.current = setTimeout(async () => {
-          if (!shouldListenRef.current) return;
-          // 마이크 권한 다시 확보 시도
-          await ensureMicPermission();
+        // 점점 늘어나는 딜레이로 재시도 (getUserMedia 호출 없이 STT만 재시도)
+        const delay = 500 + (500 * startAttemptRef.current);
+        clearRestartTimer();
+        restartTimerRef.current = setTimeout(() => {
           if (shouldListenRef.current && !isRunningRef.current) {
-            try { rec.start(); } catch { /* ignore */ }
+            try {
+              console.log(`[STT] not-allowed 재시도 ${startAttemptRef.current + 1}`);
+              rec.start();
+            } catch { /* ignore */ }
           }
         }, delay);
         return;
@@ -152,6 +142,7 @@ export function useSpeechRecognition({ onResult, onStart, onEnd, isListening }: 
 
       // no-speech, aborted 등은 재시작
       if (shouldListenRef.current) {
+        clearRestartTimer();
         restartTimerRef.current = setTimeout(() => {
           if (shouldListenRef.current && !isRunningRef.current) {
             try { rec.start(); } catch { /* ignore */ }
@@ -178,18 +169,13 @@ export function useSpeechRecognition({ onResult, onStart, onEnd, isListening }: 
       clearRestartTimer();
       startAttemptRef.current = 0;
 
-      // ★ 핵심: 마이크 권한을 먼저 확보한 후 STT 시작
-      // ClapDetector가 스트림을 해제한 후 약간의 딜레이 필요
-      restartTimerRef.current = setTimeout(async () => {
+      // ★ 핵심: getUserMedia 호출 없이 Web Speech API만 시작
+      // ClapDetector가 스트림을 해제한 후 충분한 딜레이(1000ms) 후 시작
+      restartTimerRef.current = setTimeout(() => {
         if (!shouldListenRef.current) return;
-        
-        // 마이크 권한 확보 (ClapDetector가 해제한 후)
-        await ensureMicPermission();
-        
-        // 권한 확보 후 STT 시작
-        if (shouldListenRef.current && !isRunningRef.current && recRef.current) {
+        if (!isRunningRef.current && recRef.current) {
           try {
-            console.log('[STT] safeStart() 호출');
+            console.log('[STT] 🚀 STT 시작 (1000ms 딜레이 후)');
             recRef.current.start();
           } catch (e: any) {
             console.warn('[STT] start() 실패:', e?.message);
@@ -198,7 +184,7 @@ export function useSpeechRecognition({ onResult, onStart, onEnd, isListening }: 
             }
           }
         }
-      }, 500); // ClapDetector 스트림 해제 대기
+      }, 1000); // ClapDetector 스트림 해제 후 브라우저가 마이크를 완전히 해제할 시간
     } else if (!isListening && prev) {
       safeStop();
     }
