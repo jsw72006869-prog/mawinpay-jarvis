@@ -20,6 +20,7 @@ export function useSpeechRecognition({ onResult, onStart, onEnd, isListening }: 
   const recRef = useRef<any>(null);
   const isActiveRef = useRef(false);
   const shouldListenRef = useRef(false);
+  const processingRef = useRef(false); // onResult 처리 중 플래그
   const startTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // 콜백 최신 참조 유지
@@ -58,6 +59,8 @@ export function useSpeechRecognition({ onResult, onStart, onEnd, isListening }: 
             const text = results[i][0].transcript.trim();
             console.log('[JARVIS STT] 인식 완료:', text);
             if (text) {
+              // 결과 처리 중 플래그 설정 → onEnd에서 재시작 방지
+              processingRef.current = true;
               onResultRef.current(text);
               return;
             }
@@ -69,16 +72,24 @@ export function useSpeechRecognition({ onResult, onStart, onEnd, isListening }: 
     };
 
     rec.onend = () => {
-      console.log('[JARVIS STT] 종료됨. shouldListen:', shouldListenRef.current);
+      console.log('[JARVIS STT] 종료됨. shouldListen:', shouldListenRef.current, 'processing:', processingRef.current);
       isActiveRef.current = false;
 
-      // 자동 재시작: shouldListen이 여전히 true면 STT를 다시 시작
-      // (continuous=false라서 한 번 인식 후 자동 종료되기 때문)
+      // onResult가 처리 중이면 재시작하지 않음 (handleSpeechResult가 완료 후 isListening을 다시 true로 설정함)
+      if (processingRef.current) {
+        console.log('[JARVIS STT] 결과 처리 중 — 재시작 안 함');
+        processingRef.current = false;
+        return;
+      }
+
+      // 음성 인식 결과 없이 종료된 경우 (no-speech 타임아웃 등)
+      // shouldListen이 true면 자동 재시작하여 계속 듣기
       if (shouldListenRef.current) {
         console.log('[JARVIS STT] 자동 재시작 예약 (shouldListen=true)');
         setTimeout(() => {
           if (!shouldListenRef.current) return;
           if (isActiveRef.current) return;
+          if (processingRef.current) return;
           try {
             console.log('[JARVIS STT] 자동 재시작 recognition.start()');
             rec.start();
@@ -87,8 +98,8 @@ export function useSpeechRecognition({ onResult, onStart, onEnd, isListening }: 
             isActiveRef.current = false;
             onEndRef.current();
           }
-        }, 200);
-        return; // onEnd 호출 안 함 (재시작하므로)
+        }, 300);
+        return;
       }
 
       onEndRef.current();
@@ -105,11 +116,12 @@ export function useSpeechRecognition({ onResult, onStart, onEnd, isListening }: 
       }
 
       // no-speech, aborted 등의 오류에서도 shouldListen이면 재시작
-      if (shouldListenRef.current && event.error !== 'not-allowed') {
+      if (shouldListenRef.current && !processingRef.current) {
         console.log('[JARVIS STT] 오류 후 자동 재시작 예약');
         setTimeout(() => {
           if (!shouldListenRef.current) return;
           if (isActiveRef.current) return;
+          if (processingRef.current) return;
           try {
             rec.start();
           } catch (e: any) {

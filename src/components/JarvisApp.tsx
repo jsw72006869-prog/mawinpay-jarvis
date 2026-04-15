@@ -367,7 +367,9 @@ export default function JarvisApp() {
     }
 
     // ── 응답 완료 후 자동으로 듣기 모드 전환 ──
-    await new Promise(r => setTimeout(r, 400));
+    // TTS 에코가 마이크에 잡히지 않도록 충분한 딜레이
+    await new Promise(r => setTimeout(r, 600));
+    console.log('[JARVIS] 응답 완료 → listening 전환');
     setState('listening');
     setIsListening(true);
   }, [addMessage, speak, startSpeakingLevel, stopSpeakingLevel]);
@@ -406,16 +408,21 @@ export default function JarvisApp() {
     isListening,
   });
 
+  const activatingRef = useRef(false); // 중복 활성화 방지
+
   const handleActivate = useCallback(async () => {
     const s = stateRef.current;
     if (s === 'speaking' || s === 'working' || s === 'thinking') return;
+    if (activatingRef.current) return; // 이미 활성화 중이면 무시
 
     setClapBurst(true);
     setTimeout(() => setClapBurst(false), 120);
     setShowHint(false);
 
     if (s === 'idle') {
+      activatingRef.current = true;
       startMicAnalysis();
+
       // 시그니처 응답: GPT 대기 없이 즉시 재생
       const sigResponse = SIGNATURE_RESPONSES[Math.floor(Math.random() * SIGNATURE_RESPONSES.length)];
       setState('speaking');
@@ -443,10 +450,14 @@ export default function JarvisApp() {
           });
         });
       }
-      // TTS 완료 후 반드시 listening 상태로 전환
+
+      // TTS 완료 후 충분한 딜레이 후 listening 상태로 전환
+      // (스피커에서 나온 음성이 마이크에 잡히지 않도록)
+      await new Promise(r => setTimeout(r, 600));
       console.log('[JARVIS] 시그니처 완료 → listening 전환');
       setState('listening');
       setIsListening(true);
+      activatingRef.current = false;
     } else if (s === 'listening') {
       setIsListening(false);
       setState('idle');
