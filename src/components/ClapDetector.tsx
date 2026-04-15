@@ -4,21 +4,17 @@ interface ClapDetectorProps {
   onClap: () => void;
   onAudioLevel: (level: number) => void;
   enabled: boolean;
-  /** true일 때 감지 일시 중단 (마이크 트랙 비활성화 + AudioContext suspend) */
+  /** true일 때 마이크 스트림 완전 해제 (Whisper STT가 마이크 사용) */
   releaseStream: boolean;
 }
 
 /**
- * ClapDetector v5 — 마이크 트랙 enabled 토글로 Web Speech API와 공존
+ * ClapDetector v6 — Whisper STT와 공존
  * 
- * 핵심: releaseStream=true일 때
- *   1. AudioContext.suspend() (분석 중단)
- *   2. 마이크 트랙 enabled=false (마이크를 Web Speech API에 양보)
- * 
- * releaseStream=false일 때
- *   1. 마이크 트랙 enabled=true (마이크 다시 사용)
- *   2. AudioContext.resume() (분석 재개)
- *   3. 1.5초 쿨다운 후 박수 감지 시작
+ * releaseStream=true → 스트림 완전 해제 (tracks stop + AudioContext close)
+ *   → Whisper STT의 getUserMedia가 마이크를 독점 사용 가능
+ * releaseStream=false → 새로 getUserMedia 호출하여 박수 감지 재개
+ *   → 1.5초 쿨다운 후 박수 감지 시작
  */
 export default function ClapDetector({ onClap, onAudioLevel, enabled, releaseStream }: ClapDetectorProps) {
   const audioContextRef = useRef<AudioContext | null>(null);
@@ -30,7 +26,7 @@ export default function ClapDetector({ onClap, onAudioLevel, enabled, releaseStr
   const clapWindowTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const enabledRef = useRef(enabled);
   const releaseStreamRef = useRef(releaseStream);
-  const suspendedRef = useRef(false);
+  const activeRef = useRef(false);
 
   const onClapRef = useRef(onClap);
   const onAudioLevelRef = useRef(onAudioLevel);
@@ -39,9 +35,9 @@ export default function ClapDetector({ onClap, onAudioLevel, enabled, releaseStr
   enabledRef.current = enabled;
   releaseStreamRef.current = releaseStream;
 
-  // 분석 루프 시작
+  // 분석 루프
   const startAnalysisLoop = useCallback(() => {
-    if (animRef.current) return; // 이미 실행 중
+    if (animRef.current) return;
     if (!analyserRef.current) return;
 
     const analyser = analyserRef.current;
@@ -49,7 +45,7 @@ export default function ClapDetector({ onClap, onAudioLevel, enabled, releaseStr
     const dataArray = new Uint8Array(bufferLength);
 
     const check = () => {
-      if (!analyserRef.current || suspendedRef.current) {
+      if (!analyserRef.current || !activeRef.current) {
         animRef.current = 0;
         return;
       }
@@ -91,112 +87,84 @@ export default function ClapDetector({ onClap, onAudioLevel, enabled, releaseStr
     check();
   }, []);
 
-  // 마이크 트랙 활성/비활성 헬퍼
-  const setMicTrackEnabled = useCallback((value: boolean) => {
-    const stream = streamRef.current;
-    if (!stream) return;
-    stream.getAudioTracks().forEach(track => {
-      track.enabled = value;
-    });
-    console.log(`[ClapDetector] 마이크 트랙 enabled=${value}`);
-  }, []);
+  // 마이크 스트림 시작
+  const acquireStream = useCallback(async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      streamRef.current = stream;
 
-  // 마이크 스트림 초기화 (1회만)
-  useEffect(() => {
-    let cancelled = false;
+      const audioContext = new AudioContext();
+      audioContextRef.current = audioContext;
 
-    async function init() {
-      try {
-        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-        if (cancelled) {
-          stream.getTracks().forEach(t => t.stop());
-          return;
-        }
-        streamRef.current = stream;
+      const analyser = audioContext.createAnalyser();
+      analyser.fftSize = 512;
+      analyser.smoothingTimeConstant = 0.2;
+      analyserRef.current = analyser;
 
-        const audioContext = new AudioContext();
-        audioContextRef.current = audioContext;
+      const source = audioContext.createMediaStreamSource(stream);
+      source.connect(analyser);
 
-        const analyser = audioContext.createAnalyser();
-        analyser.fftSize = 512;
-        analyser.smoothingTimeConstant = 0.2;
-        analyserRef.current = analyser;
-
-        const source = audioContext.createMediaStreamSource(stream);
-        source.connect(analyser);
-
-        console.log('[ClapDetector] 마이크 스트림 초기화 완료 (영구 유지)');
-
-        // 초기 상태에 따라 시작/일시중단
-        if (releaseStreamRef.current) {
-          audioContext.suspend();
-          // 마이크 트랙도 비활성화
-          stream.getAudioTracks().forEach(track => { track.enabled = false; });
-          suspendedRef.current = true;
-          console.log('[ClapDetector] 초기 상태: suspended + 트랙 비활성');
-        } else {
-          suspendedRef.current = false;
+      activeRef.current = true;
+      
+      // 1.5초 쿨다운 후 박수 감지 시작
+      lastClapRef.current = Date.now() + 1500;
+      clapCountRef.current = 0;
+      
+      setTimeout(() => {
+        if (activeRef.current) {
           startAnalysisLoop();
         }
-      } catch (err) {
-        console.warn('[ClapDetector] 마이크 접근 실패:', err);
-      }
+      }, 1500);
+
+      console.log('[ClapDetector] 마이크 스트림 획득 완료 (쿨다운 1.5s)');
+    } catch (err) {
+      console.warn('[ClapDetector] 마이크 접근 실패:', err);
+    }
+  }, [startAnalysisLoop]);
+
+  // 마이크 스트림 완전 해제
+  const releaseAllStream = useCallback(() => {
+    activeRef.current = false;
+    cancelAnimationFrame(animRef.current);
+    animRef.current = 0;
+    if (clapWindowTimerRef.current) clearTimeout(clapWindowTimerRef.current);
+    
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach(t => t.stop());
+      streamRef.current = null;
+    }
+    if (audioContextRef.current) {
+      audioContextRef.current.close().catch(() => {});
+      audioContextRef.current = null;
+    }
+    analyserRef.current = null;
+    console.log('[ClapDetector] 마이크 스트림 완전 해제');
+  }, []);
+
+  // 초기 마이크 획득
+  useEffect(() => {
+    if (!releaseStreamRef.current) {
+      acquireStream();
     }
 
-    init();
-
     return () => {
-      cancelled = true;
-      cancelAnimationFrame(animRef.current);
-      animRef.current = 0;
-      if (clapWindowTimerRef.current) clearTimeout(clapWindowTimerRef.current);
-      if (streamRef.current) {
-        streamRef.current.getTracks().forEach(t => t.stop());
-        streamRef.current = null;
-      }
-      if (audioContextRef.current) {
-        audioContextRef.current.close().catch(() => {});
-        audioContextRef.current = null;
-      }
-      analyserRef.current = null;
+      releaseAllStream();
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // releaseStream 변경 시 마이크 트랙 + AudioContext 제어
+  // releaseStream 변경 시 스트림 해제/재획득
   useEffect(() => {
-    const ctx = audioContextRef.current;
-    if (!ctx) return;
-
     if (releaseStream) {
-      // ★ STT가 마이크를 사용해야 하므로:
-      // 1. 분석 루프 중단
-      suspendedRef.current = true;
-      cancelAnimationFrame(animRef.current);
-      animRef.current = 0;
-      // 2. AudioContext suspend
-      ctx.suspend().then(() => {
-        console.log('[ClapDetector] AudioContext suspended');
-      }).catch(() => {});
-      // 3. 마이크 트랙 비활성화 → Web Speech API가 마이크 독점 사용 가능
-      setMicTrackEnabled(false);
+      // STT가 마이크를 사용해야 하므로 완전 해제
+      releaseAllStream();
     } else {
-      // ★ STT가 끝났으므로 마이크 되찾기:
-      // 1. 마이크 트랙 다시 활성화
-      setMicTrackEnabled(true);
-      // 2. AudioContext resume
-      ctx.resume().then(() => {
-        console.log('[ClapDetector] AudioContext resumed (쿨다운 1.5s)');
-        // 쿨다운: resume 직후의 잔여 데이터 무시
-        lastClapRef.current = Date.now() + 1500;
-        clapCountRef.current = 0;
-        setTimeout(() => {
-          suspendedRef.current = false;
-          startAnalysisLoop();
-        }, 1500);
-      }).catch(() => {});
+      // STT가 끝났으므로 마이크 재획득
+      if (!streamRef.current) {
+        acquireStream();
+      }
     }
-  }, [releaseStream, startAnalysisLoop, setMicTrackEnabled]);
+  }, [releaseStream, releaseAllStream, acquireStream]);
 
   return null;
 }
