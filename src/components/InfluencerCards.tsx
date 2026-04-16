@@ -97,7 +97,7 @@ function PokemonCard({ influencer, index, visible }: { influencer: InfluencerDat
         duration: 0.5,
         ease: [0.16, 1, 0.3, 1],
       }}
-      style={{ flexShrink: 0, width: '155px', perspective: '1000px' }}
+      style={{ flexShrink: 0, width: '118px', perspective: '800px' }}
     >
       <motion.div
         animate={hovered
@@ -111,7 +111,7 @@ function PokemonCard({ influencer, index, visible }: { influencer: InfluencerDat
           cursor: 'pointer',
           background: theme.bg,
           border: `1.5px solid ${theme.primary}44`,
-          borderRadius: '16px',
+          borderRadius: '12px',
           overflow: 'hidden',
           position: 'relative',
           transformStyle: 'preserve-3d',
@@ -166,7 +166,7 @@ function PokemonCard({ influencer, index, visible }: { influencer: InfluencerDat
         {/* 프로필 이미지 영역 */}
         <div style={{
           width: '100%',
-          height: '105px',
+          height: '78px',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
@@ -180,7 +180,7 @@ function PokemonCard({ influencer, index, visible }: { influencer: InfluencerDat
             transition={{ duration: 12, repeat: Infinity, ease: 'linear' }}
             style={{
               position: 'absolute',
-              width: '90px', height: '90px',
+              width: '66px', height: '66px',
               borderRadius: '50%',
               border: `1px dashed ${theme.primary}22`,
             }}
@@ -190,7 +190,7 @@ function PokemonCard({ influencer, index, visible }: { influencer: InfluencerDat
             transition={{ duration: 2.5, repeat: Infinity, delay: index * 0.3 }}
             style={{
               position: 'absolute',
-              width: '70px', height: '70px',
+              width: '52px', height: '52px',
               borderRadius: '50%',
               background: `radial-gradient(circle, ${theme.primary}18 0%, transparent 70%)`,
             }}
@@ -202,7 +202,7 @@ function PokemonCard({ influencer, index, visible }: { influencer: InfluencerDat
               alt={influencer.name}
               onError={() => setImgError(true)}
               style={{
-                width: '70px', height: '70px',
+                width: '52px', height: '52px',
                 borderRadius: '50%',
                 objectFit: 'cover',
                 border: `2.5px solid ${theme.primary}77`,
@@ -212,12 +212,12 @@ function PokemonCard({ influencer, index, visible }: { influencer: InfluencerDat
             />
           ) : (
             <div style={{
-              width: '70px', height: '70px',
+              width: '52px', height: '52px',
               borderRadius: '50%',
               background: `linear-gradient(135deg, ${theme.primary}33, ${theme.secondary}22)`,
-              border: `2.5px solid ${theme.primary}77`,
+              border: `2px solid ${theme.primary}77`,
               display: 'flex', alignItems: 'center', justifyContent: 'center',
-              fontSize: '26px',
+              fontSize: '20px',
               boxShadow: `0 0 20px ${theme.glow}`,
               position: 'relative', zIndex: 2,
               color: theme.primary,
@@ -258,7 +258,7 @@ function PokemonCard({ influencer, index, visible }: { influencer: InfluencerDat
           background: `linear-gradient(180deg, ${theme.primary}08, transparent)`,
         }}>
           <div style={{
-            fontSize: '11.5px',
+            fontSize: '9.5px',
             fontWeight: 700,
             color: '#FFFFFF',
             fontFamily: 'monospace',
@@ -273,10 +273,10 @@ function PokemonCard({ influencer, index, visible }: { influencer: InfluencerDat
           </div>
 
           <div style={{
-            fontSize: '8.5px',
+            fontSize: '7.5px',
             color: `${theme.primary}88`,
             fontFamily: 'monospace',
-            marginBottom: '6px',
+            marginBottom: '4px',
             whiteSpace: 'nowrap',
             overflow: 'hidden',
             textOverflow: 'ellipsis',
@@ -397,20 +397,21 @@ export default function InfluencerCards({ influencers, visible, onClose }: Influ
     <AnimatePresence>
       {visible && influencers.length > 0 && (
         <motion.div
-          initial={{ opacity: 0, y: 30 }}
+          initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
-          exit={{ opacity: 0, y: 20 }}
-          transition={{ duration: 0.35 }}
+          exit={{ opacity: 0, y: 10 }}
+          transition={{ duration: 0.3 }}
           style={{
             position: 'absolute',
-            bottom: '90px',
+            top: '60px',
             left: 0,
             right: 0,
             zIndex: 50,
-            padding: '14px 14px 10px',
-            background: 'rgba(0,0,0,0.92)',
-            borderTop: '1px solid rgba(0,245,255,0.12)',
-            backdropFilter: 'blur(24px)',
+            padding: '10px 12px 8px',
+            background: 'rgba(0,0,0,0.88)',
+            borderTop: '1px solid rgba(0,245,255,0.1)',
+            borderBottom: '1px solid rgba(0,245,255,0.1)',
+            backdropFilter: 'blur(20px)',
           }}
         >
           {/* 헤더 */}
@@ -480,8 +481,8 @@ export default function InfluencerCards({ influencers, visible, onClose }: Influ
                 onClick={() => setShowAll(true)}
                 style={{
                   flexShrink: 0,
-                  width: '155px',
-                  height: '280px',
+                  width: '118px',
+                  height: '210px',
                   background: 'rgba(0,245,255,0.02)',
                   border: '1.5px dashed rgba(0,245,255,0.2)',
                   borderRadius: '16px',
@@ -524,7 +525,7 @@ export default function InfluencerCards({ influencers, visible, onClose }: Influ
             ].map(stat => (
               <div key={stat.label} style={{ textAlign: 'center' }}>
                 <div style={{
-                  fontSize: '18px', fontWeight: 700,
+                  fontSize: '14px', fontWeight: 700,
                   color: stat.color, fontFamily: 'monospace',
                   textShadow: `0 0 10px ${stat.color}66`,
                 }}>

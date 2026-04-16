@@ -247,6 +247,19 @@ export default function JarvisApp() {
             const result = await searchInstagramAPI(keyword, Math.min(count, 20), true);
             const igAccounts = result.items as InstagramAccount[];
             setStats(prev => ({ ...prev, collected: prev.collected + igAccounts.length }));
+            // 인스타그램 카드 표시
+            setCollectedInfluencers(igAccounts.map(acc => ({
+              name: acc.fullName || acc.username,
+              platform: 'Instagram',
+              followers: acc.followersFormatted || (acc.followers ? String(acc.followers) : '-'),
+              category: keyword || category,
+              email: acc.email || '',
+              profileUrl: acc.profileUrl || `https://instagram.com/${acc.username}`,
+              thumbnailUrl: acc.profileUrl || '',
+              status: '활성',
+              collectedAt,
+            })));
+            setInfluencerCardsVisible(true);
             appendInstagramToSheet(igAccounts.map(acc => ({
               username: acc.username,
               fullName: acc.fullName,
