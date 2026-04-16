@@ -309,58 +309,53 @@ export async function askGPT(userMessage: string): Promise<JarvisAction> {
     `\n\n## ANTI-REPETITION\n- NEVER repeat the same sentence or phrase you already said in this conversation\n- Each response must be unique and advance the conversation\n- If you already greeted the user, do NOT greet again\n- Vary your sentence structures and vocabulary`,
   ].filter(Boolean).join('');
 
-  // 대화 히스토리를 Responses API input 형식으로 변환
-  const inputMessages = [
-    // 컨텍스트 추가 (Stored Prompt에 없는 동적 정보)
-    ...(contextAddition ? [{ role: 'system', content: contextAddition }] : []),
-    // 현재 세션 대화 히스토리 (최근 10개)
-    ...conversationHistory.slice(-10).map(m => ({ role: m.role, content: m.content })),
+  // Chat Completions API 메시지 구성
+  const messages: { role: string; content: string }[] = [
+    // 시스템 프롬프트 (성격 + 전문성)
+    { role: 'system', content: SYSTEM_PROMPT + (contextAddition || '') },
+    // 현재 세션 대화 히스토리 (최근 12개)
+    ...conversationHistory.slice(-12).map(m => ({ role: m.role, content: m.content })),
   ];
 
   try {
-    // OpenAI Responses API + Stored Prompt ID 방식
-    const res = await fetch('https://api.openai.com/v1/responses', {
+    // OpenAI Chat Completions API + tools (Function Calling)
+    const res = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         Authorization: `Bearer ${apiKey}`,
       },
       body: JSON.stringify({
-        prompt: {
-          id: STORED_PROMPT_ID,
-          version: STORED_PROMPT_VERSION,
-        },
-        input: inputMessages,
+        model: 'gpt-4o',
+        messages,
         tools: JARVIS_TOOLS,
         tool_choice: 'auto',
-        max_output_tokens: 500,
-        temperature: 0.7,
-        frequency_penalty: 0.6,
-        presence_penalty: 0.4,
+        max_tokens: 600,
+        temperature: 0.75,
+        frequency_penalty: 0.5,
+        presence_penalty: 0.3,
       }),
     });
 
     if (!res.ok) {
       const errBody = await res.text();
-      console.error('[JARVIS] Responses API 오류:', res.status, errBody);
-      throw new Error(`OpenAI Responses API ${res.status}: ${errBody}`);
+      console.error('[JARVIS] Chat API 오류:', res.status, errBody);
+      throw new Error(`OpenAI API ${res.status}: ${errBody}`);
     }
 
     const data = await res.json();
-    console.log('[JARVIS] Responses API 응답:', JSON.stringify(data).slice(0, 200));
+    const choice = data.choices?.[0];
+    const message = choice?.message;
+    console.log('[JARVIS] GPT 응답:', choice?.finish_reason, JSON.stringify(message).slice(0, 150));
 
-    // Responses API 응답 파싱
-    // output 배열에서 메시지 추출
-    const outputItems = data.output ?? [];
-    
-    // Tool Call 처리
-    const toolCallItem = outputItems.find((item: { type: string }) => item.type === 'function_call');
-    if (toolCallItem) {
-      const fnName = toolCallItem.name;
-      const fnArgs = JSON.parse(toolCallItem.arguments || '{}');
+    // Tool Call (Function Calling) 처리
+    if (message?.tool_calls && message.tool_calls.length > 0) {
+      const toolCall = message.tool_calls[0];
+      const fnName = toolCall.function.name;
+      const fnArgs = JSON.parse(toolCall.function.arguments || '{}');
       console.log('[JARVIS] Function call:', fnName, fnArgs);
       let responseText = String(fnArgs.response || '');
-      // 반복 응답 방지: 동일한 응답이 최근에 있으면 접미어 추가
+      // 반복 응답 방지
       if (isRepeatedResponse(responseText)) {
         const variants = ['알겠습니다, 선생님.', '진행하겠습니다.', '시작하겠습니다, 선생님.', '바로 실행하겠습니다.'];
         responseText = variants[Math.floor(Math.random() * variants.length)] + ' ' + responseText.slice(0, 20) + '…';
@@ -373,13 +368,13 @@ export async function askGPT(userMessage: string): Promise<JarvisAction> {
       lastActionType = action.type;
       return action;
     }
-    // 일반 텍스트 응답
-    const messageItem = outputItems.find((item: { type: string }) => item.type === 'message');
-    let reply = messageItem?.content?.[0]?.text ?? '죄송합니다, 잠시 연결이 불안정합니다.';
+
+    // 일반 텍스트 응답 (일상 대화, 질문 답변 등)
+    let reply = message?.content ?? '죄송합니다, 잠시 연결이 불안정합니다.';
     // 반복 응답 방지
     if (isRepeatedResponse(reply)) {
-      console.warn('[JARVIS] 반복 응답 감지, 수정 중...');
-      reply = reply + ' (다른 관점에서 말씨드리면, ' + ['더 구체적인 질문을 해주세요.', '어떤 작업을 원하시나요?', '다른 요청이 있으시면 말씨주세요.'][Math.floor(Math.random() * 3)] + ')';
+      console.warn('[JARVIS] 반복 응답 감지');
+      reply = reply + ' 다른 관점에서 어떤 도움이 필요하신가요, 선생님?';
     }
     trackResponse(reply);
     conversationHistory.push({ role: 'assistant', content: reply });

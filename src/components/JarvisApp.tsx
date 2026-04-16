@@ -452,6 +452,7 @@ export default function JarvisApp() {
     }
 
     // ── 메인 응답 발화 ──
+    setIsListening(false); // speaking 중 STT 완전 차단 (에코 방지)
     setState('speaking');
     // 작업 완료 타입이면 스파클링 효과 적용
     const isCompletionMsg = isWorkingType && !!action?.workingMessage;
@@ -477,6 +478,7 @@ export default function JarvisApp() {
     // ── followUp 후속 질문 자동 발화 ──
     if (followUp) {
       await new Promise(r => setTimeout(r, 800)); // 자연스러운 호흡 간격
+      setIsListening(false); // followUp 중에도 STT 차단
       setState('speaking');
       addMessage('jarvis', followUp);
       startSpeakingLevel();

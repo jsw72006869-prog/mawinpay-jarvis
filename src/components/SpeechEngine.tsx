@@ -271,6 +271,16 @@ export function useSpeechRecognition({ onResult, onStart, onEnd, isListening }: 
 
       const detectSpeech = () => {
         if (!analyserRef.current || !isRunningRef.current) return;
+        // isListening=false 되면 즉시 녹음 중단 (speaking 중 에코 방지)
+        if (!shouldListenRef.current) {
+          console.log('[STT] 🔇 isListening=false 감지 → 녹음 즉시 중단');
+          if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') {
+            cancelAnimationFrame(animFrameRef.current);
+            animFrameRef.current = 0;
+            mediaRecorderRef.current.stop();
+          }
+          return;
+        }
         
         analyserRef.current.getByteTimeDomainData(dataArray);
         let sum = 0;
@@ -497,11 +507,13 @@ export function useBargein(enabled: boolean, onBargeIn: () => void) {
 
     let active = true;
     let triggered = false;
-    const BARGE_THRESHOLD = 0.06; // 발화 감지 임계값
-    const BARGE_SUSTAIN = 300; // 300ms 이상 지속 시 barge-in
+    const BARGE_THRESHOLD = 0.05; // 발화 감지 임계값 (낮춰서 더 잘 감지)
+    const BARGE_SUSTAIN = 150; // 150ms 이상 지속 시 barge-in (빠르게 반응)
+    const ECHO_GUARD_MS = 1200; // TTS 시작 직후 에코 방지 대기 시간
+    const startTime = Date.now();
     let aboveThresholdSince = 0;
 
-    navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true } })
+    navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } })
       .then(stream => {
         if (!active) { stream.getTracks().forEach(t => t.stop()); return; }
         streamRef.current = stream;
@@ -516,6 +528,11 @@ export function useBargein(enabled: boolean, onBargeIn: () => void) {
 
         const detect = () => {
           if (!active || triggered) return;
+          // TTS 시작 직후는 에코 방지를 위해 감지 일시 중단
+          if (Date.now() - startTime < ECHO_GUARD_MS) {
+            animRef.current = requestAnimationFrame(detect);
+            return;
+          }
           analyser.getByteTimeDomainData(buf);
           let sum = 0;
           for (let i = 0; i < buf.length; i++) {
@@ -528,7 +545,7 @@ export function useBargein(enabled: boolean, onBargeIn: () => void) {
             if (aboveThresholdSince === 0) aboveThresholdSince = Date.now();
             if (Date.now() - aboveThresholdSince > BARGE_SUSTAIN) {
               triggered = true;
-              console.log('[Barge-in] 🗣️ 사용자 발화 감지 → TTS 중단');
+              console.log('[Barge-in] 🗣️ 사용자 발화 감지 → TTS 즉시 중단');
               onBargeInRef.current();
               return;
             }
