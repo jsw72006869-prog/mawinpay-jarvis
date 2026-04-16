@@ -97,7 +97,7 @@ function PokemonCard({ influencer, index, visible }: { influencer: InfluencerDat
         duration: 0.5,
         ease: [0.16, 1, 0.3, 1],
       }}
-      style={{ flexShrink: 0, width: '118px', perspective: '800px' }}
+      style={{ flexShrink: 0, width: '145px', perspective: '1000px' }}
     >
       <motion.div
         animate={hovered
@@ -166,7 +166,7 @@ function PokemonCard({ influencer, index, visible }: { influencer: InfluencerDat
         {/* 프로필 이미지 영역 */}
         <div style={{
           width: '100%',
-          height: '78px',
+          height: '100px',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
@@ -180,7 +180,7 @@ function PokemonCard({ influencer, index, visible }: { influencer: InfluencerDat
             transition={{ duration: 12, repeat: Infinity, ease: 'linear' }}
             style={{
               position: 'absolute',
-              width: '66px', height: '66px',
+              width: '84px', height: '84px',
               borderRadius: '50%',
               border: `1px dashed ${theme.primary}22`,
             }}
@@ -190,7 +190,7 @@ function PokemonCard({ influencer, index, visible }: { influencer: InfluencerDat
             transition={{ duration: 2.5, repeat: Infinity, delay: index * 0.3 }}
             style={{
               position: 'absolute',
-              width: '52px', height: '52px',
+              width: '68px', height: '68px',
               borderRadius: '50%',
               background: `radial-gradient(circle, ${theme.primary}18 0%, transparent 70%)`,
             }}
@@ -201,23 +201,25 @@ function PokemonCard({ influencer, index, visible }: { influencer: InfluencerDat
               src={influencer.thumbnailUrl}
               alt={influencer.name}
               onError={() => setImgError(true)}
+              referrerPolicy="no-referrer"
+              crossOrigin="anonymous"
               style={{
-                width: '52px', height: '52px',
+                width: '68px', height: '68px',
                 borderRadius: '50%',
                 objectFit: 'cover',
-                border: `2.5px solid ${theme.primary}77`,
-                boxShadow: `0 0 20px ${theme.glow}, 0 0 40px ${theme.glow}44`,
+                border: `2.5px solid ${theme.primary}88`,
+                boxShadow: `0 0 24px ${theme.glow}, 0 0 48px ${theme.glow}55`,
                 position: 'relative', zIndex: 2,
               }}
             />
           ) : (
             <div style={{
-              width: '52px', height: '52px',
+              width: '68px', height: '68px',
               borderRadius: '50%',
               background: `linear-gradient(135deg, ${theme.primary}33, ${theme.secondary}22)`,
-              border: `2px solid ${theme.primary}77`,
+              border: `2.5px solid ${theme.primary}88`,
               display: 'flex', alignItems: 'center', justifyContent: 'center',
-              fontSize: '20px',
+              fontSize: '28px',
               boxShadow: `0 0 20px ${theme.glow}`,
               position: 'relative', zIndex: 2,
               color: theme.primary,
@@ -258,7 +260,7 @@ function PokemonCard({ influencer, index, visible }: { influencer: InfluencerDat
           background: `linear-gradient(180deg, ${theme.primary}08, transparent)`,
         }}>
           <div style={{
-            fontSize: '9.5px',
+            fontSize: '11px',
             fontWeight: 700,
             color: '#FFFFFF',
             fontFamily: 'monospace',
@@ -273,10 +275,10 @@ function PokemonCard({ influencer, index, visible }: { influencer: InfluencerDat
           </div>
 
           <div style={{
-            fontSize: '7.5px',
+            fontSize: '8px',
             color: `${theme.primary}88`,
             fontFamily: 'monospace',
-            marginBottom: '4px',
+            marginBottom: '5px',
             whiteSpace: 'nowrap',
             overflow: 'hidden',
             textOverflow: 'ellipsis',
@@ -481,8 +483,8 @@ export default function InfluencerCards({ influencers, visible, onClose }: Influ
                 onClick={() => setShowAll(true)}
                 style={{
                   flexShrink: 0,
-                  width: '118px',
-                  height: '210px',
+                  width: '145px',
+                  height: '260px',
                   background: 'rgba(0,245,255,0.02)',
                   border: '1.5px dashed rgba(0,245,255,0.2)',
                   borderRadius: '16px',
