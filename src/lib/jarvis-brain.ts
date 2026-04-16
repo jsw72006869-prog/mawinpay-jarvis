@@ -707,6 +707,22 @@ function buildActionFromFunction(fnName: string, args: Record<string, string | n
         followUp: args.follow_up ? String(args.follow_up) : undefined,
       };
     }
+    case 'book_restaurant':
+      return {
+        type: 'book_restaurant',
+        params: {
+          action: String(args.action || 'check_availability'),
+          business_name: String(args.business_name || ''),
+          booking_url: String(args.booking_url || ''),
+          date: String(args.date || ''),
+          time: String(args.time || ''),
+          party_size: Number(args.party_size) || 2,
+          user_name: String(args.user_name || ''),
+          user_phone: String(args.user_phone || ''),
+        },
+        response: String(args.response || '예약을 진행하겠습니다, 선생님.'),
+        followUp,
+      };
     default:
       return { type: 'unknown', response: String(args.response || '') };
   }
