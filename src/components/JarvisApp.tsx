@@ -11,6 +11,7 @@ import ClapDetector from './ClapDetector';
 import HoloDataPanel from './HoloDataPanel';
 import InfluencerCards, { type InfluencerData } from './InfluencerCards';
 import LocalBusinessCards, { type LocalBusinessData } from './LocalBusinessCards';
+import { ParticleTextCanvas } from './ParticleTextCanvas';
 
 // ── 시그니처 응답 목록 (GPT 대기 없이 즉시 재생) ──
 const SIGNATURE_RESPONSES = [
@@ -831,6 +832,9 @@ export default function JarvisApp() {
     >
       {/* ── Three.js 파티클 배경 ── */}
       <SparkleParticles state={state} audioLevel={micLevel} speakingLevel={speakingLevel} clapBurst={clapBurst} freqData={micFreqData ?? undefined} />
+
+      {/* ── 파티클 텍스트 캔버스 (타이핑 모드) ── */}
+      <ParticleTextCanvas text={textInputValue} active={textInputMode} />
 
       {/* ── 박수 감지 ── */}
       <ClapDetector onClap={handleActivate} onAudioLevel={setMicLevel} enabled={state === 'idle'} releaseStream={state !== 'idle'} />
