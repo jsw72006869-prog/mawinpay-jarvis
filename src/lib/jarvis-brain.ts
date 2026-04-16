@@ -180,13 +180,14 @@ const JARVIS_FUNCTIONS_DEF = [
   },
   {
     name: 'local_search',
-    description: '네이버 지역 업체(맛집, 고기집, 카페, 음식점 등)를 검색하고 주소/전화번호를 수집할 때 호출. "구미 맛집 찾아줘", "서울 고기집 50개 수집해", "부산 카페 주소 수집해줘" 등.',
+    description: '네이버 지역 업체(맛집, 고기집, 카페, 음식점 등)를 검색하고 주소/전화번호를 수집할 때 호출. "구미 맛집 찾아줘", "서울 고기집 50개 수집해", "부산 카페 주소 수집해줘", "대구 샤브샤브 24시간 업체 찾아줘", "심야 영업 고기집" 등.',
     parameters: {
       type: 'object',
       properties: {
-        query: { type: 'string', description: '검색어 (예: 구미 맛집, 서울 고기집, 부산 카페)' },
+        query: { type: 'string', description: '검색어 (예: 구미 맛집, 서울 고기집, 대구 샤브샤브)' },
         category: { type: 'string', description: '필터링할 카테고리 키워드 (예: 고기,구이 / 카페 / 한식). 비워두면 전체.' },
         display: { type: 'number', description: '수집할 업체 수 (기본 30, 최대 100)' },
+        hours_filter: { type: 'string', description: '영업시간 필터. "24h"=24시간 업체만, "late_night"=22시 이후 심야 영업 포함, "all"=전체(기본)' },
         response: { type: 'string', description: 'JARVIS 응답 (한국어, 검색 시작 멘트)' },
         follow_up: { type: 'string', description: '수집 완료 후 이어서 할 제안' },
       },
@@ -385,6 +386,33 @@ You are not just an assistant. You are a **world-class viral marketing expert AI
 - 오인식으로 판단되면: "잘 못 들었습니다, 선생님. 다시 말씀해 주시겠어요?"
 - STT 노이즈에 기반한 액션은 절대 실행하지 마라`;
 
+// ── 구글 시트 수집 데이터 캐시 (5분 캐시) ──
+let sheetDataCache: { text: string; timestamp: number } | null = null;
+const SHEET_CACHE_TTL = 5 * 60 * 1000; // 5분
+
+async function getSheetDataContext(): Promise<string> {
+  // 캐시가 유효하면 캐시 반환
+  if (sheetDataCache && Date.now() - sheetDataCache.timestamp < SHEET_CACHE_TTL) {
+    return sheetDataCache.text;
+  }
+  try {
+    const res = await fetch('/api/sheets-read');
+    if (!res.ok) return '';
+    const data = await res.json();
+    if (!data.success || !data.contextText) return '';
+    const text = data.contextText;
+    sheetDataCache = { text, timestamp: Date.now() };
+    return text;
+  } catch {
+    return '';
+  }
+}
+
+// 캐시 강제 초기화 (새 데이터 수집 후 호출)
+export function invalidateSheetCache() {
+  sheetDataCache = null;
+}
+
 // ── GPT-4o API 호출 ──
 export async function askGPT(userMessage: string): Promise<JarvisAction> {
   const apiKey = import.meta.env.VITE_OPENAI_API_KEY;
@@ -414,12 +442,19 @@ export async function askGPT(userMessage: string): Promise<JarvisAction> {
     ? `\n\n[현재 세션: ${sessionTurnCount}번째 대화, 마지막 액션: ${lastActionType}]`
     : '';
 
-  // 메모리 + 컨텍스트를 추가 system 메시지로 구성
+  // 구글 시트 수집 데이터 콘텍스트 (비동기 로드)
+  const sheetContext = await getSheetDataContext();
+  const sheetContextBlock = sheetContext
+    ? `\n\n## 선생님이 수집한 데이터 (구글 시트 연동)\n${sheetContext}\n\n위 데이터를 바탕으로 선생님의 질문에 답하라. "수집한 데이터 분석해줘", "어떤 인플루언서가 좋아?", "수집 현황 알려줘" 등의 질문에 이 데이터를 활용하라.`
+    : '';
+
+  // 메모리 + 콘텍스트를 추가 system 메시지로 구성
   const contextAddition = [
     memoryContext,
     prevSessionContext,
     learnedContext,
     sessionContext,
+    sheetContextBlock,
     `\n\n## ANTI-REPETITION\n- NEVER repeat the same sentence or phrase you already said in this conversation\n- Each response must be unique and advance the conversation\n- If you already greeted the user, do NOT greet again\n- Vary your sentence structures and vocabulary`,
   ].filter(Boolean).join('');
 
@@ -584,18 +619,26 @@ function buildActionFromFunction(fnName: string, args: Record<string, string | n
         response: String(args.response),
         followUp,
       };
-    case 'local_search':
+    case 'local_search': {
+      const hoursFilter = String(args.hours_filter || 'all');
+      const workingMsg = hoursFilter === '24h'
+        ? `'${args.query}' 24시간 업체 검색 중... (영업시간 확인 중, 약 30~60초 소요)`
+        : hoursFilter === 'late_night'
+        ? `'${args.query}' 심야 영업 업체 검색 중... (영업시간 확인 중)`
+        : `'${args.query}' 업체 검색 중...`;
       return {
         type: 'local_search',
         params: {
           query: String(args.query || ''),
           category: String(args.category || ''),
           display: Number(args.display) || 30,
+          hours_filter: hoursFilter,
         },
-        workingMessage: `'${args.query}' 업체 검색 중...`,
+        workingMessage: workingMsg,
         response: String(args.response),
         followUp,
       };
+    }
     case 'change_voice': {
       const action = String(args.action || 'list');
       const voiceName = String(args.voice_name || '');

@@ -1,6 +1,6 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { askGPT, parseCommand, generateBannerImage, saveSchedule, saveMemory, searchNaverAPI, searchYouTubeAPI, searchInstagramAPI, type JarvisState, type JarvisAction, type NaverSearchItem, type YouTubeChannel, type InstagramAccount } from '../lib/jarvis-brain';
+import { askGPT, parseCommand, generateBannerImage, saveSchedule, saveMemory, searchNaverAPI, searchYouTubeAPI, searchInstagramAPI, invalidateSheetCache, type JarvisState, type JarvisAction, type NaverSearchItem, type YouTubeChannel, type InstagramAccount } from '../lib/jarvis-brain';
 import { useSpeechRecognition, useTextToSpeech, useBargein, setCurrentVoiceId, getCurrentVoiceId, ELEVENLABS_VOICES, stopGlobalAudio } from './SpeechEngine';
 import { useMicrophoneFrequency } from '../lib/audio-analyzer';
 import { saveLearnedKnowledge, getLearnedKnowledge, getMemoryStats, clearAllMemory, type LearnedKnowledge } from '../lib/jarvis-memory';
@@ -287,7 +287,7 @@ export default function JarvisApp() {
                 neighborCount: item.neighborCount, dailyVisitors: item.dailyVisitors,
                 link: item.url, description: item.description, type: 'blog', keyword, collectedAt,
               }));
-              appendNaverResultsToSheet(sheetData).catch(err => console.warn('[JARVIS] 네이버 시트 저장 실패:', err));
+              appendNaverResultsToSheet(sheetData).then(() => invalidateSheetCache()).catch(err => console.warn('[JARVIS] 네이버 시트 저장 실패:', err));
               const filtered = filterBySubscribers(items);
               return filtered.slice(0, cnt);
             } catch (err) {
@@ -338,6 +338,7 @@ export default function JarvisApp() {
           appendInfluencersToSheet(allCollected as any).then(r => {
             console.log('[JARVIS] 시트 저장:', r.success ? `완료 (${r.count}건)` : r.message);
             saveMemory('마지막 수집', `${keyword} ${allCollected.length}명 수집 (${new Date().toLocaleDateString('ko-KR')})`);
+            invalidateSheetCache(); // 수집 데이터 변경 시 캐시 초기화
           });
         }
       } else if (action.type === 'send_email') {
@@ -436,6 +437,7 @@ export default function JarvisApp() {
         appendNaverResultsToSheet(sheetData).then(res => {
           if (res.success) {
             console.log(`[JARVIS] 구글 시트 자동 저장 완료: ${res.count}건`);
+            invalidateSheetCache(); // 수집 데이터 변경 시 캐시 초기화
           }
         }).catch(err => console.warn('[JARVIS] 구글 시트 저장 실패:', err));
 
@@ -483,8 +485,14 @@ export default function JarvisApp() {
         speak(action.response, undefined, () => { stopSpeakingLevel(); resolve(); });
       });
 
+      const hoursFilter = String(action.params?.hours_filter || 'all');
+
       try {
-        const apiUrl = `/api/naver-local-search?query=${encodeURIComponent(query)}&display=${display}${category ? `&category=${encodeURIComponent(category)}` : ''}`;
+        // 영업시간 필터가 있으면 플레이스 파싱 API 사용, 없으면 기본 검색 API
+        const useHoursApi = hoursFilter === '24h' || hoursFilter === 'late_night';
+        const apiUrl = useHoursApi
+          ? `/api/naver-place-hours?query=${encodeURIComponent(query)}&display=${display}&hours_filter=${hoursFilter}${category ? `&category=${encodeURIComponent(category)}` : ''}`
+          : `/api/naver-local-search?query=${encodeURIComponent(query)}&display=${display}${category ? `&category=${encodeURIComponent(category)}` : ''}`;
         const res = await fetch(apiUrl);
         const data = await res.json();
 
@@ -527,7 +535,7 @@ export default function JarvisApp() {
           keyword: query,
           collectedAt: new Date().toLocaleString('ko-KR'),
         }));
-        appendNaverResultsToSheet(sheetRows).catch(err => console.warn('[JARVIS] 시트 저장 실패:', err));
+        appendNaverResultsToSheet(sheetRows).then(() => invalidateSheetCache()).catch(err => console.warn('[JARVIS] 시트 저장 실패:', err));
 
         const categoryText = category ? ` (${category} 필터)` : '';
         const phoneCount = items.filter(i => i.phone).length;
