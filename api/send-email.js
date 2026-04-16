@@ -1,6 +1,8 @@
 "use strict";
 // Vercel Serverless Function
-// 이메일 전송 API - Resend (고발송률 전문 이메일 서비스)
+// 이메일 전송 API - Gmail SMTP (nodemailer)
+
+const nodemailer = require('nodemailer');
 
 module.exports = async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -12,16 +14,25 @@ module.exports = async function handler(req, res) {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
-  const resendApiKey = process.env.RESEND_API_KEY;
-  const senderEmail = process.env.RESEND_FROM_EMAIL || 'onboarding@resend.dev';
-  const senderName = process.env.RESEND_SENDER_NAME || 'MAWINPAY JARVIS';
+  const gmailUser = process.env.GMAIL_ADDRESS;
+  const gmailPass = process.env.GMAIL_APP_PASSWORD;
+  const senderName = process.env.GMAIL_SENDER_NAME || 'MAWINPAY JARVIS';
 
-  if (!resendApiKey) {
+  if (!gmailUser || !gmailPass) {
     return res.status(500).json({
-      error: 'Resend API 키 없음',
-      message: 'RESEND_API_KEY 환경변수를 Vercel에 설정해주세요.',
+      error: 'Gmail 설정 없음',
+      message: 'GMAIL_ADDRESS, GMAIL_APP_PASSWORD 환경변수를 Vercel에 설정해주세요.',
     });
   }
+
+  // Gmail SMTP 트랜스포터 생성
+  const transporter = nodemailer.createTransport({
+    service: 'gmail',
+    auth: {
+      user: gmailUser,
+      pass: gmailPass,
+    },
+  });
 
   const { to, subject, body, html, recipients } = req.body || {};
 
@@ -51,40 +62,25 @@ module.exports = async function handler(req, res) {
     }
 
     try {
-      const response = await fetch('https://api.resend.com/emails', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${resendApiKey}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          from: `${senderName} <${senderEmail}>`,
-          to: toName ? [`${toName} <${toEmail}>`] : [toEmail],
-          subject: mailSubject,
-          html: mailHtml || `<p>${mailSubject}</p>`,
-        }),
+      const info = await transporter.sendMail({
+        from: `"${senderName}" <${gmailUser}>`,
+        to: toName ? `"${toName}" <${toEmail}>` : toEmail,
+        replyTo: gmailUser,
+        subject: mailSubject,
+        html: mailHtml || `<p>${mailSubject}</p>`,
       });
 
-      const data = await response.json();
-
-      if (response.ok && data.id) {
-        results.push({ email: toEmail, status: 'sent', messageId: data.id });
-        successCount++;
-      } else {
-        const errMsg = data.message || data.error || `HTTP ${response.status}`;
-        console.error(`[Resend] 발송 실패 ${toEmail}:`, errMsg);
-        results.push({ email: toEmail, status: 'failed', reason: errMsg });
-        failCount++;
-      }
+      results.push({ email: toEmail, status: 'sent', messageId: info.messageId });
+      successCount++;
     } catch (err) {
-      console.error(`[Resend] 네트워크 오류 ${toEmail}:`, err);
+      console.error(`[Gmail] 발송 실패 ${toEmail}:`, err);
       results.push({ email: toEmail, status: 'failed', reason: String(err.message || err) });
       failCount++;
     }
 
-    // 연속 발송 시 300ms 딜레이 (Rate limit 방지)
+    // 연속 발송 시 500ms 딜레이 (Gmail Rate limit 방지)
     if (targets.length > 1) {
-      await new Promise(r => setTimeout(r, 300));
+      await new Promise(r => setTimeout(r, 500));
     }
   }
 
@@ -94,6 +90,6 @@ module.exports = async function handler(req, res) {
     sent: successCount,
     failed: failCount,
     results,
-    provider: 'resend',
+    provider: 'gmail',
   });
 };
