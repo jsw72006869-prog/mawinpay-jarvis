@@ -470,6 +470,93 @@ export default function JarvisApp() {
       return;
     }
 
+    // ── 지역 업체 검색 액션 (네이버 지역 검색 API) ──
+    if (action?.type === 'local_search') {
+      const query = String(action.params?.query || '');
+      const category = String(action.params?.category || '');
+      const display = Number(action.params?.display) || 30;
+
+      setState('working');
+      addMessage('jarvis', action.response);
+      startSpeakingLevel();
+      await new Promise<void>(resolve => {
+        speak(action.response, undefined, () => { stopSpeakingLevel(); resolve(); });
+      });
+
+      try {
+        const apiUrl = `/api/naver-local-search?query=${encodeURIComponent(query)}&display=${display}${category ? `&category=${encodeURIComponent(category)}` : ''}`;
+        const res = await fetch(apiUrl);
+        const data = await res.json();
+
+        if (!res.ok || !data.success) {
+          throw new Error(data.message || data.error || '검색 실패');
+        }
+
+        const items: InfluencerData[] = data.items.map((item: { name: string; category: string; address: string; roadAddress: string; phone: string; link: string; mapx: string; mapy: string; description: string; }) => ({
+          name: item.name,
+          platform: 'Local',
+          category: item.category || '업체',
+          subscribers: 0,
+          email: '',
+          profileUrl: item.link || '',
+          thumbnailUrl: '',
+          description: item.description || '',
+          address: item.roadAddress || item.address,
+          phone: item.phone,
+          mapx: item.mapx,
+          mapy: item.mapy,
+          collectedAt: new Date().toLocaleString('ko-KR'),
+        }));
+
+        setInfluencers(items);
+        setInfluencerPanelVisible(true);
+        saveMemory('마지막 지역 검색', `${query} ${category ? `(${category})` : ''} ${items.length}건 (${new Date().toLocaleDateString('ko-KR')})`);
+
+        // 구글 시트 자동 저장
+        const sheetRows = items.map(item => ({
+          title: item.name,
+          author: '',
+          blogId: '',
+          guessedEmail: '',
+          realEmail: '',
+          neighborCount: 0,
+          dailyVisitors: 0,
+          link: item.profileUrl,
+          description: `${item.address || ''} | ${item.phone || ''} | ${item.category}`,
+          type: 'local',
+          keyword: query,
+          collectedAt: new Date().toLocaleString('ko-KR'),
+        }));
+        appendNaverResultsToSheet(sheetRows).catch(err => console.warn('[JARVIS] 시트 저장 실패:', err));
+
+        const categoryText = category ? ` (${category} 필터)` : '';
+        const phoneCount = items.filter(i => i.phone).length;
+        const doneText = `'${query}'${categoryText} 검색 완료. ${items.length}개 업체를 수집했습니다. 전화번호 ${phoneCount}건, 주소 포함 구글 시트에 저장했습니다, 선생님.`;
+        setState('speaking');
+        addMessage('jarvis', doneText, true);
+        setClapBurst(true);
+        setTimeout(() => setClapBurst(false), 120);
+        setTimeout(() => { setClapBurst(true); setTimeout(() => setClapBurst(false), 120); }, 450);
+        startSpeakingLevel();
+        await new Promise<void>(resolve => {
+          speak(doneText, undefined, () => { stopSpeakingLevel(); resolve(); });
+        });
+      } catch (err) {
+        const errMsg = `지역 검색 중 오류가 발생했습니다, 선생님. ${String(err)}`;
+        setState('speaking');
+        addMessage('jarvis', errMsg);
+        startSpeakingLevel();
+        await new Promise<void>(resolve => {
+          speak(errMsg, undefined, () => { stopSpeakingLevel(); resolve(); });
+        });
+      }
+
+      await new Promise(r => setTimeout(r, 400));
+      setState('listening');
+      setIsListening(true);
+      return;
+    }
+
     // ── 목소리 변경 액션 ──
     if (action?.type === 'change_voice') {
       const voiceAction = String(action.params?.action || 'list');

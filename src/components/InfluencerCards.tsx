@@ -4,7 +4,7 @@ import { useEffect, useState, useRef } from 'react';
 export interface InfluencerData {
   name: string;
   platform: string;
-  followers: string;
+  followers?: string;
   category: string;
   email: string;
   profileUrl: string;
@@ -12,6 +12,12 @@ export interface InfluencerData {
   channelId?: string;
   status?: string;
   subscriberCount?: number;
+  subscribers?: number;
+  description?: string;
+  address?: string;
+  phone?: string;
+  mapx?: string;
+  mapy?: string;
   collectedAt?: string;
 }
 

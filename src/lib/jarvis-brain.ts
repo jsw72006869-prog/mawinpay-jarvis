@@ -12,7 +12,7 @@ export type JarvisState = 'idle' | 'listening' | 'thinking' | 'speaking' | 'work
 export type JarvisActionType =
   | 'collect' | 'send_email' | 'create_banner' | 'report'
   | 'schedule' | 'help' | 'greeting' | 'status' | 'confirm' | 'chat'
-  | 'change_voice' | 'list_voices' | 'naver_search' | 'unknown';
+  | 'change_voice' | 'list_voices' | 'naver_search' | 'local_search' | 'unknown';
 
 export type JarvisAction = {
   type: JarvisActionType;
@@ -176,6 +176,21 @@ const JARVIS_FUNCTIONS_DEF = [
         follow_up: { type: 'string', description: '수집 완료 후 이어서 할 제안' },
       },
       required: ['keyword', 'response'],
+    },
+  },
+  {
+    name: 'local_search',
+    description: '네이버 지역 업체(맛집, 고기집, 카페, 음식점 등)를 검색하고 주소/전화번호를 수집할 때 호출. "구미 맛집 찾아줘", "서울 고기집 50개 수집해", "부산 카페 주소 수집해줘" 등.',
+    parameters: {
+      type: 'object',
+      properties: {
+        query: { type: 'string', description: '검색어 (예: 구미 맛집, 서울 고기집, 부산 카페)' },
+        category: { type: 'string', description: '필터링할 카테고리 키워드 (예: 고기,구이 / 카페 / 한식). 비워두면 전체.' },
+        display: { type: 'number', description: '수집할 업체 수 (기본 30, 최대 100)' },
+        response: { type: 'string', description: 'JARVIS 응답 (한국어, 검색 시작 멘트)' },
+        follow_up: { type: 'string', description: '수집 완료 후 이어서 할 제안' },
+      },
+      required: ['query', 'response'],
     },
   },
   {
@@ -344,12 +359,14 @@ You are not just an assistant. You are a **world-class viral marketing expert AI
 5. **네이버 검색** — 블로그/카페 인플루언서 실시간 수집
 6. **개인화 이메일 발송** — 인플루언서별 맞춤형 협업 제안
 7. **배너 이미지 생성** — DALL-E 3 기반 감정 기반 비주얼
-8. **캠페인 분석 및 일정 관리**
-9. **일반 질문** — 날씨, 시간, 상식, 계산, 번역 등
+8. **지역 업체 수집** — 맛집/고기집/카페 등 네이버 지역 검색으로 주소/전화번호 수집
+9. **캠페인 분석 및 일정 관리**
+10. **일반 질문** — 날씨, 시간, 상식, 계산, 번역 등
 
 ## IMPORTANT
 - 헤드카피/스토리/스크립트 요청 → generate_content function 호출
 - 인플루언서 수집/검색 → collect_influencers 또는 naver_search function 호출
+- 맛집/음식점/카페/업체 지역 검색 → local_search function 호출 ("구미 맛집", "서울 고기집" 등)
 - 이메일 발송 → send_email_campaign function 호출
 - 배너 생성 → create_banner function 호출
 - 일반 대화/질문 → 'chat' type으로 직접 응답 (function 호출 없음)
@@ -564,6 +581,18 @@ function buildActionFromFunction(fnName: string, args: Record<string, string | n
           sort: String(args.sort || 'sim'),
         },
         workingMessage: `네이버 ${args.source === 'cafe' ? '카페' : '블로그'}에서 '${args.keyword}' 검색 중...`,
+        response: String(args.response),
+        followUp,
+      };
+    case 'local_search':
+      return {
+        type: 'local_search',
+        params: {
+          query: String(args.query || ''),
+          category: String(args.category || ''),
+          display: Number(args.display) || 30,
+        },
+        workingMessage: `'${args.query}' 업체 검색 중...`,
         response: String(args.response),
         followUp,
       };
