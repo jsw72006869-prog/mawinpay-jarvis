@@ -418,10 +418,10 @@ export async function askGPT(userMessage: string): Promise<JarvisAction> {
         messages,
         tools: JARVIS_TOOLS,
         tool_choice: 'auto',
-        max_tokens: 600,
-        temperature: 0.75,
-        frequency_penalty: 0.5,
-        presence_penalty: 0.3,
+        max_tokens: 800,
+        temperature: 0.72,
+        frequency_penalty: 0.6,
+        presence_penalty: 0.4,
       }),
     });
 

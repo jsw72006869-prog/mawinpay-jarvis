@@ -266,8 +266,8 @@ export function useSpeechRecognition({ onResult, onStart, onEnd, isListening }: 
       // 음성 감지 루프
       const bufferLength = analyser.frequencyBinCount;
       const dataArray = new Uint8Array(bufferLength);
-      const SPEECH_THRESHOLD = 0.04;
-      const SILENCE_DURATION = 2000; // 2초 무음 후 녹음 중단
+      const SPEECH_THRESHOLD = 0.035;
+      const SILENCE_DURATION = 1200; // 1.2초 무음 후 녹음 중단 (GPT처럼 빠른 응답)
 
       const detectSpeech = () => {
         if (!analyserRef.current || !isRunningRef.current) return;

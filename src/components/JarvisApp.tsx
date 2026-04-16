@@ -9,6 +9,7 @@ import ConversationStream, { type Message } from './ConversationStream';
 import SparkleParticles from './SparkleParticles';
 import ClapDetector from './ClapDetector';
 import HoloDataPanel from './HoloDataPanel';
+import InfluencerCards, { type InfluencerData } from './InfluencerCards';
 
 // ── 시그니처 응답 목록 (GPT 대기 없이 즉시 재생) ──
 const SIGNATURE_RESPONSES = [
@@ -83,6 +84,8 @@ export default function JarvisApp() {
   const [naverResults, setNaverResults] = useState<NaverSearchItem[]>([]);
   const [naverPanelVisible, setNaverPanelVisible] = useState(false);
   const [naverKeyword, setNaverKeyword] = useState('');
+  const [collectedInfluencers, setCollectedInfluencers] = useState<InfluencerData[]>([]);
+  const [influencerCardsVisible, setInfluencerCardsVisible] = useState(false);
 
   const [settingsForm, setSettingsForm] = useState(() => {
     const stored = JSON.parse(localStorage.getItem('jarvis_api_keys') || '{}');
@@ -167,7 +170,7 @@ export default function JarvisApp() {
   const jarvisRespond = useCallback(async (text: string, action?: JarvisAction) => {
     setIsTyping(true);
     setState('thinking');
-    await new Promise(r => setTimeout(r, 600 + Math.random() * 400));
+    await new Promise(r => setTimeout(r, 200 + Math.random() * 150)); // GPT처럼 빠른 응답을 위해 단축
     setIsTyping(false);
 
     const isWorkingType = action?.type === 'collect' || action?.type === 'send_email' || action?.type === 'create_banner' || action?.type === 'report';
@@ -204,10 +207,14 @@ export default function JarvisApp() {
               tiktok: (ch as any).tiktok || '',
               website: (ch as any).website || '',
               profileUrl: ch.customUrl || ch.profileUrl || '',
+              thumbnailUrl: ch.thumbnailUrl || '',
+              channelId: ch.channelId || '',
               status: '활성',
               collectedAt,
             }));
             setStats(prev => ({ ...prev, collected: prev.collected + realInfluencers.length }));
+            setCollectedInfluencers(realInfluencers);
+            setInfluencerCardsVisible(true);
             appendInfluencersToSheet(realInfluencers).then(r => {
               console.log('[JARVIS] YouTube 시트:', r.success ? `완료 (${r.count}건)` : r.message);
               saveMemory('마지막 수집', `${keyword} ${realInfluencers.length}명 YouTube 수집 (${new Date().toLocaleDateString('ko-KR')})`);
@@ -275,6 +282,8 @@ export default function JarvisApp() {
               collectedAt,
             }));
             setStats(prev => ({ ...prev, collected: prev.collected + realInfluencers.length }));
+            setCollectedInfluencers(realInfluencers);
+            setInfluencerCardsVisible(true);
             appendInfluencersToSheet(realInfluencers).then(r => {
               console.log('[JARVIS] 네이버 시트:', r.success ? `완료 (${r.count}건)` : r.message);
               saveMemory('마지막 수집', `${keyword} ${realInfluencers.length}명 수집 (${new Date().toLocaleDateString('ko-KR')})`);
@@ -491,8 +500,8 @@ export default function JarvisApp() {
     }
 
     // ── 응답 완료 후 자동으로 듣기 모드 전환 ──
-    // TTS 에코가 마이크에 잡히지 않도록 충분한 딜레이
-    await new Promise(r => setTimeout(r, 600));
+    // TTS 에코가 마이크에 잡히지 않도록 에코 방지 딜레이 (1.2초)
+    await new Promise(r => setTimeout(r, 1200));
     console.log('[JARVIS] 응답 완료 → listening 전환');
     setState('listening');
     setIsListening(true);
@@ -947,6 +956,13 @@ export default function JarvisApp() {
           <HoloDataPanel type={dataPanel.type} progress={dataPanel.progress} message={dataPanel.message} />
         )}
       </AnimatePresence>
+
+      {/* ── 인플루언서 카드 UI ── */}
+      <InfluencerCards
+        influencers={collectedInfluencers}
+        visible={influencerCardsVisible}
+        onClose={() => setInfluencerCardsVisible(false)}
+      />
 
       {/* ── DALL-E 배너 이미지 팝업 ── */}
       <AnimatePresence>
