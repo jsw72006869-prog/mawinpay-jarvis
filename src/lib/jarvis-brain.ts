@@ -12,7 +12,7 @@ export type JarvisState = 'idle' | 'listening' | 'thinking' | 'speaking' | 'work
 export type JarvisActionType =
   | 'collect' | 'send_email' | 'create_banner' | 'report'
   | 'schedule' | 'help' | 'greeting' | 'status' | 'confirm' | 'chat'
-  | 'change_voice' | 'list_voices' | 'naver_search' | 'local_search' | 'unknown';
+  | 'change_voice' | 'list_voices' | 'naver_search' | 'local_search' | 'book_restaurant' | 'unknown';
 
 export type JarvisAction = {
   type: JarvisActionType;
@@ -205,6 +205,26 @@ const JARVIS_FUNCTIONS_DEF = [
         action: { type: 'string', enum: ['change', 'list', 'recommend'], description: 'change=변경, list=목록보여주기, recommend=추천' },
         response: { type: 'string', description: 'JARVIS 응답 (한국어, 새 목소리로 샘플을 들려주겠다고 안내)' },
         follow_up: { type: 'string', description: '목소리 변경 후 이어서 할 안내' },
+      },
+      required: ['action', 'response'],
+    },
+  },
+  {
+    name: 'book_restaurant',
+    description: '음식점, 카페, 업체 예약을 자동으로 처리할 때 호출. "맛집 예약해줘", "네이버 예약 해줘", "예약 가능한 시간 알려줘", "OO 식당 예약해줘" 등. 네이버 예약 시스템을 통해 자동으로 예약을 진행합니다.',
+    parameters: {
+      type: 'object',
+      properties: {
+        business_name: { type: 'string', description: '예약할 업체명 (예: 홍길동 식당, 스타벅스 강남점)' },
+        booking_url: { type: 'string', description: '네이버 예약 URL (알고 있는 경우)' },
+        date: { type: 'string', description: '예약 날짜 (예: 2024-12-25, 내일, 이번 주 토요일)' },
+        time: { type: 'string', description: '원하는 예약 시간 (예: 18:00, 저녁 6시)' },
+        party_size: { type: 'number', description: '예약 인원 수' },
+        user_name: { type: 'string', description: '예약자 이름' },
+        user_phone: { type: 'string', description: '예약자 전화번호' },
+        action: { type: 'string', enum: ['check_availability', 'fill_form', 'notify'], description: 'check_availability=예약 가능 시간 조회, fill_form=예약 폼 자동 입력, notify=완료 알림' },
+        response: { type: 'string', description: 'JARVIS 응답 (한국어, 예약 진행 상황 안내)' },
+        follow_up: { type: 'string', description: '예약 후 이어서 할 안내' },
       },
       required: ['action', 'response'],
     },

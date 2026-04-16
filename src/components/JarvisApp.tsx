@@ -91,6 +91,13 @@ export default function JarvisApp() {
   const [collectedBusinesses, setCollectedBusinesses] = useState<LocalBusinessData[]>([]);
   const [businessCardsVisible, setBusinessCardsVisible] = useState(false);
 
+  // ── 예약 기능 상태 ──
+  const [bookingSessionId, setBookingSessionId] = useState<string | null>(null);
+  const [bookingPanelVisible, setBookingPanelVisible] = useState(false);
+  const [bookingSlots, setBookingSlots] = useState<string[]>([]);
+  const [bookingScreenshot, setBookingScreenshot] = useState<string | null>(null);
+  const BOOKING_SERVER = import.meta.env.VITE_BOOKING_SERVER_URL || 'https://jarvis-booking-server-production.up.railway.app';
+
   // ── 타이핑 입력 모드 ──
   const [textInputMode, setTextInputMode] = useState(false);
   const [textInputValue, setTextInputValue] = useState('');
@@ -101,6 +108,14 @@ export default function JarvisApp() {
     return {
       openaiKey: stored.openaiKey || '',
       elevenLabsKey: stored.elevenLabsKey || '',
+    };
+  });
+
+  const [naverForm, setNaverForm] = useState(() => {
+    const stored = JSON.parse(localStorage.getItem('jarvis_naver_creds') || '{}');
+    return {
+      username: stored.username || '',
+      password: stored.password || '',
     };
   });
 
@@ -562,6 +577,142 @@ export default function JarvisApp() {
         });
       } catch (err) {
         const errMsg = `지역 검색 중 오류가 발생했습니다, 선생님. ${String(err)}`;
+        setState('speaking');
+        addMessage('jarvis', errMsg);
+        startSpeakingLevel();
+        await new Promise<void>(resolve => {
+          speak(errMsg, undefined, () => { stopSpeakingLevel(); resolve(); });
+        });
+      }
+
+      await new Promise(r => setTimeout(r, 400));
+      setState('listening');
+      setIsListening(true);
+      return;
+    }
+
+    // ── 예약 액션 (Railway 서버 연동) ──
+    if (action?.type === 'book_restaurant') {
+      const bookAction = String(action.params?.action || 'check_availability');
+      const businessName = String(action.params?.business_name || '');
+      const bookingUrl = String(action.params?.booking_url || '');
+      const date = String(action.params?.date || '');
+      const time = String(action.params?.time || '');
+      const partySize = Number(action.params?.party_size) || 2;
+      const userName = String(action.params?.user_name || '');
+      const userPhone = String(action.params?.user_phone || '');
+
+      setState('working');
+      addMessage('jarvis', action.response);
+      startSpeakingLevel();
+      await new Promise<void>(resolve => {
+        speak(action.response, undefined, () => { stopSpeakingLevel(); resolve(); });
+      });
+
+      try {
+        // 네이버 로그인 세션 확인
+        const naverCreds = JSON.parse(localStorage.getItem('jarvis_naver_creds') || '{}');
+        const naverUsername = naverCreds.username || '';
+        const naverPassword = naverCreds.password || '';
+
+        if (bookAction === 'check_availability') {
+          // 1. 로그인 시도
+          if (naverUsername && naverPassword) {
+            const loginRes = await fetch(`${BOOKING_SERVER}/api/booking/login`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ username: naverUsername, password: naverPassword }),
+            });
+            const loginData = await loginRes.json();
+            if (loginData.success && loginData.sessionId) {
+              setBookingSessionId(loginData.sessionId);
+            }
+          }
+
+          // 2. 예약 가능 시간 조회
+          const availRes = await fetch(`${BOOKING_SERVER}/api/booking/availability`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              sessionId: bookingSessionId || 'guest',
+              businessName,
+              bookingUrl,
+              date,
+            }),
+          });
+          const availData = await availRes.json();
+
+          if (availData.success) {
+            setBookingSlots(availData.availableSlots || []);
+            if (availData.screenshot) setBookingScreenshot(availData.screenshot);
+            setBookingPanelVisible(true);
+
+            const slotsText = availData.availableSlots?.length > 0
+              ? `예약 가능한 시간대는 ${availData.availableSlots.slice(0, 5).join(', ')} 입니다, 선생님. 어떤 시간으로 예약하시겠습니까?`
+              : `${businessName} 예약 페이지를 확인했습니다, 선생님. 직접 예약 페이지를 확인해주세요.`;
+
+            setState('speaking');
+            addMessage('jarvis', slotsText, true);
+            startSpeakingLevel();
+            await new Promise<void>(resolve => {
+              speak(slotsText, undefined, () => { stopSpeakingLevel(); resolve(); });
+            });
+          } else {
+            throw new Error(availData.error || '예약 조회 실패');
+          }
+        } else if (bookAction === 'fill_form') {
+          // 예약 폼 자동 입력
+          const fillRes = await fetch(`${BOOKING_SERVER}/api/booking/fill-form`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              sessionId: bookingSessionId || 'guest',
+              bookingUrl,
+              userName,
+              userPhone,
+              selectedTime: time,
+              date,
+            }),
+          });
+          const fillData = await fillRes.json();
+          if (fillData.success) {
+            if (fillData.screenshot) setBookingScreenshot(fillData.screenshot);
+            const fillText = `예약 정보 입력이 완료되었습니다, 선생님. 결제 단계만 직접 진행해주세요.`;
+            setState('speaking');
+            addMessage('jarvis', fillText, true);
+            startSpeakingLevel();
+            await new Promise<void>(resolve => {
+              speak(fillText, undefined, () => { stopSpeakingLevel(); resolve(); });
+            });
+          } else {
+            throw new Error(fillData.error || '예약 입력 실패');
+          }
+        } else if (bookAction === 'notify') {
+          // 이메일 알림
+          const notifyRes = await fetch(`${BOOKING_SERVER}/api/booking/notify`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              email: naverUsername,
+              businessName,
+              date,
+              time,
+              userName,
+            }),
+          });
+          const notifyData = await notifyRes.json();
+          const notifyText = notifyData.success
+            ? `예약 완료 알림 이메일을 발송했습니다, 선생님.`
+            : `이메일 발송에 실패했습니다: ${notifyData.error}`;
+          setState('speaking');
+          addMessage('jarvis', notifyText);
+          startSpeakingLevel();
+          await new Promise<void>(resolve => {
+            speak(notifyText, undefined, () => { stopSpeakingLevel(); resolve(); });
+          });
+        }
+      } catch (err) {
+        const errMsg = `예약 중 오류가 발생했습니다, 선생님. ${String(err)}`;
         setState('speaking');
         addMessage('jarvis', errMsg);
         startSpeakingLevel();
@@ -1667,6 +1818,52 @@ export default function JarvisApp() {
                 />
               </div>
 
+              {/* 네이버 로그인 정보 (예약 자동화용) */}
+              <div style={{ marginBottom: 12, paddingTop: 10, borderTop: `1px solid ${THEME.gold}22` }}>
+                <div style={{ fontFamily: 'Orbitron, monospace', color: '#4A90E2', fontSize: '0.45rem', letterSpacing: '0.3em', marginBottom: 8 }}>NAVER BOOKING CREDENTIALS</div>
+                <div style={{ marginBottom: 6 }}>
+                  <div style={{ fontFamily: 'Orbitron, monospace', color: THEME.textDim, fontSize: '0.38rem', letterSpacing: '0.2em', marginBottom: 4 }}>NAVER ID</div>
+                  <input
+                    type="text"
+                    placeholder="네이버 아이디 입력..."
+                    value={naverForm.username}
+                    onChange={e => setNaverForm(f => ({ ...f, username: e.target.value }))}
+                    style={{
+                      width: '100%', padding: '6px 10px',
+                      background: 'rgba(255,255,255,0.04)',
+                      border: `1px solid #4A90E233`,
+                      color: THEME.text,
+                      fontFamily: 'monospace',
+                      fontSize: '0.55rem',
+                      outline: 'none',
+                      boxSizing: 'border-box' as const,
+                    }}
+                  />
+                </div>
+                <div>
+                  <div style={{ fontFamily: 'Orbitron, monospace', color: THEME.textDim, fontSize: '0.38rem', letterSpacing: '0.2em', marginBottom: 4 }}>NAVER PASSWORD</div>
+                  <input
+                    type="password"
+                    placeholder="네이버 비밀번호 입력..."
+                    value={naverForm.password}
+                    onChange={e => setNaverForm(f => ({ ...f, password: e.target.value }))}
+                    style={{
+                      width: '100%', padding: '6px 10px',
+                      background: 'rgba(255,255,255,0.04)',
+                      border: `1px solid #4A90E233`,
+                      color: THEME.text,
+                      fontFamily: 'monospace',
+                      fontSize: '0.55rem',
+                      outline: 'none',
+                      boxSizing: 'border-box' as const,
+                    }}
+                  />
+                </div>
+                <div style={{ marginTop: 4, fontFamily: 'Orbitron, monospace', color: THEME.textDim, fontSize: '0.32rem', letterSpacing: '0.1em' }}>
+                  예약 자동화 시 네이버 로그인에 사용됩니다.
+                </div>
+              </div>
+
               {/* 저장 버튼 */}
               <div style={{ display: 'flex', gap: 8 }}>
                 <div
@@ -1676,6 +1873,10 @@ export default function JarvisApp() {
                       elevenLabsKey: settingsForm.elevenLabsKey,
                     };
                     localStorage.setItem('jarvis_api_keys', JSON.stringify(keys));
+                    localStorage.setItem('jarvis_naver_creds', JSON.stringify({
+                      username: naverForm.username,
+                      password: naverForm.password,
+                    }));
                     setSettingsVisible(false);
                     // 페이지 리로드로 적용
                     setTimeout(() => window.location.reload(), 300);
@@ -1941,6 +2142,63 @@ export default function JarvisApp() {
                   fontFamily: 'Orbitron, monospace', color: THEME.blue, fontSize: '0.38rem', letterSpacing: '0.15em',
                 }}
               >CSV 다운로드</div>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* ── 예약 결과 패널 ── */}
+      <AnimatePresence>
+        {bookingPanelVisible && (
+          <motion.div
+            initial={{ opacity: 0, x: 40 }}
+            animate={{ opacity: 1, x: 0 }}
+            exit={{ opacity: 0, x: 40 }}
+            style={{
+              position: 'fixed', top: 80, right: 28,
+              zIndex: 36, pointerEvents: 'auto',
+              minWidth: 260, maxWidth: 320,
+            }}
+          >
+            <div style={{
+              background: 'rgba(6,10,18,0.97)',
+              border: `1px solid #4A90E244`,
+              borderTop: '2px solid #4A90E2',
+              padding: '14px',
+              backdropFilter: 'blur(20px)',
+            }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+                <div style={{ fontFamily: 'Orbitron, monospace', color: '#4A90E2', fontSize: '0.45rem', letterSpacing: '0.3em' }}>BOOKING SLOTS</div>
+                <div
+                  onClick={() => setBookingPanelVisible(false)}
+                  style={{ cursor: 'pointer', color: THEME.textDim, fontSize: '0.7rem', lineHeight: 1 }}
+                >×</div>
+              </div>
+              {bookingScreenshot && (
+                <img
+                  src={bookingScreenshot}
+                  alt="예약 페이지 스크린샷"
+                  style={{ width: '100%', borderRadius: 4, marginBottom: 10, border: `1px solid #4A90E222` }}
+                />
+              )}
+              {bookingSlots.length > 0 ? (
+                <div>
+                  <div style={{ fontFamily: 'Orbitron, monospace', color: THEME.textDim, fontSize: '0.35rem', letterSpacing: '0.15em', marginBottom: 6 }}>AVAILABLE TIMES</div>
+                  {bookingSlots.map((slot, i) => (
+                    <div key={i} style={{
+                      padding: '5px 10px', marginBottom: 4,
+                      background: 'rgba(74,144,226,0.08)',
+                      border: '1px solid #4A90E233',
+                      color: THEME.text, fontSize: '0.55rem',
+                      fontFamily: 'monospace',
+                    }}>{slot}</div>
+                  ))}
+                </div>
+              ) : (
+                <div style={{ color: THEME.textDim, fontSize: '0.5rem', textAlign: 'center', padding: '10px 0' }}>
+                  예약 가능한 시간을 확인 중입니다...
+                </div>
+              )}
             </div>
           </motion.div>
         )}
