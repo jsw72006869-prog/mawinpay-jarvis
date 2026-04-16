@@ -19,154 +19,375 @@ interface InfluencerCardsProps {
   onClose: () => void;
 }
 
-const PLATFORM_COLOR: Record<string, { primary: string; secondary: string; icon: string }> = {
-  YouTube: { primary: '#FF0000', secondary: '#FF6B6B', icon: '▶' },
-  Instagram: { primary: '#E1306C', secondary: '#F77737', icon: '◈' },
-  Naver: { primary: '#03C75A', secondary: '#00B851', icon: '◉' },
-  TikTok: { primary: '#69C9D0', secondary: '#EE1D52', icon: '♪' },
-  default: { primary: '#00F5FF', secondary: '#0066FF', icon: '◆' },
+const PLATFORM_THEME: Record<string, { primary: string; secondary: string; glow: string; label: string; bg: string }> = {
+  YouTube: {
+    primary: '#FF3333',
+    secondary: '#FF6B6B',
+    glow: 'rgba(255,51,51,0.5)',
+    label: '▶',
+    bg: 'linear-gradient(160deg, #0d0000 0%, #1f0000 40%, #0d0000 100%)',
+  },
+  Instagram: {
+    primary: '#E1306C',
+    secondary: '#F77737',
+    glow: 'rgba(225,48,108,0.5)',
+    label: '◈',
+    bg: 'linear-gradient(160deg, #0d0008 0%, #1f0015 40%, #0d0008 100%)',
+  },
+  Naver: {
+    primary: '#03C75A',
+    secondary: '#00FF88',
+    glow: 'rgba(3,199,90,0.5)',
+    label: '◉',
+    bg: 'linear-gradient(160deg, #000d04 0%, #001f0a 40%, #000d04 100%)',
+  },
+  TikTok: {
+    primary: '#69C9D0',
+    secondary: '#EE1D52',
+    glow: 'rgba(105,201,208,0.5)',
+    label: '♪',
+    bg: 'linear-gradient(160deg, #000d0d 0%, #001f1f 40%, #000d0d 100%)',
+  },
+  default: {
+    primary: '#00F5FF',
+    secondary: '#0066FF',
+    glow: 'rgba(0,245,255,0.5)',
+    label: '◆',
+    bg: 'linear-gradient(160deg, #000d0d 0%, #001f1f 40%, #000d0d 100%)',
+  },
 };
 
-function getPlatformStyle(platform: string) {
-  for (const key of Object.keys(PLATFORM_COLOR)) {
-    if (platform.toLowerCase().includes(key.toLowerCase())) return PLATFORM_COLOR[key];
+function getPlatformTheme(platform: string) {
+  for (const key of Object.keys(PLATFORM_THEME)) {
+    if (platform.toLowerCase().includes(key.toLowerCase())) return PLATFORM_THEME[key];
   }
-  return PLATFORM_COLOR.default;
+  return PLATFORM_THEME.default;
 }
 
-function getYouTubeChannelUrl(influencer: InfluencerData): string {
+// URL에 프로토콜이 없으면 https:// 추가
+function ensureHttps(url: string): string {
+  if (!url) return '';
+  if (url.startsWith('http://') || url.startsWith('https://')) return url;
+  return `https://${url}`;
+}
+
+function getChannelUrl(influencer: InfluencerData): string {
   if (influencer.channelId) return `https://www.youtube.com/channel/${influencer.channelId}`;
-  if (influencer.profileUrl) return influencer.profileUrl;
+  if (influencer.profileUrl) return ensureHttps(influencer.profileUrl);
   return `https://www.youtube.com/results?search_query=${encodeURIComponent(influencer.name)}`;
 }
 
-function InfluencerCard({ influencer, index, visible }: { influencer: InfluencerData; index: number; visible: boolean }) {
-  const style = getPlatformStyle(influencer.platform);
-  const channelUrl = getYouTubeChannelUrl(influencer);
+// 포켓몬 카드 스타일 단일 카드
+function PokemonCard({ influencer, index, visible }: { influencer: InfluencerData; index: number; visible: boolean }) {
+  const theme = getPlatformTheme(influencer.platform);
+  const channelUrl = getChannelUrl(influencer);
   const [imgError, setImgError] = useState(false);
+  const [hovered, setHovered] = useState(false);
 
   return (
     <motion.div
-      initial={{ opacity: 0, x: -60, scale: 0.85 }}
-      animate={visible ? { opacity: 1, x: 0, scale: 1 } : { opacity: 0, x: -60, scale: 0.85 }}
+      initial={{ opacity: 0, y: 60, rotateY: -20, scale: 0.75 }}
+      animate={visible
+        ? { opacity: 1, y: 0, rotateY: 0, scale: 1 }
+        : { opacity: 0, y: 60, rotateY: -20, scale: 0.75 }
+      }
+      exit={{ opacity: 0, y: 40, scale: 0.8 }}
       transition={{
-        delay: index * 0.08,
-        duration: 0.45,
-        ease: [0.22, 1, 0.36, 1],
+        delay: index * 0.09,
+        duration: 0.5,
+        ease: [0.16, 1, 0.3, 1],
       }}
-      style={{
-        background: `linear-gradient(135deg, rgba(0,0,0,0.85) 0%, rgba(${style.primary === '#FF0000' ? '255,0,0' : '0,102,255'},0.08) 100%)`,
-        border: `1px solid ${style.primary}33`,
-        borderLeft: `3px solid ${style.primary}`,
-        borderRadius: '8px',
-        padding: '10px 12px',
-        marginBottom: '6px',
-        display: 'flex',
-        alignItems: 'center',
-        gap: '10px',
-        position: 'relative',
-        overflow: 'hidden',
-        cursor: 'pointer',
-        backdropFilter: 'blur(10px)',
-      }}
-      whileHover={{ scale: 1.02, borderLeftWidth: '4px' }}
-      onClick={() => window.open(channelUrl, '_blank')}
+      style={{ flexShrink: 0, width: '155px', perspective: '1000px' }}
     >
-      {/* 배경 글로우 */}
-      <div style={{
-        position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
-        background: `radial-gradient(ellipse at left center, ${style.primary}08 0%, transparent 70%)`,
-        pointerEvents: 'none',
-      }} />
+      <motion.div
+        animate={hovered
+          ? { rotateY: 10, rotateX: -6, scale: 1.07 }
+          : { rotateY: 0, rotateX: 0, scale: 1 }
+        }
+        transition={{ duration: 0.25, ease: 'easeOut' }}
+        onHoverStart={() => setHovered(true)}
+        onHoverEnd={() => setHovered(false)}
+        style={{
+          cursor: 'pointer',
+          background: theme.bg,
+          border: `1.5px solid ${theme.primary}44`,
+          borderRadius: '16px',
+          overflow: 'hidden',
+          position: 'relative',
+          transformStyle: 'preserve-3d',
+          boxShadow: hovered
+            ? `0 0 40px ${theme.glow}, 0 8px 32px rgba(0,0,0,0.6), inset 0 0 20px rgba(255,255,255,0.03)`
+            : `0 0 16px ${theme.glow}55, 0 4px 16px rgba(0,0,0,0.5)`,
+          transition: 'box-shadow 0.3s ease',
+        }}
+        onClick={() => window.open(channelUrl, '_blank')}
+      >
+        {/* 홀로그램 shimmer */}
+        <motion.div
+          animate={hovered ? { opacity: [0, 0.2, 0], x: ['-100%', '200%'] } : { opacity: 0 }}
+          transition={{ duration: 0.7, ease: 'linear' }}
+          style={{
+            position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
+            background: 'linear-gradient(105deg, transparent 30%, rgba(255,255,255,0.5) 50%, transparent 70%)',
+            pointerEvents: 'none',
+            zIndex: 20,
+          }}
+        />
 
-      {/* 프로필 이미지 */}
-      <div style={{
-        width: '44px', height: '44px', borderRadius: '50%', flexShrink: 0,
-        border: `2px solid ${style.primary}66`,
-        overflow: 'hidden', position: 'relative',
-        background: `linear-gradient(135deg, ${style.primary}22, ${style.secondary}22)`,
-        display: 'flex', alignItems: 'center', justifyContent: 'center',
-        boxShadow: `0 0 12px ${style.primary}44`,
-      }}>
-        {influencer.thumbnailUrl && !imgError ? (
-          <img
-            src={influencer.thumbnailUrl}
-            alt={influencer.name}
-            style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-            onError={() => setImgError(true)}
-          />
-        ) : (
-          <span style={{ fontSize: '18px', color: style.primary }}>{style.icon}</span>
-        )}
-      </div>
-
-      {/* 채널 정보 */}
-      <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '3px' }}>
+        {/* 상단 플랫폼 배지 */}
+        <div style={{
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          padding: '8px 10px 5px',
+          background: `linear-gradient(90deg, ${theme.primary}18, transparent)`,
+          borderBottom: `1px solid ${theme.primary}22`,
+        }}>
           <span style={{
-            fontSize: '13px', fontWeight: 700, color: '#FFFFFF',
-            whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
-            maxWidth: '140px', fontFamily: 'monospace',
-          }}>{influencer.name}</span>
-          <span style={{
-            fontSize: '9px', padding: '1px 5px', borderRadius: '3px',
-            background: `${style.primary}22`, color: style.primary,
-            border: `1px solid ${style.primary}44`, fontFamily: 'monospace', fontWeight: 700,
-          }}>{influencer.platform.toUpperCase()}</span>
-        </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-          <span style={{ fontSize: '11px', color: style.primary, fontFamily: 'monospace', fontWeight: 700 }}>
-            ◉ {influencer.followers}
+            fontSize: '8.5px',
+            color: theme.primary,
+            fontFamily: 'monospace',
+            fontWeight: 700,
+            letterSpacing: '1.5px',
+          }}>
+            {influencer.platform.toUpperCase()}
           </span>
-          {influencer.category && (
-            <span style={{ fontSize: '10px', color: '#666', fontFamily: 'monospace' }}>
-              #{influencer.category}
-            </span>
+          <motion.div
+            animate={{ opacity: [1, 0.3, 1], scale: [1, 1.2, 1] }}
+            transition={{ duration: 1.8, repeat: Infinity, delay: index * 0.2 }}
+            style={{
+              width: '6px', height: '6px', borderRadius: '50%',
+              background: theme.primary,
+              boxShadow: `0 0 8px ${theme.primary}`,
+            }}
+          />
+        </div>
+
+        {/* 프로필 이미지 영역 */}
+        <div style={{
+          width: '100%',
+          height: '105px',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          position: 'relative',
+          background: `radial-gradient(ellipse at center, ${theme.primary}12 0%, transparent 70%)`,
+          overflow: 'hidden',
+        }}>
+          {/* 배경 원형 링 */}
+          <motion.div
+            animate={{ rotate: 360 }}
+            transition={{ duration: 12, repeat: Infinity, ease: 'linear' }}
+            style={{
+              position: 'absolute',
+              width: '90px', height: '90px',
+              borderRadius: '50%',
+              border: `1px dashed ${theme.primary}22`,
+            }}
+          />
+          <motion.div
+            animate={{ scale: [1, 1.08, 1], opacity: [0.4, 0.7, 0.4] }}
+            transition={{ duration: 2.5, repeat: Infinity, delay: index * 0.3 }}
+            style={{
+              position: 'absolute',
+              width: '70px', height: '70px',
+              borderRadius: '50%',
+              background: `radial-gradient(circle, ${theme.primary}18 0%, transparent 70%)`,
+            }}
+          />
+
+          {influencer.thumbnailUrl && !imgError ? (
+            <img
+              src={influencer.thumbnailUrl}
+              alt={influencer.name}
+              onError={() => setImgError(true)}
+              style={{
+                width: '70px', height: '70px',
+                borderRadius: '50%',
+                objectFit: 'cover',
+                border: `2.5px solid ${theme.primary}77`,
+                boxShadow: `0 0 20px ${theme.glow}, 0 0 40px ${theme.glow}44`,
+                position: 'relative', zIndex: 2,
+              }}
+            />
+          ) : (
+            <div style={{
+              width: '70px', height: '70px',
+              borderRadius: '50%',
+              background: `linear-gradient(135deg, ${theme.primary}33, ${theme.secondary}22)`,
+              border: `2.5px solid ${theme.primary}77`,
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              fontSize: '26px',
+              boxShadow: `0 0 20px ${theme.glow}`,
+              position: 'relative', zIndex: 2,
+              color: theme.primary,
+            }}>
+              {theme.label}
+            </div>
+          )}
+
+          {/* 구독자수 배지 */}
+          {influencer.followers && influencer.followers !== '-' && (
+            <motion.div
+              initial={{ opacity: 0, scale: 0.7 }}
+              animate={{ opacity: 1, scale: 1 }}
+              transition={{ delay: index * 0.09 + 0.4 }}
+              style={{
+                position: 'absolute',
+                bottom: '5px', right: '8px',
+                background: `rgba(0,0,0,0.7)`,
+                border: `1px solid ${theme.primary}55`,
+                borderRadius: '10px',
+                padding: '2px 7px',
+                fontSize: '8px',
+                color: theme.primary,
+                fontFamily: 'monospace',
+                fontWeight: 700,
+                backdropFilter: 'blur(4px)',
+              }}
+            >
+              {influencer.followers}
+            </motion.div>
           )}
         </div>
-        {influencer.email && (
-          <div style={{ fontSize: '10px', color: '#00F5FF99', fontFamily: 'monospace', marginTop: '2px',
-            whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '200px' }}>
-            ✉ {influencer.email}
-          </div>
-        )}
-      </div>
 
-      {/* 우측 URL 버튼 */}
-      <div style={{
-        display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '4px', flexShrink: 0,
-      }}>
+        {/* 이름 + 정보 영역 */}
         <div style={{
-          fontSize: '9px', color: style.primary, fontFamily: 'monospace',
-          padding: '2px 6px', border: `1px solid ${style.primary}44`, borderRadius: '3px',
-          background: `${style.primary}11`,
-        }}>OPEN →</div>
-        {influencer.email && (
+          padding: '8px 10px 5px',
+          borderTop: `1px solid ${theme.primary}22`,
+          background: `linear-gradient(180deg, ${theme.primary}08, transparent)`,
+        }}>
           <div style={{
-            fontSize: '9px', color: '#00F5FF', fontFamily: 'monospace',
-            padding: '2px 6px', border: '1px solid #00F5FF44', borderRadius: '3px',
-            background: '#00F5FF11',
-          }}>EMAIL ✓</div>
-        )}
-      </div>
+            fontSize: '11.5px',
+            fontWeight: 700,
+            color: '#FFFFFF',
+            fontFamily: 'monospace',
+            letterSpacing: '0.3px',
+            whiteSpace: 'nowrap',
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+            marginBottom: '3px',
+            textShadow: `0 0 10px ${theme.primary}44`,
+          }}>
+            {influencer.name}
+          </div>
 
-      {/* 스캔 라인 애니메이션 */}
-      <motion.div
-        style={{
-          position: 'absolute', top: 0, left: '-100%', width: '60%', height: '100%',
-          background: `linear-gradient(90deg, transparent, ${style.primary}15, transparent)`,
-          pointerEvents: 'none',
-        }}
-        animate={{ left: ['−100%', '200%'] }}
-        transition={{ duration: 2, delay: index * 0.08 + 0.3, ease: 'linear' }}
-      />
+          <div style={{
+            fontSize: '8.5px',
+            color: `${theme.primary}88`,
+            fontFamily: 'monospace',
+            marginBottom: '6px',
+            whiteSpace: 'nowrap',
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+          }}>
+            # {influencer.category}
+          </div>
+
+          {/* 이메일 */}
+          {influencer.email ? (
+            <div style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '4px',
+              background: 'rgba(34,197,94,0.08)',
+              border: '1px solid rgba(34,197,94,0.25)',
+              borderRadius: '5px',
+              padding: '3px 6px',
+              marginBottom: '5px',
+            }}>
+              <span style={{ fontSize: '8px', color: '#22C55E', flexShrink: 0 }}>✉</span>
+              <span style={{
+                fontSize: '8px',
+                color: '#22C55E',
+                fontFamily: 'monospace',
+                whiteSpace: 'nowrap',
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+              }}>
+                {influencer.email}
+              </span>
+            </div>
+          ) : (
+            <div style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '4px',
+              background: 'rgba(255,255,255,0.02)',
+              border: '1px solid rgba(255,255,255,0.06)',
+              borderRadius: '5px',
+              padding: '3px 6px',
+              marginBottom: '5px',
+            }}>
+              <span style={{ fontSize: '8px', color: '#444' }}>✉</span>
+              <span style={{ fontSize: '8px', color: '#444', fontFamily: 'monospace' }}>NO EMAIL</span>
+            </div>
+          )}
+        </div>
+
+        {/* 하단 버튼 */}
+        <div style={{ padding: '0 10px 10px', display: 'flex', gap: '5px' }}>
+          <button
+            onClick={(e) => { e.stopPropagation(); window.open(channelUrl, '_blank'); }}
+            style={{
+              flex: 1,
+              background: `${theme.primary}12`,
+              border: `1px solid ${theme.primary}44`,
+              borderRadius: '6px',
+              color: theme.primary,
+              fontSize: '8px',
+              fontFamily: 'monospace',
+              fontWeight: 700,
+              padding: '5px 0',
+              cursor: 'pointer',
+              letterSpacing: '1px',
+              transition: 'all 0.2s',
+            }}
+          >
+            OPEN →
+          </button>
+          {influencer.email && (
+            <button
+              onClick={(e) => { e.stopPropagation(); window.open(`mailto:${influencer.email}`, '_blank'); }}
+              style={{
+                flex: 1,
+                background: 'rgba(34,197,94,0.08)',
+                border: '1px solid rgba(34,197,94,0.35)',
+                borderRadius: '6px',
+                color: '#22C55E',
+                fontSize: '8px',
+                fontFamily: 'monospace',
+                fontWeight: 700,
+                padding: '5px 0',
+                cursor: 'pointer',
+                letterSpacing: '1px',
+              }}
+            >
+              EMAIL ✓
+            </button>
+          )}
+        </div>
+
+        {/* 하단 스캔 라인 */}
+        <motion.div
+          animate={{ x: ['-100%', '250%'] }}
+          transition={{ duration: 3, repeat: Infinity, delay: index * 0.12, ease: 'linear' }}
+          style={{
+            position: 'absolute',
+            bottom: '2px', left: 0,
+            width: '35%', height: '1px',
+            background: `linear-gradient(90deg, transparent, ${theme.primary}88, transparent)`,
+            pointerEvents: 'none',
+          }}
+        />
+      </motion.div>
     </motion.div>
   );
 }
 
 export default function InfluencerCards({ influencers, visible, onClose }: InfluencerCardsProps) {
   const [showAll, setShowAll] = useState(false);
-  const displayList = showAll ? influencers : influencers.slice(0, 8);
+  const displayList = showAll ? influencers : influencers.slice(0, 20);
 
   useEffect(() => {
     if (!visible) setShowAll(false);
@@ -176,103 +397,144 @@ export default function InfluencerCards({ influencers, visible, onClose }: Influ
     <AnimatePresence>
       {visible && influencers.length > 0 && (
         <motion.div
-          initial={{ opacity: 0, y: 20 }}
+          initial={{ opacity: 0, y: 30 }}
           animate={{ opacity: 1, y: 0 }}
           exit={{ opacity: 0, y: 20 }}
-          transition={{ duration: 0.3 }}
+          transition={{ duration: 0.35 }}
           style={{
             position: 'absolute',
-            bottom: '120px',
-            left: '8px',
-            right: '8px',
-            maxHeight: '55vh',
-            overflowY: 'auto',
+            bottom: '90px',
+            left: 0,
+            right: 0,
             zIndex: 50,
-            padding: '12px',
+            padding: '14px 14px 10px',
             background: 'rgba(0,0,0,0.92)',
-            border: '1px solid #00F5FF33',
-            borderRadius: '12px',
-            backdropFilter: 'blur(20px)',
-            boxShadow: '0 0 40px rgba(0,245,255,0.1), inset 0 0 40px rgba(0,0,0,0.5)',
+            borderTop: '1px solid rgba(0,245,255,0.12)',
+            backdropFilter: 'blur(24px)',
           }}
         >
           {/* 헤더 */}
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '10px' }}>
+          <div style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            marginBottom: '12px',
+          }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
               <motion.div
                 animate={{ opacity: [1, 0.3, 1] }}
                 transition={{ duration: 1.2, repeat: Infinity }}
-                style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#00F5FF' }}
+                style={{
+                  width: '8px', height: '8px', borderRadius: '50%',
+                  background: '#00F5FF',
+                  boxShadow: '0 0 8px #00F5FF',
+                }}
               />
-              <span style={{ fontSize: '11px', color: '#00F5FF', fontFamily: 'monospace', fontWeight: 700, letterSpacing: '2px' }}>
+              <span style={{
+                fontSize: '10.5px', color: '#00F5FF',
+                fontFamily: 'monospace', fontWeight: 700, letterSpacing: '2px',
+              }}>
                 INFLUENCER SCAN COMPLETE
               </span>
-              <span style={{ fontSize: '11px', color: '#00F5FF88', fontFamily: 'monospace' }}>
+              <span style={{ fontSize: '10.5px', color: '#00F5FF55', fontFamily: 'monospace' }}>
                 [{influencers.length} FOUND]
               </span>
             </div>
             <button
               onClick={onClose}
-              style={{ background: 'none', border: '1px solid #FF000044', color: '#FF6666', cursor: 'pointer',
-                fontSize: '11px', padding: '2px 8px', borderRadius: '4px', fontFamily: 'monospace' }}
-            >✕ CLOSE</button>
-          </div>
-
-          {/* 구분선 */}
-          <div style={{ height: '1px', background: 'linear-gradient(90deg, transparent, #00F5FF44, transparent)', marginBottom: '10px' }} />
-
-          {/* 카드 목록 */}
-          {displayList.map((inf, i) => (
-            <InfluencerCard key={`${inf.name}-${i}`} influencer={inf} index={i} visible={visible} />
-          ))}
-
-          {/* 더보기 버튼 */}
-          {!showAll && influencers.length > 8 && (
-            <motion.button
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              transition={{ delay: 8 * 0.08 + 0.3 }}
-              onClick={() => setShowAll(true)}
               style={{
-                width: '100%', marginTop: '6px', padding: '8px',
-                background: 'rgba(0,245,255,0.05)', border: '1px solid #00F5FF33',
-                color: '#00F5FF', cursor: 'pointer', borderRadius: '6px',
-                fontFamily: 'monospace', fontSize: '11px', letterSpacing: '1px',
+                background: 'none',
+                border: '1px solid rgba(255,80,80,0.3)',
+                color: '#FF6666',
+                cursor: 'pointer',
+                fontSize: '10px',
+                padding: '3px 10px',
+                borderRadius: '5px',
+                fontFamily: 'monospace',
               }}
             >
-              + {influencers.length - 8} MORE PROFILES ↓
-            </motion.button>
-          )}
+              ✕ CLOSE
+            </button>
+          </div>
+
+          {/* 포켓몬 카드 가로 스크롤 */}
+          <div style={{
+            display: 'flex',
+            gap: '10px',
+            overflowX: 'auto',
+            paddingBottom: '8px',
+            paddingTop: '4px',
+            scrollbarWidth: 'none',
+            msOverflowStyle: 'none',
+          }}>
+            {displayList.map((inf, i) => (
+              <PokemonCard key={`${inf.name}-${i}`} influencer={inf} index={i} visible={visible} />
+            ))}
+
+            {/* 더보기 카드 */}
+            {!showAll && influencers.length > 20 && (
+              <motion.div
+                initial={{ opacity: 0, scale: 0.8 }}
+                animate={{ opacity: 1, scale: 1 }}
+                transition={{ delay: 20 * 0.09 + 0.3 }}
+                onClick={() => setShowAll(true)}
+                style={{
+                  flexShrink: 0,
+                  width: '155px',
+                  height: '280px',
+                  background: 'rgba(0,245,255,0.02)',
+                  border: '1.5px dashed rgba(0,245,255,0.2)',
+                  borderRadius: '16px',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  cursor: 'pointer',
+                  gap: '8px',
+                }}
+              >
+                <span style={{ fontSize: '28px', color: '#00F5FF44' }}>+</span>
+                <span style={{ fontSize: '10px', color: '#00F5FF66', fontFamily: 'monospace', textAlign: 'center', letterSpacing: '1px' }}>
+                  {influencers.length - 20} MORE
+                </span>
+              </motion.div>
+            )}
+          </div>
 
           {/* 하단 통계 */}
           <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            transition={{ delay: displayList.length * 0.08 + 0.5 }}
+            initial={{ opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.6 }}
             style={{
-              marginTop: '10px', padding: '8px 12px',
-              background: 'rgba(0,245,255,0.03)', border: '1px solid #00F5FF22', borderRadius: '6px',
-              display: 'flex', justifyContent: 'space-around',
+              marginTop: '10px',
+              padding: '8px 16px',
+              background: 'rgba(0,245,255,0.02)',
+              border: '1px solid rgba(0,245,255,0.1)',
+              borderRadius: '8px',
+              display: 'flex',
+              justifyContent: 'space-around',
             }}
           >
-            <div style={{ textAlign: 'center' }}>
-              <div style={{ fontSize: '16px', fontWeight: 700, color: '#00F5FF', fontFamily: 'monospace' }}>
-                {influencers.length}
+            {[
+              { value: influencers.length, label: 'COLLECTED', color: '#00F5FF' },
+              { value: influencers.filter(i => i.email).length, label: 'WITH EMAIL', color: '#22C55E' },
+              { value: influencers.filter(i => i.platform?.toLowerCase().includes('youtube')).length, label: 'YOUTUBE', color: '#FF4444' },
+              { value: influencers.filter(i => i.platform?.toLowerCase().includes('naver')).length, label: 'NAVER', color: '#03C75A' },
+            ].map(stat => (
+              <div key={stat.label} style={{ textAlign: 'center' }}>
+                <div style={{
+                  fontSize: '18px', fontWeight: 700,
+                  color: stat.color, fontFamily: 'monospace',
+                  textShadow: `0 0 10px ${stat.color}66`,
+                }}>
+                  {stat.value}
+                </div>
+                <div style={{ fontSize: '8px', color: '#444', fontFamily: 'monospace', letterSpacing: '1px' }}>
+                  {stat.label}
+                </div>
               </div>
-              <div style={{ fontSize: '9px', color: '#666', fontFamily: 'monospace' }}>COLLECTED</div>
-            </div>
-            <div style={{ textAlign: 'center' }}>
-              <div style={{ fontSize: '16px', fontWeight: 700, color: '#22C55E', fontFamily: 'monospace' }}>
-                {influencers.filter(i => i.email).length}
-              </div>
-              <div style={{ fontSize: '9px', color: '#666', fontFamily: 'monospace' }}>WITH EMAIL</div>
-            </div>
-            <div style={{ textAlign: 'center' }}>
-              <div style={{ fontSize: '16px', fontWeight: 700, color: '#FF6B6B', fontFamily: 'monospace' }}>
-                {influencers.filter(i => i.platform === 'YouTube').length}
-              </div>
-              <div style={{ fontSize: '9px', color: '#666', fontFamily: 'monospace' }}>YOUTUBE</div>
-            </div>
+            ))}
           </motion.div>
         </motion.div>
       )}
