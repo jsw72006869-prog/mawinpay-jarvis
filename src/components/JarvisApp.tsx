@@ -1,4 +1,5 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
+import { QRCodeSVG } from 'qrcode.react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { askGPT, parseCommand, generateBannerImage, saveSchedule, saveMemory, searchNaverAPI, searchYouTubeAPI, searchInstagramAPI, invalidateSheetCache, type JarvisState, type JarvisAction, type NaverSearchItem, type YouTubeChannel, type InstagramAccount } from '../lib/jarvis-brain';
 import { useSpeechRecognition, useTextToSpeech, useBargein, setCurrentVoiceId, getCurrentVoiceId, ELEVENLABS_VOICES, stopGlobalAudio } from './SpeechEngine';
@@ -96,6 +97,8 @@ export default function JarvisApp() {
   const [bookingPanelVisible, setBookingPanelVisible] = useState(false);
   const [bookingSlots, setBookingSlots] = useState<string[]>([]);
   const [bookingScreenshot, setBookingScreenshot] = useState<string | null>(null);
+  const [paymentUrl, setPaymentUrl] = useState<string | null>(null);
+  const [paymentCopied, setPaymentCopied] = useState(false);
   const BOOKING_SERVER = import.meta.env.VITE_BOOKING_SERVER_URL || 'https://jarvis-booking-server-production.up.railway.app';
 
   // ── 타이핑 입력 모드 ──
@@ -677,7 +680,9 @@ export default function JarvisApp() {
           const fillData = await fillRes.json();
           if (fillData.success) {
             if (fillData.screenshot) setBookingScreenshot(fillData.screenshot);
-            const fillText = `예약 정보 입력이 완료되었습니다, 선생님. 결제 단계만 직접 진행해주세요.`;
+            if (fillData.paymentUrl) setPaymentUrl(fillData.paymentUrl);
+            setBookingPanelVisible(true);
+            const fillText = `예약 정보 입력이 완료되었습니다, 선생님. 화면에 결제 링크가 표시되었습니다. 링크를 클릭하시거나 QR코드를 스캔하시면 결제 페이지로 바로 이동합니다.`;
             setState('speaking');
             addMessage('jarvis', fillText, true);
             startSpeakingLevel();
@@ -2157,7 +2162,7 @@ export default function JarvisApp() {
             style={{
               position: 'fixed', top: 80, right: 28,
               zIndex: 36, pointerEvents: 'auto',
-              minWidth: 260, maxWidth: 320,
+              width: 300, maxHeight: '85vh', overflowY: 'auto',
             }}
           >
             <div style={{
@@ -2167,21 +2172,104 @@ export default function JarvisApp() {
               padding: '14px',
               backdropFilter: 'blur(20px)',
             }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
-                <div style={{ fontFamily: 'Orbitron, monospace', color: '#4A90E2', fontSize: '0.45rem', letterSpacing: '0.3em' }}>BOOKING SLOTS</div>
+              {/* 헤더 */}
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+                <div style={{ fontFamily: 'Orbitron, monospace', color: '#4A90E2', fontSize: '0.45rem', letterSpacing: '0.3em' }}>
+                  {paymentUrl ? 'PAYMENT READY' : 'BOOKING SLOTS'}
+                </div>
                 <div
-                  onClick={() => setBookingPanelVisible(false)}
+                  onClick={() => { setBookingPanelVisible(false); setPaymentUrl(null); setPaymentCopied(false); }}
                   style={{ cursor: 'pointer', color: THEME.textDim, fontSize: '0.7rem', lineHeight: 1 }}
                 >×</div>
               </div>
-              {bookingScreenshot && (
-                <img
-                  src={bookingScreenshot}
-                  alt="예약 페이지 스크린샷"
-                  style={{ width: '100%', borderRadius: 4, marginBottom: 10, border: `1px solid #4A90E222` }}
-                />
+
+              {/* 결제 URL 섹션 */}
+              {paymentUrl && (
+                <div style={{ marginBottom: 14 }}>
+                  {/* 단계 표시 */}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 10 }}>
+                    {['예약 탐색', '폼 입력', '결제'].map((step, i) => (
+                      <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                        <div style={{
+                          width: 18, height: 18, borderRadius: '50%',
+                          background: i < 2 ? '#22C55E' : '#4A90E2',
+                          border: `1px solid ${i < 2 ? '#22C55E' : '#4A90E2'}`,
+                          display: 'flex', alignItems: 'center', justifyContent: 'center',
+                          fontSize: '0.35rem', color: '#fff', fontFamily: 'Orbitron, monospace',
+                        }}>{i < 2 ? '✓' : '!'}</div>
+                        <div style={{ fontSize: '0.38rem', color: i < 2 ? '#22C55E' : '#4A90E2', fontFamily: 'Orbitron, monospace' }}>{step}</div>
+                        {i < 2 && <div style={{ width: 12, height: 1, background: '#22C55E55' }} />}
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* QR 코드 */}
+                  <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 10, padding: 10, background: '#fff', borderRadius: 6 }}>
+                    <QRCodeSVG value={paymentUrl} size={120} />
+                  </div>
+
+                  {/* URL 표시 + 복사 버튼 */}
+                  <div style={{
+                    background: 'rgba(74,144,226,0.06)',
+                    border: '1px solid #4A90E233',
+                    borderRadius: 4, padding: '8px 10px', marginBottom: 8,
+                  }}>
+                    <div style={{ fontFamily: 'Orbitron, monospace', color: THEME.textDim, fontSize: '0.32rem', letterSpacing: '0.15em', marginBottom: 4 }}>PAYMENT URL</div>
+                    <div style={{ color: '#4A90E2', fontSize: '0.45rem', wordBreak: 'break-all', lineHeight: 1.5 }}>
+                      {paymentUrl.length > 60 ? paymentUrl.substring(0, 60) + '...' : paymentUrl}
+                    </div>
+                  </div>
+
+                  {/* 버튼 2개 */}
+                  <div style={{ display: 'flex', gap: 6 }}>
+                    <div
+                      onClick={() => {
+                        navigator.clipboard.writeText(paymentUrl);
+                        setPaymentCopied(true);
+                        setTimeout(() => setPaymentCopied(false), 2000);
+                      }}
+                      style={{
+                        flex: 1, padding: '8px', textAlign: 'center', cursor: 'pointer',
+                        background: paymentCopied ? 'rgba(34,197,94,0.15)' : 'rgba(74,144,226,0.12)',
+                        border: `1px solid ${paymentCopied ? '#22C55E55' : '#4A90E255'}`,
+                        fontFamily: 'Orbitron, monospace',
+                        color: paymentCopied ? '#22C55E' : '#4A90E2',
+                        fontSize: '0.38rem', letterSpacing: '0.15em',
+                        transition: 'all 0.2s',
+                      }}
+                    >{paymentCopied ? 'COPIED ✓' : 'COPY URL'}</div>
+                    <div
+                      onClick={() => window.open(paymentUrl, '_blank')}
+                      style={{
+                        flex: 1, padding: '8px', textAlign: 'center', cursor: 'pointer',
+                        background: 'rgba(34,197,94,0.12)',
+                        border: '1px solid #22C55E55',
+                        fontFamily: 'Orbitron, monospace',
+                        color: '#22C55E', fontSize: '0.38rem', letterSpacing: '0.15em',
+                      }}
+                    >OPEN LINK</div>
+                  </div>
+
+                  <div style={{ marginTop: 8, fontFamily: 'Orbitron, monospace', color: THEME.textDim, fontSize: '0.32rem', letterSpacing: '0.1em', textAlign: 'center', lineHeight: 1.6 }}>
+                    QR 스캔 또는 링크 클릭 후 결제만 완료하시면 됩니다
+                  </div>
+                </div>
               )}
-              {bookingSlots.length > 0 ? (
+
+              {/* 스크린샷 */}
+              {bookingScreenshot && (
+                <div style={{ marginBottom: 10 }}>
+                  <div style={{ fontFamily: 'Orbitron, monospace', color: THEME.textDim, fontSize: '0.32rem', letterSpacing: '0.15em', marginBottom: 4 }}>PAGE PREVIEW</div>
+                  <img
+                    src={bookingScreenshot}
+                    alt="예약 페이지 스크린샷"
+                    style={{ width: '100%', borderRadius: 4, border: `1px solid #4A90E222` }}
+                  />
+                </div>
+              )}
+
+              {/* 예약 가능 시간 목록 */}
+              {bookingSlots.length > 0 && (
                 <div>
                   <div style={{ fontFamily: 'Orbitron, monospace', color: THEME.textDim, fontSize: '0.35rem', letterSpacing: '0.15em', marginBottom: 6 }}>AVAILABLE TIMES</div>
                   {bookingSlots.map((slot, i) => (
@@ -2194,7 +2282,9 @@ export default function JarvisApp() {
                     }}>{slot}</div>
                   ))}
                 </div>
-              ) : (
+              )}
+
+              {!paymentUrl && bookingSlots.length === 0 && (
                 <div style={{ color: THEME.textDim, fontSize: '0.5rem', textAlign: 'center', padding: '10px 0' }}>
                   예약 가능한 시간을 확인 중입니다...
                 </div>
