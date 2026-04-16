@@ -121,7 +121,7 @@ export function useSpeechRecognition({ onResult, onStart, onEnd, isListening }: 
       formData.append('response_format', 'json');
       formData.append('temperature', '0');
       // 자주 쓰는 명령어/단어 힌트 → Whisper 인식 정확도 향상
-      formData.append('prompt', '자비스, 대기해, 수집해, 검색해, 보내줘, 찾아줘, 저장해, 시작해, 중단해, 확인해, 유튜버, 블로거, 인플루언서, 인스타그램, 네이버, 이메일, 구독자, 팔로워, 맛집, 뷰티, 패션, 여행, 협업, 마케팅, 수집, 발송, 목록, 시트, 구글, 자동화');
+      formData.append('prompt', '자비스, 대기해, 수집해, 검색해, 보내줘, 찾아줘, 저장해, 시작해, 중단해, 확인해, 유튜버, 블로거, 인플루언서, 인스타그램, 네이버, 이메일, 팔로워, 맛집, 뷰티, 패션, 여행, 협업, 마케팅, 수집, 발송, 목록, 시트, 자동화');
 
       const res = await fetch('https://api.openai.com/v1/audio/transcriptions', {
         method: 'POST',

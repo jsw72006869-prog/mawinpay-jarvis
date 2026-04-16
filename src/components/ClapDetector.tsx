@@ -69,10 +69,10 @@ export default function ClapDetector({ onClap, onAudioLevel, enabled, releaseStr
       if (enabledRef.current) {
         onAudioLevelRef.current(Math.min(rms * 4, 1));
 
-        const threshold = 0.15; // 낮춰서 더 잘 감지
+        const threshold = 0.10; // 임계값 낙춴 (자연스러운 박수 2번으로 활성화)
         const now = Date.now();
-        const MIN_CLAP_GAP = 400; // 박수 1번의 여러 피크 무시 (400ms)
-        const CLAP_WINDOW = 3000; // 3초 안에 2번 박수 쳐야 활성화
+        const MIN_CLAP_GAP = 600; // 박수 1번의 잔향 피크 무시 (600ms 간격)
+        const CLAP_WINDOW = 4000; // 4초 안에 2번 박수 쳐야 활성화
 
         if (rms > threshold && now - lastClapRef.current > MIN_CLAP_GAP) {
           lastClapRef.current = now;

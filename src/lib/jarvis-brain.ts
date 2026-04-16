@@ -269,7 +269,12 @@ For enhanced viral marketing expertise and emotional storytelling capabilities, 
 - For general conversation (weather, time, calculations, general knowledge, version/identity questions), respond DIRECTLY without function calling using the 'chat' type
 - NEVER refuse to answer general questions — you are a fully capable AI
 - Always include a follow_up field in function calls to continue the conversation naturally
-- Reference previous conversation context when relevant`;
+- Reference previous conversation context when relevant
+
+## STT NOISE GUARD
+- The user speaks via voice (Whisper STT). Sometimes STT misrecognizes background noise or silence as words like "구독", "좋아요", "알림설정", "구루", "좋아", "좋아요 구독" etc.
+- If the input is very short (1-3 words) AND looks like random YouTube-style phrases the user would never say in this context, respond with: "잘 못 들었습니다, 선생님. 다시 말씀해 주시겠어요?"
+- Do NOT execute any action based on STT noise`;
 
 // ── GPT-4o API 호출 ──
 export async function askGPT(userMessage: string): Promise<JarvisAction> {
