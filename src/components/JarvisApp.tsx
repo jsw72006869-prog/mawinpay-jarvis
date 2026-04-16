@@ -99,6 +99,8 @@ export default function JarvisApp() {
   const [bookingScreenshot, setBookingScreenshot] = useState<string | null>(null);
   const [paymentUrl, setPaymentUrl] = useState<string | null>(null);
   const [paymentCopied, setPaymentCopied] = useState(false);
+  // 예약 확인 대기 중 음성 응답을 받기 위한 ref
+  const bookingConfirmResolveRef = useRef<((text: string) => void) | null>(null);
   const BOOKING_SERVER = import.meta.env.VITE_BOOKING_SERVER_URL || 'https://jarvis-booking-server-production.up.railway.app';
 
   // ── 타이핑 입력 모드 ──
@@ -664,7 +666,100 @@ export default function JarvisApp() {
             throw new Error(availData.error || '예약 조회 실패');
           }
         } else if (bookAction === 'fill_form') {
-          // 예약 폼 자동 입력
+          // ── 학습 1: 입력 전 확인 단계 ──
+          // 예약자명, 연락처, 날짜, 시간을 음성으로 읽어주고 사용자 확인을 받음
+          const confirmText = `잠깐, 선생님. 입력 전에 확인해 드리겠습니다. 예약자명 ${userName || '미설정'}, 연락처 ${userPhone || '미설정'}, 날짜 ${date}, 시간 ${time}. 이대로 진행할까요? 변경이 필요하시면 말씀해 주세요.`;
+          setState('speaking');
+          addMessage('jarvis', confirmText, true);
+          startSpeakingLevel();
+          await new Promise<void>(resolve => {
+            speak(confirmText, undefined, () => { stopSpeakingLevel(); resolve(); });
+          });
+
+          // 사용자 응답 대기 (8초 타임아웃 - 무응답 시 자동 진행)
+          setState('listening');
+          setIsListening(true);
+          const confirmResponse = await new Promise<string>(resolve => {
+            const timer = setTimeout(() => {
+              bookingConfirmResolveRef.current = null;
+              resolve('yes'); // 무응답 → 자동 진행
+            }, 8000);
+            bookingConfirmResolveRef.current = (text: string) => {
+              clearTimeout(timer);
+              resolve(text);
+            };
+          });
+          setIsListening(false);
+
+          // 취소 또는 변경 감지
+          const cancelKeywords = ['취소', '아니', '바꿔', '변경', '잠깐', '스톱', 'stop', 'cancel', 'no'];
+          const isCancelled = cancelKeywords.some(kw => confirmResponse.toLowerCase().includes(kw));
+
+          if (isCancelled) {
+            const cancelText = `알겠습니다, 선생님. 예약 입력을 중단했습니다. 변경하실 내용을 말씀해 주시면 다시 진행하겠습니다.`;
+            setState('speaking');
+            addMessage('jarvis', cancelText, true);
+            startSpeakingLevel();
+            await new Promise<void>(resolve => {
+              speak(cancelText, undefined, () => { stopSpeakingLevel(); resolve(); });
+            });
+            setState('idle');
+            return;
+          }
+
+          // ── 학습 2: Race Condition 재확인 ──
+          // 폼 입력 직전 해당 시간대 가용성 한 번 더 실시간 확인
+          const reCheckText = `확인되었습니다. 폼 입력 전 ${time} 시간대를 실시간으로 재확인하겠습니다.`;
+          setState('working');
+          addMessage('jarvis', reCheckText);
+
+          const reCheckRes = await fetch(`${BOOKING_SERVER}/api/booking/availability`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              sessionId: bookingSessionId || 'guest',
+              businessName,
+              bookingUrl,
+              date,
+            }),
+          });
+          const reCheckData = await reCheckRes.json();
+
+          if (reCheckData.success) {
+            const stillAvailable = reCheckData.availableSlots?.some((slot: string) =>
+              slot.includes(time) || time.includes(slot.split(' ')[0])
+            );
+
+            if (!stillAvailable && reCheckData.availableSlots?.length > 0) {
+              // 선택한 시간이 마감됨 → 대안 제시
+              const altSlots = reCheckData.availableSlots.slice(0, 3).join(', ');
+              const raceText = `선생님, 죄송합니다. ${time}이 방금 마감되었습니다. 현재 남은 시간은 ${altSlots} 입니다. 어떤 시간으로 변경하시겠습니까?`;
+              setState('speaking');
+              addMessage('jarvis', raceText, true);
+              startSpeakingLevel();
+              setBookingSlots(reCheckData.availableSlots);
+              setBookingPanelVisible(true);
+              await new Promise<void>(resolve => {
+                speak(raceText, undefined, () => { stopSpeakingLevel(); resolve(); });
+              });
+              setState('idle');
+              return;
+            } else if (!stillAvailable && reCheckData.availableSlots?.length === 0) {
+              // 모든 시간 마감
+              const fullText = `선생님, 안타깝게도 해당 날짜의 모든 시간이 마감되었습니다. 다른 날짜로 다시 조회해 드릴까요?`;
+              setState('speaking');
+              addMessage('jarvis', fullText, true);
+              startSpeakingLevel();
+              await new Promise<void>(resolve => {
+                speak(fullText, undefined, () => { stopSpeakingLevel(); resolve(); });
+              });
+              setState('idle');
+              return;
+            }
+            // 아직 가용 → 정상 진행
+          }
+
+          // ── 예약 폼 자동 입력 진행 ──
           const fillRes = await fetch(`${BOOKING_SERVER}/api/booking/fill-form`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -833,6 +928,13 @@ export default function JarvisApp() {
     if (!transcript.trim()) return;
     const currentState = stateRef.current;
     console.log('[JARVIS] 🎤 음성 명령 수신 (상태:', currentState, '):', transcript);
+    // 예약 확인 대기 중이면 해당 resolve로 응답 전달
+    if (bookingConfirmResolveRef.current) {
+      const resolve = bookingConfirmResolveRef.current;
+      bookingConfirmResolveRef.current = null;
+      resolve(transcript);
+      return;
+    }
     // 음성 인식 시 JARVIS가 말하는 중이면 즉시 중단
     if (currentState === 'speaking' || currentState === 'thinking' || currentState === 'working') {
       console.log('[JARVIS] TTS 즉시 중단 후 사용자 명령 처리');
