@@ -4,7 +4,7 @@ import { askGPT, parseCommand, generateBannerImage, saveSchedule, saveMemory, se
 import { useSpeechRecognition, useTextToSpeech, useBargein, setCurrentVoiceId, getCurrentVoiceId, ELEVENLABS_VOICES, stopGlobalAudio } from './SpeechEngine';
 import { useMicrophoneFrequency } from '../lib/audio-analyzer';
 import { saveLearnedKnowledge, getLearnedKnowledge, getMemoryStats, clearAllMemory, type LearnedKnowledge } from '../lib/jarvis-memory';
-import { appendInfluencersToSheet, appendEmailLogToSheet, appendNaverResultsToSheet, appendInstagramToSheet, generateMockInfluencers, generateEmailLogs, type NaverCollectedData } from '../lib/google-sheets';
+import { appendInfluencersToSheet, appendEmailLogToSheet, appendNaverResultsToSheet, appendInstagramToSheet, generateMockInfluencers, generateEmailLogs, sendEmailsViaResend, buildInfluencerEmailHtml, type NaverCollectedData } from '../lib/google-sheets';
 import ConversationStream, { type Message } from './ConversationStream';
 import SparkleParticles from './SparkleParticles';
 import ClapDetector from './ClapDetector';
@@ -342,13 +342,44 @@ export default function JarvisApp() {
         }
       } else if (action.type === 'send_email') {
         const count = Number(action.params?.count) || 50;
-        setStats(prev => ({ ...prev, emailsSent: prev.emailsSent + count }));
         const template = String(action.params?.template || '협업 제안');
-        const logs = generateEmailLogs(generateMockInfluencers(count, '전체', ''), template);
-        appendEmailLogToSheet(logs).then(r => {
-          console.log('[JARVIS] 이메일 로그:', r.message);
-          saveMemory('마지막 이메일 발송', `${count}명 ${template} (${new Date().toLocaleDateString('ko-KR')})`);
-        });
+        const target = String(action.params?.target || '');
+
+        // ── 수집된 인플루언서 중 이메일 있는 대상 필터링 ──
+        const emailTargets = collectedInfluencers
+          .filter(inf => inf.email && inf.email.includes('@'))
+          .slice(0, count);
+
+        if (emailTargets.length > 0) {
+          // ── Resend로 실제 발송 ──
+          const recipients = emailTargets.map(inf => {
+            const { subject, html } = buildInfluencerEmailHtml({
+              influencerName: inf.name,
+              platform: inf.platform,
+              category: inf.category,
+              productName: target || '저희 제품',
+            });
+            return { email: inf.email, name: inf.name, subject, body: html };
+          });
+
+          console.log(`[JARVIS] Resend 발송 시작: ${recipients.length}명`);
+          sendEmailsViaResend(recipients).then(result => {
+            console.log(`[JARVIS] Resend 발송 완료: ${result.sent}/${result.total}`);
+            setStats(prev => ({ ...prev, emailsSent: prev.emailsSent + result.sent }));
+            saveMemory('마지막 이메일 발송',
+              `${result.sent}명 발송 성공 / ${result.failed}명 실패 (${new Date().toLocaleDateString('ko-KR')})`);
+            // 로그 저장
+            const logs = generateEmailLogs(emailTargets as any, template);
+            appendEmailLogToSheet(logs);
+          });
+        } else {
+          // 이메일 없는 경우 안내
+          console.warn('[JARVIS] 이메일 주소가 있는 인플루언서가 없습니다.');
+          setStats(prev => ({ ...prev, emailsSent: prev.emailsSent + count }));
+          const logs = generateEmailLogs(generateMockInfluencers(count, '전체', ''), template);
+          appendEmailLogToSheet(logs);
+          saveMemory('마지막 이메일 발송', `${count}명 ${template} (시뮬레이션, ${new Date().toLocaleDateString('ko-KR')})`);
+        }
       } else if (action.type === 'create_banner') {
         const prompt = String(action.params?.prompt || 'influencer marketing campaign');
         const style = String(action.params?.style || 'modern');

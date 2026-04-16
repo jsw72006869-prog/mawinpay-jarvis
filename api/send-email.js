@@ -1,7 +1,6 @@
 "use strict";
-// Vercel Serverless Function (CommonJS)
-// 이메일 전송 API - Gmail SMTP (nodemailer)
-// 앱에서 사용하던 방식 그대로 이식
+// Vercel Serverless Function
+// 이메일 전송 API - Resend (고발송률 전문 이메일 서비스)
 
 module.exports = async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -13,43 +12,28 @@ module.exports = async function handler(req, res) {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
-  const gmailAddress = process.env.GMAIL_ADDRESS;
-  const appPassword = process.env.GMAIL_APP_PASSWORD;
-  const senderName = process.env.GMAIL_SENDER_NAME || 'Mawinpay';
+  const resendApiKey = process.env.RESEND_API_KEY;
+  const senderEmail = process.env.RESEND_FROM_EMAIL || 'onboarding@resend.dev';
+  const senderName = process.env.RESEND_SENDER_NAME || 'MAWINPAY JARVIS';
 
-  if (!gmailAddress || !appPassword) {
+  if (!resendApiKey) {
     return res.status(500).json({
-      error: 'SMTP 설정 없음',
-      message: 'GMAIL_ADDRESS와 GMAIL_APP_PASSWORD 환경변수를 Vercel에 설정해주세요.',
+      error: 'Resend API 키 없음',
+      message: 'RESEND_API_KEY 환경변수를 Vercel에 설정해주세요.',
     });
   }
 
-  const { to, subject, body, recipients } = req.body || {};
+  const { to, subject, body, html, recipients } = req.body || {};
 
   // 단일 발송 또는 다중 발송
   const targets = recipients && Array.isArray(recipients)
     ? recipients
-    : to ? [{ email: to, name: '', subject: subject || '', body: body || '' }]
+    : to ? [{ email: to, name: '', subject: subject || '', body: html || body || '' }]
     : [];
 
   if (targets.length === 0) {
     return res.status(400).json({ error: 'to 또는 recipients 필드가 필요합니다.' });
   }
-
-  let nodemailer;
-  try {
-    nodemailer = require('nodemailer');
-  } catch (e) {
-    return res.status(500).json({ error: 'nodemailer 패키지가 없습니다.', message: String(e) });
-  }
-
-  const transporter = nodemailer.createTransport({
-    service: 'gmail',
-    auth: {
-      user: gmailAddress,
-      pass: appPassword,
-    },
-  });
 
   const results = [];
   let successCount = 0;
@@ -57,8 +41,9 @@ module.exports = async function handler(req, res) {
 
   for (const target of targets) {
     const toEmail = target.email || target.to;
+    const toName = target.name || '';
     const mailSubject = target.subject || subject || '협업 제안 드립니다';
-    const mailBody = target.body || body || '';
+    const mailHtml = target.body || target.html || html || body || '';
 
     if (!toEmail || !toEmail.includes('@')) {
       results.push({ email: toEmail, status: 'skipped', reason: '유효하지 않은 이메일' });
@@ -66,23 +51,40 @@ module.exports = async function handler(req, res) {
     }
 
     try {
-      await transporter.sendMail({
-        from: `"${senderName}" <${gmailAddress}>`,
-        to: toEmail,
-        subject: mailSubject,
-        html: mailBody,
+      const response = await fetch('https://api.resend.com/emails', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${resendApiKey}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          from: `${senderName} <${senderEmail}>`,
+          to: toName ? [`${toName} <${toEmail}>`] : [toEmail],
+          subject: mailSubject,
+          html: mailHtml || `<p>${mailSubject}</p>`,
+        }),
       });
-      results.push({ email: toEmail, status: 'sent' });
-      successCount++;
+
+      const data = await response.json();
+
+      if (response.ok && data.id) {
+        results.push({ email: toEmail, status: 'sent', messageId: data.id });
+        successCount++;
+      } else {
+        const errMsg = data.message || data.error || `HTTP ${response.status}`;
+        console.error(`[Resend] 발송 실패 ${toEmail}:`, errMsg);
+        results.push({ email: toEmail, status: 'failed', reason: errMsg });
+        failCount++;
+      }
     } catch (err) {
-      console.error(`[Email] 발송 실패 ${toEmail}:`, err);
+      console.error(`[Resend] 네트워크 오류 ${toEmail}:`, err);
       results.push({ email: toEmail, status: 'failed', reason: String(err.message || err) });
       failCount++;
     }
 
-    // 연속 발송 시 0.5초 딜레이 (Gmail 속도 제한 방지)
+    // 연속 발송 시 300ms 딜레이 (Rate limit 방지)
     if (targets.length > 1) {
-      await new Promise(r => setTimeout(r, 500));
+      await new Promise(r => setTimeout(r, 300));
     }
   }
 
@@ -92,5 +94,6 @@ module.exports = async function handler(req, res) {
     sent: successCount,
     failed: failCount,
     results,
+    provider: 'resend',
   });
 };

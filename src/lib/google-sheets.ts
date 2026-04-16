@@ -196,3 +196,155 @@ export function generateEmailLogs(influencers: InfluencerData[], template: strin
     status: Math.random() > 0.013 ? '발송 성공' : '발송 실패',
   }));
 }
+
+// ── Resend API 실제 이메일 발송 ──
+export interface EmailSendResult {
+  email: string;
+  status: 'sent' | 'failed' | 'skipped';
+  reason?: string;
+  messageId?: string;
+}
+
+export interface EmailCampaignResult {
+  success: boolean;
+  total: number;
+  sent: number;
+  failed: number;
+  results: EmailSendResult[];
+  provider: string;
+}
+
+export async function sendEmailsViaResend(
+  recipients: { email: string; name: string; subject: string; body: string }[]
+): Promise<EmailCampaignResult> {
+  const apiBase = import.meta.env.PROD
+    ? ''
+    : 'https://mawinpay-jarvis.vercel.app';
+
+  try {
+    const res = await fetch(`${apiBase}/api/send-email`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ recipients }),
+    });
+
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({})) as any;
+      throw new Error(err.message || `HTTP ${res.status}`);
+    }
+
+    return await res.json() as EmailCampaignResult;
+  } catch (error) {
+    console.error('[Resend] 발송 오류:', error);
+    return {
+      success: false,
+      total: recipients.length,
+      sent: 0,
+      failed: recipients.length,
+      results: recipients.map(r => ({ email: r.email, status: 'failed', reason: String(error) })),
+      provider: 'resend',
+    };
+  }
+}
+
+// ── 인플루언서 협업 제안 이메일 HTML 템플릿 생성 ──
+export function buildInfluencerEmailHtml(opts: {
+  influencerName: string;
+  platform: string;
+  category: string;
+  senderName?: string;
+  productName?: string;
+  customMessage?: string;
+}): { subject: string; html: string } {
+  const { influencerName, platform, category, senderName = 'MAWINPAY', productName = '저희 제품', customMessage } = opts;
+
+  const subject = `[협업 제안] ${influencerName}님, ${productName} 콜라보레이션 제안드립니다`;
+
+  const html = `
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <style>
+    body { margin: 0; padding: 0; background: #0a0a0a; font-family: 'Apple SD Gothic Neo', 'Malgun Gothic', sans-serif; }
+    .container { max-width: 600px; margin: 0 auto; background: #111; border: 1px solid #222; border-radius: 12px; overflow: hidden; }
+    .header { background: linear-gradient(135deg, #0a0a0a 0%, #1a1a2e 50%, #0a0a0a 100%); padding: 40px 32px; text-align: center; border-bottom: 1px solid #00F5FF33; }
+    .logo { font-size: 22px; font-weight: 900; color: #00F5FF; letter-spacing: 4px; text-shadow: 0 0 20px #00F5FF88; }
+    .tagline { font-size: 11px; color: #00F5FF66; letter-spacing: 3px; margin-top: 6px; }
+    .body { padding: 36px 32px; }
+    .greeting { font-size: 18px; font-weight: 700; color: #fff; margin-bottom: 20px; }
+    .text { font-size: 14px; color: #aaa; line-height: 1.8; margin-bottom: 16px; }
+    .highlight { color: #00F5FF; font-weight: 600; }
+    .card { background: #1a1a1a; border: 1px solid #00F5FF22; border-radius: 10px; padding: 20px 24px; margin: 24px 0; }
+    .card-title { font-size: 12px; color: #00F5FF88; letter-spacing: 2px; margin-bottom: 12px; }
+    .benefit { display: flex; align-items: flex-start; margin-bottom: 10px; }
+    .benefit-icon { color: #00F5FF; margin-right: 10px; font-size: 14px; }
+    .benefit-text { font-size: 13px; color: #ccc; line-height: 1.6; }
+    .cta { text-align: center; margin: 32px 0; }
+    .cta-btn { display: inline-block; background: linear-gradient(135deg, #00F5FF22, #0066FF22); border: 1.5px solid #00F5FF88; color: #00F5FF; text-decoration: none; padding: 14px 36px; border-radius: 8px; font-size: 14px; font-weight: 700; letter-spacing: 2px; }
+    .footer { background: #0a0a0a; padding: 20px 32px; text-align: center; border-top: 1px solid #222; }
+    .footer-text { font-size: 11px; color: #444; line-height: 1.8; }
+    .platform-badge { display: inline-block; background: #00F5FF15; border: 1px solid #00F5FF44; border-radius: 20px; padding: 3px 12px; font-size: 11px; color: #00F5FF; margin: 0 4px; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <div class="logo">MAWINPAY</div>
+      <div class="tagline">VIRAL MARKETING INTELLIGENCE</div>
+    </div>
+    <div class="body">
+      <div class="greeting">안녕하세요, <span class="highlight">${influencerName}</span>님 👋</div>
+      <p class="text">
+        저는 <strong style="color:#fff">${senderName}</strong>의 마케팅 담당자입니다.<br>
+        <span class="platform-badge">${platform}</span> 채널에서 <span class="highlight">${category}</span> 분야의 
+        진정성 있는 콘텐츠를 꾸준히 만들어오신 것을 인상 깊게 보았습니다.
+      </p>
+      ${customMessage ? `<p class="text">${customMessage}</p>` : ''}
+      <p class="text">
+        ${influencerName}님의 채널과 <strong style="color:#fff">${productName}</strong>의 가치가 
+        잘 맞는다고 판단하여 협업을 제안드리고 싶습니다.
+      </p>
+
+      <div class="card">
+        <div class="card-title">✦ 협업 혜택</div>
+        <div class="benefit">
+          <span class="benefit-icon">◆</span>
+          <span class="benefit-text">제품 무상 제공 및 전용 할인 코드 지급</span>
+        </div>
+        <div class="benefit">
+          <span class="benefit-icon">◆</span>
+          <span class="benefit-text">판매 수익의 일정 비율 커미션 제공</span>
+        </div>
+        <div class="benefit">
+          <span class="benefit-icon">◆</span>
+          <span class="benefit-text">콘텐츠 제작 방향 자유롭게 결정 가능</span>
+        </div>
+        <div class="benefit">
+          <span class="benefit-icon">◆</span>
+          <span class="benefit-text">장기 파트너십 우선 협상 기회 제공</span>
+        </div>
+      </div>
+
+      <p class="text">
+        관심이 있으시다면 이 이메일에 회신해 주시거나, 편하신 시간에 연락 주시면 
+        더 자세한 내용을 안내해 드리겠습니다.
+      </p>
+
+      <div class="cta">
+        <a href="mailto:reply@mawinpay.com" class="cta-btn">협업 문의하기 →</a>
+      </div>
+    </div>
+    <div class="footer">
+      <p class="footer-text">
+        본 이메일은 ${senderName}의 마케팅 자동화 시스템을 통해 발송되었습니다.<br>
+        수신을 원하지 않으시면 회신으로 수신 거부 의사를 알려주세요.
+      </p>
+    </div>
+  </div>
+</body>
+</html>`;
+
+  return { subject, html };
+}
