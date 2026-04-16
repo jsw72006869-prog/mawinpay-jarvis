@@ -412,7 +412,9 @@ async function speakElevenLabs(
         },
         body: JSON.stringify({
           text,
-          model_id: 'eleven_multilingual_v2',
+          // eleven_turbo_v2_5: 최저 레이턴시 (~75ms), 한국어 지원
+          model_id: 'eleven_turbo_v2_5',
+          optimize_streaming_latency: 4,
           voice_settings: {
             stability: 0.45,
             similarity_boost: 0.85,
@@ -429,30 +431,70 @@ async function speakElevenLabs(
       throw new Error(`ElevenLabs ${res.status}`);
     }
 
-    const blob = await res.blob();
-    const url = URL.createObjectURL(blob);
-    const audio = new Audio(url);
-    globalAudioRef = audio;
+    // ── 스트리밍 재생: 전체 다운로드 기다리지 않고 4KB 도착 즉시 재생 시작 ──
+    const reader = res.body?.getReader();
+    if (!reader) {
+      // fallback: blob 방식
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const audio = new Audio(url);
+      globalAudioRef = audio;
+      await new Promise<void>((resolve) => {
+        audio.onended = () => { URL.revokeObjectURL(url); if (globalAudioRef === audio) globalAudioRef = null; resolve(); };
+        audio.onerror = () => { URL.revokeObjectURL(url); if (globalAudioRef === audio) globalAudioRef = null; resolve(); };
+        audio.play().catch(() => resolve());
+      });
+      return;
+    }
+
+    const chunks: Uint8Array[] = [];
+    let totalLength = 0;
+    let earlyAudio: HTMLAudioElement | null = null;
+    let earlyUrl = '';
+    let earlyStarted = false;
 
     await new Promise<void>((resolve) => {
-      audio.onended = () => {
-        console.log('[TTS] 재생 완료');
-        URL.revokeObjectURL(url);
-        if (globalAudioRef === audio) globalAudioRef = null;
-        resolve();
+      const pump = async () => {
+        try {
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            if (value) {
+              chunks.push(value);
+              totalLength += value.length;
+              // 첫 4KB 도착 즉시 재생 시작 (저지연 핵심)
+              if (!earlyStarted && totalLength >= 4096) {
+                earlyStarted = true;
+                const combined = new Uint8Array(totalLength);
+                let off = 0;
+                for (const c of chunks) { combined.set(c, off); off += c.length; }
+                earlyUrl = URL.createObjectURL(new Blob([combined], { type: 'audio/mpeg' }));
+                earlyAudio = new Audio(earlyUrl);
+                globalAudioRef = earlyAudio;
+                earlyAudio.play().catch(() => {});
+                console.log('[TTS] ⚡ 스트리밍 조기 재생 시작');
+              }
+            }
+          }
+          // 스트리밍 완료 → 전체 오디오로 교체 (끊김 방지)
+          if (earlyAudio) {
+            earlyAudio.pause();
+            URL.revokeObjectURL(earlyUrl);
+          }
+          const full = new Uint8Array(totalLength);
+          let off = 0;
+          for (const c of chunks) { full.set(c, off); off += c.length; }
+          const finalUrl = URL.createObjectURL(new Blob([full], { type: 'audio/mpeg' }));
+          const finalAudio = new Audio(finalUrl);
+          globalAudioRef = finalAudio;
+          finalAudio.onended = () => { URL.revokeObjectURL(finalUrl); if (globalAudioRef === finalAudio) globalAudioRef = null; resolve(); };
+          finalAudio.onerror = () => { URL.revokeObjectURL(finalUrl); if (globalAudioRef === finalAudio) globalAudioRef = null; resolve(); };
+          finalAudio.play().catch(() => resolve());
+        } catch {
+          resolve();
+        }
       };
-      audio.onerror = (e) => {
-        console.warn('[TTS] 재생 오류:', e);
-        URL.revokeObjectURL(url);
-        if (globalAudioRef === audio) globalAudioRef = null;
-        resolve();
-      };
-      audio.play().catch((e) => {
-        console.warn('[TTS] play() 실패:', e);
-        URL.revokeObjectURL(url);
-        if (globalAudioRef === audio) globalAudioRef = null;
-        resolve();
-      });
+      pump();
     });
 
   } catch (err) {
@@ -608,4 +650,105 @@ export function useTextToSpeech() {
   }, []);
 
   return { speak, stop };
+}
+
+// ── Wake Word 감지 훅 ── ("자비스" / "Jarvis" 감지 → 콜백 호출)
+// Web Speech API continuous 모드를 사용하여 추가 API 키 없이 동작
+export function useWakeWord(enabled: boolean, onWakeWord: () => void) {
+  const recognitionRef = useRef<SpeechRecognition | null>(null);
+  const onWakeWordRef = useRef(onWakeWord);
+  const enabledRef = useRef(enabled);
+  const restartTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => { onWakeWordRef.current = onWakeWord; });
+  useEffect(() => { enabledRef.current = enabled; });
+
+  useEffect(() => {
+    // Web Speech API 지원 여부 확인
+    const SpeechRecognitionAPI = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SpeechRecognitionAPI) {
+      console.warn('[WakeWord] Web Speech API 미지원 — Wake Word 비활성');
+      return;
+    }
+
+    if (!enabled) {
+      // 비활성화 시 정리
+      if (recognitionRef.current) {
+        try { recognitionRef.current.abort(); } catch { /* ignore */ }
+        recognitionRef.current = null;
+      }
+      if (restartTimerRef.current) { clearTimeout(restartTimerRef.current); restartTimerRef.current = null; }
+      return;
+    }
+
+    const startRecognition = () => {
+      if (!enabledRef.current) return;
+      const recognition = new SpeechRecognitionAPI();
+      recognition.continuous = true;
+      recognition.interimResults = true;
+      recognition.lang = 'ko-KR';
+      recognition.maxAlternatives = 3;
+      recognitionRef.current = recognition;
+
+      recognition.onresult = (event: SpeechRecognitionEvent) => {
+        if (!enabledRef.current) return;
+        for (let i = event.resultIndex; i < event.results.length; i++) {
+          for (let j = 0; j < event.results[i].length; j++) {
+            const transcript = event.results[i][j].transcript.toLowerCase().trim();
+            // 웨이크 워드 감지: 자비스 / jarvis / 재비스
+            if (
+              transcript.includes('자비스') ||
+              transcript.includes('jarvis') ||
+              transcript.includes('재비스') ||
+              transcript.includes('자비 스')
+            ) {
+              console.log('[WakeWord] 🎙️ 웨이크 워드 감지:', transcript);
+              try { recognition.abort(); } catch { /* ignore */ }
+              recognitionRef.current = null;
+              onWakeWordRef.current();
+              return;
+            }
+          }
+        }
+      };
+
+      recognition.onerror = (event: SpeechRecognitionErrorEvent) => {
+        if (event.error === 'not-allowed' || event.error === 'service-not-allowed') {
+          console.warn('[WakeWord] 마이크 권한 없음 — Wake Word 비활성');
+          return;
+        }
+        // 그 외 오류는 재시작
+        if (enabledRef.current) {
+          restartTimerRef.current = setTimeout(startRecognition, 1000);
+        }
+      };
+
+      recognition.onend = () => {
+        // 자동 재시작 (continuous 모드에서 브라우저가 중단할 수 있음)
+        if (enabledRef.current && recognitionRef.current === recognition) {
+          restartTimerRef.current = setTimeout(startRecognition, 500);
+        }
+      };
+
+      try {
+        recognition.start();
+        console.log('[WakeWord] ✅ 웨이크 워드 감지 시작 ("자비스" 또는 "Jarvis")');
+      } catch (err) {
+        console.warn('[WakeWord] 시작 실패:', err);
+        if (enabledRef.current) {
+          restartTimerRef.current = setTimeout(startRecognition, 1000);
+        }
+      }
+    };
+
+    startRecognition();
+
+    return () => {
+      enabledRef.current = false;
+      if (restartTimerRef.current) { clearTimeout(restartTimerRef.current); restartTimerRef.current = null; }
+      if (recognitionRef.current) {
+        try { recognitionRef.current.abort(); } catch { /* ignore */ }
+        recognitionRef.current = null;
+      }
+    };
+  }, [enabled]);
 }

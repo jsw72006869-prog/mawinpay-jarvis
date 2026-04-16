@@ -2,7 +2,7 @@ import { useState, useCallback, useEffect, useRef } from 'react';
 import { QRCodeSVG } from 'qrcode.react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { askGPT, parseCommand, generateBannerImage, saveSchedule, saveMemory, searchNaverAPI, searchYouTubeAPI, searchInstagramAPI, invalidateSheetCache, type JarvisState, type JarvisAction, type NaverSearchItem, type YouTubeChannel, type InstagramAccount } from '../lib/jarvis-brain';
-import { useSpeechRecognition, useTextToSpeech, useBargein, setCurrentVoiceId, getCurrentVoiceId, ELEVENLABS_VOICES, stopGlobalAudio } from './SpeechEngine';
+import { useSpeechRecognition, useTextToSpeech, useBargein, useWakeWord, setCurrentVoiceId, getCurrentVoiceId, ELEVENLABS_VOICES, stopGlobalAudio } from './SpeechEngine';
 import { useMicrophoneFrequency } from '../lib/audio-analyzer';
 import { saveLearnedKnowledge, getLearnedKnowledge, getMemoryStats, clearAllMemory, type LearnedKnowledge } from '../lib/jarvis-memory';
 import { appendInfluencersToSheet, appendEmailLogToSheet, appendNaverResultsToSheet, appendInstagramToSheet, appendLocalBusinessToSheet, generateMockInfluencers, generateEmailLogs, sendEmailsViaResend, buildInfluencerEmailHtml, type NaverCollectedData } from '../lib/google-sheets';
@@ -155,6 +155,17 @@ export default function JarvisApp() {
       setState('listening');
       setIsListening(true);
     }, [stopSpeakingLevel])
+  );
+
+  // ── Wake Word 감지: idle 상태에서 "자비스" / "Jarvis" 감지 → 자동 활성화 ──
+  // handleActivate는 아래에 정의되어 있으므로 ref를 통해 연결
+  const handleActivateRef = useRef<() => void>(() => {});
+  useWakeWord(
+    state === 'idle', // idle 상태에서만 감지
+    useCallback(() => {
+      console.log('[WakeWord] 웨이크 워드 감지 → handleActivate 호출');
+      handleActivateRef.current();
+    }, [])
   );
 
   // ── 시계 ──
@@ -1061,8 +1072,9 @@ export default function JarvisApp() {
   }, [isInitialized, addMessage, speak, startSpeakingLevel, stopSpeakingLevel]);
 
   useEffect(() => { if (state !== 'listening') setMicLevel(0); }, [state]);
-
-  // ── Ctrl+K 단축키: 타이핑 모드 토글 ──
+  // ── handleActivateRef 동기화 (Wake Word 콜백에서 활성화 함수 참조) ──
+  useEffect(() => { handleActivateRef.current = handleActivate; }, [handleActivate]);
+  // ── Ctrl+K 단축키: 타이핑 모드 토글 ───
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
