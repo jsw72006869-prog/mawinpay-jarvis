@@ -90,6 +90,11 @@ export default function JarvisApp() {
   const [collectedBusinesses, setCollectedBusinesses] = useState<LocalBusinessData[]>([]);
   const [businessCardsVisible, setBusinessCardsVisible] = useState(false);
 
+  // ── 타이핑 입력 모드 ──
+  const [textInputMode, setTextInputMode] = useState(false);
+  const [textInputValue, setTextInputValue] = useState('');
+  const textInputRef = useRef<HTMLInputElement>(null);
+
   const [settingsForm, setSettingsForm] = useState(() => {
     const stored = JSON.parse(localStorage.getItem('jarvis_api_keys') || '{}');
     return {
@@ -700,6 +705,36 @@ export default function JarvisApp() {
     }
   }, [addMessage, jarvisRespond]);
 
+  // ── 타이핑 입력 제출 핸들러 ──
+  const handleTextSubmit = useCallback(async (text: string) => {
+    if (!text.trim()) return;
+    setTextInputValue('');
+    setTextInputMode(false);
+
+    // 자비스가 말하는 중이면 중단
+    if (stateRef.current === 'speaking') {
+      stopGlobalAudio();
+      stopSpeakingLevel();
+      await new Promise(r => setTimeout(r, 150));
+    }
+
+    // 자비스를 활성화하지 않은 상태에서도 입력 가능
+    if (stateRef.current === 'idle') {
+      setIsInitialized(true);
+    }
+
+    setState('thinking');
+    addMessage('user', text);
+    try {
+      const action = await askGPT(text).catch(() => parseCommand(text));
+      await jarvisRespond(action.response, action);
+    } catch (err) {
+      console.error('[JARVIS] handleTextSubmit 오류:', err);
+      await new Promise(r => setTimeout(r, 300));
+      setState(stateRef.current === 'idle' ? 'idle' : 'listening');
+    }
+  }, [addMessage, jarvisRespond, stopSpeakingLevel]);
+
   useSpeechRecognition({
     onResult: handleSpeechResult,
     onStart: () => {
@@ -767,6 +802,21 @@ export default function JarvisApp() {
   }, [isInitialized, addMessage, speak, startSpeakingLevel, stopSpeakingLevel]);
 
   useEffect(() => { if (state !== 'listening') setMicLevel(0); }, [state]);
+
+  // ── Ctrl+K 단축키: 타이핑 모드 토글 ──
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
+        e.preventDefault();
+        setTextInputMode(prev => {
+          if (!prev) setTimeout(() => textInputRef.current?.focus(), 80);
+          return !prev;
+        });
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
 
   const accent = STATE_COLOR[state];
 
@@ -1067,6 +1117,192 @@ export default function JarvisApp() {
           )}
         </AnimatePresence>
       </div>
+
+      {/* ── 타이핑 입력창 ── */}
+      <AnimatePresence>
+        {textInputMode && (
+          <motion.div
+            initial={{ opacity: 0, y: 40 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 40 }}
+            transition={{ duration: 0.25 }}
+            style={{
+              position: 'fixed', bottom: 0, left: 0, right: 0,
+              zIndex: 100,
+              padding: '0 0 0 0',
+              display: 'flex', flexDirection: 'column', alignItems: 'center',
+            }}
+            onClick={e => e.stopPropagation()}
+          >
+            {/* 배경 블러 */}
+            <div style={{
+              position: 'absolute', inset: 0,
+              background: 'linear-gradient(to top, rgba(0,8,20,0.97) 0%, rgba(0,8,20,0.85) 60%, transparent 100%)',
+              pointerEvents: 'none',
+            }} />
+            <div style={{
+              position: 'relative', zIndex: 1,
+              width: '100%', maxWidth: 680,
+              padding: '20px 24px 28px',
+              display: 'flex', flexDirection: 'column', gap: 10,
+            }}>
+              {/* 입력창 라벨 */}
+              <div style={{
+                fontFamily: 'Orbitron, monospace',
+                color: THEME.blueLight,
+                fontSize: '0.42rem',
+                letterSpacing: '0.35em',
+                opacity: 0.7,
+                marginBottom: 2,
+              }}>
+                TEXT INPUT MODE
+              </div>
+              {/* 입력줄 */}
+              <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+                <div style={{
+                  flex: 1,
+                  border: `1px solid ${THEME.blueLight}55`,
+                  borderRadius: 4,
+                  background: 'rgba(0, 180, 255, 0.04)',
+                  boxShadow: `0 0 16px ${THEME.blueLight}18, inset 0 0 8px rgba(0,0,0,0.3)`,
+                  display: 'flex', alignItems: 'center',
+                  padding: '0 14px',
+                  position: 'relative',
+                }}>
+                  {/* 주사 선 장식 */}
+                  <div style={{
+                    position: 'absolute', left: 0, top: '50%', transform: 'translateY(-50%)',
+                    width: 2, height: '60%', background: THEME.blueLight,
+                    opacity: 0.6, borderRadius: 1,
+                  }} />
+                  <input
+                    ref={textInputRef}
+                    type="text"
+                    value={textInputValue}
+                    onChange={e => setTextInputValue(e.target.value)}
+                    onKeyDown={e => {
+                      if (e.key === 'Enter' && textInputValue.trim()) {
+                        handleTextSubmit(textInputValue.trim());
+                      }
+                      if (e.key === 'Escape') {
+                        setTextInputMode(false);
+                        setTextInputValue('');
+                      }
+                    }}
+                    placeholder="명령을 입력하세요... (Enter 제출, Esc 취소)"
+                    autoFocus
+                    style={{
+                      flex: 1,
+                      background: 'transparent',
+                      border: 'none',
+                      outline: 'none',
+                      color: THEME.text,
+                      fontFamily: 'Orbitron, monospace',
+                      fontSize: 'clamp(0.55rem, 1.4vw, 0.8rem)',
+                      letterSpacing: '0.05em',
+                      padding: '14px 0',
+                      caretColor: THEME.blueLight,
+                    }}
+                  />
+                </div>
+                {/* 제출 버튼 */}
+                <motion.div
+                  whileHover={{ scale: 1.05 }}
+                  whileTap={{ scale: 0.95 }}
+                  onClick={() => textInputValue.trim() && handleTextSubmit(textInputValue.trim())}
+                  style={{
+                    width: 44, height: 44,
+                    borderRadius: 4,
+                    border: `1px solid ${THEME.blueLight}66`,
+                    background: textInputValue.trim() ? `rgba(0,180,255,0.15)` : 'rgba(0,180,255,0.04)',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    cursor: 'pointer',
+                    boxShadow: textInputValue.trim() ? `0 0 12px ${THEME.blueLight}30` : 'none',
+                    transition: 'all 0.2s',
+                    flexShrink: 0,
+                  }}
+                >
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+                    <path d="M22 2L11 13" stroke={THEME.blueLight} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                    <path d="M22 2L15 22L11 13L2 9L22 2Z" stroke={THEME.blueLight} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                  </svg>
+                </motion.div>
+                {/* 닫기 버튼 */}
+                <motion.div
+                  whileHover={{ scale: 1.05 }}
+                  whileTap={{ scale: 0.95 }}
+                  onClick={() => { setTextInputMode(false); setTextInputValue(''); }}
+                  style={{
+                    width: 44, height: 44,
+                    borderRadius: 4,
+                    border: `1px solid ${THEME.textDim}33`,
+                    background: 'rgba(255,255,255,0.03)',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    cursor: 'pointer',
+                    flexShrink: 0,
+                  }}
+                >
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
+                    <path d="M18 6L6 18M6 6L18 18" stroke={THEME.textDim} strokeWidth="2" strokeLinecap="round"/>
+                  </svg>
+                </motion.div>
+              </div>
+              {/* 단축키 안내 */}
+              <div style={{ display: 'flex', gap: 16 }}>
+                {[['Enter', '제출'], ['Esc', '닫기'], ['Ctrl+K', '음성모드']].map(([key, desc]) => (
+                  <div key={key} style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+                    <span style={{
+                      fontFamily: 'Orbitron, monospace',
+                      color: THEME.blueLight,
+                      fontSize: '0.35rem',
+                      letterSpacing: '0.1em',
+                      border: `1px solid ${THEME.blueLight}44`,
+                      padding: '1px 5px',
+                      borderRadius: 2,
+                      opacity: 0.7,
+                    }}>{key}</span>
+                    <span style={{ color: THEME.textDim, fontSize: '0.38rem', fontFamily: 'monospace', opacity: 0.6 }}>{desc}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* ── 타이핑 모드 토글 버튼 (좌측 하단) ── */}
+      <motion.div
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        transition={{ delay: 2, duration: 0.8 }}
+        onClick={e => {
+          e.stopPropagation();
+          setTextInputMode(prev => !prev);
+          if (!textInputMode) {
+            setTimeout(() => textInputRef.current?.focus(), 80);
+          }
+        }}
+        style={{
+          position: 'fixed', bottom: 20, left: 20,
+          zIndex: 50,
+          width: 42, height: 42,
+          borderRadius: 4,
+          border: `1px solid ${textInputMode ? THEME.blueLight : THEME.textDim}55`,
+          background: textInputMode ? `rgba(0,180,255,0.12)` : 'rgba(255,255,255,0.04)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          cursor: 'pointer',
+          boxShadow: textInputMode ? `0 0 14px ${THEME.blueLight}30` : 'none',
+          transition: 'all 0.25s',
+        }}
+        title="타이핑 모드 (Ctrl+K)"
+      >
+        {/* 키보드 아이콘 */}
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+          <rect x="2" y="5" width="20" height="14" rx="2" stroke={textInputMode ? THEME.blueLight : THEME.textDim} strokeWidth="1.5" opacity="0.8"/>
+          <path d="M6 9h1M9 9h1M12 9h1M15 9h1M18 9h1M6 12h1M9 12h1M12 12h1M15 12h1M6 15h6" stroke={textInputMode ? THEME.blueLight : THEME.textDim} strokeWidth="1.5" strokeLinecap="round" opacity="0.8"/>
+          <path d="M15 15h3" stroke={textInputMode ? THEME.blueLight : THEME.textDim} strokeWidth="1.5" strokeLinecap="round" opacity="0.8"/>
+        </svg>
+      </motion.div>
 
       {/* ── 하단 시스템 상태 ── */}
       <motion.footer
