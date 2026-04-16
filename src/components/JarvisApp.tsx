@@ -1,6 +1,6 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { askGPT, parseCommand, JARVIS_GREETINGS, generateBannerImage, saveSchedule, saveMemory, searchNaverAPI, searchYouTubeAPI, searchInstagramAPI, type JarvisState, type JarvisAction, type NaverSearchItem, type YouTubeChannel, type InstagramAccount } from '../lib/jarvis-brain';
+import { askGPT, parseCommand, generateBannerImage, saveSchedule, saveMemory, searchNaverAPI, searchYouTubeAPI, searchInstagramAPI, type JarvisState, type JarvisAction, type NaverSearchItem, type YouTubeChannel, type InstagramAccount } from '../lib/jarvis-brain';
 import { useSpeechRecognition, useTextToSpeech, useBargein, setCurrentVoiceId, getCurrentVoiceId, ELEVENLABS_VOICES, stopGlobalAudio } from './SpeechEngine';
 import { useMicrophoneFrequency } from '../lib/audio-analyzer';
 import { saveLearnedKnowledge, getLearnedKnowledge, getMemoryStats, clearAllMemory, type LearnedKnowledge } from '../lib/jarvis-memory';
@@ -574,18 +574,7 @@ export default function JarvisApp() {
 
       if (!isInitialized) {
         setIsInitialized(true);
-        // 시그니처 후 인사말 추가
-        const greeting = JARVIS_GREETINGS[Math.floor(Math.random() * JARVIS_GREETINGS.length)];
-        await new Promise(r => setTimeout(r, 400));
-        setState('speaking');
-        addMessage('jarvis', greeting);
-        startSpeakingLevel();
-        await new Promise<void>(resolve => {
-          speak(greeting, undefined, () => {
-            stopSpeakingLevel();
-            resolve();
-          });
-        });
+        // 시그니처 응답만 발화 — 후속 인사말 없음
       }
 
       // TTS 완료 후 충분한 딜레이 후 listening 상태로 전환
