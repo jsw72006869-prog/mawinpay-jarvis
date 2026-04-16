@@ -4,12 +4,13 @@ import { askGPT, parseCommand, generateBannerImage, saveSchedule, saveMemory, se
 import { useSpeechRecognition, useTextToSpeech, useBargein, setCurrentVoiceId, getCurrentVoiceId, ELEVENLABS_VOICES, stopGlobalAudio } from './SpeechEngine';
 import { useMicrophoneFrequency } from '../lib/audio-analyzer';
 import { saveLearnedKnowledge, getLearnedKnowledge, getMemoryStats, clearAllMemory, type LearnedKnowledge } from '../lib/jarvis-memory';
-import { appendInfluencersToSheet, appendEmailLogToSheet, appendNaverResultsToSheet, appendInstagramToSheet, generateMockInfluencers, generateEmailLogs, sendEmailsViaResend, buildInfluencerEmailHtml, type NaverCollectedData } from '../lib/google-sheets';
+import { appendInfluencersToSheet, appendEmailLogToSheet, appendNaverResultsToSheet, appendInstagramToSheet, appendLocalBusinessToSheet, generateMockInfluencers, generateEmailLogs, sendEmailsViaResend, buildInfluencerEmailHtml, type NaverCollectedData } from '../lib/google-sheets';
 import ConversationStream, { type Message } from './ConversationStream';
 import SparkleParticles from './SparkleParticles';
 import ClapDetector from './ClapDetector';
 import HoloDataPanel from './HoloDataPanel';
 import InfluencerCards, { type InfluencerData } from './InfluencerCards';
+import LocalBusinessCards, { type LocalBusinessData } from './LocalBusinessCards';
 
 // ── 시그니처 응답 목록 (GPT 대기 없이 즉시 재생) ──
 const SIGNATURE_RESPONSES = [
@@ -86,6 +87,8 @@ export default function JarvisApp() {
   const [naverKeyword, setNaverKeyword] = useState('');
   const [collectedInfluencers, setCollectedInfluencers] = useState<InfluencerData[]>([]);
   const [influencerCardsVisible, setInfluencerCardsVisible] = useState(false);
+  const [collectedBusinesses, setCollectedBusinesses] = useState<LocalBusinessData[]>([]);
+  const [businessCardsVisible, setBusinessCardsVisible] = useState(false);
 
   const [settingsForm, setSettingsForm] = useState(() => {
     const stored = JSON.parse(localStorage.getItem('jarvis_api_keys') || '{}');
@@ -500,46 +503,48 @@ export default function JarvisApp() {
           throw new Error(data.message || data.error || '검색 실패');
         }
 
-        const items: InfluencerData[] = data.items.map((item: { name: string; category: string; address: string; roadAddress: string; phone: string; link: string; mapx: string; mapy: string; description: string; }) => ({
-          name: item.name,
-          platform: 'Local',
+        const businessItems: LocalBusinessData[] = data.items.map((item: { name: string; category: string; address: string; roadAddress: string; phone: string; link: string; mapx: string; mapy: string; description: string; businessHours?: string; is24Hours?: boolean; }) => ({
+          id: `${item.name}-${Date.now()}`,
+          name: item.name.replace(/<[^>]*>/g, ''),
           category: item.category || '업체',
-          subscribers: 0,
-          email: '',
-          profileUrl: item.link || '',
-          thumbnailUrl: '',
+          address: item.address || '',
+          roadAddress: item.roadAddress || '',
+          phone: item.phone || '',
+          link: item.link || '',
           description: item.description || '',
-          address: item.roadAddress || item.address,
-          phone: item.phone,
-          mapx: item.mapx,
-          mapy: item.mapy,
-          collectedAt: new Date().toLocaleString('ko-KR'),
-        }));
-
-        setInfluencers(items);
-        setInfluencerPanelVisible(true);
-        saveMemory('마지막 지역 검색', `${query} ${category ? `(${category})` : ''} ${items.length}건 (${new Date().toLocaleDateString('ko-KR')})`);
-
-        // 구글 시트 자동 저장
-        const sheetRows = items.map(item => ({
-          title: item.name,
-          author: '',
-          blogId: '',
-          guessedEmail: '',
-          realEmail: '',
-          neighborCount: 0,
-          dailyVisitors: 0,
-          link: item.profileUrl,
-          description: `${item.address || ''} | ${item.phone || ''} | ${item.category}`,
-          type: 'local',
+          mapx: item.mapx || '',
+          mapy: item.mapy || '',
+          businessHours: item.businessHours || '',
+          is24Hours: item.is24Hours || false,
           keyword: query,
           collectedAt: new Date().toLocaleString('ko-KR'),
         }));
-        appendNaverResultsToSheet(sheetRows).then(() => invalidateSheetCache()).catch(err => console.warn('[JARVIS] 시트 저장 실패:', err));
+
+        setCollectedBusinesses(businessItems);
+        setBusinessCardsVisible(businessItems.length > 0);
+        saveMemory('마지막 지역 검색', `${query} ${category ? `(${category})` : ''} ${businessItems.length}건 (${new Date().toLocaleDateString('ko-KR')})`);
+
+        // 구글 시트 자동 저장 (지역업체 전용 탭)
+        const sheetRows = businessItems.map(item => ({
+          name: item.name,
+          category: item.category,
+          address: item.address,
+          roadAddress: item.roadAddress,
+          phone: item.phone,
+          businessHours: item.businessHours,
+          is24Hours: item.is24Hours,
+          link: item.link,
+          description: item.description,
+          keyword: query,
+        }));
+        appendLocalBusinessToSheet(sheetRows).then(r => {
+          if (r.success) console.log(`[JARVIS] 지역업체 시트 저장 완료: ${r.count}건`);
+          invalidateSheetCache();
+        }).catch(err => console.warn('[JARVIS] 시트 저장 실패:', err));
 
         const categoryText = category ? ` (${category} 필터)` : '';
-        const phoneCount = items.filter(i => i.phone).length;
-        const doneText = `'${query}'${categoryText} 검색 완료. ${items.length}개 업체를 수집했습니다. 전화번호 ${phoneCount}건, 주소 포함 구글 시트에 저장했습니다, 선생님.`;
+        const phoneCount = businessItems.filter(i => i.phone).length;
+        const doneText = `'${query}'${categoryText} 검색 완료. ${businessItems.length}개 업체를 수집했습니다. 전화번호 ${phoneCount}건, 주소 포함 구글 시트에 저장했습니다, 선생님.`;
         setState('speaking');
         addMessage('jarvis', doneText, true);
         setClapBurst(true);
@@ -1118,6 +1123,45 @@ export default function JarvisApp() {
         visible={influencerCardsVisible}
         onClose={() => setInfluencerCardsVisible(false)}
       />
+
+      {/* ── 지역업체 카드 UI ── */}
+      <AnimatePresence>
+        {businessCardsVisible && collectedBusinesses.length > 0 && (
+          <motion.div
+            initial={{ opacity: 0, y: 40 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 40 }}
+            style={{
+              position: 'fixed', inset: 0, zIndex: 55,
+              background: 'rgba(6,10,18,0.92)',
+              backdropFilter: 'blur(12px)',
+              overflowY: 'auto',
+            }}
+          >
+            {/* 닫기 버튼 */}
+            <div
+              onClick={() => setBusinessCardsVisible(false)}
+              style={{
+                position: 'fixed', top: 20, right: 28, zIndex: 60,
+                cursor: 'pointer',
+                background: 'rgba(6,10,18,0.9)',
+                border: '1px solid rgba(74,144,226,0.4)',
+                borderLeft: '2px solid #4A90E2',
+                padding: '6px 14px',
+                backdropFilter: 'blur(8px)',
+                fontFamily: 'Orbitron, monospace',
+                color: '#4A90E2',
+                fontSize: '0.42rem',
+                letterSpacing: '0.2em',
+              }}
+            >CLOSE ×</div>
+            <LocalBusinessCards
+              businesses={collectedBusinesses}
+              visible={true}
+            />
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* ── DALL-E 배너 이미지 팝업 ── */}
       <AnimatePresence>

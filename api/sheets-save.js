@@ -36,6 +36,7 @@ var __importStar = (this && this.__importStar) || (function () {
 const SPREADSHEET_ID = '195rrBRA8VFgkpCRqb8Nssiu3HLI7ZYvarAxGtxCI57w';
 const INFLUENCER_SHEET = '인플루언서 목록';
 const NAVER_SHEET = 'JARVIS 네이버수집';
+const LOCAL_SHEET = 'JARVIS 지역업체수집';
 const INFLUENCER_HEADERS = [
     'No', '채널명', '이메일', '플랫폼', '카테고리',
     '구독자수', '평균조회수', 'Instagram', 'TikTok', 'Threads',
@@ -45,6 +46,10 @@ const INFLUENCER_HEADERS = [
 const NAVER_HEADERS = [
     'No', '제목', '작성자', '블로그ID', '이메일(추정)', '실제이메일',
     '이웃수', '일방문자', '링크', '설명', '타입', '키워드', '수집일시',
+];
+const LOCAL_HEADERS = [
+    'No', '업체명', '카테고리', '도로명주소', '지번주소', '전화번호',
+    '영업시간', '24시간여부', '네이버지도링크', '설명', '키워드', '수집일시',
 ];
 // ── Google Sheets API 토큰 발급 (서비스 계정) ──
 async function getAccessToken(credentials) {
@@ -242,6 +247,27 @@ module.exports = async function handler(req, res) {
             ]);
             await appendRows(token, NAVER_SHEET, rows);
             return res.status(200).json({ success: true, count: rows.length, sheet: NAVER_SHEET });
+        }
+        else if (type === 'local') {
+            await ensureSheet(token, LOCAL_SHEET, LOCAL_HEADERS);
+            const lastRow = await getLastRow(token, LOCAL_SHEET);
+            const items = Array.isArray(data) ? data : [data];
+            const rows = items.map((item, i) => [
+                (lastRow + i).toString(),
+                item.name || '',
+                item.category || '',
+                item.roadAddress || '',
+                item.address || '',
+                item.phone || '',
+                item.businessHours || '',
+                item.is24Hours ? 'Y' : '',
+                item.link || '',
+                (item.description || '').replace(/<[^>]*>/g, '').substring(0, 200),
+                item.keyword || '',
+                now,
+            ]);
+            await appendRows(token, LOCAL_SHEET, rows);
+            return res.status(200).json({ success: true, count: rows.length, sheet: LOCAL_SHEET });
         }
         return res.status(400).json({ error: `Unknown type: ${type}` });
     }

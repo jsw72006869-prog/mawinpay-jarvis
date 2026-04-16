@@ -128,6 +128,27 @@ export async function appendNaverResultsToSheet(
   return saveToSheets('naver', mapped);
 }
 
+// ── 지역업체 데이터 저장 ──
+export interface LocalBusinessSheetData {
+  name: string;
+  category: string;
+  address?: string;
+  roadAddress?: string;
+  phone?: string;
+  businessHours?: string;
+  is24Hours?: boolean;
+  link?: string;
+  description?: string;
+  keyword: string;
+}
+
+export async function appendLocalBusinessToSheet(
+  businesses: LocalBusinessSheetData[]
+): Promise<{ success: boolean; count: number; message: string }> {
+  if (!businesses.length) return { success: true, count: 0, message: '저장할 데이터 없음' };
+  return saveToSheets('local', businesses);
+}
+
 // ── 인스타그램 계정 저장 ──
 export async function appendInstagramToSheet(
   accounts: {
