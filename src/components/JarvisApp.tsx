@@ -632,12 +632,24 @@ export default function JarvisApp() {
         const naverPassword = naverCreds.password || '';
 
         if (bookAction === 'check_availability') {
+          // 0. 네이버 자격증명 없을 때 안내
+          if (!naverUsername || !naverPassword) {
+            const noCredsText = `선생님, 네이버 로그인 정보가 설정되어 있지 않습니다. 화면 우측 상단 SETTINGS 버튼을 클릭하신 후 NAVER BOOKING CREDENTIALS 섹션에 네이버 아이디와 비밀번호를 입력해 주세요.`;
+            setState('speaking');
+            addMessage('jarvis', noCredsText, true);
+            startSpeakingLevel();
+            await new Promise<void>(resolve => {
+              speak(noCredsText, undefined, () => { stopSpeakingLevel(); resolve(); });
+            });
+            setState('idle');
+            return;
+          }
           // 1. 로그인 시도
           if (naverUsername && naverPassword) {
             const loginRes = await fetch(`${BOOKING_SERVER}/api/booking/login`, {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ username: naverUsername, password: naverPassword }),
+              body: JSON.stringify({ naverID: naverUsername, naverPW: naverPassword }),
             });
             const loginData = await loginRes.json();
             if (loginData.success && loginData.sessionId) {
