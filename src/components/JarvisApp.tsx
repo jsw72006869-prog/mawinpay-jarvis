@@ -184,145 +184,161 @@ export default function JarvisApp() {
       await new Promise(r => setTimeout(r, 400));
       setDataPanel(prev => ({ ...prev, visible: false }));
       if (action.type === 'collect') {
-        const count = Number(action.params?.count) || 50;
+        const count = Number(action.params?.count) || 5;
         const category = String(action.params?.category || '전체');
         const platform = String(action.params?.platform || '');
         const keyword = String(action.params?.keyword || category);
+        const minSubscribers = Number(action.params?.min_subscribers) || 0;
         const collectedAt = new Date().toLocaleString('ko-KR');
-        const isYouTube = platform.toLowerCase().includes('youtube') || platform.toLowerCase().includes('유튜브') || keyword.includes('유튜버') || keyword.includes('유튜브');
-        const isInstagram = platform.toLowerCase().includes('instagram') || platform.toLowerCase().includes('인스타') || keyword.includes('인스타');
 
-        if (isYouTube) {
-          // ── YouTube Data API로 실제 유튜버 수집 (앱 방식 이식) ──
-          try {
-            console.log(`[JARVIS] YouTube API 수집 시작: ${keyword}, ${count}명`);
-            const result = await searchYouTubeAPI(keyword, Math.min(count, 50));
-            const realInfluencers = result.items.map((ch: YouTubeChannel) => ({
-              name: ch.name,
-              platform: 'YouTube',
-              followers: ch.subscribers > 0 ? (ch.subscribers >= 10000 ? `${(ch.subscribers / 10000).toFixed(1)}만` : `${(ch.subscribers / 1000).toFixed(1)}K`) : '-',
-              category: keyword || category,
-              email: ch.email || '',
-              instagram: ch.instagram || '',
-              tiktok: (ch as any).tiktok || '',
-              website: (ch as any).website || '',
-              profileUrl: ch.customUrl || ch.profileUrl || '',
-              thumbnailUrl: ch.thumbnailUrl || '',
-              channelId: ch.channelId || '',
-              status: '활성',
-              collectedAt,
-            }));
-            setStats(prev => ({ ...prev, collected: prev.collected + realInfluencers.length }));
-            setCollectedInfluencers(realInfluencers);
-            setInfluencerCardsVisible(true);
-            appendInfluencersToSheet(realInfluencers).then(r => {
-              console.log('[JARVIS] YouTube 시트:', r.success ? `완료 (${r.count}건)` : r.message);
-              saveMemory('마지막 수집', `${keyword} ${realInfluencers.length}명 YouTube 수집 (${new Date().toLocaleDateString('ko-KR')})`);
-            });
-          } catch (err) {
-            console.error('[JARVIS] YouTube API 수집 실패, 네이버 폴백:', err);
+        // ── 중복 제거 헬퍼 함수 ──
+        const deduplicateInfluencers = (existing: InfluencerData[], newItems: InfluencerData[]): InfluencerData[] => {
+          const existingNames = new Set(existing.map(i => i.name.toLowerCase().trim()));
+          return newItems.filter(i => !existingNames.has(i.name.toLowerCase().trim()));
+        };
+
+        // ── 구독자 수 파싱 헬퍼 ──
+        const parseSubscriberCount = (followers: string): number => {
+          if (!followers || followers === '-') return 0;
+          const m = followers.match(/([d.]+)(만|K|k|M|m)?/);
+          if (!m) return 0;
+          const num = parseFloat(m[1]);
+          const unit = m[2];
+          if (unit === '만') return num * 10000;
+          if (unit === 'K' || unit === 'k') return num * 1000;
+          if (unit === 'M' || unit === 'm') return num * 1000000;
+          return num;
+        };
+
+        // ── 구독자 수 필터 함수 ──
+        const filterBySubscribers = (items: InfluencerData[]): InfluencerData[] => {
+          if (!minSubscribers) return items;
+          return items.filter(i => parseSubscriberCount(i.followers) >= minSubscribers);
+        };
+
+        // ── 단일 플랫폼 수집 함수 ──
+        const collectForPlatform = async (plt: string, cnt: number): Promise<InfluencerData[]> => {
+          const isYT = plt.toLowerCase().includes('youtube') || plt.toLowerCase().includes('유튜브');
+          const isIG = plt.toLowerCase().includes('instagram') || plt.toLowerCase().includes('인스타');
+
+          if (isYT) {
             try {
-              const result = await searchNaverAPI(keyword, 'blog', Math.min(count, 100), 'sim');
-              const fallbackInfluencers = result.items.map(item => ({
-                name: item.creatorName || item.title.replace(/<[^>]*>/g, '').substring(0, 20),
-                platform: 'Naver Blog',
-                followers: '-',
+              console.log(`[JARVIS] YouTube API 수집: ${keyword}, ${cnt}명`);
+              const result = await searchYouTubeAPI(keyword, Math.min(cnt * 3, 50)); // 필터 고려 3배 요청
+              const items: InfluencerData[] = result.items.map((ch: YouTubeChannel) => ({
+                name: ch.name,
+                platform: 'YouTube',
+                followers: ch.subscribers > 0 ? (ch.subscribers >= 10000 ? `${(ch.subscribers / 10000).toFixed(1)}만` : `${(ch.subscribers / 1000).toFixed(1)}K`) : '-',
+                subscriberCount: ch.subscribers,
                 category: keyword || category,
-                email: item.guessedEmail || item.email || '',
+                email: ch.email || '',
+                profileUrl: (ch as any).customUrl || ch.profileUrl || '',
+                thumbnailUrl: ch.thumbnailUrl || '',
+                channelId: ch.channelId || '',
                 status: '활성',
                 collectedAt,
               }));
-              setStats(prev => ({ ...prev, collected: prev.collected + fallbackInfluencers.length }));
-              appendInfluencersToSheet(fallbackInfluencers);
-            } catch {
-              const influencers = generateMockInfluencers(count, keyword || category, platform);
-              setStats(prev => ({ ...prev, collected: prev.collected + count }));
-              appendInfluencersToSheet(influencers);
+              const filtered = filterBySubscribers(items);
+              return filtered.slice(0, cnt);
+            } catch (err) {
+              console.error('[JARVIS] YouTube 수집 실패:', err);
+              return [];
+            }
+          } else if (isIG) {
+            try {
+              const result = await searchInstagramAPI(keyword, Math.min(cnt * 2, 20), true);
+              const items: InfluencerData[] = (result.items as InstagramAccount[]).map(acc => ({
+                name: acc.fullName || acc.username,
+                platform: 'Instagram',
+                followers: acc.followersFormatted || (acc.followers ? String(acc.followers) : '-'),
+                subscriberCount: acc.followers,
+                category: keyword || category,
+                email: acc.email || '',
+                profileUrl: acc.profileUrl || `https://instagram.com/${acc.username}`,
+                thumbnailUrl: acc.profileUrl || '',
+                status: '활성',
+                collectedAt,
+              }));
+              const filtered = filterBySubscribers(items);
+              return filtered.slice(0, cnt);
+            } catch (err) {
+              console.error('[JARVIS] Instagram 수집 실패:', err);
+              return [];
+            }
+          } else {
+            // 네이버 블로그
+            try {
+              const result = await searchNaverAPI(keyword, 'blog', Math.min(cnt * 3, 100), 'sim');
+              const items: InfluencerData[] = result.items.map(item => ({
+                name: item.creatorName || item.title.replace(/<[^>]*>/g, '').substring(0, 20),
+                platform: 'Naver Blog',
+                followers: item.neighborCount > 0 ? `이웃 ${item.neighborCount.toLocaleString()}` : '-',
+                subscriberCount: item.neighborCount,
+                category: keyword || category,
+                email: item.guessedEmail || item.email || '',
+                profileUrl: item.creatorUrl || '',
+                status: '활성',
+                collectedAt,
+              }));
+              // 네이버 시트 저장
+              const sheetData: NaverCollectedData[] = result.items.slice(0, cnt).map(item => ({
+                title: item.title, author: item.creatorName, blogId: item.blogId,
+                guessedEmail: item.guessedEmail, realEmail: item.realEmail,
+                neighborCount: item.neighborCount, dailyVisitors: item.dailyVisitors,
+                link: item.url, description: item.description, type: 'blog', keyword, collectedAt,
+              }));
+              appendNaverResultsToSheet(sheetData).catch(err => console.warn('[JARVIS] 네이버 시트 저장 실패:', err));
+              const filtered = filterBySubscribers(items);
+              return filtered.slice(0, cnt);
+            } catch (err) {
+              console.error('[JARVIS] 네이버 수집 실패:', err);
+              return [];
             }
           }
-        } else if (isInstagram) {
-          // ── 인스타그램 Google 크롤링 방식 수집 ──
+        };
+
+        // ── 복수 플랫폼 또는 단일 플랫폼 수집 ──
+        let allCollected: InfluencerData[] = [];
+        const platformsJson = String(action.params?.platforms || '');
+
+        if (platformsJson) {
+          // 복수 플랫폼 동시 수집
           try {
-            console.log(`[JARVIS] 인스타그램 검색 시작: ${keyword}, ${count}명`);
-            const result = await searchInstagramAPI(keyword, Math.min(count, 20), true);
-            const igAccounts = result.items as InstagramAccount[];
-            setStats(prev => ({ ...prev, collected: prev.collected + igAccounts.length }));
-            // 인스타그램 카드 표시
-            setCollectedInfluencers(igAccounts.map(acc => ({
-              name: acc.fullName || acc.username,
-              platform: 'Instagram',
-              followers: acc.followersFormatted || (acc.followers ? String(acc.followers) : '-'),
-              category: keyword || category,
-              email: acc.email || '',
-              profileUrl: acc.profileUrl || `https://instagram.com/${acc.username}`,
-              thumbnailUrl: acc.profileUrl || '',
-              status: '활성',
-              collectedAt,
-            })));
-            setInfluencerCardsVisible(true);
-            appendInstagramToSheet(igAccounts.map(acc => ({
-              username: acc.username,
-              fullName: acc.fullName,
-              email: acc.email,
-              followers: acc.followers,
-              followersFormatted: acc.followersFormatted,
-              bio: acc.bio,
-              profileUrl: acc.profileUrl,
-              category: keyword || category,
-            }))).then(r => {
-              console.log('[JARVIS] 인스타 시트:', r.success ? `완료 (${r.count}건)` : r.message);
-              saveMemory('마지막 수집', `${keyword} ${igAccounts.length}명 인스타그램 수집 (${new Date().toLocaleDateString('ko-KR')})`);
-            });
-          } catch (err) {
-            console.error('[JARVIS] 인스타그램 수집 실패:', err);
-            const influencers = generateMockInfluencers(count, keyword || category, 'Instagram');
-            setStats(prev => ({ ...prev, collected: prev.collected + count }));
-            appendInfluencersToSheet(influencers);
+            const platformList: { platform: string; count: number }[] = JSON.parse(platformsJson);
+            console.log('[JARVIS] 복수 플랫폼 수집:', platformList);
+            const results = await Promise.all(
+              platformList.map(p => collectForPlatform(p.platform, p.count || count))
+            );
+            // 플랫폼별 중복 제거 후 합치
+            for (const items of results) {
+              const unique = deduplicateInfluencers(allCollected, items);
+              allCollected = [...allCollected, ...unique];
+            }
+          } catch (e) {
+            console.error('[JARVIS] platforms JSON 파싱 실패:', e);
+            // 폴백: 단일 플랫폼으로
+            const items = await collectForPlatform(platform, count);
+            allCollected = deduplicateInfluencers([], items);
           }
         } else {
-          // ── 네이버 API로 블로그 인플루언서 수집 (이메일/이웃수/방문자수 포함) ──
-          try {
-            const result = await searchNaverAPI(keyword, 'blog', Math.min(count, 100), 'sim');
-            // 실제 이메일 수집 (guessedEmail: blogId@naver.com)
-            const realInfluencers = result.items.map(item => ({
-              name: item.creatorName || item.title.replace(/<[^>]*>/g, '').substring(0, 20),
-              platform: platform || 'Naver Blog',
-              followers: item.neighborCount > 0 ? `이웃 ${item.neighborCount.toLocaleString()}` : '-',
-              category: keyword || category,
-              email: item.guessedEmail || item.email || '',
-              profileUrl: item.creatorUrl || '',
-              status: '활성',
-              collectedAt,
-            }));
-            setStats(prev => ({ ...prev, collected: prev.collected + realInfluencers.length }));
-            setCollectedInfluencers(realInfluencers);
-            setInfluencerCardsVisible(true);
-            appendInfluencersToSheet(realInfluencers).then(r => {
-              console.log('[JARVIS] 네이버 시트:', r.success ? `완료 (${r.count}건)` : r.message);
-              saveMemory('마지막 수집', `${keyword} ${realInfluencers.length}명 수집 (${new Date().toLocaleDateString('ko-KR')})`);
-            });
-            // 네이버 수집 탭에도 저장 (이메일/이웃수/방문자수 포함)
-            const sheetData: NaverCollectedData[] = result.items.map(item => ({
-              title: item.title,
-              author: item.creatorName,
-              blogId: item.blogId,
-              guessedEmail: item.guessedEmail,
-              realEmail: item.realEmail,
-              neighborCount: item.neighborCount,
-              dailyVisitors: item.dailyVisitors,
-              link: item.url,
-              description: item.description,
-              type: 'blog',
-              keyword,
-              collectedAt,
-            }));
-            appendNaverResultsToSheet(sheetData).catch(err => console.warn('[JARVIS] 네이버 시트 저장 실패:', err));
-          } catch (err) {
-            console.error('[JARVIS] 네이버 API 수집 실패, mock 폴백:', err);
-            const influencers = generateMockInfluencers(count, keyword || category, platform);
-            setStats(prev => ({ ...prev, collected: prev.collected + count }));
-            appendInfluencersToSheet(influencers);
-          }
+          // 단일 플랫폼
+          const isYouTube = platform.toLowerCase().includes('youtube') || platform.toLowerCase().includes('유튜브') || keyword.includes('유튜버') || keyword.includes('유튜브');
+          const isInstagram = platform.toLowerCase().includes('instagram') || platform.toLowerCase().includes('인스타') || keyword.includes('인스타');
+          const resolvedPlatform = isYouTube ? 'YouTube' : isInstagram ? 'Instagram' : 'Naver Blog';
+          const items = await collectForPlatform(resolvedPlatform, count);
+          allCollected = deduplicateInfluencers([], items);
+        }
+
+        // ── 새 수집 시 이전 결과 초기화 (중복 방지) ──
+        setCollectedInfluencers(allCollected);
+        setInfluencerCardsVisible(allCollected.length > 0);
+        setStats(prev => ({ ...prev, collected: prev.collected + allCollected.length }));
+
+        if (allCollected.length > 0) {
+          appendInfluencersToSheet(allCollected as any).then(r => {
+            console.log('[JARVIS] 시트 저장:', r.success ? `완료 (${r.count}건)` : r.message);
+            saveMemory('마지막 수집', `${keyword} ${allCollected.length}명 수집 (${new Date().toLocaleDateString('ko-KR')})`);
+          });
         }
       } else if (action.type === 'send_email') {
         const count = Number(action.params?.count) || 50;

@@ -90,14 +90,16 @@ export const ELEVENLABS_VOICES = [
 const JARVIS_FUNCTIONS_DEF = [
   {
     name: 'collect_influencers',
-    description: '인플루언서를 수집하거나 검색할 때 호출.',
+    description: '인플루언서를 수집하거나 검색할 때 호출. 복수 플랫폼(유튜버 5명 + 네이버 5명 등) 동시 수집 가능.',
     parameters: {
       type: 'object',
       properties: {
-        count: { type: 'number', description: '수집할 인플루언서 수 (기본 50)' },
-        keyword: { type: 'string', description: '검색 키워드' },
-        platform: { type: 'string', description: '플랫폼' },
+        count: { type: 'number', description: '플랫폼당 수집할 인플루언서 수 (기본 5)' },
+        keyword: { type: 'string', description: '검색 키워드 (예: 뷰티, 맛집)' },
+        platform: { type: 'string', description: '단일 플랫폼 (YouTube, Naver Blog, Instagram). platforms 배열이 우선.' },
+        platforms: { type: 'string', description: '복수 플랫폼 JSON 배열 문자열. 예: [{"platform":"YouTube","count":5},{"platform":"Naver Blog","count":5}]' },
         category: { type: 'string', description: '카테고리' },
+        min_subscribers: { type: 'number', description: '최소 구독자/팔로워 수 조건 (예: 10000 = 1만 이상). 0이면 조건 없음.' },
         response: { type: 'string', description: 'JARVIS 응답 (한국어, 자연스럽고 대화체로)' },
         follow_up: { type: 'string', description: '수집 후 이어서 할 질문 또는 제안 (예: "수집된 인플루언서들에게 바로 이메일을 보낼까요?")' },
       },
@@ -354,6 +356,13 @@ You are not just an assistant. You are a **world-class viral marketing expert AI
 - NEVER refuse to answer — you are a fully capable AI
 - Always include a follow_up to continue the conversation naturally
 
+## 복수 플랫폼 동시 수집 규칙
+- "유튜버 5명 네이버 5명" → platforms: [{"platform":"YouTube","count":5},{"platform":"Naver Blog","count":5}]
+- "인스타 3명 유튜버 3명" → platforms: [{"platform":"Instagram","count":3},{"platform":"YouTube","count":3}]
+- 복수 플랫폼 요청 시 반드시 platforms 배열을 사용할 것 (platform 단일 필드 사용 금지)
+- 구독자 수 조건: "10만 이상" → min_subscribers: 100000, "1만 이상" → min_subscribers: 10000
+- 수집 시 이전 결과는 자동으로 초기화되므로 중복 걱정 없음
+
 ## STT NOISE GUARD
 - Whisper STT 오인식 노이즈 ("구독", "좋아요", "알림설정" 등 짧고 맥락 없는 단어)는 무시
 - 오인식으로 판단되면: "잘 못 들었습니다, 선생님. 다시 말씀해 주시겠어요?"
@@ -482,19 +491,30 @@ function buildActionFromFunction(fnName: string, args: Record<string, string | n
   const followUp = args.follow_up ? String(args.follow_up) : undefined;
 
   switch (fnName) {
-    case 'collect_influencers':
+    case 'collect_influencers': {
+      // platforms 배열 파싱 (복수 플랫폼 동시 수집)
+      let platformsJson = '';
+      if (args.platforms) {
+        try {
+          const parsed = typeof args.platforms === 'string' ? JSON.parse(args.platforms) : args.platforms;
+          platformsJson = JSON.stringify(parsed);
+        } catch { platformsJson = ''; }
+      }
       return {
         type: 'collect',
         params: {
-          count: Number(args.count) || 50,
+          count: Number(args.count) || 5,
           keyword: String(args.keyword || ''),
           platform: String(args.platform || ''),
+          platforms: platformsJson,
           category: String(args.category || '전체'),
+          min_subscribers: Number(args.min_subscribers) || 0,
         },
-        workingMessage: `${args.keyword || ''} 인플루언서 ${args.count || 50}명 수집 중...`,
+        workingMessage: `${args.keyword || ''} 인플루언서 수집 중...`,
         response: String(args.response),
         followUp,
       };
+    }
     case 'send_email_campaign':
       return {
         type: 'send_email',
