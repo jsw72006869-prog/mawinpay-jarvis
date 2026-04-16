@@ -1077,11 +1077,14 @@ export default function JarvisApp() {
 
       {/* ── 대화 스트림 ── */}
       <div style={{
-        position: 'fixed', bottom: 0,
+        position: 'fixed',
+        // 타이핑 모드 활성 시 위로 올려서 갹침 방지
+        bottom: textInputMode ? 160 : 0,
         left: '50%', transform: 'translateX(-50%)',
         width: '100%', maxWidth: '760px',
         padding: '0 28px 56px',
         zIndex: 25, pointerEvents: 'none',
+        transition: 'bottom 0.25s ease',
       }}>
         <AnimatePresence>
           {messages.length > 0 && (
