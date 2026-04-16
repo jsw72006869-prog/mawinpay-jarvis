@@ -300,8 +300,10 @@ export function ParticleTextCanvas({ text, active }: ParticleTextCanvasProps) {
         height: '100%',
         zIndex: 2,
         pointerEvents: active ? 'auto' : 'none',
-        opacity: 1,
-        transition: 'opacity 0.4s',
+        // 타이핑 모드 비활성 시 완전히 숨김 (자비스 UI 가림 방지)
+        opacity: active ? 1 : 0,
+        visibility: active ? 'visible' : 'hidden',
+        transition: 'opacity 0.3s ease',
       }}
     />
   );
