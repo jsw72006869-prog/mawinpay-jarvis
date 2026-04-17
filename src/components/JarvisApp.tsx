@@ -2341,7 +2341,14 @@ export default function JarvisApp() {
                                 setNaverLoginPendingId(null);
                                 setNaverLoginWebview(false);
                                 setNaverLoginScreenshot(null);
-                                addMessage('jarvis', '✅ 네이버 로그인 완료! 이제 예약 명령을 내려주세요.');
+                                // 세팅스 닫기
+                                setSettingsVisible(false);
+                                // 자비스 음성 안내
+                                const loginDoneMsg = `선생님, 네이버 로그인이 확인되었습니다. 아이디 ${naverForm.username || statusData.sessionId?.slice(0, 4)}(으)로 세션이 활성화되었습니다. 이제 예약 명령을 내려주시면 자동으로 처리하겠습니다.`;
+                                addMessage('jarvis', loginDoneMsg, true);
+                                setState('speaking');
+                                startSpeakingLevel();
+                                speak(loginDoneMsg, undefined, () => { stopSpeakingLevel(); setState('idle'); });
                               }
                             } catch {}
                           }, 2000);
