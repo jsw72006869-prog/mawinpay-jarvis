@@ -128,6 +128,8 @@ export default function JarvisApp() {
     return {
       username: stored.username || '',
       password: stored.password || '',
+      userName: stored.userName || '',
+      userPhone: stored.userPhone || '',
     };
   });
 
@@ -640,6 +642,9 @@ export default function JarvisApp() {
 
         // 세션 ID 상위 스코프 선언 (모든 bookAction에서 공유)
         let activeSessionId = bookingSessionId || '';
+        // 예약자 정보: 설정창 저장값 우선, 없으면 GPT 파라미터 사용
+        const savedUserName = naverCreds.userName || '';
+        const savedUserPhone = naverCreds.userPhone || '';
 
         if (bookAction === 'check_availability') {
           // 0. 네이버 자격증명 없을 때 안내
@@ -747,23 +752,83 @@ export default function JarvisApp() {
             if (availData.screenshot) setBookingScreenshot(availData.screenshot);
             setBookingPanelVisible(true);
 
-            const slotsText = availData.availableSlots?.length > 0
-              ? `예약 가능한 시간대는 ${availData.availableSlots.slice(0, 5).join(', ')} 입니다, 선생님. 어떤 시간으로 예약하시겠습니까?`
-              : `${businessName} 예약 페이지를 확인했습니다, 선생님. 직접 예약 페이지를 확인해주세요.`;
+            if (availData.availableSlots?.length > 0) {
+              // 시간대 조회 성공 - 요청한 시간이 있으면 자동 진행
+              const requestedTime = time; // GPT가 파싱한 시간
+              const matchedSlot = requestedTime
+                ? availData.availableSlots.find((s: string) =>
+                    s.includes(requestedTime) ||
+                    requestedTime.includes(s.split(' ')[0]) ||
+                    s.replace(':', '').includes(requestedTime.replace(':', '').replace('시', '').replace('분', ''))
+                  )
+                : null;
 
-            setState('speaking');
-            addMessage('jarvis', slotsText, true);
-            startSpeakingLevel();
-            await new Promise<void>(resolve => {
-              speak(slotsText, undefined, () => { stopSpeakingLevel(); resolve(); });
-            });
+              if (matchedSlot && (savedUserName || userName) && (savedUserPhone || userPhone)) {
+                // 요청 시간 + 예약자 정보 모두 있음 → 자동 fill_form 진행
+                const autoText = `${businessName} ${matchedSlot} 시간대 확인되었습니다, 선생님. 예약자 ${savedUserName || userName} 정보로 자동 입력하겠습니다.`;
+                setState('speaking');
+                addMessage('jarvis', autoText, true);
+                startSpeakingLevel();
+                await new Promise<void>(resolve => {
+                  speak(autoText, undefined, () => { stopSpeakingLevel(); resolve(); });
+                });
+
+                // 자동으로 fill_form 진행
+                setBookingStep(4);
+                addMessage('jarvis', `폼 입력 중...`);
+                const fillRes = await fetch(`${BOOKING_SERVER}/api/booking/fill-form`, {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({
+                    sessionId: activeSessionId || 'guest',
+                    bookingUrl: bookingUrl || availData.bookingUrl || '',
+                    userName: savedUserName || userName,
+                    userPhone: savedUserPhone || userPhone,
+                    selectedTime: matchedSlot,
+                    date,
+                  }),
+                });
+                const fillData = await fillRes.json();
+                if (fillData.success) {
+                  setBookingStep(5);
+                  const doneText = `예약이 완료되었습니다, 선생님. ${businessName} ${matchedSlot} 예약이 성공적으로 접수되었습니다.`;
+                  setState('speaking');
+                  addMessage('jarvis', doneText, true);
+                  startSpeakingLevel();
+                  await new Promise<void>(resolve => {
+                    speak(doneText, undefined, () => { stopSpeakingLevel(); resolve(); });
+                  });
+                } else {
+                  throw new Error(fillData.error || '폼 입력 실패');
+                }
+              } else {
+                // 시간대 목록 안내 + 선택 요청
+                const slotsText = `예약 가능한 시간대는 ${availData.availableSlots.slice(0, 5).join(', ')} 입니다, 선생님. 어떤 시간으로 예약하시겠습니까?`;
+                setState('speaking');
+                addMessage('jarvis', slotsText, true);
+                startSpeakingLevel();
+                await new Promise<void>(resolve => {
+                  speak(slotsText, undefined, () => { stopSpeakingLevel(); resolve(); });
+                });
+              }
+            } else {
+              const noSlotText = `${businessName} 예약 페이지를 확인했습니다, 선생님. 현재 해당 날짜에 예약 가능한 시간대가 없습니다. 다른 날짜로 다시 조회해 드릴까요?`;
+              setState('speaking');
+              addMessage('jarvis', noSlotText, true);
+              startSpeakingLevel();
+              await new Promise<void>(resolve => {
+                speak(noSlotText, undefined, () => { stopSpeakingLevel(); resolve(); });
+              });
+            }
           } else {
             throw new Error(availData.error || '예약 조회 실패');
           }
         } else if (bookAction === 'fill_form') {
           // ── 학습 1: 입력 전 확인 단계 ──
           // 예약자명, 연락처, 날짜, 시간을 음성으로 읽어주고 사용자 확인을 받음
-          const confirmText = `잠깐, 선생님. 입력 전에 확인해 드리겠습니다. 예약자명 ${userName || '미설정'}, 연락처 ${userPhone || '미설정'}, 날짜 ${date}, 시간 ${time}. 이대로 진행할까요? 변경이 필요하시면 말씀해 주세요.`;
+          const finalUserName = savedUserName || userName || '미설정';
+          const finalUserPhone = savedUserPhone || userPhone || '미설정';
+          const confirmText = `잠깐, 선생님. 입력 전에 확인해 드리겠습니다. 예약자명 ${finalUserName}, 연락처 ${finalUserPhone}, 날짜 ${date}, 시간 ${time}. 이대로 진행할까요? 변경이 필요하시면 말씀해 주세요.`;
           setState('speaking');
           addMessage('jarvis', confirmText, true);
           startSpeakingLevel();
@@ -2091,6 +2156,52 @@ export default function JarvisApp() {
                 </div>
               </div>
 
+              {/* 예약자 정보 */}
+              <div style={{ marginBottom: 12, paddingTop: 10, borderTop: `1px solid ${THEME.gold}22` }}>
+                <div style={{ fontFamily: 'Orbitron, monospace', color: '#4A90E2', fontSize: '0.45rem', letterSpacing: '0.3em', marginBottom: 8 }}>BOOKING PROFILE</div>
+                <div style={{ marginBottom: 6 }}>
+                  <div style={{ fontFamily: 'Orbitron, monospace', color: THEME.textDim, fontSize: '0.38rem', letterSpacing: '0.2em', marginBottom: 4 }}>예약자명</div>
+                  <input
+                    type="text"
+                    placeholder="예약자 이름 입력..."
+                    value={naverForm.userName}
+                    onChange={e => setNaverForm(f => ({ ...f, userName: e.target.value }))}
+                    style={{
+                      width: '100%', padding: '6px 10px',
+                      background: 'rgba(255,255,255,0.04)',
+                      border: `1px solid #4A90E233`,
+                      color: THEME.text,
+                      fontFamily: 'monospace',
+                      fontSize: '0.55rem',
+                      outline: 'none',
+                      boxSizing: 'border-box' as const,
+                    }}
+                  />
+                </div>
+                <div>
+                  <div style={{ fontFamily: 'Orbitron, monospace', color: THEME.textDim, fontSize: '0.38rem', letterSpacing: '0.2em', marginBottom: 4 }}>연락처</div>
+                  <input
+                    type="tel"
+                    placeholder="010-0000-0000"
+                    value={naverForm.userPhone}
+                    onChange={e => setNaverForm(f => ({ ...f, userPhone: e.target.value }))}
+                    style={{
+                      width: '100%', padding: '6px 10px',
+                      background: 'rgba(255,255,255,0.04)',
+                      border: `1px solid #4A90E233`,
+                      color: THEME.text,
+                      fontFamily: 'monospace',
+                      fontSize: '0.55rem',
+                      outline: 'none',
+                      boxSizing: 'border-box' as const,
+                    }}
+                  />
+                </div>
+                <div style={{ marginTop: 4, fontFamily: 'Orbitron, monospace', color: THEME.textDim, fontSize: '0.32rem', letterSpacing: '0.1em' }}>
+                  예약 폼 자동 입력 시 사용됩니다.
+                </div>
+              </div>
+
               {/* 저장 버튼 */}
               <div style={{ display: 'flex', gap: 8 }}>
                 <div
@@ -2103,6 +2214,8 @@ export default function JarvisApp() {
                     localStorage.setItem('jarvis_naver_creds', JSON.stringify({
                       username: naverForm.username,
                       password: naverForm.password,
+                      userName: naverForm.userName,
+                      userPhone: naverForm.userPhone,
                     }));
                     setSettingsVisible(false);
                     // 저장 후 자비스 음성 안내 (리로드 없이 즉시 적용)
