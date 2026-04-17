@@ -103,6 +103,11 @@ export default function JarvisApp() {
   const [paymentCopied, setPaymentCopied] = useState(false);
   // 예약 확인 대기 중 음성 응답을 받기 위한 ref
   const bookingConfirmResolveRef = useRef<((text: string) => void) | null>(null);
+  // 캡차/2단계 인증 대기 상태
+  const [pendingSessionId, setPendingSessionId] = useState<string | null>(null);
+  const [captchaScreenshot, setCaptchaScreenshot] = useState<string | null>(null);
+  const [verificationMode, setVerificationMode] = useState<'captcha' | 'otp' | null>(null);
+  const verificationResolveRef = useRef<((code: string) => void) | null>(null);
   const BOOKING_SERVER = import.meta.env.VITE_BOOKING_SERVER_URL || 'https://jarvis-booking-server-production.up.railway.app';
 
   // ── 타이핑 입력 모드 ──
@@ -665,8 +670,57 @@ export default function JarvisApp() {
                 activeSessionId = loginData.sessionId;
                 setBookingSessionId(loginData.sessionId);
                 addMessage('jarvis', `✅ 네이버 로그인 완료`);
+              } else if (loginData.needVerification) {
+                // ── 캡차 또는 2단계 인증 필요 ──
+                const vType = loginData.verificationType || 'otp';
+                const vMsg = vType === 'captcha'
+                  ? '선생님, 네이버에서 자동입력 방지 문자가 표시되었습니다. 화면에 보이는 문자를 말씀해 주세요.'
+                  : '선생님, 네이버에서 추가 인증이 필요합니다. 휴대폰으로 받은 인증번호를 말씀해 주세요.';
+
+                setPendingSessionId(loginData.pendingSessionId);
+                setCaptchaScreenshot(loginData.screenshot || null);
+                setVerificationMode(vType);
+
+                setState('speaking');
+                addMessage('jarvis', vMsg, true);
+                startSpeakingLevel();
+                await new Promise<void>(resolve => {
+                  speak(vMsg, undefined, () => { stopSpeakingLevel(); resolve(); });
+                });
+
+                // 사용자 입력 대기
+                const verificationCode = await new Promise<string>(resolve => {
+                  verificationResolveRef.current = resolve;
+                  setState('listening');
+                });
+
+                setCaptchaScreenshot(null);
+                setVerificationMode(null);
+                setPendingSessionId(null);
+
+                if (verificationCode && loginData.pendingSessionId) {
+                  setState('working');
+                  addMessage('jarvis', `🔐 인증번호 확인 중...`);
+                  try {
+                    const verifyRes = await fetch(`${BOOKING_SERVER}/api/booking/submit-verification`, {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ pendingSessionId: loginData.pendingSessionId, code: verificationCode, naverID: naverUsername }),
+                    });
+                    const verifyData = await verifyRes.json();
+                    if (verifyData.success && verifyData.sessionId) {
+                      activeSessionId = verifyData.sessionId;
+                      setBookingSessionId(verifyData.sessionId);
+                      addMessage('jarvis', `✅ 인증 완료! 네이버 로그인 성공`);
+                    } else {
+                      addMessage('jarvis', `⚠️ 인증 실패: ${verifyData.message || '올바르지 않은 인증번호'}. 비로그인 상태로 조회합니다.`);
+                    }
+                  } catch {
+                    addMessage('jarvis', `⚠️ 인증 서버 연결 실패. 비로그인 상태로 조회합니다.`);
+                  }
+                }
               } else {
-                addMessage('jarvis', `⚠️ 로그인 실패: ${loginData.error || '알 수 없는 오류'}. 비로그인 상태로 조회합니다.`);
+                addMessage('jarvis', `⚠️ 로그인 실패: ${loginData.message || loginData.error || '아이디 또는 비밀번호를 확인해주세요.'}`);
               }
             } catch (loginErr) {
               addMessage('jarvis', `⚠️ 로그인 서버 연결 실패. 비로그인 상태로 조회합니다.`);
@@ -975,6 +1029,14 @@ export default function JarvisApp() {
     if (!transcript.trim()) return;
     const currentState = stateRef.current;
     console.log('[JARVIS] 🎤 음성 명령 수신 (상태:', currentState, '):', transcript);
+    // 캡차/2단계 인증 입력 대기 중이면 인증번호 전달
+    if (verificationResolveRef.current) {
+      const resolve = verificationResolveRef.current;
+      verificationResolveRef.current = null;
+      setState('working');
+      resolve(transcript.replace(/\s/g, '').trim());
+      return;
+    }
     // 예약 확인 대기 중이면 해당 resolve로 응답 전달
     if (bookingConfirmResolveRef.current) {
       const resolve = bookingConfirmResolveRef.current;
@@ -1016,6 +1078,16 @@ export default function JarvisApp() {
     if (!text.trim()) return;
     setTextInputValue('');
     setTextInputMode(false);
+
+    // 캡차/2단계 인증 입력 대기 중이면 인증번호 전달
+    if (verificationResolveRef.current) {
+      const resolve = verificationResolveRef.current;
+      verificationResolveRef.current = null;
+      addMessage('user', text);
+      setState('working');
+      resolve(text.replace(/\s/g, '').trim());
+      return;
+    }
 
     // 자비스가 말하는 중이면 중단
     if (stateRef.current === 'speaking') {
@@ -2374,6 +2446,50 @@ export default function JarvisApp() {
                     </>
                   );
                 })}
+              </div>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* ── 캡차/2단계 인증 화면 ── */}
+      <AnimatePresence>
+        {captchaScreenshot && verificationMode && (
+          <motion.div
+            key="captcha-modal"
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            exit={{ opacity: 0, scale: 0.95 }}
+            style={{
+              position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+              zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'center',
+              background: 'rgba(0,0,0,0.75)', backdropFilter: 'blur(8px)',
+            }}
+          >
+            <div style={{
+              background: 'rgba(6,10,18,0.98)',
+              border: '1px solid #4A90E2',
+              borderTop: '3px solid #4A90E2',
+              padding: '24px',
+              width: 'clamp(300px, 90vw, 480px)',
+              maxHeight: '80vh',
+              overflowY: 'auto',
+            }}>
+              <div style={{ fontFamily: 'Orbitron, monospace', color: '#4A90E2', fontSize: '0.5rem', letterSpacing: '0.3em', marginBottom: 16 }}>
+                {verificationMode === 'captcha' ? 'CAPTCHA REQUIRED' : '2-STEP VERIFICATION'}
+              </div>
+              <div style={{ color: '#e0e0ff', fontSize: '0.85rem', marginBottom: 16, lineHeight: 1.6 }}>
+                {verificationMode === 'captcha'
+                  ? '아래 이미지의 문자를 입력하시거나 말씀해 주세요.'
+                  : '휴대폰으로 받은 인증번호를 입력하시거나 말씀해 주세요.'}
+              </div>
+              <img
+                src={captchaScreenshot}
+                alt="네이버 인증 화면"
+                style={{ width: '100%', borderRadius: 4, border: '1px solid #4A90E244', marginBottom: 16 }}
+              />
+              <div style={{ color: '#9BA1A6', fontSize: '0.75rem', textAlign: 'center' }}>
+                타이핑 모드(Ctrl+K) 또는 음성으로 입력해 주세요
               </div>
             </div>
           </motion.div>
