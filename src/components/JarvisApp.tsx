@@ -688,43 +688,63 @@ export default function JarvisApp() {
                 setCaptchaScreenshot(captchaImg);
                 setVerificationMode(vType);
 
-                // ── GPT Vision으로 캡차 자동 풀기 시도 ──
+                // ── 캡차/OTP 처리: GPT Vision 자동 → 실패 시 사용자 직접 입력 ──
                 let verificationCode = '';
-                if (vType === 'captcha' && captchaImg) {
+                let captchaPendingId = loginData.pendingSessionId;
+
+                const tryCaptchaWithVision = async (imgSrc: string): Promise<string> => {
                   try {
                     const apiKey = import.meta.env.VITE_OPENAI_API_KEY;
-                    addMessage('jarvis', `🤖 캡차 이미지 자동 분석 중...`);
                     const visionRes = await fetch('https://api.openai.com/v1/chat/completions', {
                       method: 'POST',
                       headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
                       body: JSON.stringify({
                         model: 'gpt-4o',
-                        max_tokens: 50,
+                        max_tokens: 20,
                         messages: [{
                           role: 'user',
                           content: [
-                            { type: 'text', text: '이 이미지는 네이버 로그인 자동입력 방지 캡차입니다. 두 장의 영수증 이미지가 겹쳐 있습니다. 왼쪽 영수증의 주소에서 잘린 번지수(숫자)를 오른쪽 영수증에서 찾아서 완성하세요. 예를 들어 왼쪽에 "안산시 봉화군 감운로 7"이면 오른쪽에서 나머지 숫자(예: "42")를 찾아 "742"처럼 완성된 번지수만 출력하세요. 설명 없이 숫자만.' },
-                            { type: 'image_url', image_url: { url: captchaImg, detail: 'high' } }
+                            { type: 'text', text: '네이버 로그인 캡차입니다. 두 장의 영수증이 겹쳐 있습니다. 왼쪽 영수증 주소의 잘린 번지수를 오른쪽에서 찾아 완성된 숫자만 출력하세요. 숫자만, 설명 없이.' },
+                            { type: 'image_url', image_url: { url: imgSrc, detail: 'high' } }
                           ]
                         }]
                       })
                     });
-                    const visionData = await visionRes.json();
-                    const autoAnswer = visionData.choices?.[0]?.message?.content?.trim() || '';
-                    if (autoAnswer) {
-                      verificationCode = autoAnswer;
-                      addMessage('jarvis', `🤖 캡차 자동 인식: "${autoAnswer}" → 자동 입력합니다.`);
-                      setCaptchaScreenshot(null);
-                      setVerificationMode(null);
-                      setPendingSessionId(null);
-                    }
-                  } catch {
-                    // GPT Vision 실패 시 사용자에게 요청
+                    const vd = await visionRes.json();
+                    return (vd.choices?.[0]?.message?.content?.trim() || '').replace(/[^0-9]/g, '');
+                  } catch { return ''; }
+                };
+
+                if (vType === 'captcha' && captchaImg && captchaPendingId) {
+                  // 1차 시도: GPT Vision 자동 풀기
+                  addMessage('jarvis', `🤖 캡차 자동 분석 중...`);
+                  const autoAnswer = await tryCaptchaWithVision(captchaImg);
+                  if (autoAnswer) {
+                    // 자동 답 서버에 전송해서 검증
+                    try {
+                      const verifyRes = await fetch(`${BOOKING_SERVER}/api/booking/submit-verification`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ pendingSessionId: captchaPendingId, code: autoAnswer, naverID: naverUsername }),
+                      });
+                      const verifyData = await verifyRes.json();
+                      if (verifyData.success && verifyData.sessionId) {
+                        activeSessionId = verifyData.sessionId;
+                        setBookingSessionId(verifyData.sessionId);
+                        addMessage('jarvis', `✅ 캡차 자동 인식 성공! 네이버 로그인 완료`);
+                        setCaptchaScreenshot(null); setVerificationMode(null); setPendingSessionId(null);
+                        verificationCode = autoAnswer; // 성공 표시
+                        captchaPendingId = null as unknown as string; // 이미 처리됨
+                      } else {
+                        addMessage('jarvis', `🤖 자동 인식 실패. 선생님께서 직접 입력해 주세요.`);
+                      }
+                    } catch { /* 폴백으로 */ }
                   }
                 }
 
-                // GPT Vision 실패 또는 OTP인 경우 사용자에게 요청
-                if (!verificationCode) {
+                // GPT Vision 실패 또는 OTP인 경우 사용자에게 직접 요청
+                if (!verificationCode && captchaPendingId) {
+                  // 캡차 이미지 화면에 표시 (setCaptchaScreenshot은 이미 위에서 설정됨)
                   setState('speaking');
                   addMessage('jarvis', vMsg, true);
                   startSpeakingLevel();
@@ -733,7 +753,7 @@ export default function JarvisApp() {
                   });
 
                   // 사용자 입력 대기
-                  verificationCode = await new Promise<string>(resolve => {
+                  const userInput = await new Promise<string>(resolve => {
                     verificationResolveRef.current = resolve;
                     setState('listening');
                   });
@@ -741,22 +761,22 @@ export default function JarvisApp() {
                   setCaptchaScreenshot(null);
                   setVerificationMode(null);
                   setPendingSessionId(null);
-                }
 
-                if (verificationCode && loginData.pendingSessionId) {
+                  // 사용자 입력을 서버에 전송
                   setState('working');
                   addMessage('jarvis', `🔐 인증번호 확인 중...`);
                   try {
                     const verifyRes = await fetch(`${BOOKING_SERVER}/api/booking/submit-verification`, {
                       method: 'POST',
                       headers: { 'Content-Type': 'application/json' },
-                      body: JSON.stringify({ pendingSessionId: loginData.pendingSessionId, code: verificationCode, naverID: naverUsername }),
+                      body: JSON.stringify({ pendingSessionId: captchaPendingId, code: userInput, naverID: naverUsername }),
                     });
                     const verifyData = await verifyRes.json();
                     if (verifyData.success && verifyData.sessionId) {
                       activeSessionId = verifyData.sessionId;
                       setBookingSessionId(verifyData.sessionId);
                       addMessage('jarvis', `✅ 인증 완료! 네이버 로그인 성공`);
+                      verificationCode = userInput;
                     } else {
                       addMessage('jarvis', `⚠️ 인증 실패: ${verifyData.message || '올바르지 않은 인증번호'}. 비로그인 상태로 조회합니다.`);
                     }
