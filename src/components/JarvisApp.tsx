@@ -688,22 +688,60 @@ export default function JarvisApp() {
                 setCaptchaScreenshot(captchaImg);
                 setVerificationMode(vType);
 
-                setState('speaking');
-                addMessage('jarvis', vMsg, true);
-                startSpeakingLevel();
-                await new Promise<void>(resolve => {
-                  speak(vMsg, undefined, () => { stopSpeakingLevel(); resolve(); });
-                });
+                // ── GPT Vision으로 캡차 자동 풀기 시도 ──
+                let verificationCode = '';
+                if (vType === 'captcha' && captchaImg) {
+                  try {
+                    const apiKey = import.meta.env.VITE_OPENAI_API_KEY;
+                    addMessage('jarvis', `🤖 캡차 이미지 자동 분석 중...`);
+                    const visionRes = await fetch('https://api.openai.com/v1/chat/completions', {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
+                      body: JSON.stringify({
+                        model: 'gpt-4o',
+                        max_tokens: 50,
+                        messages: [{
+                          role: 'user',
+                          content: [
+                            { type: 'text', text: '이 이미지는 네이버 로그인 캡차입니다. 이미지에서 가게 주소의 빈칸에 들어갈 숫자 또는 단어만 정확히 추출해서 답만 출력하세요. 예: "976" 또는 "탐라점". 설명 없이 답만.' },
+                            { type: 'image_url', image_url: { url: captchaImg, detail: 'high' } }
+                          ]
+                        }]
+                      })
+                    });
+                    const visionData = await visionRes.json();
+                    const autoAnswer = visionData.choices?.[0]?.message?.content?.trim() || '';
+                    if (autoAnswer) {
+                      verificationCode = autoAnswer;
+                      addMessage('jarvis', `🤖 캡차 자동 인식: "${autoAnswer}" → 자동 입력합니다.`);
+                      setCaptchaScreenshot(null);
+                      setVerificationMode(null);
+                      setPendingSessionId(null);
+                    }
+                  } catch {
+                    // GPT Vision 실패 시 사용자에게 요청
+                  }
+                }
 
-                // 사용자 입력 대기
-                const verificationCode = await new Promise<string>(resolve => {
-                  verificationResolveRef.current = resolve;
-                  setState('listening');
-                });
+                // GPT Vision 실패 또는 OTP인 경우 사용자에게 요청
+                if (!verificationCode) {
+                  setState('speaking');
+                  addMessage('jarvis', vMsg, true);
+                  startSpeakingLevel();
+                  await new Promise<void>(resolve => {
+                    speak(vMsg, undefined, () => { stopSpeakingLevel(); resolve(); });
+                  });
 
-                setCaptchaScreenshot(null);
-                setVerificationMode(null);
-                setPendingSessionId(null);
+                  // 사용자 입력 대기
+                  verificationCode = await new Promise<string>(resolve => {
+                    verificationResolveRef.current = resolve;
+                    setState('listening');
+                  });
+
+                  setCaptchaScreenshot(null);
+                  setVerificationMode(null);
+                  setPendingSessionId(null);
+                }
 
                 if (verificationCode && loginData.pendingSessionId) {
                   setState('working');
