@@ -2298,54 +2298,62 @@ export default function JarvisApp() {
                 {/* 네이버 팝업 로그인 버튼 */}
                 <div style={{ marginTop: 10 }}>
                   <div
-                    onClick={() => {
+                    onClick={async () => {
                       if (naverLoginStatus === 'waiting') return;
-                      // 팝업창으로 네이버 로그인 페이지 열기
-                      const popup = window.open(
-                        'https://naver.com',
-                        'naverLogin',
-                        'width=480,height=700,scrollbars=yes,resizable=yes'
-                      );
-                      if (!popup) {
-                        alert('팝업이 차단되었습니다. 팝업 허용 후 다시 시도해주세요.');
+                      const id = naverForm.username;
+                      const pw = naverForm.password;
+                      if (!id || !pw) {
+                        alert('NAVER ID와 비밀번호를 먼저 입력해주세요.');
                         return;
                       }
                       setNaverLoginStatus('waiting');
-                      // 팝업 닫힘 감지 (로그인 완료 후 팝업 닫으면 완료)
-                      const checkClosed = setInterval(async () => {
-                        if (popup.closed) {
-                          clearInterval(checkClosed);
-                          // 팝업 닫힘 → 서버에 쿠키 기반 세션 생성 요청
-                          try {
-                            const res = await fetch(`${BOOKING_SERVER}/api/booking/login`, {
-                              method: 'POST',
-                              headers: { 'Content-Type': 'application/json' },
-                              body: JSON.stringify({
-                                username: naverForm.username,
-                                password: naverForm.password,
-                              }),
-                            });
-                            const data = await res.json();
-                            if (data.sessionId) {
-                              setBookingSessionId(data.sessionId);
-                              localStorage.setItem('jarvis_booking_session', data.sessionId);
-                              setNaverLoginStatus('done');
-                              setSettingsVisible(false);
-                              const loginDoneMsg = `접속 확인됐습니다, 토니. 네이버 세션 온라인. 언제든 명령하십시오, sir.`;
-                              addMessage('jarvis', loginDoneMsg, true);
-                              setState('speaking');
-                              startSpeakingLevel();
-                              speak(loginDoneMsg, undefined, () => { stopSpeakingLevel(); setState('idle'); });
-                            } else {
-                              setNaverLoginStatus('idle');
-                            }
-                          } catch {
-                            setNaverLoginStatus('idle');
-                          }
+                      try {
+                        const res = await fetch(`${BOOKING_SERVER}/api/booking/login`, {
+                          method: 'POST',
+                          headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify({ naverID: id, naverPW: pw }),
+                        });
+                        const data = await res.json();
+                        if (data.success && data.sessionId) {
+                          // 로그인 성공
+                          setBookingSessionId(data.sessionId);
+                          localStorage.setItem('jarvis_booking_session', data.sessionId);
+                          setNaverLoginStatus('done');
+                          setSettingsVisible(false);
+                          const loginDoneMsg = `접속 확인됐습니다, 토니. 네이버 세션 온라인. 언제든 명령하십시오, sir.`;
+                          addMessage('jarvis', loginDoneMsg, true);
+                          setState('speaking');
+                          startSpeakingLevel();
+                          speak(loginDoneMsg, undefined, () => { stopSpeakingLevel(); setState('idle'); });
+                        } else if (data.needVerification && data.verificationType === 'captcha') {
+                          // 캐시 필요 → 자비스가 코드 요청
+                          setNaverLoginStatus('idle');
+                          const captchaMsg = '네이버 로그인 중 자동입력 방지 문자가 표시되었습니다, 토니. 화면에 보이는 문자를 말씨해주세요.';
+                          addMessage('jarvis', captchaMsg, true);
+                          if (data.captchaSrc) setCaptchaScreenshot(data.captchaSrc);
+                          setState('speaking');
+                          startSpeakingLevel();
+                          speak(captchaMsg, undefined, () => { stopSpeakingLevel(); setState('idle'); });
+                        } else if (data.needVerification && data.verificationType === 'otp') {
+                          // 2단계 인증 필요 → 코드 요청
+                          setNaverLoginStatus('idle');
+                          if (data.pendingSessionId) setPendingSessionId(data.pendingSessionId);
+                          const otpMsg = '네이버에서 추가 인증이 필요합니다, 토니. 휴대폰으로 받은 인증번호를 말씨해주세요.';
+                          addMessage('jarvis', otpMsg, true);
+                          setState('speaking');
+                          startSpeakingLevel();
+                          speak(otpMsg, undefined, () => { stopSpeakingLevel(); setState('idle'); });
+                        } else {
+                          setNaverLoginStatus('error');
+                          const errMsg = data.message || '로그인에 실패했습니다, 토니. 아이디와 비밀번호를 확인해주세요.';
+                          addMessage('jarvis', errMsg, true);
+                          setState('speaking');
+                          startSpeakingLevel();
+                          speak(errMsg, undefined, () => { stopSpeakingLevel(); setState('idle'); });
                         }
-                      }, 1000);
-                      // 10분 타임아웃
-                      setTimeout(() => { clearInterval(checkClosed); setNaverLoginStatus(prev => prev === 'waiting' ? 'idle' : prev); }, 10 * 60 * 1000);
+                      } catch {
+                        setNaverLoginStatus('error');
+                      }
                     }}
                     style={{
                       padding: '8px 12px', textAlign: 'center', cursor: 'pointer',
@@ -2357,8 +2365,9 @@ export default function JarvisApp() {
                     }}
                   >
                     {naverLoginStatus === 'done' ? '✅ NAVER LOGGED IN' :
-                     naverLoginStatus === 'waiting' ? '⏳ 팝업에서 로그인 후 닫아주세요...' :
-                     '🔐 NAVER 팝업 로그인'}
+                     naverLoginStatus === 'waiting' ? '⏳ 로그인 진행 중...' :
+                     naverLoginStatus === 'error' ? '❌ 로그인 실패 - 재시도' :
+                     '🔐 NAVER 자동 로그인'}
                   </div>
                   {naverLoginStatus === 'done' && bookingSessionId && (
                     <div style={{ marginTop: 4, fontFamily: 'Orbitron, monospace', color: '#22C55E', fontSize: '0.3rem', letterSpacing: '0.1em' }}>
