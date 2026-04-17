@@ -2804,26 +2804,34 @@ export default function JarvisApp() {
               background: 'rgba(6,10,18,0.98)',
               border: '1px solid #4A90E2',
               borderTop: '3px solid #4A90E2',
-              padding: '24px',
-              width: 'clamp(300px, 90vw, 480px)',
-              maxHeight: '80vh',
+              padding: '20px',
+              width: 'clamp(320px, 95vw, 560px)',
+              maxHeight: '92vh',
               overflowY: 'auto',
             }}>
-              <div style={{ fontFamily: 'Orbitron, monospace', color: '#4A90E2', fontSize: '0.5rem', letterSpacing: '0.3em', marginBottom: 16 }}>
+              <div style={{ fontFamily: 'Orbitron, monospace', color: '#4A90E2', fontSize: '0.5rem', letterSpacing: '0.3em', marginBottom: 12 }}>
                 {verificationMode === 'captcha' ? 'CAPTCHA REQUIRED' : '2-STEP VERIFICATION'}
               </div>
-              <div style={{ color: '#e0e0ff', fontSize: '0.85rem', marginBottom: 16, lineHeight: 1.6 }}>
+              {/* 안내 텍스트 - 크고 명확하게 */}
+              <div style={{ color: '#FFD700', fontSize: '1rem', fontWeight: 'bold', marginBottom: 12, lineHeight: 1.6, background: 'rgba(255,215,0,0.08)', padding: '10px 12px', borderRadius: 6, border: '1px solid #FFD70044' }}>
                 {verificationMode === 'captcha'
-                  ? '아래 이미지의 문자를 입력하시거나 말씀해 주세요.'
-                  : '휴대폰으로 받은 인증번호를 입력하시거나 말씀해 주세요.'}
+                  ? '아래 이미지의 문자를 입력해주세요'
+                  : '화면에 보이는 인증 질문에 답하세요'}
               </div>
+              {/* 스크린샷 - 화면 전체 표시 */}
               <img
                 src={captchaScreenshot}
                 alt="네이버 인증 화면"
-                style={{ width: '100%', borderRadius: 4, border: '1px solid #4A90E244', marginBottom: 16 }}
+                style={{ width: '100%', borderRadius: 6, border: '2px solid #4A90E2', marginBottom: 14, display: 'block' }}
               />
-              <div style={{ color: '#9BA1A6', fontSize: '0.75rem', textAlign: 'center' }}>
-                타이핑 모드(Ctrl+K) 또는 음성으로 입력해 주세요
+              {/* 입력 안내 */}
+              <div style={{ background: 'rgba(74,144,226,0.12)', border: '1px solid #4A90E244', borderRadius: 6, padding: '10px 12px' }}>
+                <div style={{ color: '#4A90E2', fontSize: '0.8rem', fontWeight: 'bold', marginBottom: 4 }}>
+                  {verificationMode === 'captcha' ? '⬆ 위 이미지의 문자를 입력하세요' : '⬆ 위 화면의 인증번호를 입력하세요'}
+                </div>
+                <div style={{ color: '#9BA1A6', fontSize: '0.75rem' }}>
+                  타이핑 모드(Ctrl+K) 또는 음성으로 답하세요
+                </div>
               </div>
             </div>
           </motion.div>
