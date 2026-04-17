@@ -16,13 +16,12 @@ import { ParticleTextCanvas } from './ParticleTextCanvas';
 
 // ── 시그니처 응답 목록 (GPT 대기 없이 즉시 재생) ──
 const SIGNATURE_RESPONSES = [
-  'At your service, sir.',
-  'For you, sir, always.',
-  'Systems online and standing by, sir.',
-  'Always a pleasure to help, sir.',
-  "I've been expecting you, sir.",
-  'Ready and awaiting your command, sir.',
-  'Online and fully operational, sir.',
+  'J.A.R.V.I.S. 온라인. 모든 시스템 정상입니다, 토니.',
+  '전원 공급 완료. 모든 모듈 정상, 토니. 대기 중입니다.',
+  '시스템 부팅 완료. 준비됨을 보고합니다, sir.',
+  '언제든 명령하십시오, 토니.',
+  '당신을 기다리고 있었습니다, sir.',
+  '완전히 작동 중입니다, 토니.',
 ];
 
 // ── 고급 색상 팔레트 ──
@@ -502,7 +501,7 @@ export default function JarvisApp() {
         // 이메일 수집 현황
         const emailCount = result.items.filter(i => i.guessedEmail || i.realEmail).length;
         const neighborInfo = result.items.filter(i => i.neighborCount > 0).length;
-        const doneText = `네이버 ${source === 'cafe' ? '카페' : '블로그'}에서 '${keyword}' 검색 완료. ${result.items.length}건 수집, 이메일 ${emailCount}건, 이웃수 정보 ${neighborInfo}건 포함하여 구글 시트에 저장했습니다, 선생님.`;
+        const doneText = `네이버 ${source === 'cafe' ? '카페' : '블로그'}에서 '${keyword}' 검색 완료. ${result.items.length}건 수집, 이메일 ${emailCount}건, 이웃수 정보 ${neighborInfo}건 포함하여 구글 시트에 저장했습니다, 토니.`;
         setState('speaking');
         addMessage('jarvis', doneText, true); // 작업 완료 메시지 → 스파클링 효과
         // 수집 완료 파티클 폭발
@@ -515,7 +514,7 @@ export default function JarvisApp() {
           speak(doneText, undefined, () => { stopSpeakingLevel(); resolve(); });
         });
       } catch (err) {
-        const errMsg = `네이버 검색 중 오류가 발생했습니다, 선생님. ${String(err).includes('credentials') ? 'NAVER API 키가 설정되지 않았습니다. Vercel 환경변수에 NAVER_CLIENT_ID와 NAVER_CLIENT_SECRET을 설정해주세요.' : String(err)}`;
+        const errMsg = `네이버 검색 중 오류가 발생했습니다, 토니. ${String(err).includes('credentials') ? 'NAVER API 키가 설정되지 않았습니다. Vercel 환경변수에 NAVER_CLIENT_ID와 NAVER_CLIENT_SECRET을 설정해주세요.' : String(err)}`;
         setState('speaking');
         addMessage('jarvis', errMsg);
         startSpeakingLevel();
@@ -599,7 +598,7 @@ export default function JarvisApp() {
 
         const categoryText = category ? ` (${category} 필터)` : '';
         const phoneCount = businessItems.filter(i => i.phone).length;
-        const doneText = `'${query}'${categoryText} 검색 완료. ${businessItems.length}개 업체를 수집했습니다. 전화번호 ${phoneCount}건, 주소 포함 구글 시트에 저장했습니다, 선생님.`;
+        const doneText = `'${query}'${categoryText} 검색 완료. ${businessItems.length}개 업체를 수집했습니다. 전화번호 ${phoneCount}건, 주소 포함 구글 시트에 저장했습니다, 토니.`;
         setState('speaking');
         addMessage('jarvis', doneText, true);
         setClapBurst(true);
@@ -610,7 +609,7 @@ export default function JarvisApp() {
           speak(doneText, undefined, () => { stopSpeakingLevel(); resolve(); });
         });
       } catch (err) {
-        const errMsg = `지역 검색 중 오류가 발생했습니다, 선생님. ${String(err)}`;
+        const errMsg = `지역 검색 중 오류가 발생했습니다, 토니. ${String(err)}`;
         setState('speaking');
         addMessage('jarvis', errMsg);
         startSpeakingLevel();
@@ -660,7 +659,7 @@ export default function JarvisApp() {
         if (bookAction === 'check_availability') {
           // 0. 네이버 자격증명 없을 때 안내
           if (!naverUsername || !naverPassword) {
-            const noCredsText = `선생님, 네이버 로그인 정보가 설정되어 있지 않습니다. 화면 우측 상단 SETTINGS 버튼을 클릭하신 후 NAVER BOOKING CREDENTIALS 섹션에 네이버 아이디와 비밀번호를 입력해 주세요.`;
+            const noCredsText = `토니, 네이버 로그인 정보가 설정되어 있지 않습니다. 화면 우측 상단 SETTINGS 버튼을 클릭하신 후 NAVER BOOKING CREDENTIALS 섹션에 네이버 아이디와 비밀번호를 입력해 주세요.`;
             setState('speaking');
             addMessage('jarvis', noCredsText, true);
             startSpeakingLevel();
@@ -753,7 +752,7 @@ export default function JarvisApp() {
                     if (loginSuccess) {
                       addMessage('jarvis', `✅ 캡차 자동 인식 성공! 네이버 로그인 완료`);
                     } else {
-                      addMessage('jarvis', `🤖 자동 인식 실패. 선생님께서 직접 입력해 주세요.`);
+                      addMessage('jarvis', `🤖 자동 인식 실패. 토니께서 직접 입력해 주세요.`);
                     }
                   }
                 } else if (vType === 'otp' && loginData.pendingSessionId) {
@@ -764,8 +763,8 @@ export default function JarvisApp() {
                 // GPT Vision 실패 또는 OTP인 경우 사용자에게 직접 요청
                 if (!loginSuccess) {
                   const vMsg = vType === 'captcha'
-                    ? '선생님, 네이버에서 자동입력 방지 문자가 표시되었습니다. 화면에 보이는 문자를 말씀해 주세요.'
-                    : '선생님, 네이버에서 추가 인증이 필요합니다. 휴대폰으로 받은 인증번호를 말씀해 주세요.';
+                    ? '토니, 네이버에서 자동입력 방지 문자가 표시되었습니다. 화면에 보이는 문자를 말씀해 주세요.'
+                    : '토니, 네이버에서 추가 인증이 필요합니다. 휴대폰으로 받은 인증번호를 말씀해 주세요.';
 
                   setState('speaking');
                   addMessage('jarvis', vMsg, true);
@@ -858,7 +857,7 @@ export default function JarvisApp() {
 
               if (matchedSlot && (savedUserName || userName) && (savedUserPhone || userPhone)) {
                 // 요청 시간 + 예약자 정보 모두 있음 → 자동 fill_form 진행
-                const autoText = `${businessName} ${matchedSlot} 시간대 확인되었습니다, 선생님. 예약자 ${savedUserName || userName} 정보로 자동 입력하겠습니다.`;
+                const autoText = `${businessName} ${matchedSlot} 시간대 확인되었습니다, 토니. 예약자 ${savedUserName || userName} 정보로 자동 입력하겠습니다.`;
                 setState('speaking');
                 addMessage('jarvis', autoText, true);
                 startSpeakingLevel();
@@ -884,7 +883,7 @@ export default function JarvisApp() {
                 const fillData = await fillRes.json();
                 if (fillData.success) {
                   setBookingStep(5);
-                  const doneText = `예약이 완료되었습니다, 선생님. ${businessName} ${matchedSlot} 예약이 성공적으로 접수되었습니다.`;
+                  const doneText = `예약이 완료되었습니다, 토니. ${businessName} ${matchedSlot} 예약이 성공적으로 접수되었습니다.`;
                   setState('speaking');
                   addMessage('jarvis', doneText, true);
                   startSpeakingLevel();
@@ -896,7 +895,7 @@ export default function JarvisApp() {
                 }
               } else {
                 // 시간대 목록 안내 + 선택 요청
-                const slotsText = `예약 가능한 시간대는 ${availData.availableSlots.slice(0, 5).join(', ')} 입니다, 선생님. 어떤 시간으로 예약하시겠습니까?`;
+                const slotsText = `예약 가능한 시간대는 ${availData.availableSlots.slice(0, 5).join(', ')} 입니다, 토니. 어떤 시간으로 예약하시겠습니까?`;
                 setState('speaking');
                 addMessage('jarvis', slotsText, true);
                 startSpeakingLevel();
@@ -905,7 +904,7 @@ export default function JarvisApp() {
                 });
               }
             } else {
-              const noSlotText = `${businessName} 예약 페이지를 확인했습니다, 선생님. 현재 해당 날짜에 예약 가능한 시간대가 없습니다. 다른 날짜로 다시 조회해 드릴까요?`;
+              const noSlotText = `${businessName} 예약 페이지를 확인했습니다, 토니. 현재 해당 날짜에 예약 가능한 시간대가 없습니다. 다른 날짜로 다시 조회해 드릴까요?`;
               setState('speaking');
               addMessage('jarvis', noSlotText, true);
               startSpeakingLevel();
@@ -938,7 +937,7 @@ export default function JarvisApp() {
                 const captchaImg2 = loginData2.captchaSrc || loginData2.screenshot || null;
                 setCaptchaScreenshot(captchaImg2);
                 setVerificationMode('captcha');
-                const vMsg2 = '선생님, 네이버에서 자동입력 방지 문자가 표시되었습니다. 화면에 보이는 문자를 말씀해 주세요.';
+                const vMsg2 = '토니, 네이버에서 자동입력 방지 문자가 표시되었습니다. 화면에 보이는 문자를 말씀해 주세요.';
                 setState('speaking');
                 addMessage('jarvis', vMsg2, true);
                 startSpeakingLevel();
@@ -969,7 +968,7 @@ export default function JarvisApp() {
           // 예약자명, 연락처, 날짜, 시간을 음성으로 읽어주고 사용자 확인을 받음
           const finalUserName = savedUserName || userName || '미설정';
           const finalUserPhone = savedUserPhone || userPhone || '미설정';
-          const confirmText = `잠깐, 선생님. 입력 전에 확인해 드리겠습니다. 예약자명 ${finalUserName}, 연락처 ${finalUserPhone}, 날짜 ${date}, 시간 ${time}. 이대로 진행할까요? 변경이 필요하시면 말씀해 주세요.`;
+          const confirmText = `잠깐, 토니. 입력 전에 확인해 드리겠습니다. 예약자명 ${finalUserName}, 연락처 ${finalUserPhone}, 날짜 ${date}, 시간 ${time}. 이대로 진행할까요? 변경이 필요하시면 말씀해 주세요.`;
           setState('speaking');
           addMessage('jarvis', confirmText, true);
           startSpeakingLevel();
@@ -997,7 +996,7 @@ export default function JarvisApp() {
           const isCancelled = cancelKeywords.some(kw => confirmResponse.toLowerCase().includes(kw));
 
           if (isCancelled) {
-            const cancelText = `알겠습니다, 선생님. 예약 입력을 중단했습니다. 변경하실 내용을 말씀해 주시면 다시 진행하겠습니다.`;
+            const cancelText = `알겠습니다, 토니. 예약 입력을 중단했습니다. 변경하실 내용을 말씀해 주시면 다시 진행하겠습니다.`;
             setState('speaking');
             addMessage('jarvis', cancelText, true);
             startSpeakingLevel();
@@ -1036,7 +1035,7 @@ export default function JarvisApp() {
             if (!stillAvailable && reCheckData.availableSlots?.length > 0) {
               // 선택한 시간이 마감됨 → 대안 제시
               const altSlots = reCheckData.availableSlots.slice(0, 3).join(', ');
-              const raceText = `선생님, 죄송합니다. ${time}이 방금 마감되었습니다. 현재 남은 시간은 ${altSlots} 입니다. 어떤 시간으로 변경하시겠습니까?`;
+              const raceText = `토니, 죄송합니다. ${time}이 방금 마감되었습니다. 현재 남은 시간은 ${altSlots} 입니다. 어떤 시간으로 변경하시겠습니까?`;
               setState('speaking');
               addMessage('jarvis', raceText, true);
               startSpeakingLevel();
@@ -1049,7 +1048,7 @@ export default function JarvisApp() {
               return;
             } else if (!stillAvailable && reCheckData.availableSlots?.length === 0) {
               // 모든 시간 마감
-              const fullText = `선생님, 안타깝게도 해당 날짜의 모든 시간이 마감되었습니다. 다른 날짜로 다시 조회해 드릴까요?`;
+              const fullText = `토니, 안타깝게도 해당 날짜의 모든 시간이 마감되었습니다. 다른 날짜로 다시 조회해 드릴까요?`;
               setState('speaking');
               addMessage('jarvis', fullText, true);
               startSpeakingLevel();
@@ -1083,7 +1082,7 @@ export default function JarvisApp() {
             if (fillData.screenshot) setBookingScreenshot(fillData.screenshot);
             if (fillData.paymentUrl) setPaymentUrl(fillData.paymentUrl);
             setBookingPanelVisible(true);
-            const fillText = `예약 정보 입력이 완료되었습니다, 선생님. 화면에 결제 링크가 표시되었습니다. 링크를 클릭하시거나 QR코드를 스캔하시면 결제 페이지로 바로 이동합니다.`;
+            const fillText = `예약 정보 입력이 완료되었습니다, 토니. 화면에 결제 링크가 표시되었습니다. 링크를 클릭하시거나 QR코드를 스캔하시면 결제 페이지로 바로 이동합니다.`;
             setState('speaking');
             addMessage('jarvis', fillText, true);
             startSpeakingLevel();
@@ -1108,7 +1107,7 @@ export default function JarvisApp() {
           });
           const notifyData = await notifyRes.json();
           const notifyText = notifyData.success
-            ? `예약 완료 알림 이메일을 발송했습니다, 선생님.`
+            ? `예약 완료 알림 이메일을 발송했습니다, 토니.`
             : `이메일 발송에 실패했습니다: ${notifyData.error}`;
           setState('speaking');
           addMessage('jarvis', notifyText);
@@ -1119,7 +1118,7 @@ export default function JarvisApp() {
         }
       } catch (err) {
         setBookingStep(0);
-        const errMsg = `예약 중 오류가 발생했습니다, 선생님. ${String(err)}`;
+        const errMsg = `예약 중 오류가 발생했습니다, 토니. ${String(err)}`;
         setState('speaking');
         addMessage('jarvis', errMsg);
         startSpeakingLevel();
@@ -1160,7 +1159,7 @@ export default function JarvisApp() {
         });
 
         // 샘플 멘트 재생
-        const sampleText = `이 목소리는 어때세요, 선생님? ${newName} 목소리로 설정되었습니다. 마음에 드시면 계속 사용하겠습니다.`;
+        const sampleText = `이 목소리는 어때세요, 토니? ${newName} 목소리로 설정되었습니다. 마음에 드시면 계속 사용하겠습니다.`;
         await new Promise(r => setTimeout(r, 600));
         setState('speaking');
         addMessage('jarvis', sampleText);
@@ -2090,7 +2089,7 @@ export default function JarvisApp() {
                     setCurrentVoiceId(v.id);
                     setCurrentVoiceName(v.name);
                     setVoiceListVisible(false);
-                    const sampleText = `안녕하세요, 선생님. ${v.name} 목소리로 변경되었습니다.`;
+                    const sampleText = `안녕하세요, 토니. ${v.name} 목소리로 변경되었습니다.`;
                     addMessage('jarvis', sampleText);
                     setState('speaking');
                     startSpeakingLevel();
@@ -2344,7 +2343,7 @@ export default function JarvisApp() {
                                 // 세팅스 닫기
                                 setSettingsVisible(false);
                                 // 자비스 음성 안내
-                                const loginDoneMsg = `선생님, 네이버 로그인이 확인되었습니다. 아이디 ${naverForm.username || statusData.sessionId?.slice(0, 4)}(으)로 세션이 활성화되었습니다. 이제 예약 명령을 내려주시면 자동으로 처리하겠습니다.`;
+                                const loginDoneMsg = `접속 확인됐습니다, 토니. 네이버 세션 온라인. 언제든 명령하십시오, sir.`;
                                 addMessage('jarvis', loginDoneMsg, true);
                                 setState('speaking');
                                 startSpeakingLevel();
@@ -2441,8 +2440,8 @@ export default function JarvisApp() {
                     setSettingsVisible(false);
                     // 저장 후 자비스 음성 안내 (리로드 없이 즉시 적용)
                     const savedMsg = naverForm.username
-                      ? `설정이 저장되었습니다, 선생님. 네이버 아이디 ${naverForm.username}으로 로그인 정보가 등록되었습니다. 이제 예약 자동화를 사용할 수 있습니다.`
-                      : `설정이 저장되었습니다, 선생님.`;
+                      ? `설정이 저장되었습니다, 토니. 네이버 아이디 ${naverForm.username}으로 로그인 정보가 등록되었습니다. 이제 예약 자동화를 사용할 수 있습니다.`
+                      : `설정이 저장되었습니다, 토니.`;
                     addMessage('jarvis', savedMsg, true);
                     setState('speaking');
                     startSpeakingLevel();
