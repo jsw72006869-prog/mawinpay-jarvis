@@ -683,7 +683,9 @@ export default function JarvisApp() {
                   : '선생님, 네이버에서 추가 인증이 필요합니다. 휴대폰으로 받은 인증번호를 말씀해 주세요.';
 
                 setPendingSessionId(loginData.pendingSessionId);
-                setCaptchaScreenshot(loginData.screenshot || null);
+                // captchaSrc: base64 이미지 or screenshot URL
+                const captchaImg = loginData.captchaSrc || loginData.screenshot || null;
+                setCaptchaScreenshot(captchaImg);
                 setVerificationMode(vType);
 
                 setState('speaking');
