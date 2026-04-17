@@ -110,6 +110,15 @@ export default function JarvisApp() {
   const verificationResolveRef = useRef<((code: string) => void) | null>(null);
   const BOOKING_SERVER = import.meta.env.VITE_BOOKING_SERVER_URL || 'https://jarvis-booking-server-production.up.railway.app';
 
+  // 네이버 직접 로그인 상태
+  const [naverLoginStatus, setNaverLoginStatus] = useState<'idle' | 'waiting' | 'done' | 'error'>(() => {
+    const saved = localStorage.getItem('jarvis_booking_session');
+    return saved ? 'done' : 'idle';
+  });
+  const [naverLoginPendingId, setNaverLoginPendingId] = useState<string | null>(null);
+  const [naverLoginWebview, setNaverLoginWebview] = useState(false);
+  const [naverLoginScreenshot, setNaverLoginScreenshot] = useState<string | null>(null);
+
   // ── 타이핑 입력 모드 ──
   const [textInputMode, setTextInputMode] = useState(false);
   const [textInputValue, setTextInputValue] = useState('');
@@ -699,7 +708,7 @@ export default function JarvisApp() {
                         messages: [{
                           role: 'user',
                           content: [
-                            { type: 'text', text: '이것은 네이버 로그인 캡차 이미지입니다. 두 장의 영수증이 겹쳐 있으며, 왼쪽 영수증의 주소에서 빈칸(물음표 또는 공백)으로 가려진 번지수를 오른쪽 영수증에서 찾아 완성하세요. 번지수 숫자만 출력하세요. 예: 294' },
+                            { type: 'text', text: '이것은 네이버 로그인 캐잘 이미지입니다. \n\n캐잘 유형: \n1. 두 장의 영수증이 격쳐 있는 경우 - 왼쪽 영수증의 주소에서 ?로 가려진 번지수를 오른쪽 영수증에서 찾아 입력\n2. 단일 영수증인 경우 - 주소에서 번지수(도로명 다음에 오는 숫자)를 찾아 입력\n\n반드시 숫자만 출력하세요. 예: 294 또는 237\n\n이미지를 자세히 분석하세요.' },
                             { type: 'image_url', image_url: { url: imgSrc, detail: 'high' } }
                           ]
                         }]
@@ -2286,6 +2295,79 @@ export default function JarvisApp() {
                 <div style={{ marginTop: 4, fontFamily: 'Orbitron, monospace', color: THEME.textDim, fontSize: '0.32rem', letterSpacing: '0.1em' }}>
                   예약 자동화 시 네이버 로그인에 사용됩니다.
                 </div>
+
+                {/* 네이버 직접 로그인 버튼 */}
+                <div style={{ marginTop: 10 }}>
+                  <div
+                    onClick={async () => {
+                      if (naverLoginStatus === 'waiting') return;
+                      const naverID = naverForm.username;
+                      try {
+                        const startRes = await fetch(`${BOOKING_SERVER}/api/booking/manual-login/start`, {
+                          method: 'POST',
+                          headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify({ naverID }),
+                        });
+                        const startData = await startRes.json();
+                        if (startData.success && startData.pendingId) {
+                          const pendingId = startData.pendingId;
+                          setNaverLoginStatus('waiting');
+                          setNaverLoginPendingId(pendingId);
+                          setNaverLoginWebview(true);
+                          // 스크린샷 폴링 시작
+                          const screenshotInterval = setInterval(async () => {
+                            try {
+                              const ssRes = await fetch(`${BOOKING_SERVER}/api/booking/manual-login/screenshot/${pendingId}`);
+                              const ssData = await ssRes.json();
+                              if (ssData.success) {
+                                setNaverLoginScreenshot(ssData.screenshot);
+                                if (ssData.resolved) {
+                                  clearInterval(screenshotInterval);
+                                }
+                              }
+                            } catch {}
+                          }, 1500);
+                          // 완료 폴링
+                          const statusInterval = setInterval(async () => {
+                            try {
+                              const statusRes = await fetch(`${BOOKING_SERVER}/api/booking/manual-login/status/${pendingId}`);
+                              const statusData = await statusRes.json();
+                              if (statusData.success && statusData.sessionId) {
+                                clearInterval(statusInterval);
+                                clearInterval(screenshotInterval);
+                                setBookingSessionId(statusData.sessionId);
+                                localStorage.setItem('jarvis_booking_session', statusData.sessionId);
+                                setNaverLoginStatus('done');
+                                setNaverLoginPendingId(null);
+                                setNaverLoginWebview(false);
+                                setNaverLoginScreenshot(null);
+                                addMessage('jarvis', '✅ 네이버 로그인 완료! 이제 예약 명령을 내려주세요.');
+                              }
+                            } catch {}
+                          }, 2000);
+                          setTimeout(() => { clearInterval(statusInterval); clearInterval(screenshotInterval); }, 10 * 60 * 1000);
+                        }
+                      } catch { setNaverLoginStatus('error'); }
+                    }}
+                    style={{
+                      padding: '8px 12px', textAlign: 'center', cursor: 'pointer',
+                      background: naverLoginStatus === 'done' ? 'rgba(34,197,94,0.15)' : 'rgba(74,144,226,0.15)',
+                      border: `1px solid ${naverLoginStatus === 'done' ? '#22C55E' : '#4A90E2'}55`,
+                      fontFamily: 'Orbitron, monospace',
+                      color: naverLoginStatus === 'done' ? '#22C55E' : '#4A90E2',
+                      fontSize: '0.42rem', letterSpacing: '0.2em',
+                    }}
+                  >
+                    {naverLoginStatus === 'done' ? '✅ NAVER LOGGED IN' :
+                     naverLoginStatus === 'waiting' ? '⏳ 로그인 진행 중...' :
+                     '🔐 NAVER 직접 로그인'}
+                  </div>
+                  {naverLoginStatus === 'done' && bookingSessionId && (
+                    <div style={{ marginTop: 4, fontFamily: 'Orbitron, monospace', color: '#22C55E', fontSize: '0.3rem', letterSpacing: '0.1em' }}>
+                      ✅ 세션 활성: {bookingSessionId.slice(0, 8)}...
+                    </div>
+                  )}
+                </div>
               </div>
 
               {/* 예약자 정보 */}
@@ -2735,6 +2817,125 @@ export default function JarvisApp() {
               />
               <div style={{ color: '#9BA1A6', fontSize: '0.75rem', textAlign: 'center' }}>
                 타이핑 모드(Ctrl+K) 또는 음성으로 입력해 주세요
+              </div>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* ── 네이버 직접 로그인 웹븷 모달 ── */}
+      <AnimatePresence>
+        {naverLoginWebview && (
+          <motion.div
+            key="naver-webview-modal"
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            exit={{ opacity: 0, scale: 0.95 }}
+            style={{
+              position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+              zIndex: 110, display: 'flex', alignItems: 'center', justifyContent: 'center',
+              background: 'rgba(0,0,0,0.85)', backdropFilter: 'blur(10px)',
+            }}
+          >
+            <div style={{
+              background: 'rgba(6,10,18,0.99)',
+              border: '1px solid #4A90E2',
+              borderTop: '3px solid #4A90E2',
+              padding: '20px',
+              width: 'clamp(320px, 90vw, 520px)',
+              maxHeight: '90vh',
+              display: 'flex', flexDirection: 'column', gap: 12,
+            }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div style={{ fontFamily: 'Orbitron, monospace', color: '#4A90E2', fontSize: '0.5rem', letterSpacing: '0.3em' }}>
+                  NAVER LOGIN
+                </div>
+                <div
+                  onClick={() => { setNaverLoginWebview(false); setNaverLoginStatus('idle'); setNaverLoginScreenshot(null); }}
+                  style={{ cursor: 'pointer', color: '#9BA1A6', fontSize: '1.2rem', lineHeight: 1 }}
+                >×</div>
+              </div>
+              <div style={{ color: '#9BA1A6', fontSize: '0.75rem', lineHeight: 1.5 }}>
+                아래 화면에서 네이버 로그인하세요. 로그인 완료 시 자동으로 감지됩니다.
+              </div>
+              {/* 스크린샷 표시 영역 */}
+              {naverLoginScreenshot ? (
+                <div
+                  style={{ position: 'relative', cursor: 'pointer', border: '1px solid #4A90E244', borderRadius: 4, overflow: 'hidden' }}
+                  onClick={async (e) => {
+                    if (!naverLoginPendingId) return;
+                    const rect = (e.currentTarget as HTMLDivElement).getBoundingClientRect();
+                    const img = e.currentTarget.querySelector('img') as HTMLImageElement;
+                    if (!img) return;
+                    // 실제 브라우저 컨버스 크기(480x700)로 좌표 변환
+                    const scaleX = 480 / img.clientWidth;
+                    const scaleY = 700 / img.clientHeight;
+                    const x = Math.round((e.clientX - rect.left) * scaleX);
+                    const y = Math.round((e.clientY - rect.top) * scaleY);
+                    await fetch(`${BOOKING_SERVER}/api/booking/manual-login/click/${naverLoginPendingId}`, {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ x, y }),
+                    }).catch(() => {});
+                  }}
+                >
+                  <img
+                    src={naverLoginScreenshot}
+                    alt="네이버 로그인 화면"
+                    style={{ width: '100%', display: 'block' }}
+                  />
+                </div>
+              ) : (
+                <div style={{ textAlign: 'center', padding: '40px 0', color: '#4A90E2', fontFamily: 'Orbitron, monospace', fontSize: '0.4rem' }}>
+                  화면 로딩 중...
+                </div>
+              )}
+              {/* 키보드 입력 영역 */}
+              <div style={{ display: 'flex', gap: 8 }}>
+                <input
+                  type="text"
+                  placeholder="네이버 비밀번호 입력 (엔터 키로 제운)"
+                  onKeyDown={async (e) => {
+                    if (!naverLoginPendingId) return;
+                    if (e.key === 'Enter') {
+                      await fetch(`${BOOKING_SERVER}/api/booking/manual-login/type/${naverLoginPendingId}`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ key: 'Enter' }),
+                      }).catch(() => {});
+                      (e.target as HTMLInputElement).value = '';
+                    } else if (e.key === 'Backspace') {
+                      await fetch(`${BOOKING_SERVER}/api/booking/manual-login/type/${naverLoginPendingId}`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ key: 'Backspace' }),
+                      }).catch(() => {});
+                    }
+                  }}
+                  onChange={async (e) => {
+                    if (!naverLoginPendingId) return;
+                    const val = e.target.value;
+                    if (val.length > 0) {
+                      const lastChar = val[val.length - 1];
+                      await fetch(`${BOOKING_SERVER}/api/booking/manual-login/type/${naverLoginPendingId}`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ text: lastChar }),
+                      }).catch(() => {});
+                    }
+                  }}
+                  style={{
+                    flex: 1, padding: '8px 12px',
+                    background: 'rgba(255,255,255,0.05)',
+                    border: '1px solid #4A90E244',
+                    color: '#e0e0ff',
+                    fontFamily: 'monospace', fontSize: '0.85rem',
+                    outline: 'none',
+                  }}
+                />
+              </div>
+              <div style={{ color: '#687076', fontSize: '0.65rem', lineHeight: 1.4 }}>
+                탁 클릭으로 필드 선택 → 위 입력란에 비밀번호 입력 → 엔터
               </div>
             </div>
           </motion.div>
