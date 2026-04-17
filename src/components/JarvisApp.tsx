@@ -2896,52 +2896,71 @@ export default function JarvisApp() {
                   화면 로딩 중...
                 </div>
               )}
-              {/* 키보드 입력 영역 */}
-              <div style={{ display: 'flex', gap: 8 }}>
-                <input
-                  type="text"
-                  placeholder="네이버 비밀번호 입력 (엔터 키로 제운)"
-                  onKeyDown={async (e) => {
-                    if (!naverLoginPendingId) return;
-                    if (e.key === 'Enter') {
-                      await fetch(`${BOOKING_SERVER}/api/booking/manual-login/type/${naverLoginPendingId}`, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ key: 'Enter' }),
-                      }).catch(() => {});
-                      (e.target as HTMLInputElement).value = '';
-                    } else if (e.key === 'Backspace') {
-                      await fetch(`${BOOKING_SERVER}/api/booking/manual-login/type/${naverLoginPendingId}`, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ key: 'Backspace' }),
-                      }).catch(() => {});
-                    }
-                  }}
-                  onChange={async (e) => {
-                    if (!naverLoginPendingId) return;
-                    const val = e.target.value;
-                    if (val.length > 0) {
-                      const lastChar = val[val.length - 1];
-                      await fetch(`${BOOKING_SERVER}/api/booking/manual-login/type/${naverLoginPendingId}`, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ text: lastChar }),
-                      }).catch(() => {});
-                    }
-                  }}
-                  style={{
-                    flex: 1, padding: '8px 12px',
-                    background: 'rgba(255,255,255,0.05)',
-                    border: '1px solid #4A90E244',
-                    color: '#e0e0ff',
-                    fontFamily: 'monospace', fontSize: '0.85rem',
-                    outline: 'none',
-                  }}
-                />
-              </div>
-              <div style={{ color: '#687076', fontSize: '0.65rem', lineHeight: 1.4 }}>
-                탁 클릭으로 필드 선택 → 위 입력란에 비밀번호 입력 → 엔터
+              {/* 비밀번호 원터치 입력 영역 */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                <div style={{ color: '#9BA1A6', fontSize: '0.7rem' }}>
+                  비밀번호 입력 후 엔터 → 자동 로그인
+                </div>
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <input
+                    type="password"
+                    placeholder="비밀번호 입력..."
+                    id="naver-pw-input"
+                    onKeyDown={async (e) => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault();
+                        const input = e.target as HTMLInputElement;
+                        const pw = input.value;
+                        if (!pw || !naverLoginPendingId) return;
+                        input.disabled = true;
+                        try {
+                          await fetch(`${BOOKING_SERVER}/api/booking/manual-login/fill-password/${naverLoginPendingId}`, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ password: pw }),
+                          });
+                        } catch {}
+                        input.value = '';
+                        input.disabled = false;
+                      }
+                    }}
+                    style={{
+                      flex: 1, padding: '10px 14px',
+                      background: 'rgba(255,255,255,0.07)',
+                      border: '1px solid #4A90E266',
+                      color: '#e0e0ff',
+                      fontFamily: 'monospace', fontSize: '1rem',
+                      outline: 'none', borderRadius: 4,
+                    }}
+                  />
+                  <button
+                    onClick={async () => {
+                      const input = document.getElementById('naver-pw-input') as HTMLInputElement;
+                      const pw = input?.value;
+                      if (!pw || !naverLoginPendingId) return;
+                      input.disabled = true;
+                      try {
+                        await fetch(`${BOOKING_SERVER}/api/booking/manual-login/fill-password/${naverLoginPendingId}`, {
+                          method: 'POST',
+                          headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify({ password: pw }),
+                        });
+                      } catch {}
+                      input.value = '';
+                      input.disabled = false;
+                    }}
+                    style={{
+                      padding: '10px 16px',
+                      background: '#4A90E2',
+                      border: 'none', borderRadius: 4,
+                      color: '#fff', fontFamily: 'Orbitron, monospace',
+                      fontSize: '0.45rem', letterSpacing: '0.1em',
+                      cursor: 'pointer',
+                    }}
+                  >
+                    LOGIN
+                  </button>
+                </div>
               </div>
             </div>
           </motion.div>
