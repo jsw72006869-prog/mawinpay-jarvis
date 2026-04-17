@@ -2345,7 +2345,7 @@ export default function JarvisApp() {
                         }
                       }, 1000);
                       // 10분 타임아웃
-                      setTimeout(() => { clearInterval(checkClosed); if (naverLoginStatus === 'waiting') setNaverLoginStatus('idle'); }, 10 * 60 * 1000);
+                      setTimeout(() => { clearInterval(checkClosed); setNaverLoginStatus(prev => prev === 'waiting' ? 'idle' : prev); }, 10 * 60 * 1000);
                     }}
                     style={{
                       padding: '8px 12px', textAlign: 'center', cursor: 'pointer',
