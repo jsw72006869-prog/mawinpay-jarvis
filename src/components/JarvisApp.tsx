@@ -97,6 +97,8 @@ export default function JarvisApp() {
   const [bookingPanelVisible, setBookingPanelVisible] = useState(false);
   const [bookingSlots, setBookingSlots] = useState<string[]>([]);
   const [bookingScreenshot, setBookingScreenshot] = useState<string | null>(null);
+  // 0: idle, 1: 로그인 중, 2: 시간 조회 중, 3: 확인 대기, 4: 폼 입력 중, 5: 완료
+  const [bookingStep, setBookingStep] = useState<number>(0);
   const [paymentUrl, setPaymentUrl] = useState<string | null>(null);
   const [paymentCopied, setPaymentCopied] = useState(false);
   // 예약 확인 대기 중 음성 응답을 받기 위한 ref
@@ -631,6 +633,9 @@ export default function JarvisApp() {
         const naverUsername = naverCreds.username || '';
         const naverPassword = naverCreds.password || '';
 
+        // 세션 ID 상위 스코프 선언 (모든 bookAction에서 공유)
+        let activeSessionId = bookingSessionId || '';
+
         if (bookAction === 'check_availability') {
           // 0. 네이버 자격증명 없을 때 안내
           if (!naverUsername || !naverPassword) {
@@ -644,25 +649,38 @@ export default function JarvisApp() {
             setState('idle');
             return;
           }
-          // 1. 로그인 시도
+          // 1. 로그인 시도 (진행 상황 표시)
+          setBookingStep(1);
           if (naverUsername && naverPassword) {
-            const loginRes = await fetch(`${BOOKING_SERVER}/api/booking/login`, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ naverID: naverUsername, naverPW: naverPassword }),
-            });
-            const loginData = await loginRes.json();
-            if (loginData.success && loginData.sessionId) {
-              setBookingSessionId(loginData.sessionId);
+            setState('working');
+            addMessage('jarvis', `🔐 네이버 로그인 중... (${naverUsername})`);
+            try {
+              const loginRes = await fetch(`${BOOKING_SERVER}/api/booking/login`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ naverID: naverUsername, naverPW: naverPassword }),
+              });
+              const loginData = await loginRes.json();
+              if (loginData.success && loginData.sessionId) {
+                activeSessionId = loginData.sessionId;
+                setBookingSessionId(loginData.sessionId);
+                addMessage('jarvis', `✅ 네이버 로그인 완료`);
+              } else {
+                addMessage('jarvis', `⚠️ 로그인 실패: ${loginData.error || '알 수 없는 오류'}. 비로그인 상태로 조회합니다.`);
+              }
+            } catch (loginErr) {
+              addMessage('jarvis', `⚠️ 로그인 서버 연결 실패. 비로그인 상태로 조회합니다.`);
             }
           }
 
-          // 2. 예약 가능 시간 조회
+          // 2. 예약 가능 시간 조회 (진행 상황 표시)
+          setBookingStep(2);
+          addMessage('jarvis', `🔍 ${businessName} 예약 가능 시간 조회 중...`);
           const availRes = await fetch(`${BOOKING_SERVER}/api/booking/availability`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-              sessionId: bookingSessionId || 'guest',
+              sessionId: activeSessionId || 'guest',
               businessName,
               bookingUrl,
               date,
@@ -736,11 +754,13 @@ export default function JarvisApp() {
           setState('working');
           addMessage('jarvis', reCheckText);
 
+          setBookingStep(4);
+          addMessage('jarvis', `🔄 ${time} 시간대 실시간 재확인 중...`);
           const reCheckRes = await fetch(`${BOOKING_SERVER}/api/booking/availability`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-              sessionId: bookingSessionId || 'guest',
+              sessionId: activeSessionId || bookingSessionId || 'guest',
               businessName,
               bookingUrl,
               date,
@@ -783,11 +803,13 @@ export default function JarvisApp() {
           }
 
           // ── 예약 폼 자동 입력 진행 ──
+          setBookingStep(4);
+          addMessage('jarvis', `✍️ ${businessName} 예약 폼 자동 입력 중...`);
           const fillRes = await fetch(`${BOOKING_SERVER}/api/booking/fill-form`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-              sessionId: bookingSessionId || 'guest',
+              sessionId: activeSessionId || bookingSessionId || 'guest',
               bookingUrl,
               userName,
               userPhone,
@@ -797,6 +819,7 @@ export default function JarvisApp() {
           });
           const fillData = await fillRes.json();
           if (fillData.success) {
+            setBookingStep(5);
             if (fillData.screenshot) setBookingScreenshot(fillData.screenshot);
             if (fillData.paymentUrl) setPaymentUrl(fillData.paymentUrl);
             setBookingPanelVisible(true);
@@ -835,6 +858,7 @@ export default function JarvisApp() {
           });
         }
       } catch (err) {
+        setBookingStep(0);
         const errMsg = `예약 중 오류가 발생했습니다, 선생님. ${String(err)}`;
         setState('speaking');
         addMessage('jarvis', errMsg);
@@ -2009,8 +2033,14 @@ export default function JarvisApp() {
                       password: naverForm.password,
                     }));
                     setSettingsVisible(false);
-                    // 페이지 리로드로 적용
-                    setTimeout(() => window.location.reload(), 300);
+                    // 저장 후 자비스 음성 안내 (리로드 없이 즉시 적용)
+                    const savedMsg = naverForm.username
+                      ? `설정이 저장되었습니다, 선생님. 네이버 아이디 ${naverForm.username}으로 로그인 정보가 등록되었습니다. 이제 예약 자동화를 사용할 수 있습니다.`
+                      : `설정이 저장되었습니다, 선생님.`;
+                    addMessage('jarvis', savedMsg, true);
+                    setState('speaking');
+                    startSpeakingLevel();
+                    speak(savedMsg, undefined, () => { stopSpeakingLevel(); setState('idle'); });
                   }}
                   style={{
                     flex: 1, padding: '7px', textAlign: 'center', cursor: 'pointer',
@@ -2273,6 +2303,78 @@ export default function JarvisApp() {
                   fontFamily: 'Orbitron, monospace', color: THEME.blue, fontSize: '0.38rem', letterSpacing: '0.15em',
                 }}
               >CSV 다운로드</div>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* ── 예약 진행 상황 바 ── */}
+      <AnimatePresence>
+        {bookingStep > 0 && bookingStep < 5 && (
+          <motion.div
+            key="booking-progress"
+            initial={{ opacity: 0, y: -20 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -20 }}
+            transition={{ duration: 0.3 }}
+            style={{
+              position: 'fixed', top: 68, left: '50%', transform: 'translateX(-50%)',
+              zIndex: 40, pointerEvents: 'none',
+              width: 'clamp(300px, 80vw, 600px)',
+            }}
+          >
+            <div style={{
+              background: 'rgba(6,10,18,0.92)',
+              border: `1px solid #4A90E244`,
+              borderTop: `2px solid #4A90E2`,
+              padding: '10px 16px',
+              backdropFilter: 'blur(20px)',
+            }}>
+              {/* 제목 */}
+              <div style={{
+                fontFamily: 'Orbitron, monospace', color: '#4A90E2',
+                fontSize: '0.42rem', letterSpacing: '0.3em', marginBottom: 8,
+              }}>BOOKING PROGRESS</div>
+              {/* 단계 바 */}
+              <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                {[
+                  { step: 1, label: '로그인' },
+                  { step: 2, label: '시간조회' },
+                  { step: 3, label: '확인' },
+                  { step: 4, label: '폼입력' },
+                  { step: 5, label: '완료' },
+                ].map((item, idx) => {
+                  const isDone = bookingStep > item.step;
+                  const isActive = bookingStep === item.step;
+                  const color = isDone ? '#7EC89B' : isActive ? '#4A90E2' : '#334155';
+                  return (
+                    <>
+                      <div key={item.step} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3, flex: 1 }}>
+                        <motion.div
+                          animate={isActive ? { opacity: [1, 0.4, 1], boxShadow: [`0 0 6px ${color}`, `0 0 2px ${color}`, `0 0 6px ${color}`] } : {}}
+                          transition={{ duration: 1.2, repeat: Infinity }}
+                          style={{
+                            width: '100%', height: 4,
+                            background: color,
+                            borderRadius: 2,
+                          }}
+                        />
+                        <span style={{
+                          fontFamily: 'Orbitron, monospace',
+                          color: isActive ? '#4A90E2' : isDone ? '#7EC89B' : '#334155',
+                          fontSize: '0.35rem', letterSpacing: '0.1em',
+                          whiteSpace: 'nowrap',
+                        }}>
+                          {isDone ? '✓ ' : isActive ? '▶ ' : ''}{item.label}
+                        </span>
+                      </div>
+                      {idx < 4 && (
+                        <div key={`sep-${item.step}`} style={{ width: 6, height: 4, background: isDone ? '#7EC89B44' : '#33415544', borderRadius: 1, flexShrink: 0 }} />
+                      )}
+                    </>
+                  );
+                })}
+              </div>
             </div>
           </motion.div>
         )}
