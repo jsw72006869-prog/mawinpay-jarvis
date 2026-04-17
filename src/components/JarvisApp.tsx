@@ -198,12 +198,16 @@ export default function JarvisApp() {
   }, []);
 
   useEffect(() => {
-    const t = setTimeout(() => setShowHint(true), 3000);
+    // 모바일에서 빠르게 TOUCH TO ACTIVATE 표시 (0.5초)
+    const t = setTimeout(() => setShowHint(true), 500);
     return () => clearTimeout(t);
   }, []);
 
   // ── 커스텀 커서 ──
   useEffect(() => {
+    // 모바일(터치 기기)에서는 커스텀 커서 비활성화
+    const isTouchDevice = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
+    if (isTouchDevice) return;
     const cursor = document.createElement('div');
     cursor.className = 'jarvis-cursor';
     document.body.appendChild(cursor);
@@ -1406,11 +1410,17 @@ export default function JarvisApp() {
 
   return (
     <main
-      style={{ position: 'fixed', inset: 0, overflow: 'hidden', background: THEME.bg, cursor: 'none' }}
+      style={{ position: 'fixed', inset: 0, overflow: 'hidden', background: THEME.bg, cursor: typeof window !== 'undefined' && ('ontouchstart' in window || navigator.maxTouchPoints > 0) ? 'auto' : 'none' }}
       onClick={() => {
         // idle 상태에서만 클릭으로 활성화 허용
-        // listening/speaking 등 상태에서는 클릭 무시 (오작동 방지)
         if (stateRef.current === 'idle') handleActivate();
+      }}
+      onTouchStart={(e) => {
+        // 모바일 터치로 활성화
+        if (stateRef.current === 'idle') {
+          e.preventDefault();
+          handleActivate();
+        }
       }}
     >
       {/* ── Three.js 파티클 배경 ── */}
@@ -2326,19 +2336,26 @@ export default function JarvisApp() {
                           startSpeakingLevel();
                           speak(loginDoneMsg, undefined, () => { stopSpeakingLevel(); setState('idle'); });
                         } else if (data.needVerification && data.verificationType === 'captcha') {
-                          // 캐시 필요 → 자비스가 코드 요청
+                          // 캐시 필요 → 모달 열고 코드 요청
                           setNaverLoginStatus('idle');
-                          const captchaMsg = '네이버 로그인 중 자동입력 방지 문자가 표시되었습니다, 토니. 화면에 보이는 문자를 말씨해주세요.';
+                          setSettingsVisible(false); // 세팅스 닫기
+                          const captchaImg = data.captchaSrc || data.screenshot || null;
+                          if (captchaImg) setCaptchaScreenshot(captchaImg);
+                          setVerificationMode('captcha'); // 모달 표시
+                          const captchaMsg = '토니, 네이버 로그인 중 자동입력 방지 문자가 표시되었습니다. 화면에 보이는 문자를 말씨해주세요, sir.';
                           addMessage('jarvis', captchaMsg, true);
-                          if (data.captchaSrc) setCaptchaScreenshot(data.captchaSrc);
                           setState('speaking');
                           startSpeakingLevel();
                           speak(captchaMsg, undefined, () => { stopSpeakingLevel(); setState('idle'); });
                         } else if (data.needVerification && data.verificationType === 'otp') {
-                          // 2단계 인증 필요 → 코드 요청
+                          // 2단계 인증 필요 → 모달 열고 코드 요청
                           setNaverLoginStatus('idle');
+                          setSettingsVisible(false); // 세팅스 닫기
                           if (data.pendingSessionId) setPendingSessionId(data.pendingSessionId);
-                          const otpMsg = '네이버에서 추가 인증이 필요합니다, 토니. 휴대폰으로 받은 인증번호를 말씨해주세요.';
+                          const otpScreenshot = data.screenshot || null;
+                          if (otpScreenshot) setCaptchaScreenshot(otpScreenshot);
+                          setVerificationMode('otp'); // 모달 표시
+                          const otpMsg = '토니, 네이버에서 추가 인증이 필요합니다. 화면을 확인하고 인증번호를 말씨해주세요, sir.';
                           addMessage('jarvis', otpMsg, true);
                           setState('speaking');
                           startSpeakingLevel();
