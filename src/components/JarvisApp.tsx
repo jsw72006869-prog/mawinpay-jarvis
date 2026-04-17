@@ -823,7 +823,7 @@ export default function JarvisApp() {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-              sessionId: activeSessionId || 'guest',
+              sessionId: activeSessionId || '',
               businessName,
               bookingUrl,
               date,
@@ -864,7 +864,7 @@ export default function JarvisApp() {
                   method: 'POST',
                   headers: { 'Content-Type': 'application/json' },
                   body: JSON.stringify({
-                    sessionId: activeSessionId || 'guest',
+                    sessionId: activeSessionId || '',
                     bookingUrl: bookingUrl || availData.bookingUrl || '',
                     userName: savedUserName || userName,
                     userPhone: savedUserPhone || userPhone,
@@ -908,6 +908,54 @@ export default function JarvisApp() {
             throw new Error(availData.error || '예약 조회 실패');
           }
         } else if (bookAction === 'fill_form') {
+          // ── fill_form에서도 로그인 세션 확보 ──
+          if (!activeSessionId && naverUsername && naverPassword) {
+            setState('working');
+            addMessage('jarvis', `🔐 네이버 로그인 중... (${naverUsername})`);
+            try {
+              const loginRes2 = await fetch(`${BOOKING_SERVER}/api/booking/login`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ naverID: naverUsername, naverPW: naverPassword }),
+              });
+              const loginData2 = await loginRes2.json();
+              if (loginData2.success && loginData2.sessionId) {
+                activeSessionId = loginData2.sessionId;
+                setBookingSessionId(loginData2.sessionId);
+                localStorage.setItem('jarvis_booking_session', loginData2.sessionId);
+                addMessage('jarvis', `✅ 네이버 로그인 완료`);
+              } else if (loginData2.needVerification) {
+                // 캡차 발생 시 stateless 재로그인
+                const captchaImg2 = loginData2.captchaSrc || loginData2.screenshot || null;
+                setCaptchaScreenshot(captchaImg2);
+                setVerificationMode('captcha');
+                const vMsg2 = '선생님, 네이버에서 자동입력 방지 문자가 표시되었습니다. 화면에 보이는 문자를 말씀해 주세요.';
+                setState('speaking');
+                addMessage('jarvis', vMsg2, true);
+                startSpeakingLevel();
+                await new Promise<void>(resolve => { speak(vMsg2, undefined, () => { stopSpeakingLevel(); resolve(); }); });
+                const userCaptcha = await new Promise<string>(resolve => { verificationResolveRef.current = resolve; setState('listening'); });
+                setCaptchaScreenshot(null); setVerificationMode(null);
+                setState('working');
+                const retryRes2 = await fetch(`${BOOKING_SERVER}/api/booking/login`, {
+                  method: 'POST', headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ naverID: naverUsername, naverPW: naverPassword, captchaAnswer: userCaptcha }),
+                });
+                const retryData2 = await retryRes2.json();
+                if (retryData2.success && retryData2.sessionId) {
+                  activeSessionId = retryData2.sessionId;
+                  setBookingSessionId(retryData2.sessionId);
+                  localStorage.setItem('jarvis_booking_session', retryData2.sessionId);
+                  addMessage('jarvis', `✅ 로그인 성공`);
+                } else {
+                  addMessage('jarvis', `⚠️ 로그인 실패. 비로그인 상태로 진행합니다.`);
+                }
+              } else {
+                addMessage('jarvis', `⚠️ 로그인 실패: ${loginData2.message || loginData2.error}`);
+              }
+            } catch { addMessage('jarvis', `⚠️ 로그인 서버 연결 실패`); }
+          }
+
           // ── 학습 1: 입력 전 확인 단계 ──
           // 예약자명, 연락처, 날짜, 시간을 음성으로 읽어주고 사용자 확인을 받음
           const finalUserName = savedUserName || userName || '미설정';
@@ -963,7 +1011,7 @@ export default function JarvisApp() {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-              sessionId: activeSessionId || bookingSessionId || 'guest',
+              sessionId: activeSessionId || bookingSessionId || '',
               businessName,
               bookingUrl,
               date,
@@ -1012,10 +1060,10 @@ export default function JarvisApp() {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-              sessionId: activeSessionId || bookingSessionId || 'guest',
+              sessionId: activeSessionId || bookingSessionId || '',
               bookingUrl,
-              userName,
-              userPhone,
+              userName: savedUserName || userName,
+              userPhone: savedUserPhone || userPhone,
               selectedTime: time,
               date,
             }),
