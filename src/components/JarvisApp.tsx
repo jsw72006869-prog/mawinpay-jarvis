@@ -641,7 +641,9 @@ export default function JarvisApp() {
         const naverPassword = naverCreds.password || '';
 
         // 세션 ID 상위 스코프 선언 (모든 bookAction에서 공유)
-        let activeSessionId = bookingSessionId || '';
+        // localStorage에서도 읽어서 React state 비동기 문제 우회
+        const savedSessionId = localStorage.getItem('jarvis_booking_session') || '';
+        let activeSessionId = bookingSessionId || savedSessionId || '';
         // 예약자 정보: 설정창 저장값 우선, 없으면 GPT 파라미터 사용
         const savedUserName = naverCreds.userName || '';
         const savedUserPhone = naverCreds.userPhone || '';
@@ -674,6 +676,7 @@ export default function JarvisApp() {
               if (loginData.success && loginData.sessionId) {
                 activeSessionId = loginData.sessionId;
                 setBookingSessionId(loginData.sessionId);
+                localStorage.setItem('jarvis_booking_session', loginData.sessionId);
                 addMessage('jarvis', `✅ 네이버 로그인 완료`);
               } else if (loginData.needVerification) {
                 // ── 캡차 또는 2단계 인증 필요 ──
@@ -731,6 +734,7 @@ export default function JarvisApp() {
                       if (verifyData.success && verifyData.sessionId) {
                         activeSessionId = verifyData.sessionId;
                         setBookingSessionId(verifyData.sessionId);
+                        localStorage.setItem('jarvis_booking_session', verifyData.sessionId);
                         addMessage('jarvis', `✅ 캡차 자동 인식 성공! 네이버 로그인 완료`);
                         setCaptchaScreenshot(null); setVerificationMode(null); setPendingSessionId(null);
                         verificationCode = autoAnswer; // 성공 표시
@@ -775,6 +779,7 @@ export default function JarvisApp() {
                     if (verifyData.success && verifyData.sessionId) {
                       activeSessionId = verifyData.sessionId;
                       setBookingSessionId(verifyData.sessionId);
+                      localStorage.setItem('jarvis_booking_session', verifyData.sessionId);
                       addMessage('jarvis', `✅ 인증 완료! 네이버 로그인 성공`);
                       verificationCode = userInput;
                     } else {
