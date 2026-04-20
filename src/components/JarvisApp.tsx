@@ -2273,6 +2273,8 @@ export default function JarvisApp() {
               position: 'fixed', top: 52, left: 28,
               zIndex: 50, pointerEvents: 'auto',
               minWidth: 320,
+              maxHeight: 'calc(100vh - 70px)',
+              overflowY: 'auto',
             }}
           >
             <div style={{
@@ -2371,9 +2373,8 @@ export default function JarvisApp() {
                   예약 자동화 시 네이버 로그인에 사용됩니다.
                 </div>
 
-                {/* 크롬 확장 로그인 버튼 (우선 방식) */}
-                {(window as any).__JARVIS_EXTENSION_CONNECTED__ && (
-                  <div style={{ marginTop: 10 }}>
+                {/* 크롬 확장 로그인 버튼 (항상 표시) */}
+                <div style={{ marginTop: 10 }}>
                     <div
                       onClick={async () => {
                         // 크롬 확장으로 네이버 쿠키 추출
@@ -2426,10 +2427,11 @@ export default function JarvisApp() {
                       🔌 크롬 확장으로 로그인 (추천)
                     </div>
                     <div style={{ fontFamily: 'Orbitron, monospace', color: THEME.textDim, fontSize: '0.32rem', letterSpacing: '0.1em', marginBottom: 8 }}>
-                      ✅ 확장 연결됨 — 이미 로그인된 크롬 세션 사용 (캡차 없음)
+                      {(window as any).__JARVIS_EXTENSION_CONNECTED__
+                        ? '✅ 확장 연결됨 — 이미 로그인된 크롬 세션 사용 (캡차 없음)'
+                        : '⚠️ 확장 미설치 — 아래 ZIP 설치 후 사용 가능'}
                     </div>
                   </div>
-                )}
 
               {/* 네이버 팝업 로그인 버튼 */}
                 <div style={{ marginTop: 10 }}>
