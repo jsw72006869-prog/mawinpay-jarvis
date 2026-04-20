@@ -1449,6 +1449,29 @@ export default function JarvisApp() {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, []);
 
+  // ── 크롬 확장 메시지 수신 (네이버 로그인 완료 감지) ──
+  useEffect(() => {
+    const handleExtMessage = (e: MessageEvent) => {
+      if (e.data?.source !== 'JARVIS_EXTENSION') return;
+      // 네이버 로그인 완료 (확장에서 자동 감지)
+      if (e.data.type === 'NAVER_LOGIN_RESULT') {
+        const result = e.data.payload;
+        if (result?.success && result?.sessionId) {
+          setBookingSessionId(result.sessionId);
+          localStorage.setItem('jarvis_booking_session', result.sessionId);
+          setNaverLoginStatus('done');
+          const loginDoneMsg = `접속 확인됐습니다, 토니. 네이버 로그인 완료. 언제든 명령하십시오, sir.`;
+          addMessage('jarvis', loginDoneMsg, true);
+          setState('speaking');
+          startSpeakingLevel();
+          speak(loginDoneMsg, undefined, () => { stopSpeakingLevel(); setState('idle'); });
+        }
+      }
+    };
+    window.addEventListener('message', handleExtMessage);
+    return () => window.removeEventListener('message', handleExtMessage);
+  }, [addMessage, speak, startSpeakingLevel, stopSpeakingLevel]);
+
   const accent = STATE_COLOR[state];
 
   return (
@@ -2348,7 +2371,67 @@ export default function JarvisApp() {
                   예약 자동화 시 네이버 로그인에 사용됩니다.
                 </div>
 
-                {/* 네이버 팝업 로그인 버튼 */}
+                {/* 크롬 확장 로그인 버튼 (우선 방식) */}
+                {(window as any).__JARVIS_EXTENSION_CONNECTED__ && (
+                  <div style={{ marginTop: 10 }}>
+                    <div
+                      onClick={async () => {
+                        // 크롬 확장으로 네이버 쿠키 추출
+                        setNaverLoginStatus('waiting');
+                        window.postMessage({ source: 'JARVIS_APP', type: 'GET_NAVER_COOKIES', payload: { naverID: naverForm.username } }, '*');
+                        // 결과 대기
+                        const result = await new Promise<any>((resolve) => {
+                          const handler = (e: MessageEvent) => {
+                            if (e.data?.source === 'JARVIS_EXTENSION' && e.data?.type === 'NAVER_COOKIES_RESPONSE') {
+                              window.removeEventListener('message', handler);
+                              resolve(e.data.payload);
+                            }
+                          };
+                          window.addEventListener('message', handler);
+                          setTimeout(() => { window.removeEventListener('message', handler); resolve({ success: false, error: 'timeout' }); }, 10000);
+                        });
+                        if (result.success && result.sessionId) {
+                          setBookingSessionId(result.sessionId);
+                          localStorage.setItem('jarvis_booking_session', result.sessionId);
+                          setNaverLoginStatus('done');
+                          setSettingsVisible(false);
+                          const loginDoneMsg = `접속 확인됐습니다, 토니. 크롬 세션으로 네이버 로그인 완료. 언제든 명령하십시오, sir.`;
+                          addMessage('jarvis', loginDoneMsg, true);
+                          setState('speaking');
+                          startSpeakingLevel();
+                          speak(loginDoneMsg, undefined, () => { stopSpeakingLevel(); setState('idle'); });
+                        } else {
+                          setNaverLoginStatus('error');
+                          // 쿠키 없으면 네이버 로그인 탭 열기
+                          window.postMessage({ source: 'JARVIS_APP', type: 'OPEN_NAVER_LOGIN' }, '*');
+                          const errMsg = result.error?.includes('쿠키가 없습니다')
+                            ? '토니, 네이버에 로그인된 세션이 없습니다. 열린 네이버 탭에서 로그인해 주세요. 완료되면 자동으로 처리됩니다.'
+                            : `크롬 확장 로그인 실패: ${result.error || '알 수 없는 오류'}`;
+                          addMessage('jarvis', errMsg, true);
+                          setState('speaking');
+                          startSpeakingLevel();
+                          speak(errMsg, undefined, () => { stopSpeakingLevel(); setState('idle'); });
+                        }
+                      }}
+                      style={{
+                        padding: '8px 12px', textAlign: 'center', cursor: 'pointer',
+                        background: 'rgba(0,200,100,0.15)',
+                        border: '1px solid #00C86455',
+                        fontFamily: 'Orbitron, monospace',
+                        color: '#00C864',
+                        fontSize: '0.42rem', letterSpacing: '0.2em',
+                        marginBottom: 6,
+                      }}
+                    >
+                      🔌 크롬 확장으로 로그인 (추천)
+                    </div>
+                    <div style={{ fontFamily: 'Orbitron, monospace', color: THEME.textDim, fontSize: '0.32rem', letterSpacing: '0.1em', marginBottom: 8 }}>
+                      ✅ 확장 연결됨 — 이미 로그인된 크롬 세션 사용 (캡차 없음)
+                    </div>
+                  </div>
+                )}
+
+              {/* 네이버 팝업 로그인 버튼 */}
                 <div style={{ marginTop: 10 }}>
                   <div
                     onClick={async () => {
