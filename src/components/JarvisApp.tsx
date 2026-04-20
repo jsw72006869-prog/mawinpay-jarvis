@@ -1182,6 +1182,7 @@ export default function JarvisApp() {
       }
 
       await new Promise(r => setTimeout(r, 400));
+      setBookingStep(0); // 예약 완료 후 리셋 → idle 타이머 재활성화
       setState('listening');
       setIsListening(true);
       return;
@@ -1498,19 +1499,21 @@ export default function JarvisApp() {
 
   useEffect(() => {
     if (state !== 'listening') return;
+    // 예약 진행 중이면 자동 idle 전환 비활성화
+    if (bookingStep > 0) return;
     const AUTO_IDLE_TIMEOUT = 60 * 1000; // 60초
     const timer = setInterval(() => {
       const elapsed = Date.now() - lastInputTimeRef.current;
-      if (elapsed >= AUTO_IDLE_TIMEOUT && stateRef.current === 'listening') {
+      if (elapsed >= AUTO_IDLE_TIMEOUT && stateRef.current === 'listening' && bookingStep === 0) {
         console.log('[JARVIS] 60초 무입력 → 자동 idle 전환');
         setIsListening(false);
         setState('idle');
-        // 자동 ggoff 알림 멘트 (TTS 없이 메시지만)
+        // 자동 off 알림 멘트 (TTS 없이 메시지만)
         addMessage('jarvis', '대기 시간 초과로 마이크를 끄겠습니다, 선생님. 필요하시면 다시 호출해 주세요.');
       }
     }, 5000); // 5초마다 체크
     return () => clearInterval(timer);
-  }, [state, addMessage]);
+  }, [state, addMessage, bookingStep]);
 
   // ── 크롬 확장 메시지 수신 (네이버 로그인 완료 감지) ──
   useEffect(() => {
@@ -3401,15 +3404,33 @@ export default function JarvisApp() {
               {/* 예약 가능 시간 목록 */}
               {bookingSlots.length > 0 && (
                 <div>
-                  <div style={{ fontFamily: 'Orbitron, monospace', color: THEME.textDim, fontSize: '0.35rem', letterSpacing: '0.15em', marginBottom: 6 }}>AVAILABLE TIMES</div>
+                  <div style={{ fontFamily: 'Orbitron, monospace', color: THEME.textDim, fontSize: '0.35rem', letterSpacing: '0.15em', marginBottom: 6 }}>AVAILABLE TIMES — 클릭하여 예약</div>
                   {bookingSlots.map((slot, i) => (
-                    <div key={i} style={{
-                      padding: '5px 10px', marginBottom: 4,
-                      background: 'rgba(74,144,226,0.08)',
-                      border: '1px solid #4A90E233',
-                      color: THEME.text, fontSize: '0.55rem',
-                      fontFamily: 'monospace',
-                    }}>{slot}</div>
+                    <div
+                      key={i}
+                      onClick={() => {
+                        // 클릭 시 해당 시간으로 바로 예약 명령 실행
+                        const cmd = `${slot} 시간으로 예약해줘`;
+                        addMessage('user', cmd);
+                        handleTextSubmit(cmd);
+                      }}
+                      style={{
+                        padding: '8px 12px', marginBottom: 6,
+                        background: 'rgba(74,144,226,0.12)',
+                        border: '1px solid #4A90E255',
+                        color: '#4A90E2', fontSize: '0.7rem',
+                        fontFamily: 'monospace',
+                        cursor: 'pointer',
+                        borderRadius: 4,
+                        display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                        transition: 'all 0.15s',
+                      }}
+                      onMouseEnter={e => (e.currentTarget.style.background = 'rgba(74,144,226,0.25)')}
+                      onMouseLeave={e => (e.currentTarget.style.background = 'rgba(74,144,226,0.12)')}
+                    >
+                      <span>{slot}</span>
+                      <span style={{ fontSize: '0.55rem', color: '#22C55E', fontFamily: 'Orbitron, monospace', letterSpacing: '0.1em' }}>예약 →</span>
+                    </div>
                   ))}
                 </div>
               )}
