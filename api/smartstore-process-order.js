@@ -218,12 +218,12 @@ async function createSettlementSheet(orders, date) {
 }
 
 async function sendEmail(orderSheetBuffer, settlementBuffer, date, orderCount, totalSettlement) {
-  const user = process.env.EMAIL_USER;
-  const pass = process.env.EMAIL_PASS;
+  const user = process.env.GMAIL_ADDRESS || process.env.EMAIL_USER;
+  const pass = process.env.GMAIL_APP_PASSWORD || process.env.EMAIL_PASS;
   if (!user || !pass) throw new Error('이메일 설정이 없습니다. EMAIL_USER, EMAIL_PASS 환경변수를 설정해주세요.');
 
   const transporter = nodemailer.createTransport({
-    service: 'naver',
+    service: 'gmail',
     auth: { user, pass },
   });
 
@@ -251,7 +251,7 @@ async function sendEmail(orderSheetBuffer, settlementBuffer, date, orderCount, t
   `;
 
   await transporter.sendMail({
-    from: `셀렌 <${user}>`,
+    from: `셀렌 셀렌 <${user}>`,
     to: SUPPLIER_EMAIL,
     subject,
     html,
