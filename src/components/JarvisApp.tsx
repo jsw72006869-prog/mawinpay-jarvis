@@ -16,12 +16,12 @@ import { ParticleTextCanvas } from './ParticleTextCanvas';
 
 // ── 시그니처 응답 목록 (GPT 대기 없이 즉시 재생) ──
 const SIGNATURE_RESPONSES = [
-  '자비스 온라인. 모든 시스템 정상입니다, 선생님.',
-  '전원 공급 완료. 모든 모듈 정상, 선생님. 대기 중입니다.',
-  '시스템 부팅 완료. 준비되었습니다, 선생님.',
-  '언제든 명령하십시오, 선생님.',
-  '당신을 기다리고 있었습니다, 선생님.',
-  '완전히 작동 중입니다, 선생님.',
+  'J.A.R.V.I.S. online. All systems are fully operational, sir.',
+  'Power supply complete. All modules nominal, sir. Standing by.',
+  'System boot complete. Ready to serve, sir.',
+  'At your command, sir.',
+  'I\'ve been expecting you, sir.',
+  'Fully operational, sir.',
 ];
 
 // ── 고급 색상 팔레트 ──
