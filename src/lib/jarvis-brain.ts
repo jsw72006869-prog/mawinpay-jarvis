@@ -258,6 +258,7 @@ const JARVIS_FUNCTIONS_DEF = [
             'get_bestseller', 'compare_last_month', 'weekly_report',
             'send_purchase_email', 'send_purchase_email_auto', 'preview_purchase_email',
             'process_shipping', 'get_products',
+            'process_order_file', 'process_order_file_and_send',
           ],
           description: `주문조회: query_orders_today(오늘), query_orders_week(이번주), query_orders_month(이번달), query_orders_unpaid(미결제), query_orders_cancel(취소요청), query_orders_return(반품/교환), query_orders_by_product(상품별), query_order_detail(주문상세), query_orders_pending_ship(발송대기), morning_report(아침업무보고)
 발주확인: confirm_all_today(오늘발주확인), confirm_all(전체발주확인), confirm_by_product(상품별발주확인), confirm_by_id(개별발주확인), query_unconfirmed(미처리조회)
@@ -265,7 +266,8 @@ const JARVIS_FUNCTIONS_DEF = [
 정산서: create_settlement_month(월정산서), create_settlement_by_product(상품별정산), calc_weekly_profit(주간수익), get_bestseller(베스트셀러), compare_last_month(전월비교), weekly_report(주간마감)
 발주이메일: send_purchase_email(발주이메일발송), send_purchase_email_auto(자동발주), preview_purchase_email(이메일미리보기)
 발송처리: process_shipping(발송처리)
-상품조회: get_products(상품목록/품절확인)`
+상품조회: get_products(상품목록/품절확인)
+발주서파일처리: process_order_file(스마트스토어발주서파일업로드→셀렌발주서+정산서생성), process_order_file_and_send(발주서파일업로드→생성+공급처이메일자동발송)`
         },
         period: { type: 'string', description: '조회 기간 (today, week, month, custom)' },
         product_name: { type: 'string', description: '특정 상품명 (상품별 조회/발주확인 시)' },
@@ -619,6 +621,8 @@ You are not just an assistant. You are a **world-class viral marketing expert AI
 
 **발주 이메일 (3가지)**
 - "생산지에 발주해줘", "발주 이메일 보내줘" → smartstore_action (send_purchase_email_auto)
+- "발주서 처리해줘", "발주서 올릴게", "발주서 파일 처리해줘" → smartstore_action (process_order_file)
+- "발주서 처리하고 이메일 보내줘", "발주서 처리 후 공급처에 보내줘", "전체 처리해줘" → smartstore_action (process_order_file_and_send)
 - "OOO 업체에 발주해줘" → smartstore_action (send_purchase_email, supplier_name, supplier_email)
 - "발주 이메일 미리보기" → smartstore_action (preview_purchase_email)
 

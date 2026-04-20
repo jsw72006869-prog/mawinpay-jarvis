@@ -86,6 +86,8 @@ function getActionLabel(action: string): string {
     preview_purchase_email: '발주 이메일 미리보기',
     process_shipping: '발송 처리',
     get_products: '상품 조회',
+    process_order_file: '발주서 파일 처리',
+    process_order_file_and_send: '발주서 처리 및 이메일 발송',
   };
   return labels[action] || action;
 }
@@ -129,6 +131,13 @@ export default function JarvisApp() {
   const [influencerCardsVisible, setInfluencerCardsVisible] = useState(false);
   const [collectedBusinesses, setCollectedBusinesses] = useState<LocalBusinessData[]>([]);
   const [businessCardsVisible, setBusinessCardsVisible] = useState(false);
+
+  // ── 발주서 파일 처리 상태 ──
+  const [orderFileUploadVisible, setOrderFileUploadVisible] = useState(false);
+  const [orderFileAction, setOrderFileAction] = useState<'process_order_file' | 'process_order_file_and_send'>('process_order_file');
+  const [orderFileProcessing, setOrderFileProcessing] = useState(false);
+  const orderFileInputRef = useRef<HTMLInputElement>(null);
+  const orderFileResolveRef = useRef<((file: File | null) => void) | null>(null);
 
   // ── 예약 기능 상태 ──
   const [bookingSessionId, setBookingSessionId] = useState<string | null>(null);
@@ -1239,6 +1248,7 @@ export default function JarvisApp() {
       'get_bestseller', 'compare_last_month', 'weekly_report',
       'send_purchase_email', 'send_purchase_email_auto', 'preview_purchase_email',
       'process_shipping', 'get_products',
+      'process_order_file', 'process_order_file_and_send',
       // 구버전 호환
       'get_orders', 'ship_order',
     ];
@@ -1262,6 +1272,128 @@ export default function JarvisApp() {
       });
 
       try {
+        // 발주서 파일 처리 (파일 업로드 UI 표시 후 처리)
+        if (ssAction === 'process_order_file' || ssAction === 'process_order_file_and_send') {
+          const isSendEmail = ssAction === 'process_order_file_and_send';
+          setOrderFileAction(ssAction as 'process_order_file' | 'process_order_file_and_send');
+          setOrderFileUploadVisible(true);
+
+          // 파일 업로드 대기
+          const uploadedFile = await new Promise<File | null>(resolve => {
+            orderFileResolveRef.current = resolve;
+          });
+
+          setOrderFileUploadVisible(false);
+
+          if (!uploadedFile) {
+            const cancelText = '발주서 파일 업로드가 취소되었습니다, 선생님.';
+            setState('speaking');
+            addMessage('jarvis', cancelText);
+            startSpeakingLevel();
+            await new Promise<void>(resolve => { speak(cancelText, undefined, () => { stopSpeakingLevel(); resolve(); }); });
+          } else {
+            setOrderFileProcessing(true);
+            const processingText = isSendEmail
+              ? '발주서 파일을 분석하고 정산서를 생성한 후 공급처에 이메일 발송하겠습니다, 선생님.'
+              : '발주서 파일을 분석하고 셀렌 발주서와 정산서를 생성하겠습니다, 선생님.';
+            setState('working');
+            addMessage('jarvis', processingText);
+            startSpeakingLevel();
+            await new Promise<void>(resolve => { speak(processingText, undefined, () => { stopSpeakingLevel(); resolve(); }); });
+
+            try {
+              // 파일을 Base64로 변환
+              const fileBase64 = await new Promise<string>((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onload = () => resolve((reader.result as string).split(',')[1]);
+                reader.onerror = reject;
+                reader.readAsDataURL(uploadedFile);
+              });
+
+              const today = new Date().toLocaleDateString('ko-KR', { month: 'long', day: 'numeric' });
+              const apiAction = isSendEmail ? 'full_process' : 'create_order';
+
+              const res = await fetch('/api/smartstore-process-order', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  action: apiAction,
+                  fileBase64,
+                  fileName: uploadedFile.name,
+                  date: today,
+                }),
+              });
+              const data = await res.json();
+              setOrderFileProcessing(false);
+
+              if (!data.success) throw new Error(data.error || '발주서 처리 실패');
+
+              // 발주서 엑셀 다운로드
+              if (data.orderSheet) {
+                const orderBytes = Uint8Array.from(atob(data.orderSheet), c => c.charCodeAt(0));
+                const orderBlob = new Blob([orderBytes], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+                const orderUrl = URL.createObjectURL(orderBlob);
+                const orderA = document.createElement('a');
+                orderA.href = orderUrl;
+                orderA.download = data.orderFileName || '셀렌_발주서.xlsx';
+                orderA.click();
+                URL.revokeObjectURL(orderUrl);
+              }
+
+              // 정산서 엑셀 다운로드
+              if (data.settlementSheet) {
+                await new Promise(r => setTimeout(r, 500));
+                const settleBytes = Uint8Array.from(atob(data.settlementSheet), c => c.charCodeAt(0));
+                const settleBlob = new Blob([settleBytes], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+                const settleUrl = URL.createObjectURL(settleBlob);
+                const settleA = document.createElement('a');
+                settleA.href = settleUrl;
+                settleA.download = data.settlementFileName || '정산서.xlsx';
+                settleA.click();
+                URL.revokeObjectURL(settleUrl);
+              }
+
+              // 결과 메시지
+              let resultMsg = `📋 **발주서 처리 완료**\n\n`;
+              resultMsg += `📦 총 주문: ${data.orderCount}건\n`;
+              if (data.qtySummary) {
+                const summary = Object.entries(data.qtySummary as Record<string, number>)
+                  .filter(([, qty]) => qty > 0)
+                  .map(([name, qty]) => `  • ${name}: ${qty}개`)
+                  .join('\n');
+                if (summary) resultMsg += `\n물품별 수량:\n${summary}\n`;
+              }
+              if (data.totalSettlement) {
+                resultMsg += `\n💰 입금 필요액: **${Number(data.totalSettlement).toLocaleString('ko-KR')}원**`;
+              }
+              if (isSendEmail && data.emailSent) {
+                resultMsg += `\n\n✉️ 공급처 이메일 발송 완료`;
+                resultMsg += `\n📱 텔레그램으로 정산 내역을 확인하세요.`;
+              }
+              resultMsg += `\n\n📥 셀렌 발주서 + 정산서 다운로드가 시작되었습니다.`;
+
+              const doneText = isSendEmail
+                ? `발주서 처리 및 공급처 이메일 발송 완료입니다, 선생님. 텍레그램으로 정산 내역을 확인하세요.`
+                : `발주서 처리 완료입니다, 선생님. 셀렌 발주서와 정산서가 다운로드되었습니다. 입금 필요액은 ${Number(data.totalSettlement || 0).toLocaleString('ko-KR')}원입니다.`;
+
+              setState('speaking');
+              addMessage('jarvis', resultMsg, true);
+              startSpeakingLevel();
+              await new Promise<void>(resolve => { speak(doneText, undefined, () => { stopSpeakingLevel(); resolve(); }); });
+              setClapBurst(true); setTimeout(() => setClapBurst(false), 120);
+
+            } catch (err) {
+              setOrderFileProcessing(false);
+              throw err;
+            }
+          }
+
+          await new Promise(r => setTimeout(r, 400));
+          setState('listening');
+          setIsListening(true);
+          return;
+        }
+
         // 상품 조회는 기존 API 유지
         if (ssAction === 'get_products') {
           const productStatus = String(action.params?.product_status || 'SALE');
@@ -3648,6 +3780,88 @@ export default function JarvisApp() {
               {!paymentUrl && bookingSlots.length === 0 && (
                 <div style={{ color: THEME.textDim, fontSize: '0.5rem', textAlign: 'center', padding: '10px 0' }}>
                   예약 가능한 시간을 확인 중입니다...
+                </div>
+              )}
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* ── 발주서 파일 업로드 모달 ── */}
+      <AnimatePresence>
+        {orderFileUploadVisible && (
+          <motion.div
+            key="order-file-modal"
+            initial={{ opacity: 0, scale: 0.9 }}
+            animate={{ opacity: 1, scale: 1 }}
+            exit={{ opacity: 0, scale: 0.9 }}
+            style={{
+              position: 'fixed', inset: 0, zIndex: 9000,
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              background: 'rgba(0,0,0,0.85)',
+            }}
+          >
+            <div style={{
+              background: 'linear-gradient(135deg, #0a0f1a 0%, #0d1526 100%)',
+              border: '1px solid #C8A96E',
+              borderRadius: 16,
+              padding: 32,
+              width: 360,
+              textAlign: 'center',
+              boxShadow: '0 0 40px rgba(200,169,110,0.3)',
+            }}>
+              <div style={{ fontSize: 40, marginBottom: 12 }}>📦</div>
+              <div style={{ color: '#C8A96E', fontSize: 18, fontWeight: 700, marginBottom: 8 }}>
+                {orderFileAction === 'process_order_file_and_send' ? '발주서 처리 + 이메일 발송' : '발주서 파일 처리'}
+              </div>
+              <div style={{ color: '#A8B8C8', fontSize: 13, marginBottom: 24, lineHeight: 1.6 }}>
+                스마트스토어에서 다운로드한<br/>
+                발주발송관리 엑셀 파일을 업로드하세요.<br/>
+                <span style={{ color: '#C8A96E', fontSize: 12 }}>비밀번호 1234 자동 해제</span>
+              </div>
+              <input
+                ref={orderFileInputRef}
+                type="file"
+                accept=".xlsx,.xls"
+                style={{ display: 'none' }}
+                onChange={(e) => {
+                  const file = e.target.files?.[0] || null;
+                  if (orderFileResolveRef.current) {
+                    orderFileResolveRef.current(file);
+                    orderFileResolveRef.current = null;
+                  }
+                }}
+              />
+              {orderFileProcessing ? (
+                <div style={{ color: '#7EC89B', fontSize: 14 }}>⏳ 처리 중...</div>
+              ) : (
+                <div style={{ display: 'flex', gap: 12, justifyContent: 'center' }}>
+                  <button
+                    onClick={() => orderFileInputRef.current?.click()}
+                    style={{
+                      background: 'linear-gradient(135deg, #C8A96E, #8B6F3E)',
+                      color: '#fff', border: 'none', borderRadius: 8,
+                      padding: '10px 24px', fontSize: 14, fontWeight: 700,
+                      cursor: 'pointer',
+                    }}
+                  >
+                    파일 선택
+                  </button>
+                  <button
+                    onClick={() => {
+                      if (orderFileResolveRef.current) {
+                        orderFileResolveRef.current(null);
+                        orderFileResolveRef.current = null;
+                      }
+                    }}
+                    style={{
+                      background: 'transparent', color: '#A8B8C8',
+                      border: '1px solid #334155', borderRadius: 8,
+                      padding: '10px 24px', fontSize: 14, cursor: 'pointer',
+                    }}
+                  >
+                    취소
+                  </button>
                 </div>
               )}
             </div>
