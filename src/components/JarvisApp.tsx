@@ -704,9 +704,9 @@ export default function JarvisApp() {
             return;
           }
 
-          // 0-B. 네이버 자격증명 없을 때 안내
-          if (!naverUsername || !naverPassword) {
-            const noCredsText = `토니, 네이버 로그인 정보가 설정되어 있지 않습니다. 화면 우측 상단 SETTINGS 버튼을 클릭하신 후 NAVER BOOKING CREDENTIALS 섹션에 네이버 아이디와 비밀번호를 입력해 주세요.`;
+          // 0-B. 네이버 자격증명 없을 때 안내 (단, 세션 ID가 있으면 로그인 건너뛰)
+          if (!naverUsername && !naverPassword && !activeSessionId) {
+            const noCredsText = `선생님, 네이버 로그인 정보가 설정되어 있지 않습니다. SETTINGS에서 네이버 아이디와 비밀번호를 입력하시거나, 크롬 확장 프로그램으로 로그인해 주세요.`;
             setState('speaking');
             addMessage('jarvis', noCredsText, true);
             startSpeakingLevel();
@@ -716,9 +716,13 @@ export default function JarvisApp() {
             setState('idle');
             return;
           }
-          // 1. 로그인 시도 (진행 상황 표시)
+          // 0-C. 세션 ID가 이미 있으면 로그인 건너뛰
+          if (activeSessionId) {
+            addMessage('jarvis', `✅ 이미 로그인된 세션을 사용합니다, 선생님. (세션: ${activeSessionId.slice(0, 8)}...)`);
+          }
+          // 1. 로그인 시도 (세션 없을 때만)
           setBookingStep(1);
-          if (naverUsername && naverPassword) {
+          if (!activeSessionId && naverUsername && naverPassword) {
             setState('working');
             addMessage('jarvis', `🔐 네이버 로그인 중... (${naverUsername})`);
             try {
@@ -1294,8 +1298,9 @@ export default function JarvisApp() {
 
   const handleSpeechResult = useCallback(async (transcript: string) => {
     if (!transcript.trim()) return;
-    // STT 노이즈 필터
-    if (isSTTNoise(transcript)) {
+    // STT 노이즈 필터 (단, 2차 인증/캐시 대기 중에는 필터 건너뛰)
+    const isWaitingForInput = verificationResolveRef.current !== null || bookingConfirmResolveRef.current !== null;
+    if (!isWaitingForInput && isSTTNoise(transcript)) {
       console.log('[JARVIS] 🚫 STT 노이즈 감지 → 무시:', transcript);
       return;
     }
