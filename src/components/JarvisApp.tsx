@@ -661,7 +661,50 @@ export default function JarvisApp() {
         const savedUserPhone = naverCreds.userPhone || '';
 
         if (bookAction === 'check_availability') {
-          // 0. 네이버 자격증명 없을 때 안내
+          // 0-A. 크롬 확장 프로그램 연동 확인 → 있으면 확장으로 처리
+          const extensionConnected = (window as any).__JARVIS_EXTENSION_CONNECTED__;
+          if (extensionConnected) {
+            setBookingStep(1);
+            addMessage('jarvis', `🔌 크롬 확장 프로그램으로 예약을 처리합니다, 토니.`);
+            const extCmd = {
+              businessName,
+              date,
+              time,
+              bookerName: savedUserName || userName,
+              bookerPhone: savedUserPhone || userPhone,
+              bookingUrl,
+            };
+            window.postMessage({ source: 'JARVIS_APP', type: 'BOOKING_COMMAND', payload: extCmd }, '*');
+            // 결과 대기 (최대 120초)
+            const extResult = await new Promise<any>((resolve) => {
+              const handler = (e: MessageEvent) => {
+                if (e.data?.source === 'JARVIS_EXTENSION' && e.data?.type === 'BOOKING_RESULT') {
+                  window.removeEventListener('message', handler);
+                  resolve(e.data.payload);
+                }
+              };
+              window.addEventListener('message', handler);
+              setTimeout(() => { window.removeEventListener('message', handler); resolve({ success: false, error: 'timeout' }); }, 120000);
+            });
+            setBookingStep(5);
+            if (extResult.success) {
+              const doneText = `예약 완료됩니다, 토니. ${businessName} ${date} ${time} 예약이 처리되었습니다.`;
+              setState('speaking');
+              addMessage('jarvis', doneText, true);
+              startSpeakingLevel();
+              await new Promise<void>(resolve => { speak(doneText, undefined, () => { stopSpeakingLevel(); resolve(); }); });
+            } else {
+              const failText = `예약 처리 중 오류가 발생했습니다, 토니. ${extResult.error || extResult.message || ''}. 네이버 예약 탭을 확인해 주세요.`;
+              setState('speaking');
+              addMessage('jarvis', failText, true);
+              startSpeakingLevel();
+              await new Promise<void>(resolve => { speak(failText, undefined, () => { stopSpeakingLevel(); resolve(); }); });
+            }
+            setState('idle');
+            return;
+          }
+
+          // 0-B. 네이버 자격증명 없을 때 안내
           if (!naverUsername || !naverPassword) {
             const noCredsText = `토니, 네이버 로그인 정보가 설정되어 있지 않습니다. 화면 우측 상단 SETTINGS 버튼을 클릭하신 후 NAVER BOOKING CREDENTIALS 섹션에 네이버 아이디와 비밀번호를 입력해 주세요.`;
             setState('speaking');
@@ -2813,8 +2856,9 @@ export default function JarvisApp() {
             exit={{ opacity: 0, scale: 0.95 }}
             style={{
               position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
-              zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'center',
+              zIndex: 100, display: 'flex', alignItems: 'flex-start', justifyContent: 'center',
               background: 'rgba(0,0,0,0.75)', backdropFilter: 'blur(8px)',
+              overflowY: 'auto', padding: '20px 0 20px',
             }}
           >
             <div style={{
@@ -2823,8 +2867,7 @@ export default function JarvisApp() {
               borderTop: '3px solid #4A90E2',
               padding: '20px',
               width: 'clamp(320px, 95vw, 560px)',
-              maxHeight: '92vh',
-              overflowY: 'auto',
+              flexShrink: 0,
             }}>
               <div style={{ fontFamily: 'Orbitron, monospace', color: '#4A90E2', fontSize: '0.5rem', letterSpacing: '0.3em', marginBottom: 12 }}>
                 {verificationMode === 'captcha' ? 'CAPTCHA REQUIRED' : '2-STEP VERIFICATION'}
