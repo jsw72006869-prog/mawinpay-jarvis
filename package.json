@@ -14,13 +14,14 @@
   "packageManager": "pnpm@10.33.0",
   "dependencies": {
     "@types/three": "^0.183.1",
+    "bcryptjs": "^2.4.3",
+    "exceljs": "^4.4.0",
     "framer-motion": "^12.38.0",
     "nodemailer": "^8.0.5",
     "qrcode.react": "^4.2.0",
     "react": "^19.2.5",
     "react-dom": "^19.2.5",
-    "three": "^0.183.2",
-    "bcryptjs": "^2.4.3"
+    "three": "^0.183.2"
   },
   "devDependencies": {
     "@types/react": "^19.2.14",
