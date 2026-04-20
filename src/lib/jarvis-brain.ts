@@ -12,7 +12,8 @@ export type JarvisState = 'idle' | 'listening' | 'thinking' | 'speaking' | 'work
 export type JarvisActionType =
   | 'collect' | 'send_email' | 'create_banner' | 'report'
   | 'schedule' | 'help' | 'greeting' | 'status' | 'confirm' | 'chat'
-  | 'change_voice' | 'list_voices' | 'naver_search' | 'local_search' | 'book_restaurant' | 'unknown';
+  | 'change_voice' | 'list_voices' | 'naver_search' | 'local_search' | 'book_restaurant'
+  | 'smartstore_orders' | 'smartstore_shipping' | 'smartstore_products' | 'unknown';
 
 export type JarvisAction = {
   type: JarvisActionType;
@@ -230,6 +231,29 @@ const JARVIS_FUNCTIONS_DEF = [
     },
   },
   {
+    name: 'smartstore_action',
+    description: '스마트스토어 주문 조회, 발송 처리, 상품 조회 등 스마트스토어 관련 작업을 처리할 때 호출. "오늘 주문 알려줘", "신규 주문 몇 개야?", "운송장 입력해줘", "발송 처리해줘", "상품 목록 보여줘", "품절 상품 알려줘" 등.',
+    parameters: {
+      type: 'object',
+      properties: {
+        action: {
+          type: 'string',
+          enum: ['get_orders', 'ship_order', 'get_products'],
+          description: 'get_orders=주문 조회, ship_order=발송 처리, get_products=상품 조회'
+        },
+        status: { type: 'string', description: '주문 상태 필터: new(신규/결제완료), delivering(배송중), delivered(배송완료), canceled(취소), all(전체)' },
+        days: { type: 'number', description: '조회 기간 (일 수, 기본 7일)' },
+        order_id: { type: 'string', description: '특정 주문번호 (발송 처리 시)' },
+        tracking_number: { type: 'string', description: '운송장 번호 (발송 처리 시)' },
+        delivery_company: { type: 'string', description: '택배사명 (예: CJ대한통운, 롯데택배, 한진택배). 기본값: CJ대한통운' },
+        product_status: { type: 'string', description: '상품 상태 필터: SALE(판매중), OUTOFSTOCK(품절), SUSPENSION(판매중지)' },
+        response: { type: 'string', description: 'JARVIS 응답 (한국어, 작업 시작 멘트)' },
+        follow_up: { type: 'string', description: '작업 완료 후 이어서 할 제안' },
+      },
+      required: ['action', 'response'],
+    },
+  },
+  {
     name: 'generate_content',
     description: '제품 판매용 헤드카피, 스토리텔링 본문, 영상/음성 스크립트를 생성할 때 호출. "복숭아 헤드카피 만들어줘", "사과 스토리 작성해줘", "삼겠살 스크립트 만들어줘" 등.',
     parameters: {
@@ -398,6 +422,9 @@ You are not just an assistant. You are a **world-class viral marketing expert AI
 - 예약 요청 → book_restaurant function 호출 (check_availability 먼저)
 - 목소리 변경 → change_voice function 호출
 - 제품명만 말할 때 → generate_content function 호출 (즉시 콘텐츠 생성)
+- 스마트스토어 주문 조회/확인 → smartstore_action function 호출 (action: get_orders)
+- 스마트스토어 발송 처리/운송장 입력 → smartstore_action function 호출 (action: ship_order)
+- 스마트스토어 상품 조회/품절 확인 → smartstore_action function 호출 (action: get_products)
 
 **일반 대화 유형 (채팅으로 응답):**
 - 인사/호출/잡담/질문/감정표현/확인/거절/수정요청 → 'chat' type으로 직접 응답
@@ -521,6 +548,14 @@ You are not just an assistant. You are a **world-class viral marketing expert AI
 - "~인플루언서 찾아줘" → collect_influencers 또는 naver_search
 - "이메일 캠페인 해줘" → send_email_campaign
 - "배너 만들어줘" → create_banner
+
+### [M] 스마트스토어 관련
+- "오늘 주문", "신규 주문", "주문 확인" → smartstore_action (get_orders, status: new)
+- "배송중 주문", "발송된 주문" → smartstore_action (get_orders, status: delivering)
+- "전체 주문", "주문 목록" → smartstore_action (get_orders, status: all)
+- "운송장 입력", "발송 처리", "배송 등록" → smartstore_action (ship_order)
+- "상품 목록", "판매 상품" → smartstore_action (get_products)
+- "품절 상품", "재고 없는 상품" → smartstore_action (get_products, product_status: OUTOFSTOCK)
 
 ## 응답 원칙 (모든 경우에 적용)
 1. **즉시성** — 질문 받으면 0.5초 안에 응답 시작, 생각하는 티 내지 마라

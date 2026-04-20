@@ -1188,6 +1188,133 @@ export default function JarvisApp() {
       return;
     }
 
+    // ── 스마트스토어 액션 ──
+    if (action?.type === 'smartstore_orders' || action?.type === 'smartstore_shipping' || action?.type === 'smartstore_products' ||
+        (action?.params?.action && ['get_orders', 'ship_order', 'get_products'].includes(String(action.params.action)))) {
+      const ssAction = String(action.params?.action || (action?.type === 'smartstore_orders' ? 'get_orders' : action?.type === 'smartstore_shipping' ? 'ship_order' : 'get_products'));
+      const status = String(action.params?.status || 'new');
+      const days = Number(action.params?.days) || 7;
+      const orderId = String(action.params?.order_id || '');
+      const trackingNumber = String(action.params?.tracking_number || '');
+      const deliveryCompany = String(action.params?.delivery_company || 'CJ대한통운');
+      const productStatus = String(action.params?.product_status || 'SALE');
+
+      setState('working');
+      addMessage('jarvis', action.response);
+      startSpeakingLevel();
+      await new Promise<void>(resolve => {
+        speak(action.response, undefined, () => { stopSpeakingLevel(); resolve(); });
+      });
+
+      try {
+        if (ssAction === 'get_orders') {
+          // 주문 조회
+          const params = new URLSearchParams({ status, days: String(days) });
+          const res = await fetch(`/api/smartstore-orders?${params.toString()}`);
+          const data = await res.json();
+
+          if (!data.success) {
+            throw new Error(data.error || '주문 조회 실패');
+          }
+
+          const orders = data.orders || [];
+          const total = data.total || 0;
+
+          // 주문 결과를 메시지로 표시
+          let orderSummary = '';
+          if (orders.length === 0) {
+            orderSummary = `조회 기간(${days}일) 내 ${status === 'new' ? '신규' : status === 'delivering' ? '배송중' : '전체'} 주문이 없습니다.`;
+          } else {
+            const statusKo = status === 'new' ? '신규(결제완료)' : status === 'delivering' ? '배송중' : status === 'delivered' ? '배송완료' : status === 'canceled' ? '취소' : '전체';
+            orderSummary = `최근 ${days}일간 ${statusKo} 주문 총 ${total}건입니다.\n\n`;
+            orders.slice(0, 5).forEach((order: any, i: number) => {
+              orderSummary += `${i + 1}. [${order.orderId}] ${order.buyerName} - ${(order.products || []).map((p: any) => `${p.productName} ${p.quantity}개`).join(', ')} (${order.totalAmount?.toLocaleString()}원)\n`;
+            });
+            if (orders.length > 5) orderSummary += `\n... 외 ${orders.length - 5}건 더 있습니다.`;
+          }
+
+          const doneText = `스마트스토어 주문 조회 완료입니다, 토니. ${total}건이 확인되었습니다.`;
+          setState('speaking');
+          addMessage('jarvis', `📦 **스마트스토어 주문 현황**\n\n${orderSummary}`, true);
+          startSpeakingLevel();
+          await new Promise<void>(resolve => {
+            speak(doneText, undefined, () => { stopSpeakingLevel(); resolve(); });
+          });
+
+        } else if (ssAction === 'ship_order') {
+          // 발송 처리
+          if (!trackingNumber) {
+            const askText = `운송장 번호를 말씀해 주세요, 토니. 택배사와 운송장 번호를 알려주시면 바로 처리하겠습니다.`;
+            setState('speaking');
+            addMessage('jarvis', askText);
+            startSpeakingLevel();
+            await new Promise<void>(resolve => {
+              speak(askText, undefined, () => { stopSpeakingLevel(); resolve(); });
+            });
+          } else {
+            const res = await fetch('/api/smartstore-shipping', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                orderId: orderId || undefined,
+                trackingNumber,
+                deliveryCompany,
+              }),
+            });
+            const data = await res.json();
+
+            if (!data.success) throw new Error(data.error || '발송 처리 실패');
+
+            const doneText = `발송 처리 완료입니다, 토니. ${deliveryCompany} 운송장 ${trackingNumber}번으로 등록되었습니다.`;
+            setState('speaking');
+            addMessage('jarvis', `🚚 ${doneText}`, true);
+            setClapBurst(true); setTimeout(() => setClapBurst(false), 120);
+            startSpeakingLevel();
+            await new Promise<void>(resolve => {
+              speak(doneText, undefined, () => { stopSpeakingLevel(); resolve(); });
+            });
+          }
+
+        } else if (ssAction === 'get_products') {
+          // 상품 조회
+          const params = new URLSearchParams({ status: productStatus, size: '50' });
+          const res = await fetch(`/api/smartstore-products?${params.toString()}`);
+          const data = await res.json();
+
+          if (!data.success) throw new Error(data.error || '상품 조회 실패');
+
+          const products = data.products || [];
+          let productSummary = `총 ${data.total || products.length}개 상품\n\n`;
+          products.slice(0, 8).forEach((p: any, i: number) => {
+            productSummary += `${i + 1}. ${p.name} - ${p.salePrice?.toLocaleString()}원 [${p.statusKo}]${p.stockQuantity !== undefined ? ` (재고: ${p.stockQuantity}개)` : ''}\n`;
+          });
+          if (products.length > 8) productSummary += `\n... 외 ${products.length - 8}개 더 있습니다.`;
+
+          const doneText = `스마트스토어 상품 조회 완료입니다, 토니. ${products.length}개 상품이 확인되었습니다.`;
+          setState('speaking');
+          addMessage('jarvis', `🛍️ **스마트스토어 상품 현황**\n\n${productSummary}`, true);
+          startSpeakingLevel();
+          await new Promise<void>(resolve => {
+            speak(doneText, undefined, () => { stopSpeakingLevel(); resolve(); });
+          });
+        }
+
+      } catch (err) {
+        const errMsg = `스마트스토어 조회 중 오류가 발생했습니다, 토니. ${String(err).includes('CLIENT_ID') ? 'SMARTSTORE_CLIENT_ID와 SMARTSTORE_CLIENT_SECRET 환경변수를 Vercel에 설정해주세요.' : String(err)}`;
+        setState('speaking');
+        addMessage('jarvis', errMsg);
+        startSpeakingLevel();
+        await new Promise<void>(resolve => {
+          speak(errMsg, undefined, () => { stopSpeakingLevel(); resolve(); });
+        });
+      }
+
+      await new Promise(r => setTimeout(r, 400));
+      setState('listening');
+      setIsListening(true);
+      return;
+    }
+
     // ── 목소리 변경 액션 ──
     if (action?.type === 'change_voice') {
       const voiceAction = String(action.params?.action || 'list');
