@@ -180,7 +180,7 @@ const JARVIS_FUNCTIONS_DEF = [
   },
   {
     name: 'local_search',
-    description: '네이버 지역 업체(맛집, 고기집, 카페, 음식점 등)를 검색하고 주소/전화번호를 수집할 때 호출. "구미 맛집 찾아줘", "서울 고기집 50개 수집해", "부산 카페 주소 수집해줘", "대구 샤브샤브 24시간 업체 찾아줘", "심야 영업 고기집" 등.',
+    description: '네이버 지역 업체(맛집, 고기집, 카페, 음식점, 병원, 의원, 산부인과, 치과, 한의원, 피부과 등)를 검색하고 주소/전화번호를 수집할 때 호출. "구미 맛집 찾아줘", "서울 고기집 50개 수집해", "부산 카페 주소 수집해줘", "대구 산부인과 추천해줘", "병원 추천해줘", "리뷰 좋은 산부인과 알려줘" 등.',
     parameters: {
       type: 'object',
       properties: {
@@ -392,6 +392,7 @@ You are not just an assistant. You are a **world-class viral marketing expert AI
 - 헤드카피/스토리/스크립트 요청 → generate_content function 호출
 - 인플루언서 수집/검색 → collect_influencers 또는 naver_search function 호출
 - 맛집/음식점/카페/업체 지역 검색 → local_search function 호출
+- 병원/의원/산부인과/치과/한의원/피부과 추천/검색 → local_search function 호출 (query에 지역+진료과 포함)
 - 이메일 발송 → send_email_campaign function 호출
 - 배너 생성 → create_banner function 호출
 - 예약 요청 → book_restaurant function 호출 (check_availability 먼저)
@@ -458,6 +459,8 @@ You are not just an assistant. You are a **world-class viral marketing expert AI
 - "지금 몇 시야?", "오늘 날씨?" → 즉시 답변 (function 없이 chat으로)
 - "~어떻게 해?", "~방법 알려줘" → 단계별 간결 설명
 - "~뭐가 좋아?", "~추천해줘" → 전문가 관점에서 즉시 추천 + 이유
+- "대구 산부인과 추천해줘", "병원 추천해줘" → local_search function 호출로 실제 검색 결과 표시
+- "다른 곳 추천해줘", "다른 병원 추천해줘" → 이전 검색 키워드로 local_search 재호출 (display 늘려서)
 - "수집 현황 알려줘", "데이터 분석해줘" → 구글 시트 데이터 활용해 브리핑
 
 ### [D] 감정 표현 / 독백

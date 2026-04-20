@@ -2126,6 +2126,19 @@ export default function JarvisApp() {
             <LocalBusinessCards
               businesses={collectedBusinesses}
               visible={true}
+              onBook={(biz) => {
+                setBusinessCardsVisible(false);
+                const cmd = `${biz.name} 예약해줘`;
+                addMessage('user', cmd);
+                handleTextSubmit(cmd);
+              }}
+              onRecommendMore={() => {
+                const lastKeyword = collectedBusinesses[0]?.keyword || '병원';
+                const cmd = `${lastKeyword} 다른 곳 추천해줘`;
+                setBusinessCardsVisible(false);
+                addMessage('user', cmd);
+                handleTextSubmit(cmd);
+              }}
             />
           </motion.div>
         )}
