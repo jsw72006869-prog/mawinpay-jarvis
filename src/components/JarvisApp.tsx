@@ -2391,7 +2391,38 @@ export default function JarvisApp() {
                           window.addEventListener('message', handler);
                           setTimeout(() => { window.removeEventListener('message', handler); resolve({ success: false, error: 'timeout' }); }, 10000);
                         });
-                        if (result.success && result.sessionId) {
+                        if (result.success && result.cookies) {
+                          // 쿠키 배열을 받았으면 프론트에서 서버로 전송
+                          try {
+                            const saveRes = await fetch(`${BOOKING_SERVER}/api/booking/save-cookies`, {
+                              method: 'POST',
+                              headers: { 'Content-Type': 'application/json' },
+                              body: JSON.stringify({ naverID: result.naverID || naverForm.username || 'chrome_user', cookies: result.cookies }),
+                            });
+                            const saveData = await saveRes.json();
+                            if (saveData.success && saveData.sessionId) {
+                              setBookingSessionId(saveData.sessionId);
+                              localStorage.setItem('jarvis_booking_session', saveData.sessionId);
+                              setNaverLoginStatus('done');
+                              setSettingsVisible(false);
+                              const loginDoneMsg = `접속 확인됐습니다, 토니. 크롬 세션으로 네이버 로그인 완료. 쿠키 ${result.cookieCount}개 확인. 언제든 명령하십시오, sir.`;
+                              addMessage('jarvis', loginDoneMsg, true);
+                              setState('speaking');
+                              startSpeakingLevel();
+                              speak(loginDoneMsg, undefined, () => { stopSpeakingLevel(); setState('idle'); });
+                            } else {
+                              throw new Error(saveData.error || '서버 저장 실패');
+                            }
+                          } catch (fetchErr: any) {
+                            setNaverLoginStatus('error');
+                            const errMsg = `서버 연결 실패: ${fetchErr.message}. 서버가 실행 중인지 확인해 주세요.`;
+                            addMessage('jarvis', errMsg, true);
+                            setState('speaking');
+                            startSpeakingLevel();
+                            speak(errMsg, undefined, () => { stopSpeakingLevel(); setState('idle'); });
+                          }
+                        } else if (result.success && result.sessionId) {
+                          // 이전 방식 호환성
                           setBookingSessionId(result.sessionId);
                           localStorage.setItem('jarvis_booking_session', result.sessionId);
                           setNaverLoginStatus('done');
@@ -2405,9 +2436,9 @@ export default function JarvisApp() {
                           setNaverLoginStatus('error');
                           // 쿠키 없으면 네이버 로그인 탭 열기
                           window.postMessage({ source: 'JARVIS_APP', type: 'OPEN_NAVER_LOGIN' }, '*');
-                          const errMsg = result.error?.includes('쿠키가 없습니다')
+                          const errMsg = result.error?.includes('쿠키가 없습니다') || result.error?.includes('쿠키가 없습니다')
                             ? '토니, 네이버에 로그인된 세션이 없습니다. 열린 네이버 탭에서 로그인해 주세요. 완료되면 자동으로 처리됩니다.'
-                            : `크롬 확장 로그인 실패: ${result.error || '알 수 없는 오류'}`;
+                            : `크롬 확장 로그인 실패: ${result.error || '알 수 없는 오류'}. 네이버 탭에서 로그인 후 다시 시도해 주세요.`;
                           addMessage('jarvis', errMsg, true);
                           setState('speaking');
                           startSpeakingLevel();
