@@ -107,6 +107,7 @@ export default function JarvisApp() {
   const [captchaScreenshot, setCaptchaScreenshot] = useState<string | null>(null);
   const [verificationMode, setVerificationMode] = useState<'captcha' | 'otp' | null>(null);
   const verificationResolveRef = useRef<((code: string) => void) | null>(null);
+  const captchaOpenRef = useRef<boolean>(false); // 캡차 모달 열림 여부 (STT 핸들러에서 동기 접근용)
   const BOOKING_SERVER = import.meta.env.VITE_BOOKING_SERVER_URL || 'https://jarvis-booking-server-production.up.railway.app';
 
   // 네이버 직접 로그인 상태
@@ -742,6 +743,7 @@ export default function JarvisApp() {
                 const vType = loginData.verificationType || 'captcha';
                 const captchaImg = loginData.captchaSrc || loginData.screenshot || null;
                 setCaptchaScreenshot(captchaImg);
+                captchaOpenRef.current = true;
                 setVerificationMode(vType);
 
                 // ── 캡차: stateless 재로그인 방식 (GPT Vision 자동 → 실패 시 사용자 직접) ──
@@ -831,10 +833,11 @@ export default function JarvisApp() {
                   });
 
                   setCaptchaScreenshot(null);
+                  captchaOpenRef.current = false;
                   setVerificationMode(null);
 
                   setState('working');
-                  addMessage('jarvis', `🔐 인증번호 확인 중...`);
+                  addMessage('jarvis', `🔐 인증번호 확인 중...');
 
                   if (vType === 'captcha') {
                     // 캡차: 재로그인 방식
@@ -1298,10 +1301,22 @@ export default function JarvisApp() {
 
   const handleSpeechResult = useCallback(async (transcript: string) => {
     if (!transcript.trim()) return;
-    // STT 노이즈 필터 (단, 2차 인증/캐시 대기 중에는 필터 건너뛰)
-    const isWaitingForInput = verificationResolveRef.current !== null || bookingConfirmResolveRef.current !== null;
+    // STT 노이즈 필터 (단, 2차 인증/케시 대기 중에는 필터 건너뛰)
+    const isWaitingForInput = verificationResolveRef.current !== null || bookingConfirmResolveRef.current !== null || captchaOpenRef.current;
     if (!isWaitingForInput && isSTTNoise(transcript)) {
       console.log('[JARVIS] 🚫 STT 노이즈 감지 → 무시:', transcript);
+      return;
+    }
+    // 케시 모달 열려있으면 음성 입력을 케시 답으로 처리
+    if (captchaOpenRef.current && verificationResolveRef.current) {
+      const resolve = verificationResolveRef.current;
+      verificationResolveRef.current = null;
+      captchaOpenRef.current = false;
+      addMessage('user', transcript);
+      setCaptchaScreenshot(null);
+      setVerificationMode(null);
+      setState('working');
+      resolve(transcript.replace(/\s/g, '').trim());
       return;
     }
     const currentState = stateRef.current;
