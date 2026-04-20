@@ -3004,13 +3004,76 @@ export default function JarvisApp() {
                   style={{ width: '100%', borderRadius: 6, border: '2px solid #4A90E2', display: 'block' }}
                 />
               </div>
-              {/* ── 하단 고정: 입력 안내 ── */}
+              {/* ── 하단 고정: 직접 입력창 + 전송 버튼 ── */}
               <div style={{ padding: '12px 20px 16px', flexShrink: 0, borderTop: '1px solid #4A90E244', background: 'rgba(74,144,226,0.08)' }}>
-                <div style={{ color: '#4A90E2', fontSize: '0.85rem', fontWeight: 'bold', marginBottom: 4 }}>
+                <div style={{ color: '#4A90E2', fontSize: '0.85rem', fontWeight: 'bold', marginBottom: 8 }}>
                   {verificationMode === 'captcha' ? '✏️ 위 이미지의 답을 입력하세요' : '✏️ 위 화면의 인증번호를 입력하세요'}
                 </div>
-                <div style={{ color: '#9BA1A6', fontSize: '0.75rem' }}>
-                  타이핑 모드(Ctrl+K) 또는 음성으로 답하세요
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <input
+                    id="captchaDirectInput"
+                    type="text"
+                    autoFocus
+                    placeholder="정답을 입력하세요..."
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        const val = (e.target as HTMLInputElement).value.trim();
+                        if (!val) return;
+                        if (verificationResolveRef.current) {
+                          const resolve = verificationResolveRef.current;
+                          verificationResolveRef.current = null;
+                          addMessage('user', val);
+                          setCaptchaScreenshot(null);
+                          setVerificationMode(null);
+                          setState('working');
+                          resolve(val.replace(/\s/g, '').trim());
+                        } else {
+                          // resolve가 없으면 일반 텍스트 제출로 처리
+                          setCaptchaScreenshot(null);
+                          setVerificationMode(null);
+                          handleTextSubmit(val);
+                        }
+                      }
+                    }}
+                    style={{
+                      flex: 1, padding: '10px 12px',
+                      background: 'rgba(255,255,255,0.08)',
+                      border: '1px solid #4A90E2',
+                      color: '#fff', fontSize: '1rem',
+                      outline: 'none', borderRadius: 4,
+                      fontFamily: 'inherit',
+                    }}
+                  />
+                  <button
+                    onClick={() => {
+                      const input = document.getElementById('captchaDirectInput') as HTMLInputElement;
+                      const val = input?.value?.trim();
+                      if (!val) return;
+                      if (verificationResolveRef.current) {
+                        const resolve = verificationResolveRef.current;
+                        verificationResolveRef.current = null;
+                        addMessage('user', val);
+                        setCaptchaScreenshot(null);
+                        setVerificationMode(null);
+                        setState('working');
+                        resolve(val.replace(/\s/g, '').trim());
+                      } else {
+                        setCaptchaScreenshot(null);
+                        setVerificationMode(null);
+                        handleTextSubmit(val);
+                      }
+                    }}
+                    style={{
+                      padding: '10px 18px',
+                      background: '#4A90E2',
+                      border: 'none', color: '#fff',
+                      fontSize: '1rem', cursor: 'pointer',
+                      borderRadius: 4, fontWeight: 'bold',
+                    }}
+                  >→</button>
+                </div>
+                <div style={{ color: '#9BA1A6', fontSize: '0.65rem', marginTop: 6 }}>
+                  Enter 키 또는 화살표 버튼으로 제울 • 음성으로도 답할 수 있습니다
                 </div>
               </div>
             </div>
