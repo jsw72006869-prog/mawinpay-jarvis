@@ -1277,8 +1277,28 @@ export default function JarvisApp() {
     setIsListening(true);
   }, [addMessage, speak, startSpeakingLevel, stopSpeakingLevel]);
 
+  // ── STT 노이즈 필터: 유튜브/방송 오인식 패턴 차단 ──
+  const STT_NOISE_PATTERNS = [
+    /^(구독|좋아요|알림|알림설정|구독좋아요|구독\s*좋아요|좋아요\s*구독)[\s,!.]*$/i,
+    /구독.*좋아요.*알림/i,
+    /좋아요.*구독.*알림/i,
+    /^(감사합니다|고맙습니다|안녕하세요|안녕히계세요)[\s!.]*$/i,
+    /^(네|예|아니요|아니오)[\s!.]*$/i, // 단독 짧은 응답 (맥락 없는 경우)
+    /^[\s\p{P}]*$/u, // 구두점만 있는 경우
+  ];
+  const isSTTNoise = (text: string): boolean => {
+    const trimmed = text.trim();
+    if (trimmed.length <= 1) return true; // 1글자 이하
+    return STT_NOISE_PATTERNS.some(p => p.test(trimmed));
+  };
+
   const handleSpeechResult = useCallback(async (transcript: string) => {
     if (!transcript.trim()) return;
+    // STT 노이즈 필터
+    if (isSTTNoise(transcript)) {
+      console.log('[JARVIS] 🚫 STT 노이즈 감지 → 무시:', transcript);
+      return;
+    }
     const currentState = stateRef.current;
     console.log('[JARVIS] 🎤 음성 명령 수신 (상태:', currentState, '):', transcript);
     // 캡차/2단계 인증 입력 대기 중이면 인증번호 전달
