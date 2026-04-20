@@ -16,12 +16,12 @@ import { ParticleTextCanvas } from './ParticleTextCanvas';
 
 // ── 시그니처 응답 목록 (GPT 대기 없이 즉시 재생) ──
 const SIGNATURE_RESPONSES = [
-  'J.A.R.V.I.S. online. All systems are fully operational, sir.',
-  'Power supply complete. All modules nominal, sir. Standing by.',
-  'System boot complete. Ready to serve, sir.',
-  'At your command, sir.',
-  'I\'ve been expecting you, sir.',
-  'Fully operational, sir.',
+  'Good evening, Mr. Stark. All systems are online and fully operational.',
+  'At your service, Mr. Stark. How may I assist you today?',
+  'Welcome back, sir. Initializing all protocols. Standing by.',
+  'Good to have you back, Mr. Stark. All systems nominal.',
+  'I\'ve been expecting you, sir. Ready when you are.',
+  'J.A.R.V.I.S. online. At your command, Mr. Stark.',
 ];
 
 // ── 고급 색상 팔레트 ──
