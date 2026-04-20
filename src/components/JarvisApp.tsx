@@ -1449,6 +1449,29 @@ export default function JarvisApp() {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, []);
 
+  // ── 자동 idle 전환: listening 상태에서 60초 무입력 시 마이크 자동 ggoff ──
+  const lastInputTimeRef = useRef<number>(Date.now());
+  // 사용자 입력 시마다 시간 갱신
+  useEffect(() => {
+    lastInputTimeRef.current = Date.now();
+  }, [state]); // state가 thinking/working/speaking으로 바뀌면 입력 있었던 것으로 간주
+
+  useEffect(() => {
+    if (state !== 'listening') return;
+    const AUTO_IDLE_TIMEOUT = 60 * 1000; // 60초
+    const timer = setInterval(() => {
+      const elapsed = Date.now() - lastInputTimeRef.current;
+      if (elapsed >= AUTO_IDLE_TIMEOUT && stateRef.current === 'listening') {
+        console.log('[JARVIS] 60초 무입력 → 자동 idle 전환');
+        setIsListening(false);
+        setState('idle');
+        // 자동 ggoff 알림 멘트 (TTS 없이 메시지만)
+        addMessage('jarvis', '대기 시간 초과로 마이크를 끄겠습니다, 선생님. 필요하시면 다시 호출해 주세요.');
+      }
+    }, 5000); // 5초마다 체크
+    return () => clearInterval(timer);
+  }, [state, addMessage]);
+
   // ── 크롬 확장 메시지 수신 (네이버 로그인 완료 감지) ──
   useEffect(() => {
     const handleExtMessage = (e: MessageEvent) => {
