@@ -51,6 +51,45 @@ const STATE_LABEL: Record<JarvisState, string> = {
   idle: 'STANDBY', listening: 'LISTENING', thinking: 'PROCESSING', speaking: 'SPEAKING', working: 'EXECUTING',
 };
 
+// 스마트스토어 액션 한국어 라벨
+function getActionLabel(action: string): string {
+  const labels: Record<string, string> = {
+    query_orders_today: '오늘 주문 조회',
+    query_orders_week: '이번 주 주문 조회',
+    query_orders_month: '이번 달 주문 조회',
+    query_orders_unpaid: '미결제 주문 조회',
+    query_orders_cancel: '취소 요청 조회',
+    query_orders_return: '반품/교환 요청 조회',
+    query_orders_by_product: '상품별 주문 조회',
+    query_order_detail: '주문 상세 조회',
+    query_orders_pending_ship: '발송 대기 주문 조회',
+    morning_report: '아침 업무 보고',
+    confirm_all_today: '오늘 발주확인',
+    confirm_all: '전체 발주확인',
+    confirm_by_product: '상품별 발주확인',
+    confirm_by_id: '개별 발주확인',
+    query_unconfirmed: '미처리 발주확인 조회',
+    create_order_sheet_today: '오늘 주문서 생성',
+    create_order_sheet_week: '주간 주문서 생성',
+    create_order_sheet_by_product: '상품별 주문서 생성',
+    create_order_sheet_grouped: '그룹별 주문서 생성',
+    check_duplicate_orders: '중복 주문 확인',
+    bundle_same_address: '합포장 묶기',
+    create_settlement_month: '월 정산서 생성',
+    create_settlement_by_product: '상품별 정산서',
+    calc_weekly_profit: '주간 수익 계산',
+    get_bestseller: '베스트셀러 조회',
+    compare_last_month: '전월 비교',
+    weekly_report: '주간 마감 보고',
+    send_purchase_email: '발주 이메일 발송',
+    send_purchase_email_auto: '자동 발주 이메일 발송',
+    preview_purchase_email: '발주 이메일 미리보기',
+    process_shipping: '발송 처리',
+    get_products: '상품 조회',
+  };
+  return labels[action] || action;
+}
+
 export default function JarvisApp() {
   const [state, setState] = useState<JarvisState>('idle');
   const [messages, setMessages] = useState<Message[]>([]);
@@ -1188,16 +1227,32 @@ export default function JarvisApp() {
       return;
     }
 
-    // ── 스마트스토어 액션 ──
-    if (action?.type === 'smartstore_orders' || action?.type === 'smartstore_shipping' || action?.type === 'smartstore_products' ||
-        (action?.params?.action && ['get_orders', 'ship_order', 'get_products'].includes(String(action.params.action)))) {
-      const ssAction = String(action.params?.action || (action?.type === 'smartstore_orders' ? 'get_orders' : action?.type === 'smartstore_shipping' ? 'ship_order' : 'get_products'));
-      const status = String(action.params?.status || 'new');
-      const days = Number(action.params?.days) || 7;
-      const orderId = String(action.params?.order_id || '');
-      const trackingNumber = String(action.params?.tracking_number || '');
-      const deliveryCompany = String(action.params?.delivery_company || 'CJ대한통운');
-      const productStatus = String(action.params?.product_status || 'SALE');
+    // ── 스마트스토어 전체 자동화 액션 ──
+    const SS_ACTIONS = [
+      'query_orders_today', 'query_orders_week', 'query_orders_month',
+      'query_orders_unpaid', 'query_orders_cancel', 'query_orders_return',
+      'query_orders_by_product', 'query_order_detail', 'query_orders_pending_ship', 'morning_report',
+      'confirm_all_today', 'confirm_all', 'confirm_by_product', 'confirm_by_id', 'query_unconfirmed',
+      'create_order_sheet_today', 'create_order_sheet_week', 'create_order_sheet_by_product',
+      'create_order_sheet_grouped', 'check_duplicate_orders', 'bundle_same_address',
+      'create_settlement_month', 'create_settlement_by_product', 'calc_weekly_profit',
+      'get_bestseller', 'compare_last_month', 'weekly_report',
+      'send_purchase_email', 'send_purchase_email_auto', 'preview_purchase_email',
+      'process_shipping', 'get_products',
+      // 구버전 호환
+      'get_orders', 'ship_order',
+    ];
+    if (
+      action?.type === 'smartstore_orders' || action?.type === 'smartstore_shipping' ||
+      action?.type === 'smartstore_products' || action?.type === 'smartstore_confirm' ||
+      action?.type === 'smartstore_sheet' || action?.type === 'smartstore_settlement' ||
+      action?.type === 'smartstore_purchase_email' || action?.type === 'smartstore_report' ||
+      (action?.params?.action && SS_ACTIONS.includes(String(action.params.action)))
+    ) {
+      // 구버전 액션 매핑
+      let ssAction = String(action.params?.action || '');
+      if (!ssAction || ssAction === 'get_orders') ssAction = 'query_orders_today';
+      if (ssAction === 'ship_order') ssAction = 'process_shipping';
 
       setState('working');
       addMessage('jarvis', action.response);
@@ -1207,106 +1262,121 @@ export default function JarvisApp() {
       });
 
       try {
-        if (ssAction === 'get_orders') {
-          // 주문 조회
-          const params = new URLSearchParams({ status, days: String(days) });
-          const res = await fetch(`/api/smartstore-orders?${params.toString()}`);
-          const data = await res.json();
-
-          if (!data.success) {
-            throw new Error(data.error || '주문 조회 실패');
-          }
-
-          const orders = data.orders || [];
-          const total = data.total || 0;
-
-          // 주문 결과를 메시지로 표시
-          let orderSummary = '';
-          if (orders.length === 0) {
-            orderSummary = `조회 기간(${days}일) 내 ${status === 'new' ? '신규' : status === 'delivering' ? '배송중' : '전체'} 주문이 없습니다.`;
-          } else {
-            const statusKo = status === 'new' ? '신규(결제완료)' : status === 'delivering' ? '배송중' : status === 'delivered' ? '배송완료' : status === 'canceled' ? '취소' : '전체';
-            orderSummary = `최근 ${days}일간 ${statusKo} 주문 총 ${total}건입니다.\n\n`;
-            orders.slice(0, 5).forEach((order: any, i: number) => {
-              orderSummary += `${i + 1}. [${order.orderId}] ${order.buyerName} - ${(order.products || []).map((p: any) => `${p.productName} ${p.quantity}개`).join(', ')} (${order.totalAmount?.toLocaleString()}원)\n`;
-            });
-            if (orders.length > 5) orderSummary += `\n... 외 ${orders.length - 5}건 더 있습니다.`;
-          }
-
-          const doneText = `스마트스토어 주문 조회 완료입니다, 토니. ${total}건이 확인되었습니다.`;
-          setState('speaking');
-          addMessage('jarvis', `📦 **스마트스토어 주문 현황**\n\n${orderSummary}`, true);
-          startSpeakingLevel();
-          await new Promise<void>(resolve => {
-            speak(doneText, undefined, () => { stopSpeakingLevel(); resolve(); });
-          });
-
-        } else if (ssAction === 'ship_order') {
-          // 발송 처리
-          if (!trackingNumber) {
-            const askText = `운송장 번호를 말씀해 주세요, 토니. 택배사와 운송장 번호를 알려주시면 바로 처리하겠습니다.`;
-            setState('speaking');
-            addMessage('jarvis', askText);
-            startSpeakingLevel();
-            await new Promise<void>(resolve => {
-              speak(askText, undefined, () => { stopSpeakingLevel(); resolve(); });
-            });
-          } else {
-            const res = await fetch('/api/smartstore-shipping', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                orderId: orderId || undefined,
-                trackingNumber,
-                deliveryCompany,
-              }),
-            });
-            const data = await res.json();
-
-            if (!data.success) throw new Error(data.error || '발송 처리 실패');
-
-            const doneText = `발송 처리 완료입니다, 토니. ${deliveryCompany} 운송장 ${trackingNumber}번으로 등록되었습니다.`;
-            setState('speaking');
-            addMessage('jarvis', `🚚 ${doneText}`, true);
-            setClapBurst(true); setTimeout(() => setClapBurst(false), 120);
-            startSpeakingLevel();
-            await new Promise<void>(resolve => {
-              speak(doneText, undefined, () => { stopSpeakingLevel(); resolve(); });
-            });
-          }
-
-        } else if (ssAction === 'get_products') {
-          // 상품 조회
+        // 상품 조회는 기존 API 유지
+        if (ssAction === 'get_products') {
+          const productStatus = String(action.params?.product_status || 'SALE');
           const params = new URLSearchParams({ status: productStatus, size: '50' });
           const res = await fetch(`/api/smartstore-products?${params.toString()}`);
           const data = await res.json();
-
           if (!data.success) throw new Error(data.error || '상품 조회 실패');
-
           const products = data.products || [];
           let productSummary = `총 ${data.total || products.length}개 상품\n\n`;
           products.slice(0, 8).forEach((p: any, i: number) => {
             productSummary += `${i + 1}. ${p.name} - ${p.salePrice?.toLocaleString()}원 [${p.statusKo}]${p.stockQuantity !== undefined ? ` (재고: ${p.stockQuantity}개)` : ''}\n`;
           });
           if (products.length > 8) productSummary += `\n... 외 ${products.length - 8}개 더 있습니다.`;
-
-          const doneText = `스마트스토어 상품 조회 완료입니다, 토니. ${products.length}개 상품이 확인되었습니다.`;
+          const doneText = `스마트스토어 상품 조회 완료입니다, 선생님. ${products.length}개 상품이 확인되었습니다.`;
           setState('speaking');
           addMessage('jarvis', `🛍️ **스마트스토어 상품 현황**\n\n${productSummary}`, true);
           startSpeakingLevel();
-          await new Promise<void>(resolve => {
-            speak(doneText, undefined, () => { stopSpeakingLevel(); resolve(); });
+          await new Promise<void>(resolve => { speak(doneText, undefined, () => { stopSpeakingLevel(); resolve(); }); });
+
+        } else {
+          // 통합 자동화 API 호출
+          const body: Record<string, any> = { action: ssAction };
+          if (action.params?.product_name) body.productName = action.params.product_name;
+          if (action.params?.order_id) body.orderId = action.params.order_id;
+          if (action.params?.product_order_ids) {
+            try { body.productOrderIds = JSON.parse(String(action.params.product_order_ids)); } catch { /* ignore */ }
+          }
+          if (action.params?.tracking_number) body.trackingNumber = action.params.tracking_number;
+          if (action.params?.delivery_company) body.deliveryCompany = action.params.delivery_company;
+          if (action.params?.supplier_email) body.supplierEmail = action.params.supplier_email;
+          if (action.params?.supplier_name) body.supplierName = action.params.supplier_name;
+          if (action.params?.delivery_date) body.deliveryDate = action.params.delivery_date;
+          if (action.params?.group_by) body.groupBy = action.params.group_by;
+          if (action.params?.memo) body.memo = action.params.memo;
+
+          const res = await fetch('/api/smartstore-automation', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body),
           });
+          const data = await res.json();
+
+          if (!data.success) throw new Error(data.error || '스마트스토어 작업 실패');
+
+          // 결과 메시지 생성
+          let resultMsg = '';
+          let doneText = '';
+
+          if (ssAction.startsWith('query_orders') || ssAction === 'morning_report') {
+            const count = Array.isArray(data.data) ? data.data.length : (data.newOrders || 0);
+            resultMsg = `📦 **${getActionLabel(ssAction)}**\n\n`;
+            if (ssAction === 'morning_report') {
+              resultMsg += `신규 주문: ${data.newOrders}건\n취소 요청: ${data.cancelOrders}건\n발송 대기: ${data.pendingShipping}건`;
+              doneText = `아침 업무 보고 완료입니다, 선생님. 신규 주문 ${data.newOrders}건, 취소 요청 ${data.cancelOrders}건이 있습니다.`;
+            } else {
+              resultMsg += data.summary || `총 ${count}건 조회되었습니다.`;
+              doneText = `${getActionLabel(ssAction)} 완료입니다, 선생님. ${count}건이 확인되었습니다.`;
+            }
+          } else if (ssAction.startsWith('confirm')) {
+            resultMsg = `✅ **발주확인 처리 완료**\n\n${data.confirmedCount || 0}건 처리되었습니다.`;
+            doneText = `발주확인 ${data.confirmedCount || 0}건 처리 완료입니다, 선생님.`;
+            setClapBurst(true); setTimeout(() => setClapBurst(false), 120);
+          } else if (ssAction.startsWith('create_order_sheet') || ssAction === 'check_duplicate_orders' || ssAction === 'bundle_same_address') {
+            const count = data.count || (Array.isArray(data.duplicates) ? data.duplicates.length : 0) || (Array.isArray(data.bundled) ? data.bundled.length : 0);
+            resultMsg = `📋 **${getActionLabel(ssAction)}**\n\n${data.fileName || ''}\n${count}건 처리되었습니다.`;
+            doneText = `${getActionLabel(ssAction)} 완료입니다, 선생님.`;
+            if (data.csvData) {
+              // CSV 다운로드 링크 생성
+              const blob = new Blob([data.csvData], { type: 'text/csv;charset=utf-8;' });
+              const url = URL.createObjectURL(blob);
+              const a = document.createElement('a');
+              a.href = url; a.download = data.fileName || '주문서.csv'; a.click();
+              URL.revokeObjectURL(url);
+              resultMsg += `\n\n📥 파일 다운로드가 시작되었습니다.`;
+            }
+          } else if (ssAction.startsWith('create_settlement') || ssAction === 'calc_weekly_profit' || ssAction === 'get_bestseller' || ssAction === 'compare_last_month' || ssAction === 'weekly_report') {
+            resultMsg = `💰 **${getActionLabel(ssAction)}**\n\n`;
+            if (data.totalSales) resultMsg += `총 매출: ${Number(data.totalSales).toLocaleString('ko-KR')}원\n총 주문: ${data.totalOrders}건\n네이버 수수료: ${Number(data.naverFee).toLocaleString('ko-KR')}원\n실수령: ${Number(data.netSales).toLocaleString('ko-KR')}원`;
+            if (data.growthRate) resultMsg += `전월 대비: ${data.growthRate}\n${data.message}`;
+            if (data.topProduct) resultMsg += `베스트셀러: ${data.topProduct?.productName} (${data.topProduct?.quantity}개)`;
+            doneText = `${getActionLabel(ssAction)} 완료입니다, 선생님.`;
+            if (data.csvData) {
+              const blob = new Blob([data.csvData], { type: 'text/csv;charset=utf-8;' });
+              const url = URL.createObjectURL(blob);
+              const a = document.createElement('a');
+              a.href = url; a.download = data.fileName || '정산서.csv'; a.click();
+              URL.revokeObjectURL(url);
+            }
+          } else if (ssAction.includes('purchase_email')) {
+            resultMsg = `📧 **발주 이메일 ${ssAction === 'preview_purchase_email' ? '미리보기' : '발송 완료'}**\n\n${data.message || ''}\n\n${data.preview || ''}`;
+            doneText = ssAction === 'preview_purchase_email' ? '발주 이메일 초안입니다, 선생님. 확인 후 발송하시겠습니까?' : `발주 이메일 발송 완료입니다, 선생님.`;
+            if (ssAction !== 'preview_purchase_email') {
+              setClapBurst(true); setTimeout(() => setClapBurst(false), 120);
+            }
+          } else if (ssAction === 'process_shipping') {
+            resultMsg = `🚚 **발송 처리 완료**\n\n${data.count || 0}건 처리되었습니다.`;
+            doneText = `발송 처리 ${data.count || 0}건 완료입니다, 선생님.`;
+            setClapBurst(true); setTimeout(() => setClapBurst(false), 120);
+          } else {
+            resultMsg = data.message || '작업이 완료되었습니다.';
+            doneText = '작업 완료입니다, 선생님.';
+          }
+
+          setState('speaking');
+          addMessage('jarvis', resultMsg, true);
+          startSpeakingLevel();
+          await new Promise<void>(resolve => { speak(doneText, undefined, () => { stopSpeakingLevel(); resolve(); }); });
         }
 
       } catch (err) {
-        const errMsg = `스마트스토어 조회 중 오류가 발생했습니다, 토니. ${String(err).includes('CLIENT_ID') ? 'SMARTSTORE_CLIENT_ID와 SMARTSTORE_CLIENT_SECRET 환경변수를 Vercel에 설정해주세요.' : String(err)}`;
+        const errMsg = `스마트스토어 작업 중 오류가 발생했습니다, 선생님. ${String(err).includes('CLIENT_ID') ? 'API 키 설정을 확인해주세요.' : String(err)}`;
         setState('speaking');
         addMessage('jarvis', errMsg);
         startSpeakingLevel();
-        await new Promise<void>(resolve => {
-          speak(errMsg, undefined, () => { stopSpeakingLevel(); resolve(); });
-        });
+        await new Promise<void>(resolve => { speak(errMsg, undefined, () => { stopSpeakingLevel(); resolve(); }); });
       }
 
       await new Promise(r => setTimeout(r, 400));

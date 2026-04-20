@@ -13,7 +13,9 @@ export type JarvisActionType =
   | 'collect' | 'send_email' | 'create_banner' | 'report'
   | 'schedule' | 'help' | 'greeting' | 'status' | 'confirm' | 'chat'
   | 'change_voice' | 'list_voices' | 'naver_search' | 'local_search' | 'book_restaurant'
-  | 'smartstore_orders' | 'smartstore_shipping' | 'smartstore_products' | 'unknown';
+  | 'smartstore_orders' | 'smartstore_shipping' | 'smartstore_products'
+  | 'smartstore_confirm' | 'smartstore_sheet' | 'smartstore_settlement'
+  | 'smartstore_purchase_email' | 'smartstore_report' | 'unknown';
 
 export type JarvisAction = {
   type: JarvisActionType;
@@ -232,21 +234,51 @@ const JARVIS_FUNCTIONS_DEF = [
   },
   {
     name: 'smartstore_action',
-    description: '스마트스토어 주문 조회, 발송 처리, 상품 조회 등 스마트스토어 관련 작업을 처리할 때 호출. "오늘 주문 알려줘", "신규 주문 몇 개야?", "운송장 입력해줘", "발송 처리해줘", "상품 목록 보여줘", "품절 상품 알려줘" 등.',
+    description: `스마트스토어 관련 모든 작업을 처리할 때 호출.
+주문조회: "오늘 주문 알려줘", "이번 주 주문", "미결제 주문", "취소 요청", "반품 요청", "발송 대기", "아침 업무 시작"
+발주확인: "발주 확인해줘", "발주확인 처리", "오늘 발주 확인", "미처리 발주 확인"
+주문서: "주문서 만들어줘", "주문서 다운로드", "상품별 주문서", "합포장 묶어줘", "중복 주문 확인"
+정산서: "정산서 만들어줘", "이번 달 정산", "수익 얼마야", "베스트셀러", "전월 비교", "주간 마감"
+발주이메일: "생산지에 발주해줘", "발주 이메일 보내줘", "공급업체 발주"
+발송처리: "발송 처리해줘", "운송장 입력해줘", "배송 등록"`,
     parameters: {
       type: 'object',
       properties: {
         action: {
           type: 'string',
-          enum: ['get_orders', 'ship_order', 'get_products'],
-          description: 'get_orders=주문 조회, ship_order=발송 처리, get_products=상품 조회'
+          enum: [
+            'query_orders_today', 'query_orders_week', 'query_orders_month',
+            'query_orders_unpaid', 'query_orders_cancel', 'query_orders_return',
+            'query_orders_by_product', 'query_order_detail', 'query_orders_pending_ship',
+            'morning_report',
+            'confirm_all_today', 'confirm_all', 'confirm_by_product', 'confirm_by_id', 'query_unconfirmed',
+            'create_order_sheet_today', 'create_order_sheet_week', 'create_order_sheet_by_product',
+            'create_order_sheet_grouped', 'check_duplicate_orders', 'bundle_same_address',
+            'create_settlement_month', 'create_settlement_by_product', 'calc_weekly_profit',
+            'get_bestseller', 'compare_last_month', 'weekly_report',
+            'send_purchase_email', 'send_purchase_email_auto', 'preview_purchase_email',
+            'process_shipping', 'get_products',
+          ],
+          description: `주문조회: query_orders_today(오늘), query_orders_week(이번주), query_orders_month(이번달), query_orders_unpaid(미결제), query_orders_cancel(취소요청), query_orders_return(반품/교환), query_orders_by_product(상품별), query_order_detail(주문상세), query_orders_pending_ship(발송대기), morning_report(아침업무보고)
+발주확인: confirm_all_today(오늘발주확인), confirm_all(전체발주확인), confirm_by_product(상품별발주확인), confirm_by_id(개별발주확인), query_unconfirmed(미처리조회)
+주문서: create_order_sheet_today(오늘주문서), create_order_sheet_week(주간주문서), create_order_sheet_by_product(상품별주문서), create_order_sheet_grouped(그룹별주문서), check_duplicate_orders(중복주문), bundle_same_address(합포장)
+정산서: create_settlement_month(월정산서), create_settlement_by_product(상품별정산), calc_weekly_profit(주간수익), get_bestseller(베스트셀러), compare_last_month(전월비교), weekly_report(주간마감)
+발주이메일: send_purchase_email(발주이메일발송), send_purchase_email_auto(자동발주), preview_purchase_email(이메일미리보기)
+발송처리: process_shipping(발송처리)
+상품조회: get_products(상품목록/품절확인)`
         },
-        status: { type: 'string', description: '주문 상태 필터: new(신규/결제완료), delivering(배송중), delivered(배송완료), canceled(취소), all(전체)' },
-        days: { type: 'number', description: '조회 기간 (일 수, 기본 7일)' },
-        order_id: { type: 'string', description: '특정 주문번호 (발송 처리 시)' },
+        period: { type: 'string', description: '조회 기간 (today, week, month, custom)' },
+        product_name: { type: 'string', description: '특정 상품명 (상품별 조회/발주확인 시)' },
+        order_id: { type: 'string', description: '특정 주문번호' },
+        product_order_ids: { type: 'string', description: '발주확인/발송처리할 주문상품ID 배열 (JSON 문자열)' },
         tracking_number: { type: 'string', description: '운송장 번호 (발송 처리 시)' },
-        delivery_company: { type: 'string', description: '택배사명 (예: CJ대한통운, 롯데택배, 한진택배). 기본값: CJ대한통운' },
+        delivery_company: { type: 'string', description: '택배사 코드 (CJGLS=CJ대한통운, LOTTE=롯데택배, HANJIN=한진택배). 기본값: CJGLS' },
+        supplier_email: { type: 'string', description: '공급업체 이메일 주소 (발주 이메일 시)' },
+        supplier_name: { type: 'string', description: '공급업체/생산지 이름 (발주 이메일 시)' },
+        delivery_date: { type: 'string', description: '납기 요청일 (발주 이메일 시)' },
+        group_by: { type: 'string', enum: ['product', 'address'], description: '주문서 그룹화 기준: product=상품별, address=배송지별' },
         product_status: { type: 'string', description: '상품 상태 필터: SALE(판매중), OUTOFSTOCK(품절), SUSPENSION(판매중지)' },
+        memo: { type: 'string', description: '발주 이메일 메모/특이사항' },
         response: { type: 'string', description: 'JARVIS 응답 (한국어, 작업 시작 멘트)' },
         follow_up: { type: 'string', description: '작업 완료 후 이어서 할 제안' },
       },
@@ -549,11 +581,51 @@ You are not just an assistant. You are a **world-class viral marketing expert AI
 - "이메일 캠페인 해줘" → send_email_campaign
 - "배너 만들어줘" → create_banner
 
-### [M] 스마트스토어 관련
-- "오늘 주문", "신규 주문", "주문 확인" → smartstore_action (get_orders, status: new)
-- "배송중 주문", "발송된 주문" → smartstore_action (get_orders, status: delivering)
-- "전체 주문", "주문 목록" → smartstore_action (get_orders, status: all)
-- "운송장 입력", "발송 처리", "배송 등록" → smartstore_action (ship_order)
+### [M] 스마트스토어 관련 — 전체 명령 라우팅
+
+**주문 조회 (10가지)**
+- "오늘 주문", "신규 주문", "주문 확인" → smartstore_action (query_orders_today)
+- "이번 주 주문" → smartstore_action (query_orders_week)
+- "이번 달 주문", "월간 주문" → smartstore_action (query_orders_month)
+- "미결제 주문", "결제 안 된 거" → smartstore_action (query_orders_unpaid)
+- "취소 요청", "취소된 주문" → smartstore_action (query_orders_cancel)
+- "반품 요청", "교환 요청" → smartstore_action (query_orders_return)
+- "OOO 상품 주문", "특정 상품 주문" → smartstore_action (query_orders_by_product, product_name)
+- "주문번호 OOO" → smartstore_action (query_order_detail, order_id)
+- "발송 대기", "발송 안 된 주문" → smartstore_action (query_orders_pending_ship)
+- "아침 업무 시작", "오늘 현황" → smartstore_action (morning_report)
+
+**발주 확인 (5가지)**
+- "발주 확인해줘", "오늘 발주 확인" → smartstore_action (confirm_all_today)
+- "전체 발주 확인" → smartstore_action (confirm_all)
+- "OOO 상품 발주 확인" → smartstore_action (confirm_by_product, product_name)
+- "발주확인 안 된 거" → smartstore_action (query_unconfirmed)
+
+**주문서 생성 (6가지)**
+- "주문서 만들어줘", "오늘 주문서" → smartstore_action (create_order_sheet_today)
+- "이번 주 주문서" → smartstore_action (create_order_sheet_week)
+- "OOO 상품 주문서" → smartstore_action (create_order_sheet_by_product, product_name)
+- "상품별 주문서", "배송지별 주문서" → smartstore_action (create_order_sheet_grouped, group_by)
+- "중복 주문 확인" → smartstore_action (check_duplicate_orders)
+- "합포장 묶어줘" → smartstore_action (bundle_same_address)
+
+**정산서 생성 (6가지)**
+- "정산서 만들어줘", "이번 달 정산" → smartstore_action (create_settlement_month)
+- "상품별 정산" → smartstore_action (create_settlement_by_product)
+- "이번 주 수익", "주간 수익" → smartstore_action (calc_weekly_profit)
+- "베스트셀러", "잘 팔리는 상품" → smartstore_action (get_bestseller)
+- "지난달이랑 비교", "전월 비교" → smartstore_action (compare_last_month)
+- "주간 마감", "이번 주 마감" → smartstore_action (weekly_report)
+
+**발주 이메일 (3가지)**
+- "생산지에 발주해줘", "발주 이메일 보내줘" → smartstore_action (send_purchase_email_auto)
+- "OOO 업체에 발주해줘" → smartstore_action (send_purchase_email, supplier_name, supplier_email)
+- "발주 이메일 미리보기" → smartstore_action (preview_purchase_email)
+
+**발송 처리**
+- "운송장 입력", "발송 처리", "배송 등록" → smartstore_action (process_shipping, tracking_number, delivery_company)
+
+**상품 조회**
 - "상품 목록", "판매 상품" → smartstore_action (get_products)
 - "품절 상품", "재고 없는 상품" → smartstore_action (get_products, product_status: OUTOFSTOCK)
 
