@@ -121,6 +121,14 @@ export default function JarvisApp() {
     const id = getCurrentVoiceId();
     return ELEVENLABS_VOICES.find(v => v.id === id)?.name || 'Adam';
   });
+  // ── 모바일 감지 ──
+  const [isMobile, setIsMobile] = useState(() => window.innerWidth <= 768);
+  useEffect(() => {
+    const handler = () => setIsMobile(window.innerWidth <= 768);
+    window.addEventListener('resize', handler);
+    return () => window.removeEventListener('resize', handler);
+  }, []);
+
   const [settingsVisible, setSettingsVisible] = useState(false);
   const [memoryPanelVisible, setMemoryPanelVisible] = useState(false);
   const [learnedKnowledge, setLearnedKnowledge] = useState<LearnedKnowledge[]>(() => getLearnedKnowledge());
@@ -2035,20 +2043,20 @@ export default function JarvisApp() {
         initial={{ opacity: 0, y: -16 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.4, duration: 1 }}
-        className="mobile-header-row"
         style={{
           position: 'fixed', top: 0, left: 0, right: 0,
-          zIndex: 30, padding: 'clamp(14px, 3vw, 24px) clamp(14px, 4vw, 36px) 0',
+          zIndex: 30,
+          padding: isMobile ? '14px 14px 0' : '24px 36px 0',
           pointerEvents: 'none',
         }}
       >
         <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between' }}>
           {/* 좌측 시간 */}
           <div>
-            <div style={{ fontFamily: 'Orbitron, monospace', color: THEME.gold, fontSize: 'clamp(0.6rem, 2.5vw, 0.85rem)', letterSpacing: '0.1em', opacity: 0.75 }}>
+            <div style={{ fontFamily: 'Orbitron, monospace', color: THEME.gold, fontSize: isMobile ? '0.65rem' : '0.85rem', letterSpacing: '0.08em', opacity: 0.75 }}>
               {currentTime}
             </div>
-            <div style={{ fontFamily: 'Orbitron, monospace', color: THEME.textDim, fontSize: 'clamp(0.35rem, 1.2vw, 0.5rem)', letterSpacing: '0.12em', marginTop: '3px' }}>
+            <div style={{ fontFamily: 'Orbitron, monospace', color: THEME.textDim, fontSize: isMobile ? '0.38rem' : '0.5rem', letterSpacing: '0.1em', marginTop: '3px' }}>
               {currentDate}
             </div>
           </div>
@@ -2078,8 +2086,9 @@ export default function JarvisApp() {
           </div>
 
           {/* 우측 상태 + 시스템 현황 버튼 */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: 'clamp(6px, 1.5vw, 12px)', pointerEvents: 'auto' }}>
-            {/* 시스템 현황 버튼 */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, pointerEvents: 'auto' }}>
+            {/* 시스템 현황 버튼 - 모바일에서 숨김 */}
+            {!isMobile && (
             <motion.button
               onClick={(e) => { e.stopPropagation(); setNeuralMapVisible(true); }}
               whileHover={{ scale: 1.05 }}
@@ -2098,8 +2107,9 @@ export default function JarvisApp() {
                 animate={{ opacity: [0.4, 1, 0.4] }}
                 transition={{ duration: 1.5, repeat: Infinity }}
               />
-              <span style={{ color: '#00D4FF', fontSize: 'clamp(0.35rem, 1.2vw, 0.42rem)', letterSpacing: '0.15em' }}>SYSTEM MAP</span>
+              <span style={{ color: '#00D4FF', fontSize: '0.42rem', letterSpacing: '0.2em' }}>SYSTEM MAP</span>
             </motion.button>
+            )}
             {/* 상태 표시 */}
             <div style={{ display: 'flex', alignItems: 'center', gap: '7px' }}>
               <motion.div
@@ -2111,7 +2121,7 @@ export default function JarvisApp() {
                 animate={{ opacity: state !== 'idle' ? [1, 0.3, 1] : [0.6, 0.9, 0.6] }}
                 transition={{ duration: state !== 'idle' ? 0.7 : 2, repeat: Infinity }}
               />
-              <span style={{ fontFamily: 'Orbitron, monospace', color: accent, fontSize: 'clamp(0.4rem, 1.5vw, 0.55rem)', letterSpacing: '0.15em', opacity: 0.85 }}>
+              <span style={{ fontFamily: 'Orbitron, monospace', color: accent, fontSize: isMobile ? '0.45rem' : '0.55rem', letterSpacing: '0.15em', opacity: 0.85 }}>
                 {STATE_LABEL[state]}
               </span>
             </div>
@@ -2124,15 +2134,21 @@ export default function JarvisApp() {
         initial={{ opacity: 0, x: -20 }}
         animate={{ opacity: 1, x: 0 }}
         transition={{ delay: 1.2, duration: 1 }}
-        className="stats-panel-mobile"
-        style={{
+        style={isMobile ? {
+          position: 'fixed',
+          bottom: 28, left: 0, right: 0,
+          zIndex: 20, pointerEvents: 'none',
+          display: 'flex', flexDirection: 'row',
+          justifyContent: 'center', gap: 6,
+          padding: '0 10px',
+        } : {
           position: 'fixed', left: 24, top: '50%',
           transform: 'translateY(-50%)',
           zIndex: 20, pointerEvents: 'none',
           display: 'flex', flexDirection: 'column',
         }}
       >
-        <div style={{ display: 'flex', flexDirection: 'inherit', gap: '8px', flexWrap: 'inherit', justifyContent: 'inherit' }}>
+        <div style={{ display: 'flex', flexDirection: isMobile ? 'row' : 'column', gap: isMobile ? 6 : 8, flexWrap: isMobile ? 'wrap' : 'nowrap', justifyContent: isMobile ? 'center' : 'flex-start' }}>
           {[
             { label: 'COLLECTED', value: stats.collected, unit: '명', color: THEME.gold },
             { label: 'EMAILS',    value: stats.emailsSent, unit: '통', color: THEME.blue },
@@ -2143,14 +2159,16 @@ export default function JarvisApp() {
               background: 'rgba(6,10,18,0.85)',
               borderLeft: `2px solid ${item.color}66`,
               borderTop: `1px solid ${item.color}11`,
-              padding: '8px 14px',
-              minWidth: '108px',
+              padding: isMobile ? '5px 8px' : '8px 14px',
+              minWidth: isMobile ? 'auto' : '108px',
+              flex: isMobile ? '1 1 0' : undefined,
+              maxWidth: isMobile ? '80px' : undefined,
               backdropFilter: 'blur(8px)',
             }}>
-              <div style={{ fontFamily: 'Orbitron, monospace', color: THEME.textDim, fontSize: 'clamp(0.32rem, 1vw, 0.4rem)', letterSpacing: '0.15em', marginBottom: '3px' }}>
+              <div style={{ fontFamily: 'Orbitron, monospace', color: THEME.textDim, fontSize: isMobile ? '0.3rem' : '0.4rem', letterSpacing: '0.1em', marginBottom: '2px' }}>
                 {item.label}
               </div>
-              <div style={{ fontFamily: 'Orbitron, monospace', color: item.color, fontSize: 'clamp(0.75rem, 2.5vw, 1rem)', fontWeight: 600, letterSpacing: '0.05em' }}>
+              <div style={{ fontFamily: 'Orbitron, monospace', color: item.color, fontSize: isMobile ? '0.7rem' : '1rem', fontWeight: 600, letterSpacing: '0.03em' }}>
                 {item.value}{item.unit}
               </div>
             </div>
@@ -2399,11 +2417,11 @@ export default function JarvisApp() {
         initial={{ opacity: 0, y: 16 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 1.8, duration: 1 }}
-        className="footer-status-mobile"
         style={{
           position: 'fixed', bottom: 0, left: 0, right: 0,
           zIndex: 30, padding: '0 40px 16px',
           pointerEvents: 'none',
+          display: isMobile ? 'none' : 'block',
         }}
       >
         <div style={{ display: 'flex', justifyContent: 'center', gap: '32px' }}>
@@ -2551,6 +2569,7 @@ export default function JarvisApp() {
         style={{
           position: 'fixed', top: 24, right: 28,
           zIndex: 30, pointerEvents: 'none',
+          display: isMobile ? 'none' : 'block',
         }}
       >
         <div style={{
@@ -2665,7 +2684,7 @@ export default function JarvisApp() {
         initial={{ opacity: 0, y: -10 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 2, duration: 0.6 }}
-        style={{ position: 'fixed', top: 'clamp(14px, 2.5vw, 20px)', left: 'clamp(10px, 3vw, 28px)', zIndex: 50, display: 'flex', gap: 6 }}
+        style={{ position: 'fixed', top: isMobile ? 14 : 20, left: isMobile ? 10 : 28, zIndex: 50, display: 'flex', gap: 6 }}
       >
         <div
           onClick={() => { setSettingsVisible(v => !v); setMemoryPanelVisible(false); }}
@@ -2677,8 +2696,8 @@ export default function JarvisApp() {
             backdropFilter: 'blur(8px)',
             fontFamily: 'Orbitron, monospace',
             color: settingsVisible ? THEME.gold : THEME.textDim,
-            fontSize: 'clamp(0.35rem, 1.2vw, 0.42rem)',
-            letterSpacing: '0.15em',
+            fontSize: isMobile ? '0.38rem' : '0.42rem',
+            letterSpacing: '0.12em',
             transition: 'color 0.2s',
           }}
         >SETTINGS</div>
@@ -2692,8 +2711,8 @@ export default function JarvisApp() {
             backdropFilter: 'blur(8px)',
             fontFamily: 'Orbitron, monospace',
             color: memoryPanelVisible ? '#9B8EC4' : THEME.textDim,
-            fontSize: 'clamp(0.35rem, 1.2vw, 0.42rem)',
-            letterSpacing: '0.15em',
+            fontSize: isMobile ? '0.38rem' : '0.42rem',
+            letterSpacing: '0.12em',
             transition: 'color 0.2s',
           }}
         >MEMORY</div>
