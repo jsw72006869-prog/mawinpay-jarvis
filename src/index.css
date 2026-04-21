@@ -362,3 +362,42 @@ html, body {
   pointer-events: none;
   z-index: 100;
 }
+
+/* ── 모바일 반응형 (768px 이하) ── */
+@media (max-width: 768px) {
+  /* 커서 숨김 (터치 기기) */
+  .jarvis-cursor, .jarvis-cursor-dot { display: none !important; }
+  html, body { cursor: auto; }
+
+  /* 모바일 헤더 */
+  .mobile-header-row {
+    padding: 12px 14px 0 !important;
+  }
+
+  /* 통계 패널: 모바일에서 하단 가로 배치 */
+  .stats-panel-mobile {
+    position: fixed !important;
+    left: 0 !important;
+    right: 0 !important;
+    top: auto !important;
+    bottom: 36px !important;
+    transform: none !important;
+    flex-direction: row !important;
+    justify-content: center !important;
+    gap: 6px !important;
+    padding: 0 10px !important;
+    flex-wrap: wrap !important;
+  }
+
+  .stats-panel-mobile > div {
+    min-width: 70px !important;
+    padding: 5px 8px !important;
+    flex: 1 1 70px !important;
+    max-width: 90px !important;
+  }
+
+  /* 하단 상태바 숨김 (모바일에서 통계와 겹침 방지) */
+  .footer-status-mobile {
+    display: none !important;
+  }
+}

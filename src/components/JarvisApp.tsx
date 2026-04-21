@@ -2035,19 +2035,20 @@ export default function JarvisApp() {
         initial={{ opacity: 0, y: -16 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.4, duration: 1 }}
+        className="mobile-header-row"
         style={{
           position: 'fixed', top: 0, left: 0, right: 0,
-          zIndex: 30, padding: '24px 36px 0',
+          zIndex: 30, padding: 'clamp(14px, 3vw, 24px) clamp(14px, 4vw, 36px) 0',
           pointerEvents: 'none',
         }}
       >
         <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between' }}>
           {/* 좌측 시간 */}
           <div>
-            <div style={{ fontFamily: 'Orbitron, monospace', color: THEME.gold, fontSize: '0.85rem', letterSpacing: '0.1em', opacity: 0.75 }}>
+            <div style={{ fontFamily: 'Orbitron, monospace', color: THEME.gold, fontSize: 'clamp(0.6rem, 2.5vw, 0.85rem)', letterSpacing: '0.1em', opacity: 0.75 }}>
               {currentTime}
             </div>
-            <div style={{ fontFamily: 'Orbitron, monospace', color: THEME.textDim, fontSize: '0.5rem', letterSpacing: '0.12em', marginTop: '3px' }}>
+            <div style={{ fontFamily: 'Orbitron, monospace', color: THEME.textDim, fontSize: 'clamp(0.35rem, 1.2vw, 0.5rem)', letterSpacing: '0.12em', marginTop: '3px' }}>
               {currentDate}
             </div>
           </div>
@@ -2077,7 +2078,7 @@ export default function JarvisApp() {
           </div>
 
           {/* 우측 상태 + 시스템 현황 버튼 */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '12px', pointerEvents: 'auto' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 'clamp(6px, 1.5vw, 12px)', pointerEvents: 'auto' }}>
             {/* 시스템 현황 버튼 */}
             <motion.button
               onClick={(e) => { e.stopPropagation(); setNeuralMapVisible(true); }}
@@ -2097,7 +2098,7 @@ export default function JarvisApp() {
                 animate={{ opacity: [0.4, 1, 0.4] }}
                 transition={{ duration: 1.5, repeat: Infinity }}
               />
-              <span style={{ color: '#00D4FF', fontSize: '0.42rem', letterSpacing: '0.2em' }}>SYSTEM MAP</span>
+              <span style={{ color: '#00D4FF', fontSize: 'clamp(0.35rem, 1.2vw, 0.42rem)', letterSpacing: '0.15em' }}>SYSTEM MAP</span>
             </motion.button>
             {/* 상태 표시 */}
             <div style={{ display: 'flex', alignItems: 'center', gap: '7px' }}>
@@ -2110,7 +2111,7 @@ export default function JarvisApp() {
                 animate={{ opacity: state !== 'idle' ? [1, 0.3, 1] : [0.6, 0.9, 0.6] }}
                 transition={{ duration: state !== 'idle' ? 0.7 : 2, repeat: Infinity }}
               />
-              <span style={{ fontFamily: 'Orbitron, monospace', color: accent, fontSize: '0.55rem', letterSpacing: '0.2em', opacity: 0.85 }}>
+              <span style={{ fontFamily: 'Orbitron, monospace', color: accent, fontSize: 'clamp(0.4rem, 1.5vw, 0.55rem)', letterSpacing: '0.15em', opacity: 0.85 }}>
                 {STATE_LABEL[state]}
               </span>
             </div>
@@ -2123,13 +2124,15 @@ export default function JarvisApp() {
         initial={{ opacity: 0, x: -20 }}
         animate={{ opacity: 1, x: 0 }}
         transition={{ delay: 1.2, duration: 1 }}
+        className="stats-panel-mobile"
         style={{
           position: 'fixed', left: 24, top: '50%',
           transform: 'translateY(-50%)',
           zIndex: 20, pointerEvents: 'none',
+          display: 'flex', flexDirection: 'column',
         }}
       >
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+        <div style={{ display: 'flex', flexDirection: 'inherit', gap: '8px', flexWrap: 'inherit', justifyContent: 'inherit' }}>
           {[
             { label: 'COLLECTED', value: stats.collected, unit: '명', color: THEME.gold },
             { label: 'EMAILS',    value: stats.emailsSent, unit: '통', color: THEME.blue },
@@ -2144,10 +2147,10 @@ export default function JarvisApp() {
               minWidth: '108px',
               backdropFilter: 'blur(8px)',
             }}>
-              <div style={{ fontFamily: 'Orbitron, monospace', color: THEME.textDim, fontSize: '0.4rem', letterSpacing: '0.22em', marginBottom: '3px' }}>
+              <div style={{ fontFamily: 'Orbitron, monospace', color: THEME.textDim, fontSize: 'clamp(0.32rem, 1vw, 0.4rem)', letterSpacing: '0.15em', marginBottom: '3px' }}>
                 {item.label}
               </div>
-              <div style={{ fontFamily: 'Orbitron, monospace', color: item.color, fontSize: '1rem', fontWeight: 600, letterSpacing: '0.05em' }}>
+              <div style={{ fontFamily: 'Orbitron, monospace', color: item.color, fontSize: 'clamp(0.75rem, 2.5vw, 1rem)', fontWeight: 600, letterSpacing: '0.05em' }}>
                 {item.value}{item.unit}
               </div>
             </div>
@@ -2396,6 +2399,7 @@ export default function JarvisApp() {
         initial={{ opacity: 0, y: 16 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 1.8, duration: 1 }}
+        className="footer-status-mobile"
         style={{
           position: 'fixed', bottom: 0, left: 0, right: 0,
           zIndex: 30, padding: '0 40px 16px',
@@ -2465,7 +2469,6 @@ export default function JarvisApp() {
             <div
               onClick={() => setBusinessCardsVisible(false)}
               style={{
-                position: 'fixed', top: 20, right: 28, zIndex: 60,
                 cursor: 'pointer',
                 background: 'rgba(6,10,18,0.9)',
                 border: '1px solid rgba(74,144,226,0.4)',
@@ -2662,7 +2665,7 @@ export default function JarvisApp() {
         initial={{ opacity: 0, y: -10 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 2, duration: 0.6 }}
-        style={{ position: 'fixed', top: 20, left: 28, zIndex: 50, display: 'flex', gap: 8 }}
+        style={{ position: 'fixed', top: 'clamp(14px, 2.5vw, 20px)', left: 'clamp(10px, 3vw, 28px)', zIndex: 50, display: 'flex', gap: 6 }}
       >
         <div
           onClick={() => { setSettingsVisible(v => !v); setMemoryPanelVisible(false); }}
@@ -2674,8 +2677,8 @@ export default function JarvisApp() {
             backdropFilter: 'blur(8px)',
             fontFamily: 'Orbitron, monospace',
             color: settingsVisible ? THEME.gold : THEME.textDim,
-            fontSize: '0.42rem',
-            letterSpacing: '0.2em',
+            fontSize: 'clamp(0.35rem, 1.2vw, 0.42rem)',
+            letterSpacing: '0.15em',
             transition: 'color 0.2s',
           }}
         >SETTINGS</div>
@@ -2689,8 +2692,8 @@ export default function JarvisApp() {
             backdropFilter: 'blur(8px)',
             fontFamily: 'Orbitron, monospace',
             color: memoryPanelVisible ? '#9B8EC4' : THEME.textDim,
-            fontSize: '0.42rem',
-            letterSpacing: '0.2em',
+            fontSize: 'clamp(0.35rem, 1.2vw, 0.42rem)',
+            letterSpacing: '0.15em',
             transition: 'color 0.2s',
           }}
         >MEMORY</div>
@@ -2704,9 +2707,10 @@ export default function JarvisApp() {
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -20 }}
             style={{
-              position: 'fixed', top: 52, left: 28,
+              position: 'fixed', top: 'clamp(46px, 7vw, 52px)', left: 'clamp(10px, 3vw, 28px)',
               zIndex: 50, pointerEvents: 'auto',
-              minWidth: 320,
+              minWidth: 'min(320px, calc(100vw - 20px))',
+              maxWidth: 'calc(100vw - 20px)',
               maxHeight: 'calc(100vh - 70px)',
               overflowY: 'auto',
             }}
@@ -3093,9 +3097,9 @@ export default function JarvisApp() {
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -20 }}
             style={{
-              position: 'fixed', top: 52, left: 28,
+              position: 'fixed', top: 'clamp(46px, 7vw, 52px)', left: 'clamp(10px, 3vw, 28px)',
               zIndex: 50, pointerEvents: 'auto',
-              minWidth: 300, maxHeight: '70vh', overflowY: 'auto',
+              minWidth: 'min(300px, calc(100vw - 20px))', maxWidth: 'calc(100vw - 20px)', maxHeight: '70vh', overflowY: 'auto',
             }}
           >
             <div style={{
