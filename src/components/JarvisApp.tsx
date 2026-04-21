@@ -13,6 +13,7 @@ import HoloDataPanel from './HoloDataPanel';
 import InfluencerCards, { type InfluencerData } from './InfluencerCards';
 import LocalBusinessCards, { type LocalBusinessData } from './LocalBusinessCards';
 import { ParticleTextCanvas } from './ParticleTextCanvas';
+import NeuralMissionMap from './NeuralMissionMap';
 
 // ── 시그니처 응답 목록 (GPT 대기 없이 즉시 재생) ──
 const SIGNATURE_RESPONSES = [
@@ -168,6 +169,7 @@ export default function JarvisApp() {
   const [naverLoginScreenshot, setNaverLoginScreenshot] = useState<string | null>(null);
 
   // ── 타이핑 입력 모드 ──
+  const [neuralMapVisible, setNeuralMapVisible] = useState(false);
   const [textInputMode, setTextInputMode] = useState(false);
   const [textInputValue, setTextInputValue] = useState('');
   const textInputRef = useRef<HTMLInputElement>(null);
@@ -714,7 +716,7 @@ export default function JarvisApp() {
           const extensionConnected = (window as any).__JARVIS_EXTENSION_CONNECTED__;
           if (extensionConnected) {
             setBookingStep(1);
-            addMessage('jarvis', `🔌 크롬 확장 프로그램으로 예약을 처리합니다, 토니.`);
+            addMessage('jarvis', `[PLUG] 크롬 확장 프로그램으로 예약을 처리합니다, 토니.`);
             const extCmd = {
               businessName,
               date,
@@ -767,13 +769,13 @@ export default function JarvisApp() {
           }
           // 0-C. 세션 ID가 이미 있으면 로그인 건너뛰
           if (activeSessionId) {
-            addMessage('jarvis', `✅ 이미 로그인된 세션을 사용합니다, 선생님. (세션: ${activeSessionId.slice(0, 8)}...)`);
+            addMessage('jarvis', `[OK] 이미 로그인된 세션을 사용합니다, 선생님. (세션: ${activeSessionId.slice(0, 8)}...)`);
           }
           // 1. 로그인 시도 (세션 없을 때만)
           setBookingStep(1);
           if (!activeSessionId && naverUsername && naverPassword) {
             setState('working');
-            addMessage('jarvis', `🔐 네이버 로그인 중... (${naverUsername})`);
+            addMessage('jarvis', `[LOCK] 네이버 로그인 중... (${naverUsername})`);
             try {
               const loginRes = await fetch(`${BOOKING_SERVER}/api/booking/login`, {
                 method: 'POST',
@@ -785,7 +787,7 @@ export default function JarvisApp() {
                 activeSessionId = loginData.sessionId;
                 setBookingSessionId(loginData.sessionId);
                 localStorage.setItem('jarvis_booking_session', loginData.sessionId);
-                addMessage('jarvis', `✅ 네이버 로그인 완료`);
+                addMessage('jarvis', `[OK] 네이버 로그인 완료`);
               } else if (loginData.needVerification) {
                 // ── 캡차 또는 2단계 인증 필요 ──
                 const vType = loginData.verificationType || 'captcha';
@@ -845,15 +847,15 @@ export default function JarvisApp() {
 
                 if (vType === 'captcha' && captchaImg) {
                   // 1차: GPT Vision 자동 풀기
-                  addMessage('jarvis', `🤖 캡차 자동 분석 중...`);
+                  addMessage('jarvis', `[BOT] 캡차 자동 분석 중...`);
                   const autoAnswer = await tryCaptchaWithVision(captchaImg);
                   if (autoAnswer) {
-                    addMessage('jarvis', `🤖 자동 인식 답: ${autoAnswer} — 검증 중...`);
+                    addMessage('jarvis', `[BOT] 자동 인식 답: ${autoAnswer} — 검증 중...`);
                     loginSuccess = await loginWithCaptcha(autoAnswer);
                     if (loginSuccess) {
-                      addMessage('jarvis', `✅ 캡차 자동 인식 성공! 네이버 로그인 완료`);
+                      addMessage('jarvis', `[OK] 캡차 자동 인식 성공! 네이버 로그인 완료`);
                     } else {
-                      addMessage('jarvis', `🤖 자동 인식 실패. 토니께서 직접 입력해 주세요.`);
+                      addMessage('jarvis', `[BOT] 자동 인식 실패. 토니께서 직접 입력해 주세요.`);
                     }
                   }
                 } else if (vType === 'otp' && loginData.pendingSessionId) {
@@ -885,15 +887,15 @@ export default function JarvisApp() {
                   setVerificationMode(null);
 
                   setState('working');
-                  addMessage('jarvis', `🔐 인증번호 확인 중...');
+                  addMessage('jarvis', `[LOCK] 인증번호 확인 중...`);
 
                   if (vType === 'captcha') {
                     // 캡차: 재로그인 방식
                     loginSuccess = await loginWithCaptcha(userInput);
                     if (loginSuccess) {
-                      addMessage('jarvis', `✅ 인증 완료! 네이버 로그인 성공`);
+                      addMessage('jarvis', `[OK] 인증 완료! 네이버 로그인 성공`);
                     } else {
-                      addMessage('jarvis', `⚠️ 인증 실패. 비로그인 상태로 조회합니다.`);
+                      addMessage('jarvis', `[!] 인증 실패. 비로그인 상태로 조회합니다.`);
                     }
                   } else {
                     // OTP: submit-verification 방식
@@ -908,27 +910,27 @@ export default function JarvisApp() {
                         activeSessionId = verifyData.sessionId;
                         setBookingSessionId(verifyData.sessionId);
                         localStorage.setItem('jarvis_booking_session', verifyData.sessionId);
-                        addMessage('jarvis', `✅ 인증 완료! 네이버 로그인 성공`);
+                        addMessage('jarvis', `[OK] 인증 완료! 네이버 로그인 성공`);
                         loginSuccess = true;
                       } else {
-                        addMessage('jarvis', `⚠️ 인증 실패: ${verifyData.message || '올바르지 않은 인증번호'}. 비로그인 상태로 조회합니다.`);
+                        addMessage('jarvis', `[!] 인증 실패: ${verifyData.message || '올바르지 않은 인증번호'}. 비로그인 상태로 조회합니다.`);
                       }
                     } catch {
-                      addMessage('jarvis', `⚠️ 인증 서버 연결 실패. 비로그인 상태로 조회합니다.`);
+                      addMessage('jarvis', `[!] 인증 서버 연결 실패. 비로그인 상태로 조회합니다.`);
                     }
                   }
                 }
               } else {
-                addMessage('jarvis', `⚠️ 로그인 실패: ${loginData.message || loginData.error || '아이디 또는 비밀번호를 확인해주세요.'}`);
+                addMessage('jarvis', `[!] 로그인 실패: ${loginData.message || loginData.error || '아이디 또는 비밀번호를 확인해주세요.'}`);
               }
             } catch (loginErr) {
-              addMessage('jarvis', `⚠️ 로그인 서버 연결 실패. 비로그인 상태로 조회합니다.`);
+              addMessage('jarvis', `[!] 로그인 서버 연결 실패. 비로그인 상태로 조회합니다.`);
             }
           }
 
           // 2. 예약 가능 시간 조회 (진행 상황 표시)
           setBookingStep(2);
-          addMessage('jarvis', `🔍 ${businessName} 예약 가능 시간 조회 중...`);
+          addMessage('jarvis', `[SEARCH] ${businessName} 예약 가능 시간 조회 중...`);
           const availRes = await fetch(`${BOOKING_SERVER}/api/booking/availability`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -1021,7 +1023,7 @@ export default function JarvisApp() {
           // ── fill_form에서도 로그인 세션 확보 ──
           if (!activeSessionId && naverUsername && naverPassword) {
             setState('working');
-            addMessage('jarvis', `🔐 네이버 로그인 중... (${naverUsername})`);
+            addMessage('jarvis', `[LOCK] 네이버 로그인 중... (${naverUsername})`);
             try {
               const loginRes2 = await fetch(`${BOOKING_SERVER}/api/booking/login`, {
                 method: 'POST',
@@ -1033,7 +1035,7 @@ export default function JarvisApp() {
                 activeSessionId = loginData2.sessionId;
                 setBookingSessionId(loginData2.sessionId);
                 localStorage.setItem('jarvis_booking_session', loginData2.sessionId);
-                addMessage('jarvis', `✅ 네이버 로그인 완료`);
+                addMessage('jarvis', `[OK] 네이버 로그인 완료`);
               } else if (loginData2.needVerification) {
                 // 캡차 발생 시 stateless 재로그인
                 const captchaImg2 = loginData2.captchaSrc || loginData2.screenshot || null;
@@ -1056,14 +1058,14 @@ export default function JarvisApp() {
                   activeSessionId = retryData2.sessionId;
                   setBookingSessionId(retryData2.sessionId);
                   localStorage.setItem('jarvis_booking_session', retryData2.sessionId);
-                  addMessage('jarvis', `✅ 로그인 성공`);
+                  addMessage('jarvis', `[OK] 로그인 성공`);
                 } else {
-                  addMessage('jarvis', `⚠️ 로그인 실패. 비로그인 상태로 진행합니다.`);
+                  addMessage('jarvis', `[!] 로그인 실패. 비로그인 상태로 진행합니다.`);
                 }
               } else {
-                addMessage('jarvis', `⚠️ 로그인 실패: ${loginData2.message || loginData2.error}`);
+                addMessage('jarvis', `[!] 로그인 실패: ${loginData2.message || loginData2.error}`);
               }
-            } catch { addMessage('jarvis', `⚠️ 로그인 서버 연결 실패`); }
+            } catch { addMessage('jarvis', `[!] 로그인 서버 연결 실패`); }
           }
 
           // ── 학습 1: 입력 전 확인 단계 ──
@@ -1116,7 +1118,7 @@ export default function JarvisApp() {
           addMessage('jarvis', reCheckText);
 
           setBookingStep(4);
-          addMessage('jarvis', `🔄 ${time} 시간대 실시간 재확인 중...`);
+          addMessage('jarvis', `[RELOAD] ${time} 시간대 실시간 재확인 중...`);
           const reCheckRes = await fetch(`${BOOKING_SERVER}/api/booking/availability`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -1165,7 +1167,7 @@ export default function JarvisApp() {
 
           // ── 예약 폼 자동 입력 진행 ──
           setBookingStep(4);
-          addMessage('jarvis', `✍️ ${businessName} 예약 폼 자동 입력 중...`);
+          addMessage('jarvis', ` ${businessName} 예약 폼 자동 입력 중...`);
           const fillRes = await fetch(`${BOOKING_SERVER}/api/booking/fill-form`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -1354,8 +1356,8 @@ export default function JarvisApp() {
               }
 
               // 결과 메시지
-              let resultMsg = `📋 **발주서 처리 완료**\n\n`;
-              resultMsg += `📦 총 주문: ${data.orderCount}건\n`;
+              let resultMsg = `[LIST] **발주서 처리 완료**\n\n`;
+              resultMsg += `[PKG] 총 주문: ${data.orderCount}건\n`;
               if (data.qtySummary) {
                 const summary = Object.entries(data.qtySummary as Record<string, number>)
                   .filter(([, qty]) => qty > 0)
@@ -1364,13 +1366,13 @@ export default function JarvisApp() {
                 if (summary) resultMsg += `\n물품별 수량:\n${summary}\n`;
               }
               if (data.totalSettlement) {
-                resultMsg += `\n💰 입금 필요액: **${Number(data.totalSettlement).toLocaleString('ko-KR')}원**`;
+                resultMsg += `\n[MONEY] 입금 필요액: **${Number(data.totalSettlement).toLocaleString('ko-KR')}원**`;
               }
               if (isSendEmail && data.emailSent) {
-                resultMsg += `\n\n✉️ 공급처 이메일 발송 완료`;
-                resultMsg += `\n📱 텔레그램으로 정산 내역을 확인하세요.`;
+                resultMsg += `\n\n 공급처 이메일 발송 완료`;
+                resultMsg += `\n[PHONE] 텔레그램으로 정산 내역을 확인하세요.`;
               }
-              resultMsg += `\n\n📥 셀렌 발주서 + 정산서 다운로드가 시작되었습니다.`;
+              resultMsg += `\n\n[IN] 셀렌 발주서 + 정산서 다운로드가 시작되었습니다.`;
 
               const doneText = isSendEmail
                 ? `발주서 처리 및 공급처 이메일 발송 완료입니다, 선생님. 텍레그램으로 정산 내역을 확인하세요.`
@@ -1409,7 +1411,7 @@ export default function JarvisApp() {
           if (products.length > 8) productSummary += `\n... 외 ${products.length - 8}개 더 있습니다.`;
           const doneText = `스마트스토어 상품 조회 완료입니다, 선생님. ${products.length}개 상품이 확인되었습니다.`;
           setState('speaking');
-          addMessage('jarvis', `🛍️ **스마트스토어 상품 현황**\n\n${productSummary}`, true);
+          addMessage('jarvis', ` **스마트스토어 상품 현황**\n\n${productSummary}`, true);
           startSpeakingLevel();
           await new Promise<void>(resolve => { speak(doneText, undefined, () => { stopSpeakingLevel(); resolve(); }); });
 
@@ -1444,7 +1446,7 @@ export default function JarvisApp() {
 
           if (ssAction.startsWith('query_orders') || ssAction === 'morning_report') {
             const count = Array.isArray(data.data) ? data.data.length : (data.newOrders || 0);
-            resultMsg = `📦 **${getActionLabel(ssAction)}**\n\n`;
+            resultMsg = `[PKG] **${getActionLabel(ssAction)}**\n\n`;
             if (ssAction === 'morning_report') {
               resultMsg += `신규 주문: ${data.newOrders}건\n취소 요청: ${data.cancelOrders}건\n발송 대기: ${data.pendingShipping}건`;
               doneText = `아침 업무 보고 완료입니다, 선생님. 신규 주문 ${data.newOrders}건, 취소 요청 ${data.cancelOrders}건이 있습니다.`;
@@ -1453,12 +1455,12 @@ export default function JarvisApp() {
               doneText = `${getActionLabel(ssAction)} 완료입니다, 선생님. ${count}건이 확인되었습니다.`;
             }
           } else if (ssAction.startsWith('confirm')) {
-            resultMsg = `✅ **발주확인 처리 완료**\n\n${data.confirmedCount || 0}건 처리되었습니다.`;
+            resultMsg = `[OK] **발주확인 처리 완료**\n\n${data.confirmedCount || 0}건 처리되었습니다.`;
             doneText = `발주확인 ${data.confirmedCount || 0}건 처리 완료입니다, 선생님.`;
             setClapBurst(true); setTimeout(() => setClapBurst(false), 120);
           } else if (ssAction.startsWith('create_order_sheet') || ssAction === 'check_duplicate_orders' || ssAction === 'bundle_same_address') {
             const count = data.count || (Array.isArray(data.duplicates) ? data.duplicates.length : 0) || (Array.isArray(data.bundled) ? data.bundled.length : 0);
-            resultMsg = `📋 **${getActionLabel(ssAction)}**\n\n${data.fileName || ''}\n${count}건 처리되었습니다.`;
+            resultMsg = `[LIST] **${getActionLabel(ssAction)}**\n\n${data.fileName || ''}\n${count}건 처리되었습니다.`;
             doneText = `${getActionLabel(ssAction)} 완료입니다, 선생님.`;
             if (data.csvData) {
               // CSV 다운로드 링크 생성
@@ -1467,10 +1469,10 @@ export default function JarvisApp() {
               const a = document.createElement('a');
               a.href = url; a.download = data.fileName || '주문서.csv'; a.click();
               URL.revokeObjectURL(url);
-              resultMsg += `\n\n📥 파일 다운로드가 시작되었습니다.`;
+              resultMsg += `\n\n[IN] 파일 다운로드가 시작되었습니다.`;
             }
           } else if (ssAction.startsWith('create_settlement') || ssAction === 'calc_weekly_profit' || ssAction === 'get_bestseller' || ssAction === 'compare_last_month' || ssAction === 'weekly_report') {
-            resultMsg = `💰 **${getActionLabel(ssAction)}**\n\n`;
+            resultMsg = `[MONEY] **${getActionLabel(ssAction)}**\n\n`;
             if (data.totalSales) resultMsg += `총 매출: ${Number(data.totalSales).toLocaleString('ko-KR')}원\n총 주문: ${data.totalOrders}건\n네이버 수수료: ${Number(data.naverFee).toLocaleString('ko-KR')}원\n실수령: ${Number(data.netSales).toLocaleString('ko-KR')}원`;
             if (data.growthRate) resultMsg += `전월 대비: ${data.growthRate}\n${data.message}`;
             if (data.topProduct) resultMsg += `베스트셀러: ${data.topProduct?.productName} (${data.topProduct?.quantity}개)`;
@@ -1483,13 +1485,13 @@ export default function JarvisApp() {
               URL.revokeObjectURL(url);
             }
           } else if (ssAction.includes('purchase_email')) {
-            resultMsg = `📧 **발주 이메일 ${ssAction === 'preview_purchase_email' ? '미리보기' : '발송 완료'}**\n\n${data.message || ''}\n\n${data.preview || ''}`;
+            resultMsg = `[MAIL] **발주 이메일 ${ssAction === 'preview_purchase_email' ? '미리보기' : '발송 완료'}**\n\n${data.message || ''}\n\n${data.preview || ''}`;
             doneText = ssAction === 'preview_purchase_email' ? '발주 이메일 초안입니다, 선생님. 확인 후 발송하시겠습니까?' : `발주 이메일 발송 완료입니다, 선생님.`;
             if (ssAction !== 'preview_purchase_email') {
               setClapBurst(true); setTimeout(() => setClapBurst(false), 120);
             }
           } else if (ssAction === 'process_shipping') {
-            resultMsg = `🚚 **발송 처리 완료**\n\n${data.count || 0}건 처리되었습니다.`;
+            resultMsg = ` **발송 처리 완료**\n\n${data.count || 0}건 처리되었습니다.`;
             doneText = `발송 처리 ${data.count || 0}건 완료입니다, 선생님.`;
             setClapBurst(true); setTimeout(() => setClapBurst(false), 120);
           } else {
@@ -1634,7 +1636,7 @@ export default function JarvisApp() {
     // STT 노이즈 필터 (단, 2차 인증/케시 대기 중에는 필터 건너뛰)
     const isWaitingForInput = verificationResolveRef.current !== null || bookingConfirmResolveRef.current !== null || captchaOpenRef.current;
     if (!isWaitingForInput && isSTTNoise(transcript)) {
-      console.log('[JARVIS] 🚫 STT 노이즈 감지 → 무시:', transcript);
+      console.log('[JARVIS] [STOP] STT 노이즈 감지 → 무시:', transcript);
       return;
     }
     // 케시 모달 열려있으면 음성 입력을 케시 답으로 처리
@@ -1650,7 +1652,7 @@ export default function JarvisApp() {
       return;
     }
     const currentState = stateRef.current;
-    console.log('[JARVIS] 🎤 음성 명령 수신 (상태:', currentState, '):', transcript);
+    console.log('[JARVIS]  음성 명령 수신 (상태:', currentState, '):', transcript);
     // 캡차/2단계 인증 입력 대기 중이면 인증번호 전달
     if (verificationResolveRef.current) {
       const resolve = verificationResolveRef.current;
@@ -1789,7 +1791,7 @@ export default function JarvisApp() {
       lastActivatedRef.current = Date.now(); // 쿨다운 시작
       activatingRef.current = false;
     } else if (s === 'listening') {
-      // ★ 쿨다운: 활성화 후 5초 이내에는 비활성화 방지
+      //  쿨다운: 활성화 후 5초 이내에는 비활성화 방지
       const elapsed = Date.now() - lastActivatedRef.current;
       if (elapsed < 5000) {
         console.log(`[JARVIS] 비활성화 쿨다운 중 (${Math.round(elapsed)}ms < 5000ms) — 무시`);
@@ -2074,20 +2076,44 @@ export default function JarvisApp() {
             </p>
           </div>
 
-          {/* 우측 상태 */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '7px' }}>
-            <motion.div
+          {/* 우측 상태 + 시스템 현황 버튼 */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px', pointerEvents: 'auto' }}>
+            {/* 시스템 현황 버튼 */}
+            <motion.button
+              onClick={(e) => { e.stopPropagation(); setNeuralMapVisible(true); }}
+              whileHover={{ scale: 1.05 }}
+              whileTap={{ scale: 0.95 }}
               style={{
-                width: 7, height: 7, borderRadius: '50%',
-                background: accent,
-                boxShadow: `0 0 8px ${accent}`,
+                display: 'flex', alignItems: 'center', gap: 5,
+                background: 'rgba(0,212,255,0.08)',
+                border: '1px solid rgba(0,212,255,0.35)',
+                padding: '5px 10px',
+                cursor: 'pointer',
+                fontFamily: 'Orbitron, monospace',
               }}
-              animate={{ opacity: state !== 'idle' ? [1, 0.3, 1] : [0.6, 0.9, 0.6] }}
-              transition={{ duration: state !== 'idle' ? 0.7 : 2, repeat: Infinity }}
-            />
-            <span style={{ fontFamily: 'Orbitron, monospace', color: accent, fontSize: '0.55rem', letterSpacing: '0.2em', opacity: 0.85 }}>
-              {STATE_LABEL[state]}
-            </span>
+            >
+              <motion.div
+                style={{ width: 5, height: 5, borderRadius: '50%', background: '#00D4FF', boxShadow: '0 0 6px #00D4FF' }}
+                animate={{ opacity: [0.4, 1, 0.4] }}
+                transition={{ duration: 1.5, repeat: Infinity }}
+              />
+              <span style={{ color: '#00D4FF', fontSize: '0.42rem', letterSpacing: '0.2em' }}>SYSTEM MAP</span>
+            </motion.button>
+            {/* 상태 표시 */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '7px' }}>
+              <motion.div
+                style={{
+                  width: 7, height: 7, borderRadius: '50%',
+                  background: accent,
+                  boxShadow: `0 0 8px ${accent}`,
+                }}
+                animate={{ opacity: state !== 'idle' ? [1, 0.3, 1] : [0.6, 0.9, 0.6] }}
+                transition={{ duration: state !== 'idle' ? 0.7 : 2, repeat: Infinity }}
+              />
+              <span style={{ fontFamily: 'Orbitron, monospace', color: accent, fontSize: '0.55rem', letterSpacing: '0.2em', opacity: 0.85 }}>
+                {STATE_LABEL[state]}
+              </span>
+            </div>
           </div>
         </div>
       </motion.header>
@@ -2172,7 +2198,7 @@ export default function JarvisApp() {
                   opacity: 0.5,
                 }}
               >
-                ◈  TOUCH TO ACTIVATE  ◈
+                \u25C8  TOUCH TO ACTIVATE  \u25C8
               </motion.p>
             </motion.div>
           )}
@@ -2863,12 +2889,12 @@ export default function JarvisApp() {
                         marginBottom: 6,
                       }}
                     >
-                      🔌 크롬 확장으로 로그인 (추천)
+                      [PLUG] 크롬 확장으로 로그인 (추천)
                     </div>
                     <div style={{ fontFamily: 'Orbitron, monospace', color: THEME.textDim, fontSize: '0.32rem', letterSpacing: '0.1em', marginBottom: 8 }}>
                       {(window as any).__JARVIS_EXTENSION_CONNECTED__
-                        ? '✅ 확장 연결됨 — 이미 로그인된 크롬 세션 사용 (캡차 없음)'
-                        : '⚠️ 확장 미설치 — 아래 ZIP 설치 후 사용 가능'}
+                        ? '[OK] 확장 연결됨 — 이미 로그인된 크롬 세션 사용 (캡차 없음)'
+                        : '[!] 확장 미설치 — 아래 ZIP 설치 후 사용 가능'}
                     </div>
                   </div>
 
@@ -2948,14 +2974,14 @@ export default function JarvisApp() {
                       fontSize: '0.42rem', letterSpacing: '0.2em',
                     }}
                   >
-                    {naverLoginStatus === 'done' ? '✅ NAVER LOGGED IN' :
-                     naverLoginStatus === 'waiting' ? '⏳ 로그인 진행 중...' :
-                     naverLoginStatus === 'error' ? '❌ 로그인 실패 - 재시도' :
-                     '🔐 NAVER 자동 로그인'}
+                    {naverLoginStatus === 'done' ? '[OK] NAVER LOGGED IN' :
+                     naverLoginStatus === 'waiting' ? '\u23F3 로그인 진행 중...' :
+                     naverLoginStatus === 'error' ? '[X] 로그인 실패 - 재시도' :
+                     '[LOCK] NAVER 자동 로그인'}
                   </div>
                   {naverLoginStatus === 'done' && bookingSessionId && (
                     <div style={{ marginTop: 4, fontFamily: 'Orbitron, monospace', color: '#22C55E', fontSize: '0.3rem', letterSpacing: '0.1em' }}>
-                      ✅ 세션 활성: {bookingSessionId.slice(0, 8)}...
+                      [OK] 세션 활성: {bookingSessionId.slice(0, 8)}...
                     </div>
                   )}
                 </div>
@@ -3355,7 +3381,7 @@ export default function JarvisApp() {
                           fontSize: '0.35rem', letterSpacing: '0.1em',
                           whiteSpace: 'nowrap',
                         }}>
-                          {isDone ? '✓ ' : isActive ? '▶ ' : ''}{item.label}
+                          {isDone ? ' ' : isActive ? '\u25B6 ' : ''}{item.label}
                         </span>
                       </div>
                       {idx < 4 && (
@@ -3400,8 +3426,8 @@ export default function JarvisApp() {
                 </div>
                 <div style={{ color: '#FFD700', fontSize: '1rem', fontWeight: 'bold', lineHeight: 1.6, background: 'rgba(255,215,0,0.1)', padding: '10px 12px', borderRadius: 6, border: '1px solid #FFD70055' }}>
                   {verificationMode === 'captcha'
-                    ? '📋 아래 이미지에서 질문을 확인하고 답을 입력하세요'
-                    : '🔐 아래 화면의 인증 질문을 확인하고 답하세요'}
+                    ? '[LIST] 아래 이미지에서 질문을 확인하고 답을 입력하세요'
+                    : '[LOCK] 아래 화면의 인증 질문을 확인하고 답하세요'}
                 </div>
               </div>
               {/* ── 중간 스크롤: 스크린샷 ── */}
@@ -3415,7 +3441,7 @@ export default function JarvisApp() {
               {/* ── 하단 고정: 직접 입력창 + 전송 버튼 ── */}
               <div style={{ padding: '12px 20px 16px', flexShrink: 0, borderTop: '1px solid #4A90E244', background: 'rgba(74,144,226,0.08)' }}>
                 <div style={{ color: '#4A90E2', fontSize: '0.85rem', fontWeight: 'bold', marginBottom: 8 }}>
-                  {verificationMode === 'captcha' ? '✏️ 위 이미지의 답을 입력하세요' : '✏️ 위 화면의 인증번호를 입력하세요'}
+                  {verificationMode === 'captcha' ? ' 위 이미지의 답을 입력하세요' : ' 위 화면의 인증번호를 입력하세요'}
                 </div>
                 <div style={{ display: 'flex', gap: 8 }}>
                   <input
@@ -3671,7 +3697,7 @@ export default function JarvisApp() {
                           border: `1px solid ${i < 2 ? '#22C55E' : '#4A90E2'}`,
                           display: 'flex', alignItems: 'center', justifyContent: 'center',
                           fontSize: '0.35rem', color: '#fff', fontFamily: 'Orbitron, monospace',
-                        }}>{i < 2 ? '✓' : '!'}</div>
+                        }}>{i < 2 ? '' : '!'}</div>
                         <div style={{ fontSize: '0.38rem', color: i < 2 ? '#22C55E' : '#4A90E2', fontFamily: 'Orbitron, monospace' }}>{step}</div>
                         {i < 2 && <div style={{ width: 12, height: 1, background: '#22C55E55' }} />}
                       </div>
@@ -3712,7 +3738,7 @@ export default function JarvisApp() {
                         fontSize: '0.38rem', letterSpacing: '0.15em',
                         transition: 'all 0.2s',
                       }}
-                    >{paymentCopied ? 'COPIED ✓' : 'COPY URL'}</div>
+                    >{paymentCopied ? 'COPIED ' : 'COPY URL'}</div>
                     <div
                       onClick={() => window.open(paymentUrl, '_blank')}
                       style={{
@@ -3810,7 +3836,7 @@ export default function JarvisApp() {
               textAlign: 'center',
               boxShadow: '0 0 40px rgba(200,169,110,0.3)',
             }}>
-              <div style={{ fontSize: 40, marginBottom: 12 }}>📦</div>
+              <div style={{ fontSize: 40, marginBottom: 12 }}>[PKG]</div>
               <div style={{ color: '#C8A96E', fontSize: 18, fontWeight: 700, marginBottom: 8 }}>
                 {orderFileAction === 'process_order_file_and_send' ? '발주서 처리 + 이메일 발송' : '발주서 파일 처리'}
               </div>
@@ -3833,7 +3859,7 @@ export default function JarvisApp() {
                 }}
               />
               {orderFileProcessing ? (
-                <div style={{ color: '#7EC89B', fontSize: 14 }}>⏳ 처리 중...</div>
+                <div style={{ color: '#7EC89B', fontSize: 14 }}>\u23F3 처리 중...</div>
               ) : (
                 <div style={{ display: 'flex', gap: 12, justifyContent: 'center' }}>
                   <button
@@ -3897,6 +3923,13 @@ export default function JarvisApp() {
               </div>
             ))}
           </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* ── 뉴럴 미션 맵 (시스템 현황) ── */}
+      <AnimatePresence>
+        {neuralMapVisible && (
+          <NeuralMissionMap onClose={() => setNeuralMapVisible(false)} />
         )}
       </AnimatePresence>
     </main>

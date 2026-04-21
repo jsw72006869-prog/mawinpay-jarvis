@@ -27,11 +27,12 @@
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",
     "@vercel/node": "^5.7.5",
-    "@vitejs/plugin-react": "^6.0.1",
+    "@vitejs/plugin-react": "4",
     "autoprefixer": "^10.5.0",
+    "esbuild": "~0.24.2",
     "postcss": "^8.5.9",
     "tailwindcss": "^4.2.2",
     "typescript": "^6.0.2",
-    "vite": "^8.0.8"
+    "vite": "^6.4.2"
   }
 }
