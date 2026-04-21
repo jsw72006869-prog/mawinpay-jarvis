@@ -778,6 +778,25 @@ export default function JarvisApp() {
           // 0-C. 세션 ID가 이미 있으면 로그인 건너뛰
           if (activeSessionId) {
             addMessage('jarvis', `[OK] 이미 로그인된 세션을 사용합니다, 선생님. (세션: ${activeSessionId.slice(0, 8)}...)`);
+          } else if (!naverUsername && !naverPassword) {
+            // 0-D. 자격증명도 없고 세션도 없으면 서버의 최신 세션 자동 사용
+            try {
+              const sessionCheckRes = await fetch(`${BOOKING_SERVER}/api/booking/session-status`, {
+                method: 'GET',
+                headers: { 'Content-Type': 'application/json' },
+              });
+              if (sessionCheckRes.ok) {
+                const sessionCheckData = await sessionCheckRes.json();
+                if (sessionCheckData.sessionId) {
+                  activeSessionId = sessionCheckData.sessionId;
+                  setBookingSessionId(sessionCheckData.sessionId);
+                  localStorage.setItem('jarvis_booking_session', sessionCheckData.sessionId);
+                  addMessage('jarvis', `[OK] 서버에 저장된 세션을 복구했습니다, 선생님.`);
+                }
+              }
+            } catch (e) {
+              // 세션 복구 실패 시 무시하고 계속 진행
+            }
           }
           // 1. 로그인 시도 (세션 없을 때만)
           setBookingStep(1);
@@ -952,13 +971,30 @@ export default function JarvisApp() {
           const availData = await availRes.json();
 
           if (availData.success) {
-            setBookingSlots(availData.availableSlots || []);
             if (availData.screenshot) setBookingScreenshot(availData.screenshot);
+
+            // ── 케이스 1: 네이버 예약 시스템 없는 업체 ──
+            if (availData.bookingAvailable === false) {
+              setBookingPanelVisible(false);
+              const phoneInfo = availData.phone ? ` 전화번호는 ${availData.phone} 입니다.` : '';
+              const noBookingText = `${businessName}은(는) 네이버 예약을 지원하지 않습니다, 토니.${phoneInfo} 직접 전화로 예약하시거나, 다른 업체를 찾아드릴까요?`;
+              setState('speaking');
+              addMessage('jarvis', noBookingText, true);
+              startSpeakingLevel();
+              await new Promise<void>(resolve => {
+                speak(noBookingText, undefined, () => { stopSpeakingLevel(); resolve(); });
+              });
+              setState('idle');
+              return;
+            }
+
+            // ── 케이스 2: 예약 가능한 업체 ──
+            setBookingSlots(availData.availableSlots || []);
             setBookingPanelVisible(true);
 
             if (availData.availableSlots?.length > 0) {
               // 시간대 조회 성공 - 요청한 시간이 있으면 자동 진행
-              const requestedTime = time; // GPT가 파싱한 시간
+              const requestedTime = time;
               const matchedSlot = requestedTime
                 ? availData.availableSlots.find((s: string) =>
                     s.includes(requestedTime) ||
@@ -1007,7 +1043,7 @@ export default function JarvisApp() {
                 }
               } else {
                 // 시간대 목록 안내 + 선택 요청
-                const slotsText = `예약 가능한 시간대는 ${availData.availableSlots.slice(0, 5).join(', ')} 입니다, 토니. 어떤 시간으로 예약하시겠습니까?`;
+                const slotsText = `${businessName} 예약 가능한 시간대를 확인했습니다, 토니. ${availData.availableSlots.slice(0, 5).join(', ')} 중 어떤 시간으로 예약하시겠습니까?`;
                 setState('speaking');
                 addMessage('jarvis', slotsText, true);
                 startSpeakingLevel();
@@ -1016,7 +1052,8 @@ export default function JarvisApp() {
                 });
               }
             } else {
-              const noSlotText = `${businessName} 예약 페이지를 확인했습니다, 토니. 현재 해당 날짜에 예약 가능한 시간대가 없습니다. 다른 날짜로 다시 조회해 드릴까요?`;
+              // ── 케이스 3: 예약 시스템 있지만 오늘 슬롯 없음 ──
+              const noSlotText = `${businessName} 예약 페이지를 확인했습니다, 토니. 현재 선택하신 날짜에 예약 가능한 시간이 없습니다. 다른 날짜로 조회해 드릴까요?`;
               setState('speaking');
               addMessage('jarvis', noSlotText, true);
               startSpeakingLevel();
