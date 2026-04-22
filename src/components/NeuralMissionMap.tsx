@@ -29,20 +29,26 @@ const SSE_NODE_MAP: Record<string, string> = {
   scheduler:  'scheduler',
   email:      'email',
   commander:  'user',
+  ordersheet: 'ordersheet',
+  settlement: 'settlement',
 };
 
 // SSE flow 문자열 -> 연결 키 매핑
 const SSE_FLOW_MAP: Record<string, string> = {
-  'brain->smartstore':   'brain_smartstore',
-  'brain->telegram':     'brain_telegram',
-  'brain->scheduler':    'brain_scheduler',
-  'brain->email':        'brain_email',
-  'commander->brain':    'user_brain',
-  'scheduler->brain':    'brain_scheduler',
-  'telegram->brain':     'user_brain',
-  'smartstore->brain':   'brain_smartstore',
-  'email->telegram':     'email_telegram',
+  'brain->smartstore':     'brain_smartstore',
+  'brain->telegram':       'brain_telegram',
+  'brain->scheduler':      'brain_scheduler',
+  'brain->email':          'brain_email',
+  'commander->brain':      'user_brain',
+  'scheduler->brain':      'brain_scheduler',
+  'telegram->brain':       'user_brain',
+  'smartstore->brain':     'brain_smartstore',
+  'email->telegram':       'email_telegram',
   'scheduler->smartstore': 'scheduler_smartstore',
+  'brain->ordersheet':     'brain_ordersheet',
+  'ordersheet->settlement':'ordersheet_settlement',
+  'ordersheet->email':     'ordersheet_email',
+  'settlement->telegram':  'settlement_telegram',
 };
 
 interface NodeStatus {
@@ -82,12 +88,14 @@ const STATUS_LABEL: Record<string, string> = {
 
 export default function NeuralMissionMap({ onClose }: { onClose: () => void }) {
   const [nodes, setNodes] = useState<NodeStatus[]>([
-    { id: 'jarvis_brain', label: 'JARVIS CORE', sublabel: 'Railway Server', icon: '[BRAIN]', status: 'idle', detail: 'Connecting...', x: 50, y: 42 },
-    { id: 'smartstore', label: 'SMARTSTORE', sublabel: 'Naver Commerce', icon: '[CART]', status: 'idle', detail: 'Smartstore API', x: 20, y: 25 },
-    { id: 'telegram', label: 'TELEGRAM', sublabel: 'Notification Bot', icon: '[SIGNAL]', status: 'idle', detail: 'Telegram Bot', x: 80, y: 25 },
-    { id: 'scheduler', label: 'SCHEDULER', sublabel: 'Auto Task', icon: '[CLOCK]', status: 'idle', detail: 'Scheduler', x: 20, y: 65 },
-    { id: 'email', label: 'EMAIL', sublabel: 'Order Dispatch', icon: '[MAIL]', status: 'idle', detail: 'Order Email', x: 80, y: 65 },
-    { id: 'user', label: 'COMMANDER', sublabel: 'Boss', icon: '[USER]', status: 'online', detail: 'Awaiting command', x: 50, y: 82 },
+    { id: 'jarvis_brain', label: 'JARVIS CORE', sublabel: 'Railway Server', icon: '[BRAIN]', status: 'idle', detail: 'Connecting...', x: 50, y: 35 },
+    { id: 'smartstore', label: 'SMARTSTORE', sublabel: 'Naver Commerce', icon: '[CART]', status: 'idle', detail: 'Smartstore API', x: 15, y: 18 },
+    { id: 'telegram', label: 'TELEGRAM', sublabel: 'Notification Bot', icon: '[SIGNAL]', status: 'idle', detail: 'Telegram Bot', x: 85, y: 18 },
+    { id: 'scheduler', label: 'SCHEDULER', sublabel: 'Auto Task', icon: '[CLOCK]', status: 'idle', detail: 'Scheduler', x: 15, y: 55 },
+    { id: 'email', label: 'EMAIL', sublabel: 'Order Dispatch', icon: '[MAIL]', status: 'idle', detail: 'Order Email', x: 85, y: 55 },
+    { id: 'ordersheet', label: 'ORDER SHEET', sublabel: '밤(로젠)/옥수수(롯데)', icon: '[FILE]', status: 'idle', detail: '통합주문서 분류 대기', x: 30, y: 72 },
+    { id: 'settlement', label: 'SETTLEMENT', sublabel: '정산서·원가계산', icon: '[CALC]', status: 'idle', detail: '정산서 생성 대기', x: 70, y: 72 },
+    { id: 'user', label: 'COMMANDER', sublabel: 'Boss', icon: '[USER]', status: 'online', detail: 'Awaiting command', x: 50, y: 88 },
   ]);
 
   const [logs, setLogs] = useState<LogEntry[]>([
@@ -352,6 +360,10 @@ export default function NeuralMissionMap({ onClose }: { onClose: () => void }) {
     { from: 'user', to: 'jarvis_brain', key: 'user_brain' },
     { from: 'scheduler', to: 'smartstore', key: 'scheduler_smartstore' },
     { from: 'email', to: 'telegram', key: 'email_telegram' },
+    { from: 'jarvis_brain', to: 'ordersheet', key: 'brain_ordersheet' },
+    { from: 'ordersheet', to: 'settlement', key: 'ordersheet_settlement' },
+    { from: 'ordersheet', to: 'email', key: 'ordersheet_email' },
+    { from: 'settlement', to: 'telegram', key: 'settlement_telegram' },
   ];
 
   const getNodeById = (id: string) => nodes.find(n => n.id === id);
