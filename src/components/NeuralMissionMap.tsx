@@ -31,6 +31,7 @@ const SSE_NODE_MAP: Record<string, string> = {
   commander:  'user',
   ordersheet: 'ordersheet',
   settlement: 'settlement',
+  manus:      'manus_agent',
 };
 
 // SSE flow 문자열 -> 연결 키 매핑
@@ -49,6 +50,9 @@ const SSE_FLOW_MAP: Record<string, string> = {
   'ordersheet->settlement':'ordersheet_settlement',
   'ordersheet->email':     'ordersheet_email',
   'settlement->telegram':  'settlement_telegram',
+  'brain->manus':          'brain_manus',
+  'manus->brain':          'brain_manus',
+  'manus->telegram':       'manus_telegram',
 };
 
 interface NodeStatus {
@@ -95,6 +99,7 @@ export default function NeuralMissionMap({ onClose }: { onClose: () => void }) {
     { id: 'email', label: 'EMAIL', sublabel: 'Order Dispatch', icon: '[MAIL]', status: 'idle', detail: 'Order Email', x: 85, y: 55 },
     { id: 'ordersheet', label: 'ORDER SHEET', sublabel: '밤(로젠)/옥수수(롯데)', icon: '[FILE]', status: 'idle', detail: '통합주문서 분류 대기', x: 30, y: 72 },
     { id: 'settlement', label: 'SETTLEMENT', sublabel: '정산서·원가계산', icon: '[CALC]', status: 'idle', detail: '정산서 생성 대기', x: 70, y: 72 },
+    { id: 'manus_agent', label: 'MANUS AI', sublabel: 'Autonomous Agent', icon: '[AI]', status: 'idle', detail: 'Manus 1.6 Max Standby', x: 50, y: 8 },
     { id: 'user', label: 'COMMANDER', sublabel: 'Boss', icon: '[USER]', status: 'online', detail: 'Awaiting command', x: 50, y: 88 },
   ]);
 
@@ -364,6 +369,8 @@ export default function NeuralMissionMap({ onClose }: { onClose: () => void }) {
     { from: 'ordersheet', to: 'settlement', key: 'ordersheet_settlement' },
     { from: 'ordersheet', to: 'email', key: 'ordersheet_email' },
     { from: 'settlement', to: 'telegram', key: 'settlement_telegram' },
+    { from: 'jarvis_brain', to: 'manus_agent', key: 'brain_manus' },
+    { from: 'manus_agent', to: 'telegram', key: 'manus_telegram' },
   ];
 
   const getNodeById = (id: string) => nodes.find(n => n.id === id);
@@ -399,7 +406,7 @@ export default function NeuralMissionMap({ onClose }: { onClose: () => void }) {
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
           <motion.div style={{ width: 8, height: 8, borderRadius: '50%', background: THEME.blue, boxShadow: `0 0 12px ${THEME.blue}` }} animate={{ opacity: [0.5, 1, 0.5] }} transition={{ duration: 1.5, repeat: Infinity }} />
           <span style={{ color: THEME.blue, fontSize: '0.7rem', letterSpacing: '0.4em' }}>NEURAL MISSION MAP</span>
-          <span style={{ color: THEME.textDim, fontSize: '0.45rem', letterSpacing: '0.2em' }}>v2.0 · JARVIS INTELLIGENCE SYSTEM</span>
+          <span style={{ color: THEME.textDim, fontSize: '0.45rem', letterSpacing: '0.2em' }}>v3.0 · JARVIS + MANUS INTELLIGENCE SYSTEM</span>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
           {/* SSE 연결 상태 표시 */}

@@ -1,7 +1,7 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { QRCodeSVG } from 'qrcode.react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { askGPT, parseCommand, generateBannerImage, saveSchedule, saveMemory, searchNaverAPI, searchYouTubeAPI, searchInstagramAPI, invalidateSheetCache, type JarvisState, type JarvisAction, type NaverSearchItem, type YouTubeChannel, type InstagramAccount } from '../lib/jarvis-brain';
+import { askGPT, parseCommand, generateBannerImage, saveSchedule, saveMemory, searchNaverAPI, searchYouTubeAPI, searchInstagramAPI, invalidateSheetCache, executeManusTask, getManusTaskStatus, sendManusMessage, type JarvisState, type JarvisAction, type NaverSearchItem, type YouTubeChannel, type InstagramAccount } from '../lib/jarvis-brain';
 import { useSpeechRecognition, useTextToSpeech, useBargein, useWakeWord, setCurrentVoiceId, getCurrentVoiceId, ELEVENLABS_VOICES, stopGlobalAudio } from './SpeechEngine';
 import { useMicrophoneFrequency } from '../lib/audio-analyzer';
 import { saveLearnedKnowledge, getLearnedKnowledge, getMemoryStats, clearAllMemory, type LearnedKnowledge } from '../lib/jarvis-memory';
@@ -14,6 +14,7 @@ import InfluencerCards, { type InfluencerData } from './InfluencerCards';
 import LocalBusinessCards, { type LocalBusinessData } from './LocalBusinessCards';
 import { ParticleTextCanvas } from './ParticleTextCanvas';
 import NeuralMissionMap from './NeuralMissionMap';
+import ManusStrategyDashboard from './ManusStrategyDashboard';
 
 // ── 시그니처 응답 목록 (GPT 대기 없이 즉시 재생) ──
 const SIGNATURE_RESPONSES = [
@@ -178,6 +179,7 @@ export default function JarvisApp() {
 
   // ── 타이핑 입력 모드 ──
   const [neuralMapVisible, setNeuralMapVisible] = useState(false);
+  const [strategyDashboardVisible, setStrategyDashboardVisible] = useState(false);
   const [textInputMode, setTextInputMode] = useState(false);
   const [textInputValue, setTextInputValue] = useState('');
   const textInputRef = useRef<HTMLInputElement>(null);
@@ -515,6 +517,103 @@ export default function JarvisApp() {
         const saved = saveSchedule(task, time);
         setSchedules(prev => [...prev, { task: saved.task, time: saved.time }]);
       }
+    }
+
+    // ── Manus AI 에이전트 미션 위임 ──
+    if (action?.type === 'manus_task') {
+      const mission = String(action.params?.mission || '');
+      const missionType = String(action.params?.mission_type || 'complex');
+      const urgency = String(action.params?.urgency || 'normal');
+
+      setState('working');
+      addMessage('jarvis', action.response);
+      startSpeakingLevel();
+      await new Promise<void>(resolve => {
+        speak(action.response, undefined, () => { stopSpeakingLevel(); resolve(); });
+      });
+
+      try {
+        // Manus 태스크 생성
+        const result = await executeManusTask(mission, missionType, urgency);
+
+        if (result.status === 'running') {
+          const progressMsg = `Manus AI 에이전트가 미션을 수행 중입니다, 선생님. 작업 ID: ${result.taskId.slice(0, 8)}... 완료되면 보고드리겠습니다.`;
+          setState('speaking');
+          addMessage('jarvis', progressMsg);
+          startSpeakingLevel();
+          await new Promise<void>(resolve => {
+            speak(progressMsg, undefined, () => { stopSpeakingLevel(); resolve(); });
+          });
+
+          // 폴링으로 상태 확인 (최대 60회, 10초 간격 = 10분)
+          let completed = false;
+          for (let i = 0; i < 60; i++) {
+            await new Promise(r => setTimeout(r, 10000));
+            try {
+              const status = await getManusTaskStatus(result.taskId);
+              if (status.status === 'completed') {
+                const completeMsg = `Manus 미션이 완료되었습니다, 선생님. ${status.lastMessage || '결과를 확인해 주세요.'}`;
+                setState('speaking');
+                addMessage('jarvis', completeMsg);
+                startSpeakingLevel();
+                await new Promise<void>(resolve => {
+                  speak(completeMsg, undefined, () => { stopSpeakingLevel(); resolve(); });
+                });
+                // 결과 파일이 있으면 표시
+                if (status.outputFiles && status.outputFiles.length > 0) {
+                  const fileMsg = `결과 파일 ${status.outputFiles.length}개가 생성되었습니다: ${status.outputFiles.map(f => f.name).join(', ')}`;
+                  addMessage('jarvis', fileMsg);
+                }
+                completed = true;
+                break;
+              } else if (status.status === 'failed') {
+                const failMsg = `Manus 미션 수행 중 문제가 발생했습니다, 선생님. ${status.lastMessage || '다시 시도해 보겠습니다.'}`;
+                setState('speaking');
+                addMessage('jarvis', failMsg);
+                startSpeakingLevel();
+                await new Promise<void>(resolve => {
+                  speak(failMsg, undefined, () => { stopSpeakingLevel(); resolve(); });
+                });
+                completed = true;
+                break;
+              }
+              // 아직 진행 중이면 계속 폴링
+            } catch {
+              // 폴링 오류는 무시하고 계속
+            }
+          }
+
+          if (!completed) {
+            const timeoutMsg = 'Manus 미션이 아직 진행 중입니다, 선생님. 완료되면 텔레그램으로 보고드리겠습니다.';
+            setState('speaking');
+            addMessage('jarvis', timeoutMsg);
+            startSpeakingLevel();
+            await new Promise<void>(resolve => {
+              speak(timeoutMsg, undefined, () => { stopSpeakingLevel(); resolve(); });
+            });
+          }
+        } else {
+          // 에러 발생
+          const errorMsg = result.message || 'Manus 에이전트 연결에 실패했습니다, 선생님.';
+          setState('speaking');
+          addMessage('jarvis', errorMsg);
+          startSpeakingLevel();
+          await new Promise<void>(resolve => {
+            speak(errorMsg, undefined, () => { stopSpeakingLevel(); resolve(); });
+          });
+        }
+      } catch (err) {
+        const errorMsg = 'Manus 에이전트와의 통신 중 오류가 발생했습니다, 선생님. 잠시 후 다시 시도해 주세요.';
+        setState('speaking');
+        addMessage('jarvis', errorMsg);
+        startSpeakingLevel();
+        await new Promise<void>(resolve => {
+          speak(errorMsg, undefined, () => { stopSpeakingLevel(); resolve(); });
+        });
+      }
+
+      setState('idle');
+      return;
     }
 
     // ── 네이버 검색 액션 ──
@@ -2145,6 +2244,28 @@ export default function JarvisApp() {
                 transition={{ duration: 1.5, repeat: Infinity }}
               />
               <span style={{ color: '#00D4FF', fontSize: '0.42rem', letterSpacing: '0.2em' }}>SYSTEM MAP</span>
+            </motion.button>
+            )}
+            {!isMobile && (
+            <motion.button
+              onClick={(e) => { e.stopPropagation(); setStrategyDashboardVisible(true); }}
+              whileHover={{ scale: 1.05 }}
+              whileTap={{ scale: 0.95 }}
+              style={{
+                display: 'flex', alignItems: 'center', gap: 5,
+                background: 'rgba(200,169,110,0.08)',
+                border: '1px solid rgba(200,169,110,0.35)',
+                padding: '5px 10px',
+                cursor: 'pointer',
+                fontFamily: 'Orbitron, monospace',
+              }}
+            >
+              <motion.div
+                style={{ width: 5, height: 5, borderRadius: '50%', background: '#C8A96E', boxShadow: '0 0 6px #C8A96E' }}
+                animate={{ opacity: [0.4, 1, 0.4] }}
+                transition={{ duration: 1.5, repeat: Infinity }}
+              />
+              <span style={{ color: '#C8A96E', fontSize: '0.42rem', letterSpacing: '0.2em' }}>STRATEGY HQ</span>
             </motion.button>
             )}
             {/* 상태 표시 */}
@@ -3990,6 +4111,28 @@ export default function JarvisApp() {
       <AnimatePresence>
         {neuralMapVisible && (
           <NeuralMissionMap onClose={() => setNeuralMapVisible(false)} />
+        )}
+      </AnimatePresence>
+
+      {/* ── Manus 글로벌 전략 대시보드 ── */}
+      <AnimatePresence>
+        {strategyDashboardVisible && (
+          <ManusStrategyDashboard
+            onClose={() => setStrategyDashboardVisible(false)}
+            onExecuteStrategy={(strategyId, prompt) => {
+              setStrategyDashboardVisible(false);
+              // Manus 전략 실행을 음성 명령처럼 처리
+              const strategyNames: Record<string, string> = {
+                influencer_hunt: '무인 인플루언서 협상',
+                viral_factory: '바이럴 콘텐츠 공장',
+                community_stealth: '커뮤니티 자동 대응',
+                auto_revenue: '무인 수익 자동화',
+              };
+              const name = strategyNames[strategyId] || strategyId;
+              const msg = `[${name}] ${prompt}`;
+              handleSTTResult(msg);
+            }}
+          />
         )}
       </AnimatePresence>
     </main>

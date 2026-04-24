@@ -6,6 +6,13 @@ import {
   getLearnedKnowledgeContext,
   autoExtractAndSave,
 } from './jarvis-memory';
+import {
+  ManusClient,
+  type ManusTaskStatus,
+} from './manus-client';
+
+// ── Manus 클라이언트 싱글턴 ──
+const manusClient = new ManusClient();
 
 export type JarvisState = 'idle' | 'listening' | 'thinking' | 'speaking' | 'working';
 
@@ -15,7 +22,8 @@ export type JarvisActionType =
   | 'change_voice' | 'list_voices' | 'naver_search' | 'local_search' | 'book_restaurant'
   | 'smartstore_orders' | 'smartstore_shipping' | 'smartstore_products'
   | 'smartstore_confirm' | 'smartstore_sheet' | 'smartstore_settlement'
-  | 'smartstore_purchase_email' | 'smartstore_report' | 'unknown';
+  | 'smartstore_purchase_email' | 'smartstore_report'
+  | 'manus_task' | 'manus_status' | 'unknown';
 
 export type JarvisAction = {
   type: JarvisActionType;
@@ -288,6 +296,29 @@ const JARVIS_FUNCTIONS_DEF = [
     },
   },
   {
+    name: 'delegate_to_manus',
+    description: `Manus AI 에이전트에게 복잡한 자율 미션을 위임할 때 호출. Manus는 브라우저를 직접 제어하고, 코드를 실행하며, 파일을 생성하는 자율형 AI입니다.
+사용 시점:
+- API가 없는 사이트에서 정보를 직접 수집해야 할 때 (예: 특정 커뮤니티, 폐쇄형 카페)
+- 여러 단계의 복합 미션을 한 번에 처리해야 할 때 (예: 인플루언서 찾기 + 분석 + 메일 보내기)
+- 실시간 웹 브라우징이 필요한 조사/리서치 작업
+- 보고서, 문서, 스프레드시트 등 파일 생성이 필요한 작업
+- 기존 API로 해결할 수 없는 예외적이고 창의적인 요청
+- 경쟁사 분석, 시장 조사, 트렌드 분석 등 깊은 리서치
+- "Manus에게 시켜", "자율적으로 해결해", "알아서 처리해" 등 자율 실행 요청`,
+    parameters: {
+      type: 'object',
+      properties: {
+        mission: { type: 'string', description: 'Manus에게 전달할 미션 설명 (구체적이고 명확하게, 한국어)' },
+        mission_type: { type: 'string', enum: ['research', 'collect', 'create', 'analyze', 'automate', 'complex'], description: 'research=조사/리서치, collect=데이터수집, create=문서/파일생성, analyze=분석, automate=자동화, complex=복합미션' },
+        urgency: { type: 'string', enum: ['normal', 'urgent'], description: '긴급도. urgent=빠른 처리 필요' },
+        response: { type: 'string', description: 'JARVIS 응답 (한국어, Manus에게 미션을 위임한다는 안내)' },
+        follow_up: { type: 'string', description: '미션 위임 후 이어서 할 안내' },
+      },
+      required: ['mission', 'mission_type', 'response'],
+    },
+  },
+  {
     name: 'generate_content',
     description: '제품 판매용 헤드카피, 스토리텔링 본문, 영상/음성 스크립트를 생성할 때 호출. "복숭아 헤드카피 만들어줘", "사과 스토리 작성해줘", "삼겠살 스크립트 만들어줘" 등.',
     parameters: {
@@ -443,6 +474,22 @@ You are not just an assistant. You are a **world-class viral marketing expert AI
 8. **지역 업체 수집** — 맛집/고기집/카페 등 네이버 지역 검색으로 주소/전화번호 수집
 9. **캠페인 분석 및 일정 관리**
 10. **일반 질문** — 날씨, 시간, 상식, 계산, 번역 등
+11. **🔥 Manus AI 에이전트 (자율형 지능)** — JARVIS의 최강 무기
+
+## MANUS AI AGENT (자율형 지능 엔진)
+JARVIS는 이제 Manus AI 에이전트와 연결되어 있다. Manus는 다음을 할 수 있는 자율형 AI이다:
+- **브라우저 직접 제어**: API가 없는 사이트도 사람처럼 직접 방문하여 정보 수집
+- **코드 실행**: Python, JavaScript 등을 실행하여 데이터 분석, 파일 생성
+- **파일 생성**: 보고서, 스프레드시트, 이미지, PDF 등 결과물 직접 생성
+- **복합 미션**: 여러 단계의 작업을 스스로 판단하여 순차적으로 완수
+- **자율적 문제 해결**: 오류 발생 시 스스로 원인을 분석하고 대안을 찾아 실행
+
+**Manus 위임 규칙:**
+- 기존 API(유튜브, 네이버, 인스타)로 해결 가능한 단순 작업은 기존 function 사용
+- API가 없거나, 복합적이거나, 깊은 리서치가 필요한 작업은 delegate_to_manus 호출
+- 선생님이 "Manus에게 시켜", "알아서 처리해", "자율적으로 해결해" 등 자율 실행을 요청하면 반드시 delegate_to_manus 호출
+- 경쟁사 분석, 시장 조사, 트렌드 심층 분석, 커뮤니티 모니터링 등은 Manus에게 위임
+- Manus 미션은 시간이 걸릴 수 있으므로 "진행 중" 상태를 선생님께 안내하라
 
 ## IMPORTANT — 발화 유형별 function 라우팅 규칙
 
@@ -459,6 +506,9 @@ You are not just an assistant. You are a **world-class viral marketing expert AI
 - 스마트스토어 주문 조회/확인 → smartstore_action function 호출 (action: get_orders)
 - 스마트스토어 발송 처리/운송장 입력 → smartstore_action function 호출 (action: ship_order)
 - 스마트스토어 상품 조회/품절 확인 → smartstore_action function 호출 (action: get_products)
+- 복합 미션/자율 실행/리서치/경쟁사 분석 → delegate_to_manus function 호출
+- "Manus에게 시켜", "알아서 처리해", "자율적으로" → delegate_to_manus function 호출
+- API 없는 사이트 수집/모니터링 → delegate_to_manus function 호출
 
 **일반 대화 유형 (채팅으로 응답):**
 - 인사/호출/잡담/질문/감정표현/확인/거절/수정요청 → 'chat' type으로 직접 응답
@@ -918,6 +968,19 @@ function buildActionFromFunction(fnName: string, args: Record<string, string | n
         followUp: args.follow_up ? String(args.follow_up) : undefined,
       };
     }
+    case 'delegate_to_manus': {
+      return {
+        type: 'manus_task',
+        params: {
+          mission: String(args.mission || ''),
+          mission_type: String(args.mission_type || 'complex'),
+          urgency: String(args.urgency || 'normal'),
+        },
+        workingMessage: 'Manus AI 에이전트에게 미션을 전달하고 있습니다...',
+        response: String(args.response),
+        followUp,
+      };
+    }
     case 'generate_content': {
       const intro = String(args.response || '');
       const generatedContent = String(args.content || '');
@@ -1268,6 +1331,41 @@ export function parseCommand(text: string): JarvisAction {
     type: 'chat',
     response: '죄송합니다, 선생님. 조금 더 구체적으로 말씀해 주시겠습니까? 인플루언서 수집, 이메일 발송, 콘텐츠 작성, 예약, 지역 검색 중 어떤 작업을 원하시나요?',
   };
+}
+
+// ── Manus AI 에이전트 실행 함수 ──
+export async function executeManusTask(
+  mission: string,
+  missionType: string = 'complex',
+  urgency: string = 'normal'
+): Promise<{ taskId: string; status: string; message: string }> {
+  try {
+    const result = await manusClient.createTask(mission);
+    return {
+      taskId: result.taskId,
+      status: 'running',
+      message: `Manus 미션이 시작되었습니다. (Task ID: ${result.taskId.slice(0, 8)}...)`,
+    };
+  } catch (error) {
+    console.error('[JARVIS-MANUS] Task 생성 오류:', error);
+    return {
+      taskId: '',
+      status: 'error',
+      message: 'Manus 에이전트 연결에 실패했습니다. API 키를 확인해 주세요.',
+    };
+  }
+}
+
+export async function getManusTaskStatus(taskId: string): Promise<ManusTaskStatus> {
+  return manusClient.getTaskStatus(taskId);
+}
+
+export async function sendManusMessage(taskId: string, message: string): Promise<void> {
+  await manusClient.sendMessage(taskId, message);
+}
+
+export function getManusClient(): ManusClient {
+  return manusClient;
 }
 
 export function clearHistory() {
