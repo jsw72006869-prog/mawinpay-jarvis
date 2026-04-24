@@ -1,8 +1,8 @@
 import { useState, useEffect, useRef, useCallback, useMemo, Suspense } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import * as THREE from 'three';
-import { Canvas, useFrame, useThree } from '@react-three/fiber';
-import { Float, Text, Points, PointMaterial, Line, Sphere, MeshDistortMaterial, PerspectiveCamera, Environment } from '@react-three/drei';
+import { Canvas, useFrame } from '@react-three/fiber';
+import { Float, Text, Points, PointMaterial, Line, Sphere, MeshDistortMaterial, PerspectiveCamera, Environment, OrbitControls } from '@react-three/drei';
 
 const THEME = {
   gold:       '#C8A96E',
@@ -92,15 +92,13 @@ const STATUS_LABEL: Record<string, string> = {
   idle:       'STANDBY',
 };
 
-// --- 3D Components ---
-
 function BackgroundParticles() {
   const points = useMemo(() => {
-    const p = new Float32Array(2000 * 3);
-    for (let i = 0; i < 2000; i++) {
-      p[i * 3] = (Math.random() - 0.5) * 100;
-      p[i * 3 + 1] = (Math.random() - 0.5) * 100;
-      p[i * 3 + 2] = (Math.random() - 0.5) * 100;
+    const p = new Float32Array(1500 * 3);
+    for (let i = 0; i < 1500; i++) {
+      p[i * 3] = (Math.random() - 0.5) * 150;
+      p[i * 3 + 1] = (Math.random() - 0.5) * 150;
+      p[i * 3 + 2] = (Math.random() - 0.5) * 150;
     }
     return p;
   }, []);
@@ -108,8 +106,7 @@ function BackgroundParticles() {
   const ref = useRef<THREE.Points>(null);
   useFrame((state) => {
     if (ref.current) {
-      ref.current.rotation.y = state.clock.getElapsedTime() * 0.05;
-      ref.current.rotation.x = state.clock.getElapsedTime() * 0.02;
+      ref.current.rotation.y = state.clock.getElapsedTime() * 0.02;
     }
   });
 
@@ -118,10 +115,11 @@ function BackgroundParticles() {
       <PointMaterial
         transparent
         color={THEME.blue}
-        size={0.15}
+        size={0.2}
         sizeAttenuation={true}
         depthWrite={false}
         blending={THREE.AdditiveBlending}
+        opacity={0.4}
       />
     </Points>
   );
@@ -130,44 +128,53 @@ function BackgroundParticles() {
 function Node3D({ node, isSelected, onSelect }: { node: NodeStatus, isSelected: boolean, onSelect: (id: string) => void }) {
   const color = STATUS_COLOR[node.status];
   const isProcessing = node.status === 'processing';
+  const groupRef = useRef<THREE.Group>(null);
+
+  useFrame((state) => {
+    if (groupRef.current) {
+      groupRef.current.children.forEach((child) => {
+        if (child instanceof THREE.Mesh && child.name === 'label') {
+          child.quaternion.copy(state.camera.quaternion);
+        }
+      });
+    }
+  });
   
   return (
-    <Float speed={2} rotationIntensity={0.5} floatIntensity={0.5} position={[node.x, node.y, node.z]}>
-      <group onClick={(e) => { e.stopPropagation(); onSelect(node.id); }}>
-        {/* Core Sphere */}
-        <Sphere args={[0.8, 32, 32]}>
+    <Float speed={1.5} rotationIntensity={0.2} floatIntensity={0.5} position={[node.x, node.y, node.z]}>
+      <group ref={groupRef} onClick={(e) => { e.stopPropagation(); onSelect(node.id); }}>
+        <Sphere args={[1.2, 32, 32]}>
           <MeshDistortMaterial
             color={color}
-            speed={isProcessing ? 4 : 1}
-            distort={isProcessing ? 0.4 : 0.2}
+            speed={isProcessing ? 3 : 1}
+            distort={isProcessing ? 0.3 : 0.1}
             radius={1}
             emissive={color}
-            emissiveIntensity={isSelected ? 2 : 0.5}
+            emissiveIntensity={isSelected ? 4 : 1.5}
           />
         </Sphere>
         
-        {/* Outer Ring */}
         <mesh rotation={[Math.PI / 2, 0, 0]}>
-          <torusGeometry args={[1.5, 0.02, 16, 100]} />
-          <meshStandardMaterial color={color} emissive={color} emissiveIntensity={1} transparent opacity={0.3} />
+          <torusGeometry args={[2.2, 0.05, 16, 100]} />
+          <meshStandardMaterial color={color} emissive={color} emissiveIntensity={2} transparent opacity={0.4} />
         </mesh>
 
-        {/* Label */}
         <Text
-          position={[0, -1.8, 0]}
-          fontSize={0.4}
+          name="label"
+          position={[0, -2.8, 0]}
+          fontSize={0.8}
           color={THEME.text}
-          font="/fonts/Inter-Bold.woff" // 실제 프로젝트 폰트 경로에 맞춰야 함
           anchorX="center"
           anchorY="middle"
+          outlineWidth={0.05}
+          outlineColor="#000000"
         >
           {node.label}
         </Text>
         
-        {/* Selection Glow */}
         {isSelected && (
-          <Sphere args={[1.2, 32, 32]}>
-            <meshStandardMaterial color={color} transparent opacity={0.1} />
+          <Sphere args={[1.8, 32, 32]}>
+            <meshStandardMaterial color={color} transparent opacity={0.15} />
           </Sphere>
         )}
       </group>
@@ -182,33 +189,31 @@ function ConnectionLine({ start, end, active }: { start: [number, number, number
     <Line
       points={points}
       color={active ? THEME.blue : THEME.blue}
-      lineWidth={active ? 2 : 0.5}
+      lineWidth={active ? 3 : 1}
       transparent
-      opacity={active ? 0.8 : 0.15}
+      opacity={active ? 1 : 0.2}
       dashed={!active}
-      dashScale={5}
+      dashScale={2}
       gapSize={0.5}
     />
   );
 }
 
-// --- Main Component ---
-
 export default function NeuralMissionMap({ onClose }: { onClose: () => void }) {
   const [nodes, setNodes] = useState<NodeStatus[]>([
     { id: 'jarvis_brain', label: 'JARVIS CORE', sublabel: 'Railway Server', icon: '🧠', status: 'idle', detail: 'Connecting...', x: 0, y: 0, z: 0 },
-    { id: 'smartstore', label: 'SMARTSTORE', sublabel: 'Naver Commerce', icon: '🛒', status: 'idle', detail: 'Smartstore API', x: -12, y: 8, z: -5 },
-    { id: 'telegram', label: 'TELEGRAM', sublabel: 'Notification Bot', icon: '📡', status: 'idle', detail: 'Telegram Bot', x: 12, y: 8, z: -5 },
-    { id: 'scheduler', label: 'SCHEDULER', sublabel: 'Auto Task', icon: '⏰', status: 'idle', detail: 'Scheduler', x: -12, y: -8, z: -5 },
-    { id: 'email', label: 'EMAIL', sublabel: 'Order Dispatch', icon: '✉️', status: 'idle', detail: 'Order Email', x: 12, y: -8, z: -5 },
-    { id: 'ordersheet', label: 'ORDER SHEET', sublabel: 'Logistics', icon: '📋', status: 'idle', detail: 'Sorting...', x: -6, y: -12, z: 5 },
-    { id: 'settlement', label: 'SETTLEMENT', sublabel: 'Accounting', icon: '🧮', status: 'idle', detail: 'Calculating...', x: 6, y: -12, z: 5 },
-    { id: 'manus_agent', label: 'MANUS AI', sublabel: 'Autonomous Agent', icon: '🤖', status: 'idle', detail: 'Manus 1.6 Max Standby', x: 0, y: 15, z: 0 },
-    { id: 'user', label: 'COMMANDER', sublabel: 'Boss', icon: '👤', status: 'online', detail: 'Awaiting command', x: 0, y: -18, z: 10 },
+    { id: 'smartstore', label: 'SMARTSTORE', sublabel: 'Naver Commerce', icon: '🛒', status: 'idle', detail: 'Smartstore API', x: -18, y: 10, z: -10 },
+    { id: 'telegram', label: 'TELEGRAM', sublabel: 'Notification Bot', icon: '📡', status: 'idle', detail: 'Telegram Bot', x: 18, y: 10, z: -10 },
+    { id: 'scheduler', label: 'SCHEDULER', sublabel: 'Auto Task', icon: '⏰', status: 'idle', detail: 'Scheduler', x: -18, y: -10, z: -10 },
+    { id: 'email', label: 'EMAIL', sublabel: 'Order Dispatch', icon: '✉️', status: 'idle', detail: 'Order Email', x: 18, y: -10, z: -10 },
+    { id: 'ordersheet', label: 'ORDER SHEET', sublabel: 'Logistics', icon: '📋', status: 'idle', detail: 'Sorting...', x: -10, y: -18, z: 5 },
+    { id: 'settlement', label: 'SETTLEMENT', sublabel: 'Accounting', icon: '🧮', status: 'idle', detail: 'Calculating...', x: 10, y: -18, z: 5 },
+    { id: 'manus_agent', label: 'MANUS AI', sublabel: 'Autonomous Agent', icon: '🤖', status: 'idle', detail: 'Manus 1.6 Max Standby', x: 0, y: 22, z: 0 },
+    { id: 'user', label: 'COMMANDER', sublabel: 'Boss', icon: '👤', status: 'online', detail: 'Awaiting command', x: 0, y: -25, z: 15 },
   ]);
 
   const [logs, setLogs] = useState<LogEntry[]>([
-    { time: '--:--:--', text: 'JARVIS Neural Mission Map v3.0 initializing...', type: 'info' },
+    { time: '--:--:--', text: 'JARVIS Neural Mission Map v3.1 initializing...', type: 'info' },
   ]);
   const [selectedNode, setSelectedNode] = useState<string | null>('jarvis_brain');
   const [activeConnections, setActiveConnections] = useState<string[]>([]);
@@ -227,14 +232,16 @@ export default function NeuralMissionMap({ onClose }: { onClose: () => void }) {
     setNodes(prev => prev.map(n => n.id === id ? { ...n, ...updates } : n));
   }, []);
 
-  // SSE & Health Check Logic (기존 로직 유지)
   useEffect(() => {
     const connectSSE = () => {
       if (sseRef.current) sseRef.current.close();
       setSseStatus('connecting');
       const es = new EventSource(`${BOOKING_SERVER}/events`);
       sseRef.current = es;
-      es.onopen = () => setSseStatus('connected');
+      es.onopen = () => {
+        setSseStatus('connected');
+        addLog('JARVIS 시스템 연결됨 | 실시간 모니터링 시작', 'success');
+      };
       es.onmessage = (e) => {
         try {
           const data = JSON.parse(e.data);
@@ -279,23 +286,23 @@ export default function NeuralMissionMap({ onClose }: { onClose: () => void }) {
         fontFamily: 'Inter, sans-serif', overflow: 'hidden'
       }}
     >
-      {/* Header */}
-      <div style={{ padding: '20px 40px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: `1px solid ${THEME.blue}22` }}>
+      <div style={{ padding: '20px 40px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: `1px solid ${THEME.blue}22`, background: 'rgba(6,10,18,0.8)', backdropFilter: 'blur(10px)', zIndex: 10 }}>
         <div>
-          <div style={{ fontSize: '1.2rem', fontWeight: 'bold', letterSpacing: '0.2em', color: THEME.gold }}>JARVIS NEURAL MISSION MAP v3.0</div>
+          <div style={{ fontSize: '1.2rem', fontWeight: 'bold', letterSpacing: '0.2em', color: THEME.gold }}>JARVIS NEURAL MISSION MAP v3.1</div>
           <div style={{ fontSize: '0.7rem', color: THEME.textDim, letterSpacing: '0.1em' }}>MISSION PHASE: <span style={{ color: THEME.blue }}>{missionPhase}</span></div>
         </div>
-        <button onClick={onClose} style={{ background: 'transparent', border: `1px solid ${THEME.blue}44`, color: THEME.blue, padding: '8px 20px', cursor: 'pointer', borderRadius: '4px' }}>CLOSE TERMINAL</button>
+        <button onClick={onClose} style={{ background: 'transparent', border: `1px solid ${THEME.blue}44`, color: THEME.blue, padding: '8px 20px', cursor: 'pointer', borderRadius: '4px', fontWeight: 'bold' }}>CLOSE TERMINAL</button>
       </div>
 
       <div style={{ flex: 1, display: 'flex', position: 'relative' }}>
-        {/* 3D Canvas Area */}
-        <div style={{ flex: 1, position: 'relative' }}>
+        <div style={{ flex: 1, position: 'relative', background: 'radial-gradient(circle at center, #0a1525 0%, #030608 100%)' }}>
           <Canvas shadows dpr={[1, 2]}>
-            <PerspectiveCamera makeDefault position={[0, 0, 40]} fov={45} />
-            <ambientLight intensity={0.5} />
-            <pointLight position={[10, 10, 10]} intensity={1} />
-            <spotLight position={[-10, 20, 10]} angle={0.15} penumbra={1} intensity={2} castShadow />
+            <PerspectiveCamera makeDefault position={[0, 0, 60]} fov={50} />
+            <OrbitControls enablePan={true} enableZoom={true} maxDistance={120} minDistance={20} />
+            
+            <ambientLight intensity={0.8} />
+            <pointLight position={[20, 20, 20]} intensity={2} color={THEME.blue} />
+            <pointLight position={[-20, -20, -20]} intensity={1} color={THEME.gold} />
             
             <BackgroundParticles />
             
@@ -304,79 +311,78 @@ export default function NeuralMissionMap({ onClose }: { onClose: () => void }) {
                 <Node3D key={node.id} node={node} isSelected={selectedNode === node.id} onSelect={setSelectedNode} />
               ))}
               
-              {/* Connections */}
-              <ConnectionLine start={[0, 0, 0]} end={[-12, 8, -5]} active={activeConnections.includes('brain_smartstore')} />
-              <ConnectionLine start={[0, 0, 0]} end={[12, 8, -5]} active={activeConnections.includes('brain_telegram')} />
-              <ConnectionLine start={[0, 0, 0]} end={[-12, -8, -5]} active={activeConnections.includes('brain_scheduler')} />
-              <ConnectionLine start={[0, 0, 0]} end={[12, -8, -5]} active={activeConnections.includes('brain_email')} />
-              <ConnectionLine start={[0, 0, 0]} end={[0, 15, 0]} active={activeConnections.includes('brain_manus')} />
-              <ConnectionLine start={[0, -18, 10]} end={[0, 0, 0]} active={activeConnections.includes('user_brain')} />
-              <ConnectionLine start={[0, 0, 0]} end={[-6, -12, 5]} active={activeConnections.includes('brain_ordersheet')} />
-              <ConnectionLine start={[-6, -12, 5]} end={[6, -12, 5]} active={activeConnections.includes('ordersheet_settlement')} />
-              <ConnectionLine start={[6, -12, 5]} end={[12, 8, -5]} active={activeConnections.includes('settlement_telegram')} />
-              <ConnectionLine start={[0, 15, 0]} end={[12, 8, -5]} active={activeConnections.includes('manus_telegram')} />
+              <ConnectionLine start={[0, 0, 0]} end={[-18, 10, -10]} active={activeConnections.includes('brain_smartstore')} />
+              <ConnectionLine start={[0, 0, 0]} end={[18, 10, -10]} active={activeConnections.includes('brain_telegram')} />
+              <ConnectionLine start={[0, 0, 0]} end={[-18, -10, -10]} active={activeConnections.includes('brain_scheduler')} />
+              <ConnectionLine start={[0, 0, 0]} end={[18, -10, -10]} active={activeConnections.includes('brain_email')} />
+              <ConnectionLine start={[0, 0, 0]} end={[0, 22, 0]} active={activeConnections.includes('brain_manus')} />
+              <ConnectionLine start={[0, -25, 15]} end={[0, 0, 0]} active={activeConnections.includes('user_brain')} />
+              <ConnectionLine start={[0, 0, 0]} end={[-10, -18, 5]} active={activeConnections.includes('brain_ordersheet')} />
+              <ConnectionLine start={[-10, -18, 5]} end={[10, -18, 5]} active={activeConnections.includes('ordersheet_settlement')} />
+              <ConnectionLine start={[10, -18, 5]} end={[18, 10, -10]} active={activeConnections.includes('settlement_telegram')} />
+              <ConnectionLine start={[0, 22, 0]} end={[18, 10, -10]} active={activeConnections.includes('manus_telegram')} />
             </Suspense>
 
-            <Environment preset="city" />
+            <Environment preset="night" />
           </Canvas>
 
-          {/* Overlay Info */}
-          <div style={{ position: 'absolute', bottom: 20, left: 20, pointerEvents: 'none' }}>
-            <div style={{ fontSize: '0.6rem', color: THEME.textDim, marginBottom: 4 }}>SYSTEM STATUS</div>
-            <div style={{ display: 'flex', gap: 10 }}>
-              <div style={{ padding: '4px 12px', background: `${THEME.blue}22`, border: `1px solid ${THEME.blue}44`, borderRadius: 4, fontSize: '0.7rem' }}>
-                SSE: <span style={{ color: sseStatus === 'connected' ? THEME.green : THEME.orange }}>{sseStatus.toUpperCase()}</span>
+          <div style={{ position: 'absolute', bottom: 30, left: 30, pointerEvents: 'none', zIndex: 10 }}>
+            <div style={{ fontSize: '0.6rem', color: THEME.textDim, marginBottom: 8, letterSpacing: '0.2em' }}>SYSTEM STATUS</div>
+            <div style={{ display: 'flex', gap: 12 }}>
+              <div style={{ padding: '6px 16px', background: 'rgba(0,212,255,0.1)', border: `1px solid ${THEME.blue}44`, borderRadius: 4, fontSize: '0.75rem', backdropFilter: 'blur(5px)' }}>
+                SSE: <span style={{ color: sseStatus === 'connected' ? THEME.green : THEME.orange, fontWeight: 'bold' }}>{sseStatus.toUpperCase()}</span>
               </div>
-              <div style={{ padding: '4px 12px', background: `${THEME.gold}22`, border: `1px solid ${THEME.gold}44`, borderRadius: 4, fontSize: '0.7rem' }}>
-                NODES: {nodes.length} ACTIVE
+              <div style={{ padding: '6px 16px', background: 'rgba(200,169,110,0.1)', border: `1px solid ${THEME.gold}44`, borderRadius: 4, fontSize: '0.75rem', backdropFilter: 'blur(5px)' }}>
+                NODES: <span style={{ fontWeight: 'bold' }}>{nodes.length} ACTIVE</span>
               </div>
             </div>
           </div>
         </div>
 
-        {/* Right Sidebar (Logs & Details) */}
-        <div style={{ width: 350, background: `${THEME.bgDeep}EE`, borderLeft: `1px solid ${THEME.blue}22`, display: 'flex', flexDirection: 'column' }}>
-          {/* Node Detail */}
-          <div style={{ padding: 24, borderBottom: `1px solid ${THEME.blue}22` }}>
-            <div style={{ fontSize: '0.6rem', color: THEME.textDim, letterSpacing: '0.2em', marginBottom: 12 }}>NODE INSPECTOR</div>
+        <div style={{ width: 380, background: 'rgba(3,6,8,0.9)', borderLeft: `1px solid ${THEME.blue}22`, display: 'flex', flexDirection: 'column', zIndex: 10, backdropFilter: 'blur(20px)' }}>
+          <div style={{ padding: 30, borderBottom: `1px solid ${THEME.blue}22` }}>
+            <div style={{ fontSize: '0.65rem', color: THEME.textDim, letterSpacing: '0.3em', marginBottom: 20 }}>NODE INSPECTOR</div>
             {selectedNodeData ? (
-              <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} key={selectedNodeData.id}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16 }}>
-                  <div style={{ fontSize: '2rem' }}>{selectedNodeData.icon}</div>
+              <motion.div initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} key={selectedNodeData.id}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 15, marginBottom: 20 }}>
+                  <div style={{ fontSize: '2.5rem', filter: 'drop-shadow(0 0 10px rgba(0,212,255,0.5))' }}>{selectedNodeData.icon}</div>
                   <div>
-                    <div style={{ fontSize: '1.1rem', fontWeight: 'bold', color: STATUS_COLOR[selectedNodeData.status] }}>{selectedNodeData.label}</div>
-                    <div style={{ fontSize: '0.7rem', color: THEME.textDim }}>{selectedNodeData.sublabel}</div>
+                    <div style={{ fontSize: '1.3rem', fontWeight: 'bold', color: STATUS_COLOR[selectedNodeData.status], letterSpacing: '0.05em' }}>{selectedNodeData.label}</div>
+                    <div style={{ fontSize: '0.8rem', color: THEME.textDim }}>{selectedNodeData.sublabel}</div>
                   </div>
                 </div>
-                <div style={{ padding: 12, background: `${THEME.blue}11`, borderRadius: 4, border: `1px solid ${THEME.blue}33`, marginBottom: 16 }}>
-                  <div style={{ fontSize: '0.85rem', lineHeight: 1.5 }}>{selectedNodeData.detail}</div>
+                <div style={{ padding: 18, background: 'rgba(0,212,255,0.05)', borderRadius: 8, border: `1px solid ${THEME.blue}33`, marginBottom: 20 }}>
+                  <div style={{ fontSize: '0.95rem', lineHeight: 1.6, color: THEME.text }}>{selectedNodeData.detail}</div>
                   {selectedNodeData.progress !== undefined && (
-                    <div style={{ marginTop: 12 }}>
-                      <div style={{ height: 4, background: `${THEME.blue}22`, borderRadius: 2, overflow: 'hidden' }}>
+                    <div style={{ marginTop: 15 }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 5, fontSize: '0.7rem', color: THEME.textDim }}>
+                        <span>PROCESSING</span>
+                        <span>{selectedNodeData.progress}%</span>
+                      </div>
+                      <div style={{ height: 6, background: 'rgba(0,212,255,0.1)', borderRadius: 3, overflow: 'hidden' }}>
                         <motion.div 
                           initial={{ width: 0 }} 
                           animate={{ width: `${selectedNodeData.progress}%` }} 
-                          style={{ height: '100%', background: STATUS_COLOR[selectedNodeData.status], boxShadow: `0 0 10px ${STATUS_COLOR[selectedNodeData.status]}` }} 
+                          style={{ height: '100%', background: STATUS_COLOR[selectedNodeData.status], boxShadow: `0 0 15px ${STATUS_COLOR[selectedNodeData.status]}` }} 
                         />
                       </div>
                     </div>
                   )}
                 </div>
-                <div style={{ fontSize: '0.7rem', color: STATUS_COLOR[selectedNodeData.status], fontWeight: 'bold' }}>● {STATUS_LABEL[selectedNodeData.status]}</div>
+                <div style={{ fontSize: '0.8rem', color: STATUS_COLOR[selectedNodeData.status], fontWeight: 'bold', letterSpacing: '0.1em' }}>● {STATUS_LABEL[selectedNodeData.status]}</div>
               </motion.div>
             ) : (
-              <div style={{ color: THEME.textDim, fontSize: '0.8rem' }}>Select a node to inspect</div>
+              <div style={{ color: THEME.textDim, fontSize: '0.9rem', textAlign: 'center', padding: '40px 0' }}>Select a node to inspect</div>
             )}
           </div>
 
-          {/* Logs */}
           <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-            <div style={{ padding: '16px 24px 8px', fontSize: '0.6rem', color: THEME.textDim, letterSpacing: '0.2em' }}>MISSION LOGS</div>
-            <div style={{ flex: 1, overflowY: 'auto', padding: '0 24px 24px', fontSize: '0.75rem' }}>
+            <div style={{ padding: '20px 30px 10px', fontSize: '0.65rem', color: THEME.textDim, letterSpacing: '0.3em' }}>MISSION LOGS</div>
+            <div style={{ flex: 1, overflowY: 'auto', padding: '0 30px 30px', fontSize: '0.8rem', scrollbarWidth: 'thin', scrollbarColor: `${THEME.blue}33 transparent` }}>
               {logs.map((log, i) => (
-                <div key={i} style={{ marginBottom: 8, display: 'flex', gap: 10 }}>
-                  <span style={{ color: THEME.textDim, opacity: 0.5 }}>{log.time}</span>
-                  <span style={{ color: log.type === 'error' ? THEME.orange : log.type === 'success' ? THEME.green : THEME.text }}>{log.text}</span>
+                <div key={i} style={{ marginBottom: 10, display: 'flex', gap: 12, borderLeft: `2px solid ${log.type === 'error' ? THEME.orange : log.type === 'success' ? THEME.green : THEME.blue}44`, paddingLeft: 10 }}>
+                  <span style={{ color: THEME.textDim, opacity: 0.6, fontSize: '0.7rem', whiteSpace: 'nowrap' }}>{log.time}</span>
+                  <span style={{ color: log.type === 'error' ? THEME.orange : log.type === 'success' ? THEME.green : THEME.text, lineHeight: 1.4 }}>{log.text}</span>
                 </div>
               ))}
               <div ref={logsEndRef} />
@@ -385,13 +391,12 @@ export default function NeuralMissionMap({ onClose }: { onClose: () => void }) {
         </div>
       </div>
 
-      {/* Footer */}
-      <div style={{ padding: '12px 40px', background: THEME.bgDeep, borderTop: `1px solid ${THEME.blue}22`, display: 'flex', justifyContent: 'space-between', fontSize: '0.7rem', color: THEME.textDim }}>
-        <div>MAWINPAY INTELLIGENCE · SYSTEM v3.0.4</div>
-        <div style={{ display: 'flex', gap: 20 }}>
-          <span>LATENCY: 24ms</span>
-          <span>UPTIME: 99.9%</span>
-          <span style={{ color: THEME.green }}>SECURE CONNECTION</span>
+      <div style={{ padding: '15px 40px', background: THEME.bgDeep, borderTop: `1px solid ${THEME.blue}22`, display: 'flex', justifyContent: 'space-between', fontSize: '0.75rem', color: THEME.textDim, zIndex: 10 }}>
+        <div>MAWINPAY INTELLIGENCE · SYSTEM v3.1.2</div>
+        <div style={{ display: 'flex', gap: 25 }}>
+          <span>LATENCY: <span style={{ color: THEME.blue }}>24ms</span></span>
+          <span>UPTIME: <span style={{ color: THEME.blue }}>99.9%</span></span>
+          <span style={{ color: THEME.green, fontWeight: 'bold' }}>SECURE CONNECTION</span>
         </div>
       </div>
     </motion.div>
