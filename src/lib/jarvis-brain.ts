@@ -7,12 +7,15 @@ import {
   autoExtractAndSave,
 } from './jarvis-memory';
 import {
-  ManusClient,
-  type ManusTaskStatus,
+  createManusTask,
+  getManusTaskStatus as fetchManusStatus,
+  sendManusMessage,
+  confirmManusAction,
+  ManusTaskPoller,
+  buildManusPrompt,
+  checkManusConnection,
+  type ManusTask,
 } from './manus-client';
-
-// ── Manus 클라이언트 싱글턴 ──
-const manusClient = new ManusClient();
 
 export type JarvisState = 'idle' | 'listening' | 'thinking' | 'speaking' | 'working';
 
@@ -1340,11 +1343,22 @@ export async function executeManusTask(
   urgency: string = 'normal'
 ): Promise<{ taskId: string; status: string; message: string }> {
   try {
-    const result = await manusClient.createTask(mission);
+    const prompt = buildManusPrompt(mission, {
+      businessType: '농산물 판매 및 바이럴 마케팅',
+      targetPlatforms: ['유튜브', '인스타그램', '네이버'],
+    });
+    const result = await createManusTask(prompt);
+    if (result.success && result.task_id) {
+      return {
+        taskId: result.task_id,
+        status: 'running',
+        message: `Manus 미션이 시작되었습니다. (Task ID: ${result.task_id.slice(0, 8)}...)`,
+      };
+    }
     return {
-      taskId: result.taskId,
-      status: 'running',
-      message: `Manus 미션이 시작되었습니다. (Task ID: ${result.taskId.slice(0, 8)}...)`,
+      taskId: '',
+      status: 'error',
+      message: result.error || 'Manus 태스크 생성 실패',
     };
   } catch (error) {
     console.error('[JARVIS-MANUS] Task 생성 오류:', error);
@@ -1356,17 +1370,9 @@ export async function executeManusTask(
   }
 }
 
-export async function getManusTaskStatus(taskId: string): Promise<ManusTaskStatus> {
-  return manusClient.getTaskStatus(taskId);
-}
-
-export async function sendManusMessage(taskId: string, message: string): Promise<void> {
-  await manusClient.sendMessage(taskId, message);
-}
-
-export function getManusClient(): ManusClient {
-  return manusClient;
-}
+export { fetchManusStatus as getManusTaskStatus };
+export { sendManusMessage as sendManusMsg };
+export { checkManusConnection };
 
 export function clearHistory() {
   conversationHistory.length = 0;

@@ -1,7 +1,7 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { QRCodeSVG } from 'qrcode.react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { askGPT, parseCommand, generateBannerImage, saveSchedule, saveMemory, searchNaverAPI, searchYouTubeAPI, searchInstagramAPI, invalidateSheetCache, executeManusTask, getManusTaskStatus, sendManusMessage, type JarvisState, type JarvisAction, type NaverSearchItem, type YouTubeChannel, type InstagramAccount } from '../lib/jarvis-brain';
+import { askGPT, parseCommand, generateBannerImage, saveSchedule, saveMemory, searchNaverAPI, searchYouTubeAPI, searchInstagramAPI, invalidateSheetCache, executeManusTask, getManusTaskStatus, sendManusMsg as sendManusMessage, type JarvisState, type JarvisAction, type NaverSearchItem, type YouTubeChannel, type InstagramAccount } from '../lib/jarvis-brain';
 import { useSpeechRecognition, useTextToSpeech, useBargein, useWakeWord, setCurrentVoiceId, getCurrentVoiceId, ELEVENLABS_VOICES, stopGlobalAudio } from './SpeechEngine';
 import { useMicrophoneFrequency } from '../lib/audio-analyzer';
 import { saveLearnedKnowledge, getLearnedKnowledge, getMemoryStats, clearAllMemory, type LearnedKnowledge } from '../lib/jarvis-memory';
@@ -551,23 +551,20 @@ export default function JarvisApp() {
             await new Promise(r => setTimeout(r, 10000));
             try {
               const status = await getManusTaskStatus(result.taskId);
-              if (status.status === 'completed') {
-                const completeMsg = `Manus 미션이 완료되었습니다, 선생님. ${status.lastMessage || '결과를 확인해 주세요.'}`;
+              if (status.status === 'stopped') {
+                const lastMsg = status.messages?.length > 0 ? status.messages[0].content : '결과를 확인해 주세요.';
+                const completeMsg = `Manus 미션이 완료되었습니다, 선생님. ${lastMsg}`;
                 setState('speaking');
                 addMessage('jarvis', completeMsg);
                 startSpeakingLevel();
                 await new Promise<void>(resolve => {
                   speak(completeMsg, undefined, () => { stopSpeakingLevel(); resolve(); });
                 });
-                // 결과 파일이 있으면 표시
-                if (status.outputFiles && status.outputFiles.length > 0) {
-                  const fileMsg = `결과 파일 ${status.outputFiles.length}개가 생성되었습니다: ${status.outputFiles.map(f => f.name).join(', ')}`;
-                  addMessage('jarvis', fileMsg);
-                }
                 completed = true;
                 break;
-              } else if (status.status === 'failed') {
-                const failMsg = `Manus 미션 수행 중 문제가 발생했습니다, 선생님. ${status.lastMessage || '다시 시도해 보겠습니다.'}`;
+              } else if (status.status === 'error') {
+                const lastMsg = status.messages?.length > 0 ? status.messages[0].content : '다시 시도해 보겠습니다.';
+                const failMsg = `Manus 미션 수행 중 문제가 발생했습니다, 선생님. ${lastMsg}`;
                 setState('speaking');
                 addMessage('jarvis', failMsg);
                 startSpeakingLevel();
