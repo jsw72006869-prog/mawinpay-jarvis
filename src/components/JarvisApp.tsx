@@ -15,6 +15,8 @@ import LocalBusinessCards, { type LocalBusinessData } from './LocalBusinessCards
 import { ParticleTextCanvas } from './ParticleTextCanvas';
 import NeuralMissionMap from './NeuralMissionMap';
 import ManusStrategyDashboard from './ManusStrategyDashboard';
+import VoiceParticleAura from './VoiceParticleAura';
+import GoldenFlare from './GoldenFlare';
 
 // ── 시그니처 응답 목록 (GPT 대기 없이 즉시 재생) ──
 const SIGNATURE_RESPONSES = [
@@ -183,6 +185,12 @@ export default function JarvisApp() {
   const [textInputMode, setTextInputMode] = useState(false);
   const [textInputValue, setTextInputValue] = useState('');
   const textInputRef = useRef<HTMLInputElement>(null);
+  const [showGoldenFlare, setShowGoldenFlare] = useState(false);
+
+  const triggerGoldenFlare = useCallback(() => {
+    setShowGoldenFlare(true);
+    setTimeout(() => setShowGoldenFlare(false), 2000);
+  }, []);
 
   const [settingsForm, setSettingsForm] = useState(() => {
     const stored = JSON.parse(localStorage.getItem('jarvis_api_keys') || '{}');
@@ -1716,8 +1724,9 @@ export default function JarvisApp() {
     // 작업 완료 타입이면 스파클링 효과 적용
     const isCompletionMsg = isWorkingType && !!action?.workingMessage;
     addMessage('jarvis', text, isCompletionMsg);
-    // 수집/이메일 발송 완료 시 파티클 폭발 효과 (clapBurst 3회 연속)
+    // 수집/이메일 발송 완료 시 파티클 폭발 효과 (clapBurst 3회 연속) + 골든 플레어
     if (isCompletionMsg) {
+      triggerGoldenFlare();
       setClapBurst(true);
       setTimeout(() => setClapBurst(false), 120);
       setTimeout(() => { setClapBurst(true); setTimeout(() => setClapBurst(false), 120); }, 450);
@@ -2029,6 +2038,12 @@ export default function JarvisApp() {
     >
       {/* ── Three.js 파티클 배경 ── */}
       <SparkleParticles state={state} audioLevel={micLevel} speakingLevel={speakingLevel} clapBurst={clapBurst} freqData={micFreqData ?? undefined} />
+      
+      {/* ── 보이스 파티클 아우라 (3D) ── */}
+      <VoiceParticleAura micLevel={micLevel} speakingLevel={speakingLevel} state={state} />
+      
+      {/* ── 골든 플레어 (성공 효과) ── */}
+      <GoldenFlare visible={showGoldenFlare} />
 
       {/* ── 파티클 텍스트 캔버스 (타이핑 모드) ── */}
       <ParticleTextCanvas text={textInputValue} active={textInputMode} />
