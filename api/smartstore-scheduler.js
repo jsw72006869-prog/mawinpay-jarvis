@@ -3,7 +3,7 @@
 // Vercel Cron Job으로 실행 (vercel.json에 cron 설정 필요)
 
 const fetch = require('node-fetch');
-const { HttpsProxyAgent } = require('https-proxy-agent');
+const HttpsProxyAgent = require('https-proxy-agent');
 const PROXY_URL = process.env.QUOTAGUARDSTATIC_URL || 'http://6ddy9l3zmc2hbj:oso2bxcjx009edn2v7yu7k7u0hs3z@us-east-static-02.quotaguard.com:9293';
 const ExcelJS = require('exceljs');
 const nodemailer = require('nodemailer');

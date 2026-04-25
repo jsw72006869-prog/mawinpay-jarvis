@@ -1,8 +1,8 @@
 // 디버그용: 네이버 커머스 API 토큰 발급 시도 및 상세 오류 반환
-// node-fetch v2 + HttpsProxyAgent로 QuotaGuard 고정 IP 경유
+// node-fetch v2 + https-proxy-agent v5로 QuotaGuard 고정 IP 경유
 const crypto = require('crypto');
 const fetch = require('node-fetch');
-const { HttpsProxyAgent } = require('https-proxy-agent');
+const HttpsProxyAgent = require('https-proxy-agent');
 
 const PROXY_URL = process.env.QUOTAGUARDSTATIC_URL || 'http://6ddy9l3zmc2hbj:oso2bxcjx009edn2v7yu7k7u0hs3z@us-east-static-02.quotaguard.com:9293';
 

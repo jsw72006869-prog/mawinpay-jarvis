@@ -1,8 +1,8 @@
 // 네이버 스마트스토어 커머스 API 인증 토큰 발급 공통 모듈
-// node-fetch v2 + HttpsProxyAgent로 QuotaGuard 고정 IP 경유
+// node-fetch v2 + https-proxy-agent v5로 QuotaGuard 고정 IP 경유
 const crypto = require('crypto');
 const fetch = require('node-fetch');
-const { HttpsProxyAgent } = require('https-proxy-agent');
+const HttpsProxyAgent = require('https-proxy-agent');
 
 const CLIENT_ID = process.env.SMARTSTORE_CLIENT_ID;
 const CLIENT_SECRET = process.env.SMARTSTORE_CLIENT_SECRET;
