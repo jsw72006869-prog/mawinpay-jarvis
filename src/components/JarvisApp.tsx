@@ -1045,14 +1045,19 @@ export default function JarvisApp() {
               setBookingStep(5);
               setDataPanel(prev => ({ ...prev, progress: 100, message: `${taskLabel} 자동화 완료` }));
 
-              const finalMsg = msgs[msgs.length - 1]?.content || '';
-              const isSuccess = finalMsg.includes('완료') || finalMsg.includes('성공') || finalMsg.includes('✅') || !finalMsg.includes('실패');
+              // 마누스의 최종 결과물(output) 또는 마지막 메시지 가져오기
+              const finalOutput = statusData.output || '';
+              const lastMsg = msgs[msgs.length - 1]?.content || '';
+              const displayMsg = finalOutput || lastMsg;
+              
+              const isSuccess = displayMsg.includes('완료') || displayMsg.includes('성공') || displayMsg.includes('✅') || !displayMsg.includes('실패');
 
               const completionMsg = isSuccess
-                ? `선생님, ${businessName || taskLabel} 작업이 성공적으로 완료되었습니다. ${finalMsg}`
-                : `선생님, ${businessName || taskLabel} 작업 결과를 보고드립니다. ${finalMsg}`;
+                ? `✅ 선생님, ${businessName || taskLabel} 작업이 성공적으로 완료되었습니다.\n\n${displayMsg}`
+                : `⚠️ 선생님, ${businessName || taskLabel} 작업 결과를 보고드립니다.\n\n${displayMsg}`;
+              
               addMessage('jarvis', completionMsg, true);
-              await safeSpeak(completionMsg);
+              await safeSpeak(`선생님, 요청하신 작업을 마쳤습니다. 확인된 내용은 다음과 같습니다. ${displayMsg}`);
             } else if (taskStatus === 'error') {
               taskError = true;
               const errorMsg = msgs[msgs.length - 1]?.content || `${taskLabel} 중 오류가 발생했습니다.`;
