@@ -58,7 +58,7 @@ const mockInfluencers = [
   { name: '미식여행자', platform: 'INSTA', followers: '178K', status: 'OK' },
 ];
 
-export default function HoloDataPanel({ type, progress, message }: HoloDataPanelProps) {
+export default function HoloDataPanel({ type, progress, message, bookingSteps }: HoloDataPanelProps) {
   const [visibleRows, setVisibleRows] = useState(0);
   const [dataLines, setDataLines] = useState<string[]>([]);
 
