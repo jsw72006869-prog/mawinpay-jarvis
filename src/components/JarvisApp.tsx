@@ -862,7 +862,15 @@ export default function JarvisApp() {
           }),
         });
 
-        const manusData = await manusRes.json();
+        // 안전한 JSON 파싱 (마누스 API가 텍스트 에러를 반환할 수 있음)
+        let manusData: any;
+        const manusText = await manusRes.text();
+        try {
+          manusData = JSON.parse(manusText);
+        } catch {
+          console.error('[JARVIS] 마누스 응답 파싱 실패:', manusText.substring(0, 200));
+          throw new Error(`마누스 API 응답 오류: ${manusText.substring(0, 80)}`);
+        }
 
         if (!manusData.success || !manusData.taskId) {
           throw new Error(manusData.error || '마누스 태스크 생성 실패');
@@ -886,7 +894,14 @@ export default function JarvisApp() {
 
           try {
             const statusRes = await fetch(`/api/manus-task-status?task_id=${encodeURIComponent(taskId)}`);
-            const statusData = await statusRes.json();
+            let statusData: any;
+            const statusText = await statusRes.text();
+            try {
+              statusData = JSON.parse(statusText);
+            } catch {
+              console.error('[JARVIS] 폴링 응답 파싱 실패:', statusText.substring(0, 100));
+              continue; // 파싱 실패 시 다음 폴링으로 계속
+            }
 
             if (!statusData.success) throw new Error(statusData.error || '상태 조회 실패');
 
