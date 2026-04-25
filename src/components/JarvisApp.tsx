@@ -108,7 +108,7 @@ export default function JarvisApp() {
   const [isTyping, setIsTyping] = useState(false);
   const [dataPanel, setDataPanel] = useState<{
     visible: boolean;
-    type: 'collect' | 'send_email' | 'create_banner' | 'report' | 'booking' | 'smartstore' | null;
+    type: 'collect' | 'send_email' | 'create_banner' | 'report' | 'booking' | 'smartstore' | 'youtube' | null;
     progress: number;
     message: string;
     bookingSteps?: string[];
@@ -787,6 +787,114 @@ export default function JarvisApp() {
         });
       }
 
+      await new Promise(r => setTimeout(r, 400));
+      setState('listening');
+      setIsListening(true);
+      return;
+    }
+
+    // ── 유튜브 인기 영상 조회/분석 액션 (youtube_trending) ──
+    if (action?.type === 'youtube_trending') {
+      const ytParams = action.params || {} as Record<string, any>;
+      const ytAction = String(ytParams.action || 'trending');
+      const ytKeyword = String(ytParams.keyword || '');
+      const ytCategory = String(ytParams.category || '전체');
+      const ytChannelName = String(ytParams.channel_name || '');
+      const ytCount = Number(ytParams.count) || 5;
+      const ytPeriod = String(ytParams.period || '');
+
+      // 행동 로그 패널 표시
+      setDataPanel({
+        visible: true,
+        type: 'youtube',
+        progress: 0,
+        message: action.workingMessage || '유튜브 영상 조회 중...',
+        actionLogs: [{ step: '1', status: 'running', detail: '유튜브 API 호출 준비 중...', timestamp: new Date().toISOString(), elapsed: '0s' }],
+      });
+
+      // TTS로 시작 알림
+      addMessage('jarvis', action.response);
+      await new Promise<void>(resolve => {
+        speak(action.response, undefined, () => { resolve(); });
+      });
+
+      try {
+        const apiBase = import.meta.env.VITE_API_BASE || '';
+
+        // 키워드가 있으면 분석 모드, 없으면 트렌딩
+        let endpoint = '';
+        let queryParams: Record<string, string> = {};
+
+        if (ytAction === 'keyword' && ytKeyword) {
+          // 마누스 AI 분석 포함 모드
+          endpoint = '/api/youtube-analyze';
+          queryParams = { keyword: ytKeyword, count: String(ytCount), mode: 'smart' };
+          if (ytPeriod) queryParams.period = ytPeriod;
+
+          setDataPanel(prev => ({
+            ...prev, progress: 20,
+            actionLogs: [
+              ...(prev.actionLogs || []),
+              { step: '2', status: 'running', detail: `"${ytKeyword}" 인기 영상 수집 + AI 분석 중...`, timestamp: new Date().toISOString(), elapsed: '2s' },
+            ],
+          }));
+        } else if (ytAction === 'channel' && ytChannelName) {
+          endpoint = '/api/youtube-trending';
+          queryParams = { action: 'channel', channelName: ytChannelName, maxResults: String(ytCount) };
+        } else {
+          endpoint = '/api/youtube-trending';
+          queryParams = { action: 'trending', maxResults: String(ytCount) };
+          if (ytCategory && ytCategory !== '전체') queryParams.category = ytCategory;
+        }
+
+        const qs = new URLSearchParams(queryParams).toString();
+        const ytRes = await fetch(`${apiBase}${endpoint}?${qs}`);
+        const ytData = await ytRes.json();
+
+        if (ytData.success && ytData.videos?.length > 0) {
+          // 영상 목록 포맷팅
+          let videoListText = '';
+          ytData.videos.slice(0, ytCount).forEach((v: any, i: number) => {
+            videoListText += `\n**${i + 1}. ${v.title}**\n`;
+            videoListText += `   📺 ${v.channelName} | 👁 ${v.viewCountFormatted} | 👍 ${(v.likeCount || 0).toLocaleString()} | 💬 ${(v.commentCount || 0).toLocaleString()}\n`;
+            videoListText += `   ${v.publishedAgo || ''} | ${v.url}\n`;
+          });
+
+          // AI 분석 결과가 있으면 추가
+          let analysisText = '';
+          if (ytData.analysis) {
+            analysisText = `\n\n---\n**🧠 AI 분석 결과**\n${ytData.analysis}`;
+          }
+
+          const fullMsg = `${ytData.summary || ''}\n${videoListText}${analysisText}`;
+          addMessage('jarvis', fullMsg);
+
+          // 행동 로그 업데이트
+          const finalLogs = (ytData.logs || []).map((l: any) => ({
+            step: String(l.step),
+            status: l.status,
+            detail: l.message,
+            timestamp: new Date().toISOString(),
+            elapsed: ytData.elapsed || '',
+          }));
+          setDataPanel(prev => ({ ...prev, progress: 100, actionLogs: finalLogs }));
+
+          // TTS 요약 응답
+          const speakText = ytData.analysis
+            ? `${ytData.summary} AI 분석도 완료했습니다. 자세한 내용은 화면을 확인해주세요.`
+            : `${ytData.summary}`;
+          await new Promise<void>(resolve => {
+            speak(speakText, undefined, () => { resolve(); });
+          });
+        } else {
+          addMessage('jarvis', ytData.error || '유튜브 인기 영상을 찾을 수 없습니다.');
+        }
+      } catch (err: any) {
+        addMessage('jarvis', `유튜브 조회 중 오류가 발생했습니다: ${err.message}`);
+      }
+
+      // 패널 숨기기
+      setTimeout(() => setDataPanel({ visible: false, type: null, progress: 0, message: '' }), 3000);
       await new Promise(r => setTimeout(r, 400));
       setState('listening');
       setIsListening(true);

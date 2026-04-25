@@ -354,6 +354,34 @@ const JARVIS_FUNCTIONS_DEF = [
       required: ['content_type', 'product', 'response', 'content'],
     },
   },
+  {
+    name: 'youtube_trending',
+    description: `유튜브 인기 영상/트렌딩 영상을 조회할 때 호출.
+사용 시점:
+- "인기 영상 추천해줘", "지금 뜨는 영상 보여줘", "트렌딩 영상 5개"
+- "밤 관련 인기 영상 찾아줘", "농산물 유튜브 인기 영상"
+- "먹방 유튜브 조회수 높은 영상", "뷰티 트렌딩"
+- "XX 채널 인기 영상 보여줘", "채널 조회수 높은 영상"
+- "이번 주 인기 영상", "오늘 뜨는 영상"`,
+    parameters: {
+      type: 'object',
+      properties: {
+        action: {
+          type: 'string',
+          enum: ['trending', 'keyword', 'channel'],
+          description: 'trending=한국 트렌딩 인기 영상, keyword=키워드별 조회수 높은 영상, channel=특정 채널 인기 영상'
+        },
+        keyword: { type: 'string', description: '검색 키워드 (keyword 액션 시 필수. 예: 밤, 농산물, 먹방, 뷰티)' },
+        category: { type: 'string', description: '카테고리 (trending 액션 시. 예: 음악, 게임, 엔터테인먼트, 스포츠, 교육, 음식, 뷰티)' },
+        channel_name: { type: 'string', description: '채널명 (channel 액션 시. 예: 백종원, 침착맨)' },
+        count: { type: 'number', description: '조회할 영상 수 (기본 5, 최대 50)' },
+        period: { type: 'string', enum: ['', 'day', 'week', 'month', 'year'], description: '기간 필터 (keyword 액션 시. day=오늘, week=이번주, month=이번달, year=올해)' },
+        response: { type: 'string', description: 'JARVIS 응답 (한국어, 조회 시작 멘트)' },
+        follow_up: { type: 'string', description: '조회 후 이어서 할 제안' },
+      },
+      required: ['action', 'response'],
+    },
+  },
 ];
 
 // tools 형식으로 변환 (functions는 구버전)
@@ -1007,6 +1035,31 @@ function buildActionFromFunction(fnName: string, args: Record<string, string | n
         type: 'chat',
         response: fullResponse,
         followUp: args.follow_up ? String(args.follow_up) : undefined,
+      };
+    }
+    case 'youtube_trending': {
+      const ytAction = String(args.action || 'trending');
+      const ytKeyword = String(args.keyword || '');
+      const ytCategory = String(args.category || '전체');
+      const ytChannelName = String(args.channel_name || '');
+      const ytCount = Number(args.count) || 5;
+      const ytPeriod = String(args.period || '');
+      let ytWorkingMsg = '🔥 유튜브 트렌딩 영상 조회 중...';
+      if (ytAction === 'keyword') ytWorkingMsg = `🔍 "${ytKeyword}" 유튜브 인기 영상 검색 중...`;
+      if (ytAction === 'channel') ytWorkingMsg = `📺 ${ytChannelName} 채널 인기 영상 조회 중...`;
+      return {
+        type: 'youtube_trending',
+        params: {
+          action: ytAction,
+          keyword: ytKeyword,
+          category: ytCategory,
+          channel_name: ytChannelName,
+          count: ytCount,
+          period: ytPeriod,
+        },
+        workingMessage: ytWorkingMsg,
+        response: String(args.response),
+        followUp,
       };
     }
     case 'book_restaurant':
