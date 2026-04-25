@@ -259,7 +259,7 @@ module.exports = async (req, res) => {
   try {
     const ytApiKey = process.env.YOUTUBE_API_KEY;
     const manusApiKey = process.env.MANUS_API_KEY;
-    const openaiKey = process.env.OPENAI_API_KEY;
+    const openaiKey = process.env.OPENAI_API_KEY || process.env.VITE_OPENAI_API_KEY;
 
     if (!ytApiKey) {
       return res.status(500).json({ success: false, error: 'YOUTUBE_API_KEY가 설정되지 않았습니다.' });
