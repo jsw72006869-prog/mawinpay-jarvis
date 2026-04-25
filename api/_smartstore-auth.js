@@ -1,17 +1,25 @@
 // 네이버 스마트스토어 커머스 API 인증 토큰 발급 공통 모듈
 // 인증 방식: bcrypt 서명 (네이버 커머스 API 공식 인증 방식)
-// QuotaGuard 프록시를 경유하여 고정 IP(52.5.238.209 / 52.6.13.167)로 요청
+// undici ProxyAgent를 사용하여 QuotaGuard 고정 IP(52.5.238.209 / 52.6.13.167)로 요청
 const crypto = require('crypto');
-const { HttpsProxyAgent } = require('https-proxy-agent');
+const { ProxyAgent } = require('undici');
 
 const CLIENT_ID = process.env.SMARTSTORE_CLIENT_ID;
 const CLIENT_SECRET = process.env.SMARTSTORE_CLIENT_SECRET;
 const PROXY_URL = process.env.QUOTAGUARDSTATIC_URL || 'http://6ddy9l3zmc2hbj:oso2bxcjx009edn2v7yu7k7u0hs3z@us-east-static-02.quotaguard.com:9293';
 const API_BASE = 'https://api.commerce.naver.com/external';
 
-// QuotaGuard 프록시 에이전트 생성
-function getProxyAgent() {
-  return new HttpsProxyAgent(PROXY_URL);
+// undici ProxyAgent 생성 (Node.js 내장 fetch의 dispatcher 옵션과 호환)
+function getProxyDispatcher() {
+  return new ProxyAgent(PROXY_URL);
+}
+
+/**
+ * 프록시를 경유하는 fetch 래퍼
+ */
+async function proxyFetch(url, options = {}) {
+  const dispatcher = getProxyDispatcher();
+  return fetch(url, { ...options, dispatcher });
 }
 
 /**
@@ -50,11 +58,9 @@ async function getSmartStoreToken(type = 'SELF') {
   });
 
   // QuotaGuard 프록시를 경유하여 토큰 요청
-  const agent = getProxyAgent();
-  const res = await fetch(`${API_BASE}/v1/oauth2/token?${params.toString()}`, {
+  const res = await proxyFetch(`${API_BASE}/v1/oauth2/token?${params.toString()}`, {
     method: 'POST',
     headers: { 'content-type': 'application/x-www-form-urlencoded' },
-    agent: agent,
   });
   const data = await res.json();
   if (!data.access_token) {
@@ -69,18 +75,16 @@ async function getSmartStoreToken(type = 'SELF') {
 async function smartStoreRequest(path, options = {}) {
   const token = await getSmartStoreToken();
   const url = `${API_BASE}${path}`;
-  const agent = getProxyAgent();
-  const res = await fetch(url, {
+  const res = await proxyFetch(url, {
     ...options,
     headers: {
       'Authorization': `Bearer ${token}`,
       'Content-Type': 'application/json',
       ...(options.headers || {}),
     },
-    agent: agent,
   });
   const data = await res.json();
   return { status: res.status, data };
 }
 
-module.exports = { getSmartStoreToken, smartStoreRequest, API_BASE, getProxyAgent };
+module.exports = { getSmartStoreToken, smartStoreRequest, API_BASE, proxyFetch };

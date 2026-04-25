@@ -24,7 +24,8 @@
     "qrcode.react": "^4.2.0",
     "react": "^19.2.5",
     "react-dom": "^19.2.5",
-    "three": "^0.183.2"
+    "three": "^0.183.2",
+    "undici": "^8.1.0"
   },
   "devDependencies": {
     "@types/react": "^19.2.14",
