@@ -843,7 +843,7 @@ export default function JarvisApp() {
 
         // ── 범용 웹 작업: /api/manus-task-create 직접 호출 ──
         const manusPrompt = [
-          `[웹 작업 요청]`,
+          `[웹 작업 요청 - 반자동 모드]`,
           `작업 유형: ${taskType}`,
           `대상 사이트: ${targetSite}`,
           `업체명: ${businessName}`,
@@ -854,12 +854,12 @@ export default function JarvisApp() {
           (savedUserPhone || userPhone) ? `연락처: ${savedUserPhone || userPhone}` : '',
           additionalInfo ? `추가정보: ${additionalInfo}` : '',
           '',
-          '## 자율 판단 원칙',
-          '1. 네이버 접속 → 업체 검색 → 예약 페이지 접속 → 가능한 날짜/시간 확인',
-          '2. 로그인이 필요하면 "로그인이 필요합니다"라고 보고',
-          '3. 캡차가 나오면 "보안 문자 입력이 필요합니다"라고 보고',
-          '4. 예약 가능 시간을 찾으면 목록으로 정리하여 보고',
-          '5. 문제 발생 시 대안을 스스로 찾아 제안',
+          '## 반자동 워크플로우 지침',
+          '1. [조회 단계 - 로그인 불필요]: 네이버 플레이스/예약 페이지에 접속하여 로그인 없이 가능한 날짜와 시간 목록을 먼저 추출하세요.',
+          '2. [보고 단계]: 추출된 시간 목록을 사용자에게 보고하고 선택을 기다리세요.',
+          '3. [로그인 단계]: 사용자가 특정 시간을 선택하고 예약을 요청하면, "로그인이 필요합니다. 화면에서 로그인을 완료해 주세요."라고 명확히 보고하고 대기하세요.',
+          '4. [마무리 단계]: 사용자가 로그인을 완료하면(세션 감지), 예약 폼을 자동으로 채우고 예약을 확정하세요.',
+          '5. 캡차 발생 시 즉시 보고하고 사용자 입력을 기다리세요.',
         ].filter(Boolean).join('\n');
 
         addMessage('jarvis', `⏳ [AGENT] 마누스 태스크 생성 중...`);
@@ -937,6 +937,23 @@ export default function JarvisApp() {
             const taskStatus = statusData.agent_status || 'unknown';
             const msgs = statusData.messages || [];
             const progress = statusData.progress || [];
+            const waitingDetail = statusData.waiting_detail;
+
+            // ── 사용자 개입(로그인/캡차) 감지 ──
+            if (taskStatus === 'waiting' && waitingDetail) {
+              const waitType = waitingDetail.waiting_for_event_type;
+              const waitDesc = waitingDetail.waiting_description || '';
+              
+              if (waitDesc.includes('로그인') || waitDesc.includes('login')) {
+                addMessage('jarvis', `🔑 [ACTION REQUIRED] 네이버 로그인이 필요합니다. 화면에서 로그인을 진행해 주시면 예약을 마무리하겠습니다.`);
+                setDataPanel(prev => ({ ...prev, message: '사용자 로그인 대기 중...', progress: 60 }));
+                await safeSpeak("선생님, 네이버 로그인이 필요합니다. 로그인을 완료해 주시면 예약을 마무리하겠습니다.");
+              } else if (waitDesc.includes('보안 문자') || waitDesc.includes('captcha')) {
+                addMessage('jarvis', `⚠️ [ACTION REQUIRED] 보안 문자(캡차) 입력이 필요합니다. 화면에 보이는 문자를 말씀해 주세요.`);
+                setDataPanel(prev => ({ ...prev, message: '보안 문자 입력 대기 중...', progress: 70 }));
+                await safeSpeak("선생님, 보안 문자 입력이 필요합니다. 화면에 보이는 문자를 말씀해 주세요.");
+              }
+            }
 
             // ── 진행 상황 표시 (HoloDataPanel 연동) ──
             if (progress.length > 0) {
