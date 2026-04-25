@@ -792,55 +792,73 @@ export default function JarvisApp() {
       return;
     }
 
-    // ── 예약 액션 (Railway 서버 연동) ──
-    if (action?.type === 'book_restaurant') {
+    // ── 범용 웹 작업 액션 (execute_web_task) ──
+    // book_restaurant도 이제 execute_web_task로 매핑됨 (레거시 호환)
+    if (action?.type === 'execute_web_task' || action?.type === 'book_restaurant') {
+      const taskType = String(action.params?.task_type || 'general');
+      const targetSite = String(action.params?.target_site || '');
       const businessName = String(action.params?.business_name || '');
+      const taskDescription = String(action.params?.task_description || '');
       const date = String(action.params?.date || '');
       const time = String(action.params?.time || '');
       const userName = String(action.params?.user_name || '');
       const userPhone = String(action.params?.user_phone || '');
+      const additionalInfo = String(action.params?.additional_info || '');
 
-      // ── 마누스 기반 예약 자동화 (새로운 방식) ──
-      setState('working');
+      // ── 1단계: 자비스 음성 응답 (작업 시작 알림) ──
+      setState('speaking');
       addMessage('jarvis', action.response);
       startSpeakingLevel();
       await new Promise<void>(resolve => {
         speak(action.response, undefined, () => { stopSpeakingLevel(); resolve(); });
       });
 
+      // ── 2단계: HoloDataPanel 활성화 (실시간 진행 표시) ──
+      setState('working');
+      const taskLabel = taskType === 'booking' ? '예약' : taskType === 'purchase' ? '구매' : taskType === 'inquiry' ? '조회' : '웹 작업';
+      const panelSteps = taskType === 'booking'
+        ? ['INITIALIZING', 'SITE ACCESS', 'SEARCH TARGET', 'CHECK AVAILABILITY', 'FORM FILLING', 'CONFIRMATION']
+        : ['INITIALIZING', 'SITE ACCESS', 'NAVIGATION', 'DATA EXTRACTION', 'TASK EXECUTION', 'COMPLETION'];
+
+      setDataPanel({
+        visible: true,
+        type: 'booking',
+        progress: 5,
+        message: `${businessName || taskLabel} 자동화 준비 중...`,
+        bookingSteps: panelSteps,
+      });
+      setBookingStep(0);
+
       try {
-        // 네이버 자격증명 로드
+        // ── 3단계: 사용자 자격증명 로드 ──
         const naverCreds = JSON.parse(localStorage.getItem('jarvis_naver_creds') || '{}');
-        const naverUsername = naverCreds.username || '';
-        const naverPassword = naverCreds.password || '';
         const savedUserName = naverCreds.userName || '';
         const savedUserPhone = naverCreds.userPhone || '';
 
-        // ── 마누스 예약 자동화 API 호출 ──
-        setState('working');
-        const startMsg = `🚀 마누스 자율 예약 엔진을 가동합니다. ${businessName} 예약을 위해 브라우저 제어를 시작합니다.`;
-        addMessage('jarvis', startMsg);
-        
-        // HoloDataPanel 활성화
-        setDataPanel({
-          visible: true,
-          type: 'booking',
-          progress: 5,
-          message: `${businessName} 예약 자동화 준비 중...`,
-          bookingSteps: ['INITIALIZING', 'NAVER LOGIN', 'SEARCH BUSINESS', 'TIME SELECTION', 'FORM FILLING', 'CONFIRMATION']
-        });
+        // ── 4단계: 마누스 에이전트에게 작업 위임 ──
+        const agentMsg = `🤖 마누스 에이전트에게 ${taskLabel} 작업을 위임합니다. 브라우저 제어를 시작합니다.`;
+        addMessage('jarvis', agentMsg);
 
+        setDataPanel(prev => ({ ...prev, progress: 10, message: '마누스 에이전트 연결 중...' }));
+
+        // ── 범용 웹 작업 API 호출 ──
         const manusRes = await fetch('/api/manus-agent/naver-booking', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
+            // 범용 필드
+            taskType,
+            targetSite,
             businessName,
+            taskDescription,
             date,
             time,
             userName: savedUserName || userName,
             userPhone: savedUserPhone || userPhone,
-            naverUsername,
-            naverPassword,
+            additionalInfo,
+            // 레거시 필드 (기존 API 호환)
+            naverUsername: naverCreds.username || '',
+            naverPassword: naverCreds.password || '',
           }),
         });
 
@@ -852,121 +870,104 @@ export default function JarvisApp() {
 
         const taskId = manusData.taskId;
         setBookingStep(1);
+        setDataPanel(prev => ({ ...prev, progress: 15, message: '마누스 태스크 생성 완료. 작업 시작...' }));
+        addMessage('jarvis', `⏳ [AGENT] 태스크 ID: ${taskId.slice(0, 8)}... 생성 완료`);
 
-        // ── 실시간 진행 상황 폴링 ──
+        // ── 5단계: 실시간 진행 상황 폴링 ──
         let pollCount = 0;
-        const maxPolls = 150; // 최대 7.5분 (3초 × 150)
+        const maxPolls = 150;
         let taskCompleted = false;
         let taskError = false;
         let lastProgressMsg = '';
 
         while (pollCount < maxPolls && !taskCompleted && !taskError) {
           pollCount++;
-          await new Promise(r => setTimeout(r, 3000)); // 3초 대기
+          await new Promise(r => setTimeout(r, 3000));
 
           try {
             const statusRes = await fetch(`/api/manus-task-status?task_id=${encodeURIComponent(taskId)}`);
             const statusData = await statusRes.json();
 
-            if (!statusData.success) {
-              throw new Error(statusData.error || '상태 조회 실패');
-            }
+            if (!statusData.success) throw new Error(statusData.error || '상태 조회 실패');
 
             const taskStatus = statusData.agent_status || 'unknown';
-            const messages = statusData.messages || [];
+            const msgs = statusData.messages || [];
             const progress = statusData.progress || [];
 
             // ── 진행 상황 표시 (HoloDataPanel 연동) ──
             if (progress.length > 0) {
               const latestProgress = progress[progress.length - 1];
               const progressMsg = latestProgress.content || '';
-              
+
               if (progressMsg !== lastProgressMsg) {
                 lastProgressMsg = progressMsg;
                 addMessage('jarvis', `⏳ [AGENT] ${progressMsg}`);
-                
-                // 진행률 계산 (0~100)
-                let currentProgress = 10;
-                if (progressMsg.includes('로그인')) { currentProgress = 25; setBookingStep(1); }
-                else if (progressMsg.includes('검색') || progressMsg.includes('접속')) { currentProgress = 45; setBookingStep(2); }
-                else if (progressMsg.includes('시간') || progressMsg.includes('조회')) { currentProgress = 65; setBookingStep(2); }
-                else if (progressMsg.includes('폼') || progressMsg.includes('입력')) { currentProgress = 85; setBookingStep(3); }
-                else if (progressMsg.includes('확인') || progressMsg.includes('완료')) { currentProgress = 95; setBookingStep(4); }
 
-                setDataPanel(prev => ({
-                  ...prev,
-                  progress: currentProgress,
-                  message: progressMsg
-                }));
+                // 진행률 계산
+                let currentProgress = 20;
+                const msg = progressMsg.toLowerCase();
+                if (msg.includes('로그인') || msg.includes('login')) { currentProgress = 25; setBookingStep(1); }
+                else if (msg.includes('검색') || msg.includes('접속') || msg.includes('search') || msg.includes('access')) { currentProgress = 40; setBookingStep(2); }
+                else if (msg.includes('시간') || msg.includes('조회') || msg.includes('check') || msg.includes('avail')) { currentProgress = 60; setBookingStep(3); }
+                else if (msg.includes('폼') || msg.includes('입력') || msg.includes('fill') || msg.includes('form')) { currentProgress = 80; setBookingStep(4); }
+                else if (msg.includes('확인') || msg.includes('완료') || msg.includes('confirm') || msg.includes('done')) { currentProgress = 95; setBookingStep(5); }
+
+                setDataPanel(prev => ({ ...prev, progress: currentProgress, message: progressMsg }));
               }
             }
 
-            // ── 대기 상태 처리 (캡차, OTP 등) ──
+            // ── 대기 상태 처리 (캡차, OTP, 로그인 필요 등) ──
             if (taskStatus === 'waiting' && statusData.waiting_detail) {
               const waitingDetail = statusData.waiting_detail;
-              const eventType = waitingDetail.waiting_for_event_type?.toLowerCase() || '';
+              const eventType = (waitingDetail.waiting_for_event_type || '').toLowerCase();
               const description = waitingDetail.waiting_description || '';
 
-              setDataPanel(prev => ({
-                ...prev,
-                message: `⚠️ 사용자 입력 대기 중: ${description}`
-              }));
+              setDataPanel(prev => ({ ...prev, message: `⚠️ 사용자 입력 대기: ${description}` }));
 
               if (eventType.includes('captcha')) {
                 setState('speaking');
-                const captchaMsg = '🔐 네이버 보안 문자가 감지되었습니다. 화면에 표시된 캡차 코드를 말씀해 주세요.';
+                const captchaMsg = '선생님, 보안 문자가 감지되었습니다. 화면에 표시된 코드를 말씀해 주세요.';
                 addMessage('jarvis', captchaMsg, true);
                 startSpeakingLevel();
-                await new Promise<void>(resolve => {
-                  speak(captchaMsg, undefined, () => { stopSpeakingLevel(); resolve(); });
-                });
-
+                await new Promise<void>(resolve => { speak(captchaMsg, undefined, () => { stopSpeakingLevel(); resolve(); }); });
                 setState('listening');
-                const captchaCode = await new Promise<string>(resolve => {
-                  verificationResolveRef.current = resolve;
-                });
-
-                // 캡차 답변 제출
+                const captchaCode = await new Promise<string>(resolve => { verificationResolveRef.current = resolve; });
                 setState('working');
                 addMessage('jarvis', `[INPUT] 캡차 코드 "${captchaCode}" 제출 중...`);
-                const confirmRes = await fetch('/api/manus-task-confirm', {
-                  method: 'POST',
-                  headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({
-                    task_id: taskId,
-                    event_id: waitingDetail.waiting_for_event_id,
-                    input: { captcha_code: captchaCode },
-                  }),
+                await fetch('/api/manus-task-confirm', {
+                  method: 'POST', headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ task_id: taskId, event_id: waitingDetail.waiting_for_event_id, input: { captcha_code: captchaCode } }),
                 });
-                const confirmData = await confirmRes.json();
-                if (!confirmData.success) throw new Error('캡차 제출 실패');
               } else if (eventType.includes('otp')) {
                 setState('speaking');
-                const otpMsg = '📱 네이버 2단계 인증번호가 전송되었습니다. 받으신 번호를 말씀해 주세요.';
+                const otpMsg = '선생님, 인증번호가 전송되었습니다. 받으신 번호를 말씀해 주세요.';
                 addMessage('jarvis', otpMsg, true);
                 startSpeakingLevel();
-                await new Promise<void>(resolve => {
-                  speak(otpMsg, undefined, () => { stopSpeakingLevel(); resolve(); });
-                });
-
+                await new Promise<void>(resolve => { speak(otpMsg, undefined, () => { stopSpeakingLevel(); resolve(); }); });
                 setState('listening');
-                const otpCode = await new Promise<string>(resolve => {
-                  verificationResolveRef.current = resolve;
-                });
-
+                const otpCode = await new Promise<string>(resolve => { verificationResolveRef.current = resolve; });
                 setState('working');
                 addMessage('jarvis', `[INPUT] 인증번호 "${otpCode}" 제출 중...`);
-                const confirmRes = await fetch('/api/manus-task-confirm', {
-                  method: 'POST',
-                  headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({
-                    task_id: taskId,
-                    event_id: waitingDetail.waiting_for_event_id,
-                    input: { otp_code: otpCode },
-                  }),
+                await fetch('/api/manus-task-confirm', {
+                  method: 'POST', headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ task_id: taskId, event_id: waitingDetail.waiting_for_event_id, input: { otp_code: otpCode } }),
                 });
-                const confirmData = await confirmRes.json();
-                if (!confirmData.success) throw new Error('인증번호 제출 실패');
+              } else if (eventType.includes('login')) {
+                // 로그인 필요 시 사용자에게 안내
+                setState('speaking');
+                const loginMsg = `선생님, ${targetSite || '해당 사이트'} 로그인이 필요합니다. 화면에서 로그인을 진행해 주시면 ${taskLabel}을 마무리짓겠습니다.`;
+                addMessage('jarvis', loginMsg, true);
+                startSpeakingLevel();
+                await new Promise<void>(resolve => { speak(loginMsg, undefined, () => { stopSpeakingLevel(); resolve(); }); });
+                // 로그인 완료 대기
+                setState('listening');
+                await new Promise<string>(resolve => { verificationResolveRef.current = resolve; });
+                setState('working');
+                addMessage('jarvis', `[INPUT] 로그인 완료 신호 전송 중...`);
+                await fetch('/api/manus-task-confirm', {
+                  method: 'POST', headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ task_id: taskId, event_id: waitingDetail.waiting_for_event_id, input: { login_completed: true } }),
+                });
               }
             }
 
@@ -974,39 +975,38 @@ export default function JarvisApp() {
             if (taskStatus === 'stopped') {
               taskCompleted = true;
               setBookingStep(5);
-              setDataPanel(prev => ({ ...prev, progress: 100, message: '예약 자동화 완료' }));
+              setDataPanel(prev => ({ ...prev, progress: 100, message: `${taskLabel} 자동화 완료` }));
 
-              // 최종 메시지 분석 (성공 여부 확인)
-              const finalMsg = messages[messages.length - 1]?.content || '';
-              const isSuccess = finalMsg.includes('완료') || finalMsg.includes('성공') || finalMsg.includes('✅');
-              
-              if (isSuccess) {
-                setState('speaking');
-                addMessage('jarvis', `✅ ${finalMsg}`, true);
-                startSpeakingLevel();
-                await new Promise<void>(resolve => {
-                  speak(`선생님, ${businessName} 예약이 성공적으로 완료되었습니다. 상세 내역을 확인해 주세요.`, undefined, () => { stopSpeakingLevel(); resolve(); });
-                });
-              } else {
-                throw new Error(finalMsg || '예약 처리 중 문제가 발생했습니다.');
-              }
+              const finalMsg = msgs[msgs.length - 1]?.content || '';
+              const isSuccess = finalMsg.includes('완료') || finalMsg.includes('성공') || finalMsg.includes('✅') || !finalMsg.includes('실패');
+
+              setState('speaking');
+              const completionMsg = isSuccess
+                ? `선생님, ${businessName || taskLabel} 작업이 성공적으로 완료되었습니다. ${finalMsg}`
+                : `선생님, ${businessName || taskLabel} 작업 결과를 보고드립니다. ${finalMsg}`;
+              addMessage('jarvis', completionMsg, true);
+              startSpeakingLevel();
+              await new Promise<void>(resolve => {
+                speak(completionMsg, undefined, () => { stopSpeakingLevel(); resolve(); });
+              });
             } else if (taskStatus === 'error') {
               taskError = true;
-              const errorMsg = messages[messages.length - 1]?.content || '예약 중 오류가 발생했습니다.';
+              const errorMsg = msgs[msgs.length - 1]?.content || `${taskLabel} 중 오류가 발생했습니다.`;
               throw new Error(errorMsg);
             }
-          } catch (pollErr) {
+          } catch (pollErr: unknown) {
             console.error('[JARVIS] 폴링 오류:', pollErr);
-            if (pollCount >= maxPolls) throw new Error('예약 자동화 시간 초과 (7.5분 경과)');
+            if (pollCount >= maxPolls) throw new Error(`${taskLabel} 자동화 시간 초과 (7.5분 경과)`);
           }
         }
 
         if (!taskCompleted && !taskError) {
-          throw new Error('예약 자동화 시간 초과');
+          throw new Error(`${taskLabel} 자동화 시간 초과`);
         }
       } catch (err) {
         setBookingStep(0);
-        const errMsg = `❌ 예약 중 오류가 발생했습니다, 선생님. ${String(err)}`;
+        const errStr = err instanceof Error ? err.message : String(err);
+        const errMsg = `선생님, ${businessName || taskLabel} 작업 중 문제가 발생했습니다. ${errStr}. 다른 방법을 시도해 볼까요?`;
         setState('speaking');
         addMessage('jarvis', errMsg, true);
         setDataPanel(prev => ({ ...prev, message: '오류 발생: 중단됨', progress: 0 }));
@@ -2859,14 +2859,18 @@ export default function JarvisApp() {
       </motion.footer>
 
       {/* ── 홀로그램 데이터 패널 ── */}
-      <AnimatePrese        {dataPanel.visible && (
+      <AnimatePresence>
+        {dataPanel.visible && (
           <HoloDataPanel
             type={dataPanel.type}
             progress={dataPanel.progress}
             message={dataPanel.message}
             bookingSteps={dataPanel.bookingSteps}
           />
-        )}플루언서 카드 UI ── */}
+        )}
+      </AnimatePresence>
+
+      {/* ── 인플루언서 카드 UI ── */}
       <InfluencerCards
         influencers={collectedInfluencers}
         visible={influencerCardsVisible}
