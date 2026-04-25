@@ -56,39 +56,61 @@ module.exports = async (req, res) => {
   /**
    * 주문 조회 공통 함수
    * GET /v1/pay-order/seller/product-orders
+   * 네이버 API는 from~to 간격이 최대 24시간으로 제한되므로, 24시간 단위로 반복 조회
    */
   async function fetchOrders(days, productOrderStatuses = ['PAYED'], placeOrderStatusType = null) {
     const now = new Date();
-    const fromDate = new Date();
-    fromDate.setDate(fromDate.getDate() - days);
+    const startDate = new Date();
+    startDate.setDate(startDate.getDate() - days);
 
-    const params = new URLSearchParams();
-    params.append('from', formatNaverDate(fromDate));
-    params.append('to', formatNaverDate(now));
-    params.append('rangeType', 'PAYED_DATETIME');
-    params.append('pageSize', '300');
-    params.append('page', '1');
+    let allOrders = [];
+    let currentFrom = new Date(startDate);
 
-    productOrderStatuses.forEach(s => {
-      params.append('productOrderStatuses', s);
-    });
+    // Vercel 10초 타임아웃 고려: 최대 7일까지 반복 조회
+    const maxIterations = Math.min(days, 7);
 
-    if (placeOrderStatusType) {
-      params.append('placeOrderStatusType', placeOrderStatusType);
+    for (let i = 0; i < maxIterations; i++) {
+      const currentTo = new Date(currentFrom.getTime() + 24 * 60 * 60 * 1000);
+      if (currentTo > now) currentTo.setTime(now.getTime());
+
+      const params = new URLSearchParams();
+      params.append('from', formatNaverDate(currentFrom));
+      params.append('to', formatNaverDate(currentTo));
+      params.append('rangeType', 'PAYED_DATETIME');
+      params.append('pageSize', '300');
+      params.append('page', '1');
+
+      productOrderStatuses.forEach(s => {
+        params.append('productOrderStatuses', s);
+      });
+
+      if (placeOrderStatusType) {
+        params.append('placeOrderStatusType', placeOrderStatusType);
+      }
+
+      try {
+        const result = await smartStoreRequest(
+          `/v1/pay-order/seller/product-orders?${params.toString()}`,
+          { method: 'GET' }
+        );
+
+        if (result.status === 200) {
+          const responseData = result.data.data || result.data;
+          const contents = responseData.contents || responseData || [];
+          if (Array.isArray(contents)) {
+            allOrders = allOrders.concat(contents);
+          }
+        }
+      } catch (err) {
+        // 개별 일자 조회 실패 시 건너뛰기
+        console.warn(`[fetchOrders] ${formatNaverDate(currentFrom)} 조회 실패:`, err.message);
+      }
+
+      currentFrom = new Date(currentTo);
+      if (currentFrom >= now) break;
     }
 
-    const result = await smartStoreRequest(
-      `/v1/pay-order/seller/product-orders?${params.toString()}`,
-      { method: 'GET' }
-    );
-
-    if (result.status !== 200) {
-      throw new Error(`네이버 API 오류 (HTTP ${result.status}): ${JSON.stringify(result.data)}`);
-    }
-
-    const responseData = result.data.data || result.data;
-    const contents = responseData.contents || responseData || [];
-    return Array.isArray(contents) ? contents : [];
+    return allOrders;
   }
 
   /**

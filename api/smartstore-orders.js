@@ -1,6 +1,7 @@
 // 스마트스토어 주문 조회 API
 // GET /api/smartstore-orders?status=payed&days=7
-// 네이버 커머스 API: GET /v1/pay-order/seller/product-orders
+// 네이버 커머스 API: GET /v1/pay-order/seller/product-orders (24시간 제한)
+// 7일/30일 조회 시 24시간 단위로 반복 조회
 const { smartStoreRequest } = require('./_smartstore-auth');
 
 module.exports = async (req, res) => {
@@ -11,12 +12,8 @@ module.exports = async (req, res) => {
   if (req.method === 'OPTIONS') return res.status(200).end();
 
   try {
-    const { status, days = 7, page = 1, size = 300 } = req.query;
-
-    // 조회 기간 설정 (네이버 API는 ISO 8601 + timezone offset 형식)
-    const now = new Date();
-    const fromDate = new Date();
-    fromDate.setDate(fromDate.getDate() - parseInt(days));
+    const { status, days = 1, page = 1, size = 300 } = req.query;
+    const daysNum = parseInt(days);
 
     // 네이버 API 날짜 형식: 2024-06-07T19:00:00.000+09:00
     const formatNaverDate = (d) => {
@@ -43,43 +40,52 @@ module.exports = async (req, res) => {
 
     const productOrderStatuses = statusMap[status?.toLowerCase()] || ['PAYED'];
 
-    // 쿼리 파라미터 구성
-    const params = new URLSearchParams();
-    params.append('from', formatNaverDate(fromDate));
-    params.append('to', formatNaverDate(now));
-    params.append('rangeType', 'PAYED_DATETIME');
-    params.append('pageSize', String(Math.min(parseInt(size), 300)));
-    params.append('page', String(parseInt(page)));
+    // 24시간 단위로 분할 조회
+    const now = new Date();
+    const startDate = new Date();
+    startDate.setDate(startDate.getDate() - daysNum);
 
-    // productOrderStatuses는 배열이므로 각각 추가
-    productOrderStatuses.forEach(s => {
-      params.append('productOrderStatuses', s);
-    });
+    let allOrders = [];
+    let currentFrom = new Date(startDate);
 
-    // GET 요청으로 주문 조회
-    const result = await smartStoreRequest(
-      `/v1/pay-order/seller/product-orders?${params.toString()}`,
-      { method: 'GET' }
-    );
+    // 최대 반복 횟수 제한 (Vercel 10초 타임아웃 고려)
+    const maxIterations = Math.min(daysNum, 7); // 최대 7일까지 반복 조회
 
-    if (result.status !== 200) {
-      return res.status(result.status).json({
-        success: false,
-        error: `API 오류: ${JSON.stringify(result.data)}`,
-        debug: {
-          endpoint: `/v1/pay-order/seller/product-orders`,
-          params: Object.fromEntries(params.entries()),
-          status: result.status,
-        }
+    for (let i = 0; i < maxIterations; i++) {
+      const currentTo = new Date(currentFrom.getTime() + 24 * 60 * 60 * 1000);
+      if (currentTo > now) currentTo.setTime(now.getTime());
+
+      const params = new URLSearchParams();
+      params.append('from', formatNaverDate(currentFrom));
+      params.append('to', formatNaverDate(currentTo));
+      params.append('rangeType', 'PAYED_DATETIME');
+      params.append('pageSize', String(Math.min(parseInt(size), 300)));
+      params.append('page', '1');
+
+      productOrderStatuses.forEach(s => {
+        params.append('productOrderStatuses', s);
       });
+
+      const result = await smartStoreRequest(
+        `/v1/pay-order/seller/product-orders?${params.toString()}`,
+        { method: 'GET' }
+      );
+
+      if (result.status === 200) {
+        const responseData = result.data.data || result.data;
+        const contents = responseData.contents || responseData || [];
+        if (Array.isArray(contents)) {
+          allOrders = allOrders.concat(contents);
+        }
+      }
+
+      currentFrom = new Date(currentTo);
+      if (currentFrom >= now) break;
     }
 
-    const responseData = result.data.data || result.data;
-    const orders = responseData.contents || responseData || [];
-
     // 주문 요약 정보 가공
-    const summary = (Array.isArray(orders) ? orders : []).map(order => {
-      const po = order.productOrder || order;
+    const summary = allOrders.map(item => {
+      const po = item.productOrder || item;
       return {
         productOrderId: po.productOrderId,
         orderId: po.orderId,
@@ -89,8 +95,7 @@ module.exports = async (req, res) => {
         placeOrderStatus: po.placeOrderStatus,
         buyerName: po.ordererName,
         productName: po.productName,
-        optionName: po.optionManageCode || po.productOption || '',
-        optionContent: po.optionContent || '',
+        optionContent: po.optionContent || po.productOption || '',
         quantity: po.quantity,
         unitPrice: po.unitPrice,
         totalPaymentAmount: po.totalPaymentAmount,
@@ -109,15 +114,16 @@ module.exports = async (req, res) => {
 
     return res.json({
       success: true,
-      total: responseData.totalElements || responseData.totalCount || summary.length,
+      total: summary.length,
       page: parseInt(page),
       pageSize: parseInt(size),
       orders: summary,
       queryInfo: {
-        from: formatNaverDate(fromDate),
+        from: formatNaverDate(startDate),
         to: formatNaverDate(now),
         statuses: productOrderStatuses,
-        days: parseInt(days),
+        days: daysNum,
+        iterationsUsed: Math.min(maxIterations, daysNum),
       }
     });
 
@@ -126,7 +132,6 @@ module.exports = async (req, res) => {
     return res.status(500).json({
       success: false,
       error: err.message,
-      stack: process.env.NODE_ENV === 'development' ? err.stack : undefined,
     });
   }
 };
