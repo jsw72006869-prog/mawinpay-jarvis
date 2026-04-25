@@ -1,4 +1,4 @@
-const { smartStoreRequest } = require('./_smartstore-auth');
+const { getSmartStoreToken, smartStoreRequest, API_BASE, proxyFetch } = require('./_smartstore-auth');
 const { sendTelegram, sendTelegramDocument, TelegramReport } = require('./_telegram');
 const nodemailer = require('nodemailer');
 
@@ -8,6 +8,11 @@ const nodemailer = require('nodemailer');
  * 
  * 모든 작업에 대해 상세 행동 로그(actionLogs)를 반환합니다.
  * 프론트엔드에서 이 로그를 실시간으로 표시합니다.
+ * 
+ * 네이버 커머스 API 엔드포인트:
+ * - 주문 조회: GET /v1/pay-order/seller/product-orders
+ * - 발주 확인: POST /v1/pay-order/seller/product-orders/confirm
+ * - 발송 처리: POST /v1/pay-order/seller/product-orders/dispatch
  */
 module.exports = async (req, res) => {
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -33,6 +38,97 @@ module.exports = async (req, res) => {
     });
   }
 
+  /**
+   * 네이버 커머스 API 날짜 형식 변환 (KST)
+   * 예: 2024-06-07T19:00:00.000+09:00
+   */
+  function formatNaverDate(d) {
+    const kst = new Date(d.getTime() + 9 * 60 * 60 * 1000);
+    const yyyy = kst.getUTCFullYear();
+    const mm = String(kst.getUTCMonth() + 1).padStart(2, '0');
+    const dd = String(kst.getUTCDate()).padStart(2, '0');
+    const hh = String(kst.getUTCHours()).padStart(2, '0');
+    const mi = String(kst.getUTCMinutes()).padStart(2, '0');
+    const ss = String(kst.getUTCSeconds()).padStart(2, '0');
+    return `${yyyy}-${mm}-${dd}T${hh}:${mi}:${ss}.000+09:00`;
+  }
+
+  /**
+   * 주문 조회 공통 함수
+   * GET /v1/pay-order/seller/product-orders
+   */
+  async function fetchOrders(days, productOrderStatuses = ['PAYED'], placeOrderStatusType = null) {
+    const now = new Date();
+    const fromDate = new Date();
+    fromDate.setDate(fromDate.getDate() - days);
+
+    const params = new URLSearchParams();
+    params.append('from', formatNaverDate(fromDate));
+    params.append('to', formatNaverDate(now));
+    params.append('rangeType', 'PAYED_DATETIME');
+    params.append('pageSize', '300');
+    params.append('page', '1');
+
+    productOrderStatuses.forEach(s => {
+      params.append('productOrderStatuses', s);
+    });
+
+    if (placeOrderStatusType) {
+      params.append('placeOrderStatusType', placeOrderStatusType);
+    }
+
+    const result = await smartStoreRequest(
+      `/v1/pay-order/seller/product-orders?${params.toString()}`,
+      { method: 'GET' }
+    );
+
+    if (result.status !== 200) {
+      throw new Error(`네이버 API 오류 (HTTP ${result.status}): ${JSON.stringify(result.data)}`);
+    }
+
+    const responseData = result.data.data || result.data;
+    const contents = responseData.contents || responseData || [];
+    return Array.isArray(contents) ? contents : [];
+  }
+
+  /**
+   * 주문 데이터를 통일된 형식으로 변환
+   */
+  function normalizeOrder(item) {
+    const po = item.productOrder || item;
+    return {
+      productOrderId: po.productOrderId,
+      orderId: po.orderId,
+      orderDate: po.paymentDate || po.orderDate,
+      productOrderStatus: po.productOrderStatus,
+      placeOrderStatus: po.placeOrderStatus,
+      buyerName: po.ordererName,
+      buyerTel: po.ordererTel,
+      productName: po.productName || '',
+      optionContent: po.optionContent || po.productOption || '',
+      quantity: po.quantity || 1,
+      unitPrice: po.unitPrice || 0,
+      totalPaymentAmount: po.totalPaymentAmount || 0,
+      receiverName: po.shippingAddress?.name || '',
+      receiverTel1: po.shippingAddress?.tel1 || '',
+      receiverTel2: po.shippingAddress?.tel2 || '',
+      receiverAddress: `${po.shippingAddress?.baseAddress || ''} ${po.shippingAddress?.detailedAddress || ''}`.trim(),
+      receiverZipCode: po.shippingAddress?.zipCode || '',
+      deliveryMemo: po.shippingMemo || po.shippingAddress?.deliveryMemo || '',
+      trackingNumber: po.trackingNumber,
+      deliveryCompanyCode: po.deliveryCompanyCode,
+    };
+  }
+
+  /**
+   * 품목 분류 (옥수수/밤/기타)
+   */
+  function classifyProduct(productName) {
+    if (productName.includes('옥수수') || productName.includes('찰옥수수')) return 'corn';
+    if (productName.includes('밤') || productName.includes('알밤') || productName.includes('칼집밤')) return 'chestnut';
+    return 'other';
+  }
+
   try {
     addLog('SYSTEM_INIT', 'start', '자비스 스마트스토어 엔진 가동');
     addLog('AUTH_CHECK', 'start', 'QuotaGuard 프록시 경유 인증 시작');
@@ -43,84 +139,40 @@ module.exports = async (req, res) => {
         action === 'query_orders_pending_ship' || action === 'query_orders_by_product' || action === 'query_order_detail' ||
         action === 'morning_report' || action === 'query_unconfirmed') {
 
-      // 기간 설정
+      // 기간 및 상태 설정
       let days = 1;
-      let statusType = 'PAYED';
+      let statuses = ['PAYED'];
+      let placeOrderFilter = null;
       let actionLabel = '오늘 주문';
 
       if (action === 'query_orders_week') { days = 7; actionLabel = '이번 주 주문'; }
       else if (action === 'query_orders_month') { days = 30; actionLabel = '이번 달 주문'; }
-      else if (action === 'query_orders_unpaid') { statusType = 'PAYMENT_WAITING'; actionLabel = '미결제 주문'; }
-      else if (action === 'query_orders_cancel') { statusType = 'CANCELED'; days = 30; actionLabel = '취소 주문'; }
-      else if (action === 'query_orders_return') { statusType = 'RETURNED'; days = 30; actionLabel = '반품 주문'; }
-      else if (action === 'query_orders_pending_ship') { statusType = 'DELIVERING'; days = 7; actionLabel = '발송 대기 주문'; }
+      else if (action === 'query_orders_unpaid') { statuses = ['PAYMENT_WAITING']; actionLabel = '미결제 주문'; }
+      else if (action === 'query_orders_cancel') { statuses = ['CANCELED']; days = 30; actionLabel = '취소 주문'; }
+      else if (action === 'query_orders_return') { statuses = ['RETURNED']; days = 30; actionLabel = '반품 주문'; }
+      else if (action === 'query_orders_pending_ship') { statuses = ['DELIVERING']; days = 7; actionLabel = '발송 대기 주문'; }
       else if (action === 'morning_report') { days = 1; actionLabel = '아침 업무 보고'; }
-      else if (action === 'query_unconfirmed') { statusType = 'PAYED'; days = 3; actionLabel = '미처리 발주확인'; }
+      else if (action === 'query_unconfirmed') { statuses = ['PAYED']; days = 3; placeOrderFilter = 'NOT_YET'; actionLabel = '미처리 발주확인'; }
 
-      addLog('QUERY_CONFIG', 'success', `조회 설정 완료: ${actionLabel} (최근 ${days}일, 상태: ${statusType})`);
-
-      const toDate = new Date();
-      const fromDate = new Date();
-      fromDate.setDate(fromDate.getDate() - days);
-      const formatDate = (d) => d.toISOString().split('T')[0] + 'T00:00:00.000Z';
-
+      addLog('QUERY_CONFIG', 'success', `조회 설정 완료: ${actionLabel} (최근 ${days}일, 상태: ${statuses.join(',')})`);
       addLog('API_CALL', 'start', `네이버 커머스 API 서버 접속 중... (IP: 52.5.238.209)`);
 
-      const body = {
-        searchDateType: 'PAYMENT_DATE',
-        fromDate: formatDate(fromDate),
-        toDate: formatDate(toDate),
-        orderStatusType: statusType,
-        page: 1,
-        size: 100,
-      };
-
-      const result = await smartStoreRequest('/v1/pay-order/seller/orders/query', {
-        method: 'POST',
-        body: JSON.stringify(body),
-      });
-
-      if (result.status !== 200) {
-        addLog('API_CALL', 'fail', `네이버 API 응답 오류: HTTP ${result.status}`);
-        throw new Error(`API 오류: ${JSON.stringify(result.data)}`);
-      }
+      const rawOrders = await fetchOrders(days, statuses, placeOrderFilter);
+      const orders = rawOrders.map(normalizeOrder);
 
       addLog('API_CALL', 'success', '네이버 커머스 API 응답 수신 완료');
-
-      const orders = result.data.data || [];
       addLog('DATA_PARSE', 'start', `주문 데이터 파싱 중... (${orders.length}건 감지)`);
 
       // 주문별 상세 분류
       let cornCount = 0, chestnutCount = 0, otherCount = 0;
       let totalAmount = 0;
 
-      const summary = orders.map(order => {
-        const productList = order.productOrderList || [];
-        const firstProduct = productList[0] || {};
-        const pName = firstProduct.productName || '알 수 없음';
-        
-        if (pName.includes('옥수수')) cornCount++;
-        else if (pName.includes('밤')) chestnutCount++;
+      orders.forEach(order => {
+        const type = classifyProduct(order.productName);
+        if (type === 'corn') cornCount++;
+        else if (type === 'chestnut') chestnutCount++;
         else otherCount++;
-
-        totalAmount += order.generalPaymentAmount || 0;
-
-        return {
-          orderId: order.orderId,
-          orderDate: order.paymentDate,
-          status: order.orderStatus,
-          buyerName: order.ordererName,
-          receiverName: order.shippingAddress?.name,
-          receiverAddress: `${order.shippingAddress?.baseAddress || ''} ${order.shippingAddress?.detailedAddress || ''}`.trim(),
-          products: productList.map(p => ({
-            productName: p.productName,
-            optionName: p.productOption,
-            quantity: p.quantity,
-            price: p.unitPrice,
-            totalPrice: p.totalPaymentAmount,
-          })),
-          totalAmount: order.generalPaymentAmount,
-        };
+        totalAmount += order.totalPaymentAmount || 0;
       });
 
       addLog('DATA_PARSE', 'success', `데이터 파싱 완료: 총 ${orders.length}건`);
@@ -135,20 +187,12 @@ module.exports = async (req, res) => {
         addLog('REPORT_GEN', 'start', '아침 업무 보고서 생성 중...');
 
         // 취소 주문도 조회
-        const cancelBody = { ...body, orderStatusType: 'CANCELED' };
-        const cancelResult = await smartStoreRequest('/v1/pay-order/seller/orders/query', {
-          method: 'POST',
-          body: JSON.stringify(cancelBody),
-        });
-        const cancelOrders = cancelResult.data?.data || [];
+        const cancelRaw = await fetchOrders(1, ['CANCELED']);
+        const cancelOrders = cancelRaw.map(normalizeOrder);
 
         // 발송 대기 주문 조회
-        const shipBody = { ...body, orderStatusType: 'DELIVERING' };
-        const shipResult = await smartStoreRequest('/v1/pay-order/seller/orders/query', {
-          method: 'POST',
-          body: JSON.stringify(shipBody),
-        });
-        const pendingShip = shipResult.data?.data || [];
+        const shipRaw = await fetchOrders(7, ['DELIVERING']);
+        const pendingShip = shipRaw.map(normalizeOrder);
 
         addLog('REPORT_GEN', 'success', `보고서 생성 완료: 신규 ${orders.length}건, 취소 ${cancelOrders.length}건, 발송대기 ${pendingShip.length}건`);
 
@@ -165,7 +209,7 @@ module.exports = async (req, res) => {
           cornCount,
           chestnutCount,
           summary: summaryText,
-          data: summary,
+          data: orders,
           actionLogs: logs,
         });
       }
@@ -173,8 +217,8 @@ module.exports = async (req, res) => {
       // 상품별 조회
       if (action === 'query_orders_by_product' && productName) {
         addLog('FILTER', 'start', `상품 필터링: "${productName}" 검색 중...`);
-        const filtered = summary.filter(o =>
-          o.products.some(p => p.productName?.includes(productName) || p.optionName?.includes(productName))
+        const filtered = orders.filter(o =>
+          o.productName?.includes(productName) || o.optionContent?.includes(productName)
         );
         addLog('FILTER', 'success', `"${productName}" 관련 주문 ${filtered.length}건 발견`);
         addLog('COMPLETE', 'success', '상품별 주문 조회 완료');
@@ -190,7 +234,7 @@ module.exports = async (req, res) => {
       // 개별 주문 상세
       if (action === 'query_order_detail' && orderId) {
         addLog('DETAIL', 'start', `주문번호 ${orderId} 상세 조회 중...`);
-        const found = summary.find(o => o.orderId === orderId);
+        const found = orders.find(o => o.orderId === orderId || o.productOrderId === orderId);
         if (found) {
           addLog('DETAIL', 'success', `주문번호 ${orderId} 조회 성공`);
         } else {
@@ -210,7 +254,7 @@ module.exports = async (req, res) => {
 
       return res.json({
         success: true,
-        data: summary,
+        data: orders,
         summary: `${actionLabel}: 총 ${orders.length}건 (🌽${cornCount} 🌰${chestnutCount} 기타${otherCount}) | 매출 ${totalAmount.toLocaleString()}원`,
         totalAmount,
         cornCount,
@@ -225,41 +269,18 @@ module.exports = async (req, res) => {
       addLog('CONFIRM_INIT', 'start', '발주확인 프로세스 시작');
 
       const days = action === 'confirm_all_today' ? 1 : 3;
-      const toDate = new Date();
-      const fromDate = new Date();
-      fromDate.setDate(fromDate.getDate() - days);
-      const formatDate = (d) => d.toISOString().split('T')[0] + 'T00:00:00.000Z';
 
       addLog('API_CALL', 'start', `미확인 주문 조회 중... (최근 ${days}일)`);
 
-      const body = {
-        searchDateType: 'PAYMENT_DATE',
-        fromDate: formatDate(fromDate),
-        toDate: formatDate(toDate),
-        orderStatusType: 'PAYED',
-        page: 1,
-        size: 100,
-      };
+      const rawOrders = await fetchOrders(days, ['PAYED'], 'NOT_YET');
+      let orders = rawOrders.map(normalizeOrder);
 
-      const result = await smartStoreRequest('/v1/pay-order/seller/orders/query', {
-        method: 'POST',
-        body: JSON.stringify(body),
-      });
-
-      if (result.status !== 200) {
-        addLog('API_CALL', 'fail', `주문 조회 실패: HTTP ${result.status}`);
-        throw new Error(`API 오류: ${JSON.stringify(result.data)}`);
-      }
-
-      let orders = result.data.data || [];
       addLog('API_CALL', 'success', `미확인 주문 ${orders.length}건 조회 완료`);
 
       // 상품별 필터
       if (action === 'confirm_by_product' && productName) {
         addLog('FILTER', 'start', `"${productName}" 상품 필터링 중...`);
-        orders = orders.filter(o =>
-          (o.productOrderList || []).some(p => p.productName?.includes(productName))
-        );
+        orders = orders.filter(o => o.productName?.includes(productName));
         addLog('FILTER', 'success', `"${productName}" 관련 ${orders.length}건 필터링 완료`);
       }
 
@@ -267,7 +288,7 @@ module.exports = async (req, res) => {
       if (action === 'confirm_by_id' && productOrderIds) {
         addLog('FILTER', 'start', `지정된 주문번호 필터링 중...`);
         const ids = Array.isArray(productOrderIds) ? productOrderIds : [productOrderIds];
-        orders = orders.filter(o => ids.includes(o.orderId));
+        orders = orders.filter(o => ids.includes(o.productOrderId) || ids.includes(o.orderId));
         addLog('FILTER', 'success', `${orders.length}건 필터링 완료`);
       }
 
@@ -277,32 +298,40 @@ module.exports = async (req, res) => {
         return res.json({ success: true, confirmedCount: 0, message: '처리할 주문이 없습니다.', actionLogs: logs });
       }
 
-      // 발주확인 처리
+      // 발주확인 처리 - 올바른 엔드포인트: POST /v1/pay-order/seller/product-orders/confirm
       addLog('CONFIRM', 'start', `${orders.length}건 발주확인 처리 시작...`);
+      
+      const allProductOrderIds = orders
+        .map(o => o.productOrderId)
+        .filter(id => id);
+
+      if (allProductOrderIds.length === 0) {
+        addLog('CONFIRM', 'warning', '유효한 상품주문번호가 없습니다');
+        return res.json({ success: true, confirmedCount: 0, message: '유효한 상품주문번호가 없습니다.', actionLogs: logs });
+      }
+
       let confirmedCount = 0;
 
-      for (const order of orders) {
-        const productOrderList = order.productOrderList || [];
-        for (const po of productOrderList) {
-          try {
-            addLog('CONFIRM_ITEM', 'start', `주문 ${po.productOrderId || order.orderId} 발주확인 중...`);
-            
-            const confirmResult = await smartStoreRequest('/v1/pay-order/seller/orders/confirm', {
-              method: 'POST',
-              body: JSON.stringify({
-                productOrderIds: [po.productOrderId || order.orderId],
-              }),
-            });
+      // 한 번에 최대 50개씩 처리
+      const batchSize = 50;
+      for (let i = 0; i < allProductOrderIds.length; i += batchSize) {
+        const batch = allProductOrderIds.slice(i, i + batchSize);
+        try {
+          addLog('CONFIRM_BATCH', 'start', `발주확인 배치 처리 중... (${i + 1}~${i + batch.length}/${allProductOrderIds.length})`);
+          
+          const confirmResult = await smartStoreRequest('/v1/pay-order/seller/product-orders/confirm', {
+            method: 'POST',
+            body: JSON.stringify({ productOrderIds: batch }),
+          });
 
-            if (confirmResult.status === 200) {
-              confirmedCount++;
-              addLog('CONFIRM_ITEM', 'success', `✓ ${po.productName || '상품'} (${po.quantity || 1}개) 발주확인 완료`);
-            } else {
-              addLog('CONFIRM_ITEM', 'warning', `△ ${po.productName || '상품'} 발주확인 실패 (이미 처리됨)`);
-            }
-          } catch (err) {
-            addLog('CONFIRM_ITEM', 'fail', `✗ ${po.productName || '상품'} 발주확인 오류: ${err.message}`);
+          if (confirmResult.status === 200) {
+            confirmedCount += batch.length;
+            addLog('CONFIRM_BATCH', 'success', `✓ ${batch.length}건 발주확인 완료`);
+          } else {
+            addLog('CONFIRM_BATCH', 'warning', `△ 발주확인 응답: HTTP ${confirmResult.status} - ${JSON.stringify(confirmResult.data)}`);
           }
+        } catch (err) {
+          addLog('CONFIRM_BATCH', 'fail', `✗ 발주확인 오류: ${err.message}`);
         }
       }
 
@@ -327,30 +356,12 @@ module.exports = async (req, res) => {
       addLog('SHEET_INIT', 'start', '주문서 생성 프로세스 시작');
 
       const days = action.includes('week') ? 7 : action.includes('month') ? 30 : 1;
-      const toDate = new Date();
-      const fromDate = new Date();
-      fromDate.setDate(fromDate.getDate() - days);
-      const formatDate = (d) => d.toISOString().split('T')[0] + 'T00:00:00.000Z';
 
       addLog('API_CALL', 'start', `주문 데이터 수집 중... (최근 ${days}일)`);
 
-      const body = {
-        searchDateType: 'PAYMENT_DATE',
-        fromDate: formatDate(fromDate),
-        toDate: formatDate(toDate),
-        orderStatusType: 'PAYED',
-        page: 1,
-        size: 100,
-      };
+      const rawOrders = await fetchOrders(days, ['PAYED']);
+      const orders = rawOrders.map(normalizeOrder);
 
-      const result = await smartStoreRequest('/v1/pay-order/seller/orders/query', {
-        method: 'POST',
-        body: JSON.stringify(body),
-      });
-
-      if (result.status !== 200) throw new Error(`API 오류: ${result.status}`);
-
-      let orders = result.data.data || [];
       addLog('API_CALL', 'success', `${orders.length}건 주문 데이터 수집 완료`);
 
       // 품목 분류
@@ -360,9 +371,9 @@ module.exports = async (req, res) => {
       const otherOrders = [];
 
       orders.forEach(order => {
-        const pName = order.productOrderList?.[0]?.productName || '';
-        if (pName.includes('옥수수')) cornOrders.push(order);
-        else if (pName.includes('밤')) chestnutOrders.push(order);
+        const type = classifyProduct(order.productName);
+        if (type === 'corn') cornOrders.push(order);
+        else if (type === 'chestnut') chestnutOrders.push(order);
         else otherOrders.push(order);
       });
 
@@ -379,9 +390,7 @@ module.exports = async (req, res) => {
         csvRows.push('=== 옥수수 발주서 ===');
         csvRows.push('옵션정보,수량,수취인명,연락처,주소,상품주문번호,배송메세지');
         cornOrders.forEach(o => {
-          const p = o.productOrderList?.[0] || {};
-          const addr = o.shippingAddress || {};
-          csvRows.push(`"${p.productOption || p.productName}",${p.quantity},"${addr.name}","${addr.tel1}","${addr.baseAddress} ${addr.detailedAddress || ''}","${o.orderId}","${o.deliveryMemo || ''}"`);
+          csvRows.push(`"${o.optionContent || o.productName}",${o.quantity},"${o.receiverName}","${o.receiverTel1}","${o.receiverAddress}","${o.productOrderId || o.orderId}","${o.deliveryMemo || ''}"`);
         });
         csvRows.push('');
       }
@@ -392,9 +401,7 @@ module.exports = async (req, res) => {
         csvRows.push('=== 밤 발주서 ===');
         csvRows.push('옵션정보,수량,보내는분이름,보내는분전화번호,수취인명,연락처1,연락처2,주소,상품주문번호');
         chestnutOrders.forEach(o => {
-          const p = o.productOrderList?.[0] || {};
-          const addr = o.shippingAddress || {};
-          csvRows.push(`"${p.productOption || p.productName}",${p.quantity},"MAWINPAY","${process.env.GMAIL_SENDER_TEL || ''}","${addr.name}","${addr.tel1}","${addr.tel1}","${addr.baseAddress} ${addr.detailedAddress || ''}","${o.orderId}"`);
+          csvRows.push(`"${o.optionContent || o.productName}",${o.quantity},"MAWINPAY","${process.env.GMAIL_SENDER_TEL || ''}","${o.receiverName}","${o.receiverTel1}","${o.receiverTel2 || o.receiverTel1}","${o.receiverAddress}","${o.productOrderId || o.orderId}"`);
         });
       }
 
@@ -423,29 +430,13 @@ module.exports = async (req, res) => {
       addLog('ANALYSIS_INIT', 'start', '매출 분석 엔진 가동');
 
       const days = action.includes('month') ? 30 : 7;
-      const toDate = new Date();
-      const fromDate = new Date();
-      fromDate.setDate(fromDate.getDate() - days);
-      const formatDate = (d) => d.toISOString().split('T')[0] + 'T00:00:00.000Z';
 
       addLog('API_CALL', 'start', `매출 데이터 수집 중... (최근 ${days}일)`);
 
       // 구매확정 주문 조회
-      const body = {
-        searchDateType: 'PAYMENT_DATE',
-        fromDate: formatDate(fromDate),
-        toDate: formatDate(toDate),
-        orderStatusType: 'PURCHASE_DECIDED',
-        page: 1,
-        size: 100,
-      };
+      const rawOrders = await fetchOrders(days, ['PURCHASE_DECIDED']);
+      const orders = rawOrders.map(normalizeOrder);
 
-      const result = await smartStoreRequest('/v1/pay-order/seller/orders/query', {
-        method: 'POST',
-        body: JSON.stringify(body),
-      });
-
-      const orders = result.data?.data || [];
       addLog('API_CALL', 'success', `${orders.length}건 매출 데이터 수집 완료`);
 
       addLog('CALC', 'start', '매출 계산 중... (네이버 수수료 3.4% 적용)');
@@ -454,13 +445,11 @@ module.exports = async (req, res) => {
       const productMap = {};
 
       orders.forEach(o => {
-        totalSales += o.generalPaymentAmount || 0;
-        (o.productOrderList || []).forEach(p => {
-          const name = p.productName || '기타';
-          if (!productMap[name]) productMap[name] = { quantity: 0, sales: 0 };
-          productMap[name].quantity += p.quantity || 1;
-          productMap[name].sales += p.totalPaymentAmount || 0;
-        });
+        totalSales += o.totalPaymentAmount || 0;
+        const name = o.productName || '기타';
+        if (!productMap[name]) productMap[name] = { quantity: 0, sales: 0 };
+        productMap[name].quantity += o.quantity || 1;
+        productMap[name].sales += o.totalPaymentAmount || 0;
       });
 
       const naverFee = Math.round(totalSales * 0.034);
@@ -496,24 +485,10 @@ module.exports = async (req, res) => {
 
       // 주문 조회
       addLog('API_CALL', 'start', '신규 주문 데이터 수집 중...');
-      const toDate = new Date();
-      const fromDate = new Date();
-      fromDate.setDate(fromDate.getDate() - 3);
-      const formatDate = (d) => d.toISOString().split('T')[0] + 'T00:00:00.000Z';
 
-      const result = await smartStoreRequest('/v1/pay-order/seller/orders/query', {
-        method: 'POST',
-        body: JSON.stringify({
-          searchDateType: 'PAYMENT_DATE',
-          fromDate: formatDate(fromDate),
-          toDate: formatDate(toDate),
-          orderStatusType: 'PAYED',
-          page: 1,
-          size: 100,
-        }),
-      });
+      const rawOrders = await fetchOrders(3, ['PAYED']);
+      const orders = rawOrders.map(normalizeOrder);
 
-      const orders = result.data?.data || [];
       addLog('API_CALL', 'success', `${orders.length}건 주문 수집 완료`);
 
       if (orders.length === 0) {
@@ -523,8 +498,8 @@ module.exports = async (req, res) => {
 
       // 품목 분류
       addLog('CLASSIFY', 'start', '품목별 분류 및 발주서 생성 중...');
-      const cornOrders = orders.filter(o => (o.productOrderList?.[0]?.productName || '').includes('옥수수'));
-      const chestnutOrders = orders.filter(o => (o.productOrderList?.[0]?.productName || '').includes('밤'));
+      const cornOrders = orders.filter(o => classifyProduct(o.productName) === 'corn');
+      const chestnutOrders = orders.filter(o => classifyProduct(o.productName) === 'chestnut');
 
       addLog('CLASSIFY', 'success', `🌽옥수수 ${cornOrders.length}건 | 🌰밤 ${chestnutOrders.length}건`);
 
@@ -579,41 +554,39 @@ module.exports = async (req, res) => {
           }
 
           typeOrders.forEach(o => {
-            const p = o.productOrderList?.[0] || {};
-            const addr = o.shippingAddress || {};
             if (type === '옥수수') {
               sheet.addRow({
-                option: p.productOption || p.productName,
-                qty: p.quantity,
-                name: addr.name,
-                tel: addr.tel1,
-                addr: `${addr.baseAddress} ${addr.detailedAddress || ''}`,
-                orderId: o.orderId,
+                option: o.optionContent || o.productName,
+                qty: o.quantity,
+                name: o.receiverName,
+                tel: o.receiverTel1,
+                addr: o.receiverAddress,
+                orderId: o.productOrderId || o.orderId,
                 memo: o.deliveryMemo || '',
               });
             } else {
               sheet.addRow({
-                option: p.productOption || p.productName,
-                qty: p.quantity,
+                option: o.optionContent || o.productName,
+                qty: o.quantity,
                 senderName: 'MAWINPAY',
                 senderTel: process.env.GMAIL_SENDER_TEL || '',
-                name: addr.name,
-                tel1: addr.tel1,
-                tel2: addr.tel1,
-                addr: `${addr.baseAddress} ${addr.detailedAddress || ''}`,
-                orderId: o.orderId,
+                name: o.receiverName,
+                tel1: o.receiverTel1,
+                tel2: o.receiverTel2 || o.receiverTel1,
+                addr: o.receiverAddress,
+                orderId: o.productOrderId || o.orderId,
               });
             }
           });
 
           const buffer = await workbook.xlsx.writeBuffer();
-          const fileName = `${type}_발주서_${new Date().toISOString().split('T')[0]}.xlsx`;
+          const excelFileName = `${type}_발주서_${new Date().toISOString().split('T')[0]}.xlsx`;
 
-          addLog('EXCEL_GEN', 'success', `${type} 발주서 생성 완료: ${fileName}`);
+          addLog('EXCEL_GEN', 'success', `${type} 발주서 생성 완료: ${excelFileName}`);
 
           // 텔레그램 전송
           addLog('TELEGRAM', 'start', `${type} 발주서 텔레그램 전송 중...`);
-          await sendTelegramDocument(buffer, fileName, `📄 ${type} 발주서 (${typeOrders.length}건)`);
+          await sendTelegramDocument(buffer, excelFileName, `📄 ${type} 발주서 (${typeOrders.length}건)`);
           addLog('TELEGRAM', 'success', `${type} 발주서 텔레그램 전송 완료`);
 
           // 이메일 발송
@@ -630,7 +603,7 @@ module.exports = async (req, res) => {
             to: targetEmail,
             subject: `[자비스] ${type} 발주 요청 (${typeOrders.length}건)`,
             text: `자동 생성된 ${type} 발주서입니다. 첨부파일을 확인해 주세요. (비밀번호: 1234)`,
-            attachments: [{ filename: fileName, content: buffer }],
+            attachments: [{ filename: excelFileName, content: buffer }],
           });
 
           addLog('EMAIL_SMTP', 'success', `✓ ${type} 발주서 이메일 발송 완료 → ${targetEmail}`);
