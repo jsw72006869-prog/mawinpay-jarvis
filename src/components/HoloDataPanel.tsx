@@ -4,12 +4,20 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { useEffect, useState } from 'react';
 
 interface HoloDataPanelProps {
-  type: 'collect' | 'send_email' | 'create_banner' | 'report' | null;
+  type: 'collect' | 'send_email' | 'create_banner' | 'report' | 'booking' | null;
   progress: number;
   message: string;
+  bookingSteps?: string[];
 }
 
 const PANEL_CONFIG = {
+  booking: {
+    title: 'AUTONOMOUS BOOKING',
+    icon: '◈',
+    color: '#F59E0B',
+    color2: '#EF4444',
+    steps: ['NAVER LOGIN', 'SEARCH BUSINESS', 'TIME SELECTION', 'FORM FILLING', 'CONFIRMATION'],
+  },
   collect: {
     title: 'INFLUENCER SCAN',
     icon: '◉',
@@ -54,8 +62,10 @@ export default function HoloDataPanel({ type, progress, message }: HoloDataPanel
   const [visibleRows, setVisibleRows] = useState(0);
   const [dataLines, setDataLines] = useState<string[]>([]);
 
-  const config = type ? PANEL_CONFIG[type] : PANEL_CONFIG.collect;
-  const activeStep = Math.min(Math.floor(progress / 25), 3);
+  const config = type ? (PANEL_CONFIG[type as keyof typeof PANEL_CONFIG] || PANEL_CONFIG.collect) : PANEL_CONFIG.collect;
+  const steps = (type === 'booking' && bookingSteps) ? bookingSteps : config.steps;
+  const stepCount = steps.length;
+  const activeStep = Math.min(Math.floor((progress / 100) * stepCount), stepCount - 1);
   const completedSteps = Array.from({ length: activeStep }, (_, i) => i);
 
   useEffect(() => {
@@ -145,7 +155,7 @@ export default function HoloDataPanel({ type, progress, message }: HoloDataPanel
 
             {/* 단계 표시 */}
             <div className="px-4 py-3" style={{ borderBottom: `1px solid ${config.color}08` }}>
-              {config.steps.map((step, i) => {
+              {steps.map((step, i) => {
                 const isDone = completedSteps.includes(i);
                 const isActive = i === activeStep && progress < 100;
                 return (

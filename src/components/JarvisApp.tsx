@@ -108,9 +108,10 @@ export default function JarvisApp() {
   const [isTyping, setIsTyping] = useState(false);
   const [dataPanel, setDataPanel] = useState<{
     visible: boolean;
-    type: 'collect' | 'send_email' | 'create_banner' | 'report' | null;
+    type: 'collect' | 'send_email' | 'create_banner' | 'report' | 'booking' | null;
     progress: number;
     message: string;
+    bookingSteps?: string[];
   }>({ visible: false, type: null, progress: 0, message: '' });
   const [stats, setStats] = useState({ collected: 247, emailsSent: 183, responseRate: 23.5, contracts: 4 });
   const [bannerImage, setBannerImage] = useState<string | null>(null);
@@ -815,9 +816,19 @@ export default function JarvisApp() {
         const savedUserName = naverCreds.userName || '';
         const savedUserPhone = naverCreds.userPhone || '';
 
-        // 마누스 예약 자동화 API 호출
+        // ── 마누스 예약 자동화 API 호출 ──
         setState('working');
-        addMessage('jarvis', `🚀 마누스 자율 예약 엔진 시작... ${businessName} 예약을 자동으로 진행하겠습니다.`);
+        const startMsg = `🚀 마누스 자율 예약 엔진을 가동합니다. ${businessName} 예약을 위해 브라우저 제어를 시작합니다.`;
+        addMessage('jarvis', startMsg);
+        
+        // HoloDataPanel 활성화
+        setDataPanel({
+          visible: true,
+          type: 'booking',
+          progress: 5,
+          message: `${businessName} 예약 자동화 준비 중...`,
+          bookingSteps: ['INITIALIZING', 'NAVER LOGIN', 'SEARCH BUSINESS', 'TIME SELECTION', 'FORM FILLING', 'CONFIRMATION']
+        });
 
         const manusRes = await fetch('/api/manus-agent/naver-booking', {
           method: 'POST',
@@ -844,9 +855,10 @@ export default function JarvisApp() {
 
         // ── 실시간 진행 상황 폴링 ──
         let pollCount = 0;
-        const maxPolls = 120; // 최대 6분 (3초 × 120)
+        const maxPolls = 150; // 최대 7.5분 (3초 × 150)
         let taskCompleted = false;
         let taskError = false;
+        let lastProgressMsg = '';
 
         while (pollCount < maxPolls && !taskCompleted && !taskError) {
           pollCount++;
@@ -864,28 +876,45 @@ export default function JarvisApp() {
             const messages = statusData.messages || [];
             const progress = statusData.progress || [];
 
-            // ── 진행 상황 표시 ──
+            // ── 진행 상황 표시 (HoloDataPanel 연동) ──
             if (progress.length > 0) {
               const latestProgress = progress[progress.length - 1];
               const progressMsg = latestProgress.content || '';
+              
+              if (progressMsg !== lastProgressMsg) {
+                lastProgressMsg = progressMsg;
+                addMessage('jarvis', `⏳ [AGENT] ${progressMsg}`);
+                
+                // 진행률 계산 (0~100)
+                let currentProgress = 10;
+                if (progressMsg.includes('로그인')) { currentProgress = 25; setBookingStep(1); }
+                else if (progressMsg.includes('검색') || progressMsg.includes('접속')) { currentProgress = 45; setBookingStep(2); }
+                else if (progressMsg.includes('시간') || progressMsg.includes('조회')) { currentProgress = 65; setBookingStep(2); }
+                else if (progressMsg.includes('폼') || progressMsg.includes('입력')) { currentProgress = 85; setBookingStep(3); }
+                else if (progressMsg.includes('확인') || progressMsg.includes('완료')) { currentProgress = 95; setBookingStep(4); }
 
-              // 진행 단계 업데이트
-              if (progressMsg.includes('로그인')) setBookingStep(1);
-              else if (progressMsg.includes('시간') || progressMsg.includes('조회')) setBookingStep(2);
-              else if (progressMsg.includes('폼') || progressMsg.includes('입력')) setBookingStep(3);
-              else if (progressMsg.includes('확인') || progressMsg.includes('완료')) setBookingStep(4);
-
-              addMessage('jarvis', `⏳ ${progressMsg}`);
+                setDataPanel(prev => ({
+                  ...prev,
+                  progress: currentProgress,
+                  message: progressMsg
+                }));
+              }
             }
 
             // ── 대기 상태 처리 (캡차, OTP 등) ──
             if (taskStatus === 'waiting' && statusData.waiting_detail) {
               const waitingDetail = statusData.waiting_detail;
               const eventType = waitingDetail.waiting_for_event_type?.toLowerCase() || '';
+              const description = waitingDetail.waiting_description || '';
+
+              setDataPanel(prev => ({
+                ...prev,
+                message: `⚠️ 사용자 입력 대기 중: ${description}`
+              }));
 
               if (eventType.includes('captcha')) {
                 setState('speaking');
-                const captchaMsg = '🔐 캡차 인증이 필요합니다. 화면에 표시된 캡차 코드를 말씀해 주세요.';
+                const captchaMsg = '🔐 네이버 보안 문자가 감지되었습니다. 화면에 표시된 캡차 코드를 말씀해 주세요.';
                 addMessage('jarvis', captchaMsg, true);
                 startSpeakingLevel();
                 await new Promise<void>(resolve => {
@@ -899,7 +928,7 @@ export default function JarvisApp() {
 
                 // 캡차 답변 제출
                 setState('working');
-                addMessage('jarvis', `캡차 답변 제출 중...`);
+                addMessage('jarvis', `[INPUT] 캡차 코드 "${captchaCode}" 제출 중...`);
                 const confirmRes = await fetch('/api/manus-task-confirm', {
                   method: 'POST',
                   headers: { 'Content-Type': 'application/json' },
@@ -910,12 +939,10 @@ export default function JarvisApp() {
                   }),
                 });
                 const confirmData = await confirmRes.json();
-                if (!confirmData.success) {
-                  throw new Error('캡차 제출 실패');
-                }
+                if (!confirmData.success) throw new Error('캡차 제출 실패');
               } else if (eventType.includes('otp')) {
                 setState('speaking');
-                const otpMsg = '📱 인증번호가 전송되었습니다. 받으신 인증번호를 말씀해 주세요.';
+                const otpMsg = '📱 네이버 2단계 인증번호가 전송되었습니다. 받으신 번호를 말씀해 주세요.';
                 addMessage('jarvis', otpMsg, true);
                 startSpeakingLevel();
                 await new Promise<void>(resolve => {
@@ -928,7 +955,7 @@ export default function JarvisApp() {
                 });
 
                 setState('working');
-                addMessage('jarvis', `인증번호 제출 중...`);
+                addMessage('jarvis', `[INPUT] 인증번호 "${otpCode}" 제출 중...`);
                 const confirmRes = await fetch('/api/manus-task-confirm', {
                   method: 'POST',
                   headers: { 'Content-Type': 'application/json' },
@@ -939,9 +966,7 @@ export default function JarvisApp() {
                   }),
                 });
                 const confirmData = await confirmRes.json();
-                if (!confirmData.success) {
-                  throw new Error('인증번호 제출 실패');
-                }
+                if (!confirmData.success) throw new Error('인증번호 제출 실패');
               }
             }
 
@@ -949,15 +974,22 @@ export default function JarvisApp() {
             if (taskStatus === 'stopped') {
               taskCompleted = true;
               setBookingStep(5);
+              setDataPanel(prev => ({ ...prev, progress: 100, message: '예약 자동화 완료' }));
 
-              // 최종 메시지
-              const finalMsg = messages[messages.length - 1]?.content || '예약이 완료되었습니다.';
-              setState('speaking');
-              addMessage('jarvis', `✅ ${finalMsg}`, true);
-              startSpeakingLevel();
-              await new Promise<void>(resolve => {
-                speak(`예약이 완료되었습니다, 선생님. ${finalMsg}`, undefined, () => { stopSpeakingLevel(); resolve(); });
-              });
+              // 최종 메시지 분석 (성공 여부 확인)
+              const finalMsg = messages[messages.length - 1]?.content || '';
+              const isSuccess = finalMsg.includes('완료') || finalMsg.includes('성공') || finalMsg.includes('✅');
+              
+              if (isSuccess) {
+                setState('speaking');
+                addMessage('jarvis', `✅ ${finalMsg}`, true);
+                startSpeakingLevel();
+                await new Promise<void>(resolve => {
+                  speak(`선생님, ${businessName} 예약이 성공적으로 완료되었습니다. 상세 내역을 확인해 주세요.`, undefined, () => { stopSpeakingLevel(); resolve(); });
+                });
+              } else {
+                throw new Error(finalMsg || '예약 처리 중 문제가 발생했습니다.');
+              }
             } else if (taskStatus === 'error') {
               taskError = true;
               const errorMsg = messages[messages.length - 1]?.content || '예약 중 오류가 발생했습니다.';
@@ -965,9 +997,7 @@ export default function JarvisApp() {
             }
           } catch (pollErr) {
             console.error('[JARVIS] 폴링 오류:', pollErr);
-            if (pollCount >= maxPolls) {
-              throw new Error('예약 자동화 시간 초과');
-            }
+            if (pollCount >= maxPolls) throw new Error('예약 자동화 시간 초과 (7.5분 경과)');
           }
         }
 
@@ -979,14 +1009,16 @@ export default function JarvisApp() {
         const errMsg = `❌ 예약 중 오류가 발생했습니다, 선생님. ${String(err)}`;
         setState('speaking');
         addMessage('jarvis', errMsg, true);
+        setDataPanel(prev => ({ ...prev, message: '오류 발생: 중단됨', progress: 0 }));
         startSpeakingLevel();
         await new Promise<void>(resolve => {
           speak(errMsg, undefined, () => { stopSpeakingLevel(); resolve(); });
         });
       }
 
-      await new Promise(r => setTimeout(r, 400));
+      await new Promise(r => setTimeout(r, 2000));
       setBookingStep(0);
+      setDataPanel({ visible: false, type: null, progress: 0, message: '' });
       setState('listening');
       setIsListening(true);
       return;
@@ -2827,13 +2859,14 @@ export default function JarvisApp() {
       </motion.footer>
 
       {/* ── 홀로그램 데이터 패널 ── */}
-      <AnimatePresence>
-        {dataPanel.visible && (
-          <HoloDataPanel type={dataPanel.type} progress={dataPanel.progress} message={dataPanel.message} />
-        )}
-      </AnimatePresence>
-
-      {/* ── 인플루언서 카드 UI ── */}
+      <AnimatePrese        {dataPanel.visible && (
+          <HoloDataPanel
+            type={dataPanel.type}
+            progress={dataPanel.progress}
+            message={dataPanel.message}
+            bookingSteps={dataPanel.bookingSteps}
+          />
+        )}플루언서 카드 UI ── */}
       <InfluencerCards
         influencers={collectedInfluencers}
         visible={influencerCardsVisible}
