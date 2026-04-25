@@ -892,11 +892,30 @@ export default function JarvisApp() {
         addMessage('jarvis', `⏳ [AGENT] 태스크 ID: ${taskId.slice(0, 8)}... 생성 완료`);
 
         // ── 5단계: 실시간 진행 상황 폴링 ──
+        // 안전한 speak 래퍼 (폴링 중 WebGL 크래시 방지)
+        const safeSpeak = (text: string): Promise<void> => {
+          return new Promise((resolve) => {
+            try {
+              setState('speaking');
+              startSpeakingLevel();
+              speak(text, undefined, () => { 
+                try { stopSpeakingLevel(); } catch(e) { console.warn('[JARVIS] stopSpeakingLevel error:', e); }
+                resolve(); 
+              });
+            } catch (e) {
+              console.warn('[JARVIS] speak error (graceful):', e);
+              try { stopSpeakingLevel(); } catch(e2) { /* ignore */ }
+              resolve();
+            }
+          });
+        };
+
         let pollCount = 0;
         const maxPolls = 150;
         let taskCompleted = false;
         let taskError = false;
         let lastProgressMsg = '';
+        let consecutiveErrors = 0;
 
         while (pollCount < maxPolls && !taskCompleted && !taskError) {
           pollCount++;
@@ -950,11 +969,9 @@ export default function JarvisApp() {
               setDataPanel(prev => ({ ...prev, message: `⚠️ 사용자 입력 대기: ${description}` }));
 
               if (eventType.includes('captcha')) {
-                setState('speaking');
                 const captchaMsg = '선생님, 보안 문자가 감지되었습니다. 화면에 표시된 코드를 말씀해 주세요.';
                 addMessage('jarvis', captchaMsg, true);
-                startSpeakingLevel();
-                await new Promise<void>(resolve => { speak(captchaMsg, undefined, () => { stopSpeakingLevel(); resolve(); }); });
+                await safeSpeak(captchaMsg);
                 setState('listening');
                 const captchaCode = await new Promise<string>(resolve => { verificationResolveRef.current = resolve; });
                 setState('working');
@@ -964,11 +981,9 @@ export default function JarvisApp() {
                   body: JSON.stringify({ task_id: taskId, event_id: waitingDetail.waiting_for_event_id, input: { captcha_code: captchaCode } }),
                 });
               } else if (eventType.includes('otp')) {
-                setState('speaking');
                 const otpMsg = '선생님, 인증번호가 전송되었습니다. 받으신 번호를 말씀해 주세요.';
                 addMessage('jarvis', otpMsg, true);
-                startSpeakingLevel();
-                await new Promise<void>(resolve => { speak(otpMsg, undefined, () => { stopSpeakingLevel(); resolve(); }); });
+                await safeSpeak(otpMsg);
                 setState('listening');
                 const otpCode = await new Promise<string>(resolve => { verificationResolveRef.current = resolve; });
                 setState('working');
@@ -979,11 +994,9 @@ export default function JarvisApp() {
                 });
               } else if (eventType.includes('login')) {
                 // 로그인 필요 시 사용자에게 안내
-                setState('speaking');
                 const loginMsg = `선생님, ${targetSite || '해당 사이트'} 로그인이 필요합니다. 화면에서 로그인을 진행해 주시면 ${taskLabel}을 마무리짓겠습니다.`;
                 addMessage('jarvis', loginMsg, true);
-                startSpeakingLevel();
-                await new Promise<void>(resolve => { speak(loginMsg, undefined, () => { stopSpeakingLevel(); resolve(); }); });
+                await safeSpeak(loginMsg);
                 // 로그인 완료 대기
                 setState('listening');
                 await new Promise<string>(resolve => { verificationResolveRef.current = resolve; });
@@ -997,6 +1010,9 @@ export default function JarvisApp() {
             }
 
             // ── 완료 또는 에러 ──
+            // 성공적 폴링 시 에러 카운터 리셋
+            consecutiveErrors = 0;
+
             if (taskStatus === 'stopped') {
               taskCompleted = true;
               setBookingStep(5);
@@ -1005,22 +1021,38 @@ export default function JarvisApp() {
               const finalMsg = msgs[msgs.length - 1]?.content || '';
               const isSuccess = finalMsg.includes('완료') || finalMsg.includes('성공') || finalMsg.includes('✅') || !finalMsg.includes('실패');
 
-              setState('speaking');
               const completionMsg = isSuccess
                 ? `선생님, ${businessName || taskLabel} 작업이 성공적으로 완료되었습니다. ${finalMsg}`
                 : `선생님, ${businessName || taskLabel} 작업 결과를 보고드립니다. ${finalMsg}`;
               addMessage('jarvis', completionMsg, true);
-              startSpeakingLevel();
-              await new Promise<void>(resolve => {
-                speak(completionMsg, undefined, () => { stopSpeakingLevel(); resolve(); });
-              });
+              await safeSpeak(completionMsg);
             } else if (taskStatus === 'error') {
               taskError = true;
               const errorMsg = msgs[msgs.length - 1]?.content || `${taskLabel} 중 오류가 발생했습니다.`;
+              addMessage('jarvis', `❌ [AGENT] 에러: ${errorMsg}`);
               throw new Error(errorMsg);
             }
+
+            // 진행 중 메시지 표시 (assistant_message)
+            if (msgs.length > 0) {
+              const latestMsg = msgs[0]?.content || '';
+              if (latestMsg && latestMsg !== lastProgressMsg) {
+                lastProgressMsg = latestMsg;
+                addMessage('jarvis', `💬 [AGENT] ${latestMsg.substring(0, 200)}`);
+              }
+            }
           } catch (pollErr: unknown) {
-            console.error('[JARVIS] 폴링 오류:', pollErr);
+            consecutiveErrors++;
+            console.error(`[JARVIS] 폴링 오류 (${consecutiveErrors}회):`, pollErr);
+            
+            // 5회 연속 에러 시 사용자에게 알림
+            if (consecutiveErrors === 5) {
+              addMessage('jarvis', `⚠️ [에이전트] 마누스 연결이 불안정합니다. 계속 시도 중...`);
+            }
+            // 10회 연속 에러 시 중단
+            if (consecutiveErrors >= 10) {
+              throw new Error(`${taskLabel} 연결 실패 (연속 ${consecutiveErrors}회 에러)`);
+            }
             if (pollCount >= maxPolls) throw new Error(`${taskLabel} 자동화 시간 초과 (7.5분 경과)`);
           }
         }
@@ -1032,13 +1064,13 @@ export default function JarvisApp() {
         setBookingStep(0);
         const errStr = err instanceof Error ? err.message : String(err);
         const errMsg = `선생님, ${businessName || taskLabel} 작업 중 문제가 발생했습니다. ${errStr}. 다른 방법을 시도해 볼까요?`;
-        setState('speaking');
         addMessage('jarvis', errMsg, true);
         setDataPanel(prev => ({ ...prev, message: '오류 발생: 중단됨', progress: 0 }));
-        startSpeakingLevel();
-        await new Promise<void>(resolve => {
-          speak(errMsg, undefined, () => { stopSpeakingLevel(); resolve(); });
-        });
+        try {
+          await safeSpeak(errMsg);
+        } catch (speakErr) {
+          console.warn('[JARVIS] 에러 메시지 speak 실패 (graceful):', speakErr);
+        }
       }
 
       await new Promise(r => setTimeout(r, 2000));
