@@ -209,6 +209,22 @@ export default function SparkleParticles({ state, audioLevel, speakingLevel, cla
     renderer.setClearColor(0x000000, 0);
     rendererRef.current = renderer;
 
+    // WebGL Context Lost/Restored 핸들러 (크래시 방지)
+    let contextLost = false;
+    const handleContextLost = (e: Event) => {
+      e.preventDefault();
+      contextLost = true;
+      console.warn('[SparkleParticles] WebGL context lost - pausing render');
+      cancelAnimationFrame(animRef.current);
+    };
+    const handleContextRestored = () => {
+      contextLost = false;
+      console.log('[SparkleParticles] WebGL context restored - resuming render');
+      animate();
+    };
+    canvas.addEventListener('webglcontextlost', handleContextLost);
+    canvas.addEventListener('webglcontextrestored', handleContextRestored);
+
     const scene  = new THREE.Scene();
     const camera = new THREE.PerspectiveCamera(55, window.innerWidth / window.innerHeight, 0.1, 200);
     camera.position.set(0, 0, 30);
@@ -263,6 +279,7 @@ export default function SparkleParticles({ state, audioLevel, speakingLevel, cla
     window.addEventListener('resize', onResize);
 
     const animate = () => {
+      if (contextLost) return; // WebGL context lost 시 렌더링 중단
       animRef.current = requestAnimationFrame(animate);
       const t   = clockRef.current.getElapsedTime();
       clockElapsedRef.current = t;
@@ -521,6 +538,8 @@ export default function SparkleParticles({ state, audioLevel, speakingLevel, cla
     return () => {
       cancelAnimationFrame(animRef.current);
       window.removeEventListener('resize', onResize);
+      canvas.removeEventListener('webglcontextlost', handleContextLost);
+      canvas.removeEventListener('webglcontextrestored', handleContextRestored);
       geometry.dispose();
       material.dispose();
       renderer.dispose();
