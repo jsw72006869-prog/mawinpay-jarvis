@@ -1,7 +1,6 @@
 // 스마트스토어 주문 조회 API
 // GET /api/smartstore-orders?status=payed&days=7
-// 네이버 커머스 API: GET /v1/pay-order/seller/product-orders (24시간 제한)
-// 7일/30일 조회 시 24시간 단위로 반복 조회
+// 2단계 조회: 1) 목록 조회 → 2) 상세 조회
 const { smartStoreRequest } = require('./_smartstore-auth');
 
 module.exports = async (req, res) => {
@@ -15,7 +14,7 @@ module.exports = async (req, res) => {
     const { status, days = 1, page = 1, size = 300 } = req.query;
     const daysNum = parseInt(days);
 
-    // 네이버 API 날짜 형식: 2024-06-07T19:00:00.000+09:00
+    // 네이버 API 날짜 형식
     const formatNaverDate = (d) => {
       const kst = new Date(d.getTime() + 9 * 60 * 60 * 1000);
       const yyyy = kst.getUTCFullYear();
@@ -40,16 +39,14 @@ module.exports = async (req, res) => {
 
     const productOrderStatuses = statusMap[status?.toLowerCase()] || ['PAYED'];
 
-    // 24시간 단위로 분할 조회
+    // ── 1단계: 상품 주문 목록 조회 (productOrderId 수집) ──
     const now = new Date();
     const startDate = new Date();
     startDate.setDate(startDate.getDate() - daysNum);
 
-    let allOrders = [];
+    let allProductOrderIds = [];
     let currentFrom = new Date(startDate);
-
-    // 최대 반복 횟수 제한 (Vercel 10초 타임아웃 고려)
-    const maxIterations = Math.min(daysNum, 7); // 최대 7일까지 반복 조회
+    const maxIterations = Math.min(daysNum, 7);
 
     for (let i = 0; i < maxIterations; i++) {
       const currentTo = new Date(currentFrom.getTime() + 24 * 60 * 60 * 1000);
@@ -66,36 +63,92 @@ module.exports = async (req, res) => {
         params.append('productOrderStatuses', s);
       });
 
-      const result = await smartStoreRequest(
-        `/v1/pay-order/seller/product-orders?${params.toString()}`,
-        { method: 'GET' }
-      );
+      try {
+        const result = await smartStoreRequest(
+          `/v1/pay-order/seller/product-orders?${params.toString()}`,
+          { method: 'GET' }
+        );
 
-      if (result.status === 200) {
-        const responseData = result.data.data || result.data;
-        const contents = responseData.contents || responseData || [];
-        if (Array.isArray(contents)) {
-          allOrders = allOrders.concat(contents);
+        if (result.status === 200) {
+          const responseData = result.data.data || result.data;
+          const contents = responseData.contents || responseData || [];
+          if (Array.isArray(contents)) {
+            contents.forEach(item => {
+              const po = item.productOrder || item;
+              if (po.productOrderId) {
+                allProductOrderIds.push(po.productOrderId);
+              }
+            });
+          }
         }
+      } catch (err) {
+        console.warn(`[smartstore-orders] ${formatNaverDate(currentFrom)} 조회 실패:`, err.message);
       }
 
       currentFrom = new Date(currentTo);
       if (currentFrom >= now) break;
     }
 
-    // 주문 요약 정보 가공
-    const summary = allOrders.map(item => {
+    // 중복 제거
+    allProductOrderIds = [...new Set(allProductOrderIds)];
+
+    if (allProductOrderIds.length === 0) {
+      return res.json({
+        success: true,
+        total: 0,
+        page: parseInt(page),
+        pageSize: parseInt(size),
+        orders: [],
+        queryInfo: {
+          from: formatNaverDate(startDate),
+          to: formatNaverDate(now),
+          statuses: productOrderStatuses,
+          days: daysNum,
+        }
+      });
+    }
+
+    // ── 2단계: 상품 주문 상세 내역 조회 ──
+    // POST /v1/pay-order/seller/product-orders/query (최대 300개)
+    let allDetailOrders = [];
+
+    for (let i = 0; i < allProductOrderIds.length; i += 300) {
+      const batch = allProductOrderIds.slice(i, i + 300);
+      try {
+        const detailResult = await smartStoreRequest(
+          '/v1/pay-order/seller/product-orders/query',
+          {
+            method: 'POST',
+            body: JSON.stringify({ productOrderIds: batch }),
+          }
+        );
+
+        if (detailResult.status === 200) {
+          const detailData = detailResult.data.data || detailResult.data;
+          if (Array.isArray(detailData)) {
+            allDetailOrders = allDetailOrders.concat(detailData);
+          }
+        }
+      } catch (err) {
+        console.warn(`[smartstore-orders] 상세 조회 실패 (batch ${i}):`, err.message);
+      }
+    }
+
+    // 주문 상세 정보 가공
+    const summary = allDetailOrders.map(item => {
       const po = item.productOrder || item;
+      const order = item.order || {};
       return {
         productOrderId: po.productOrderId,
-        orderId: po.orderId,
-        orderDate: po.paymentDate || po.orderDate,
+        orderId: po.orderId || order.orderId,
+        orderDate: po.paymentDate || order.paymentDate,
         status: po.productOrderStatus,
         statusKo: getStatusKo(po.productOrderStatus),
         placeOrderStatus: po.placeOrderStatus,
-        buyerName: po.ordererName,
+        buyerName: order.ordererName || po.ordererName,
+        buyerTel: order.ordererTel,
         productName: po.productName,
-        optionContent: po.optionContent || po.productOption || '',
+        optionContent: po.optionContent || '',
         quantity: po.quantity,
         unitPrice: po.unitPrice,
         totalPaymentAmount: po.totalPaymentAmount,
@@ -104,9 +157,9 @@ module.exports = async (req, res) => {
         receiverPhone2: po.shippingAddress?.tel2,
         receiverAddress: `${po.shippingAddress?.baseAddress || ''} ${po.shippingAddress?.detailedAddress || ''}`.trim(),
         receiverZipCode: po.shippingAddress?.zipCode,
-        deliveryMemo: po.shippingMemo || po.shippingAddress?.deliveryMemo || '',
-        senderName: po.ordererName,
-        senderPhone: po.ordererTel,
+        deliveryMemo: po.shippingMemo || '',
+        senderName: order.ordererName || po.ordererName,
+        senderPhone: order.ordererTel,
         trackingNumber: po.trackingNumber,
         deliveryCompany: po.deliveryCompanyCode,
       };
@@ -123,7 +176,8 @@ module.exports = async (req, res) => {
         to: formatNaverDate(now),
         statuses: productOrderStatuses,
         days: daysNum,
-        iterationsUsed: Math.min(maxIterations, daysNum),
+        productOrderIdsCollected: allProductOrderIds.length,
+        detailsFetched: allDetailOrders.length,
       }
     });
 

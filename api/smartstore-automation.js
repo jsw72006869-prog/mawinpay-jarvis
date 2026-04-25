@@ -54,19 +54,18 @@ module.exports = async (req, res) => {
   }
 
   /**
-   * 주문 조회 공통 함수
-   * GET /v1/pay-order/seller/product-orders
-   * 네이버 API는 from~to 간격이 최대 24시간으로 제한되므로, 24시간 단위로 반복 조회
+   * 주문 조회 공통 함수 (2단계 조회)
+   * 1단계: GET /v1/pay-order/seller/product-orders (목록 조회, 24시간 제한)
+   * 2단계: POST /v1/pay-order/seller/product-orders/query (상세 조회)
    */
   async function fetchOrders(days, productOrderStatuses = ['PAYED'], placeOrderStatusType = null) {
     const now = new Date();
     const startDate = new Date();
     startDate.setDate(startDate.getDate() - days);
 
-    let allOrders = [];
+    // 1단계: productOrderId 목록 수집
+    let allProductOrderIds = [];
     let currentFrom = new Date(startDate);
-
-    // Vercel 10초 타임아웃 고려: 최대 7일까지 반복 조회
     const maxIterations = Math.min(days, 7);
 
     for (let i = 0; i < maxIterations; i++) {
@@ -98,11 +97,13 @@ module.exports = async (req, res) => {
           const responseData = result.data.data || result.data;
           const contents = responseData.contents || responseData || [];
           if (Array.isArray(contents)) {
-            allOrders = allOrders.concat(contents);
+            contents.forEach(item => {
+              const po = item.productOrder || item;
+              if (po.productOrderId) allProductOrderIds.push(po.productOrderId);
+            });
           }
         }
       } catch (err) {
-        // 개별 일자 조회 실패 시 건너뛰기
         console.warn(`[fetchOrders] ${formatNaverDate(currentFrom)} 조회 실패:`, err.message);
       }
 
@@ -110,24 +111,53 @@ module.exports = async (req, res) => {
       if (currentFrom >= now) break;
     }
 
-    return allOrders;
+    // 중복 제거
+    allProductOrderIds = [...new Set(allProductOrderIds)];
+
+    if (allProductOrderIds.length === 0) return [];
+
+    // 2단계: 상세 정보 일괄 조회
+    let allDetailOrders = [];
+    for (let i = 0; i < allProductOrderIds.length; i += 300) {
+      const batch = allProductOrderIds.slice(i, i + 300);
+      try {
+        const detailResult = await smartStoreRequest(
+          '/v1/pay-order/seller/product-orders/query',
+          {
+            method: 'POST',
+            body: JSON.stringify({ productOrderIds: batch }),
+          }
+        );
+        if (detailResult.status === 200) {
+          const detailData = detailResult.data.data || detailResult.data;
+          if (Array.isArray(detailData)) {
+            allDetailOrders = allDetailOrders.concat(detailData);
+          }
+        }
+      } catch (err) {
+        console.warn(`[fetchOrders] 상세 조회 실패 (batch ${i}):`, err.message);
+      }
+    }
+
+    return allDetailOrders;
   }
 
   /**
-   * 주문 데이터를 통일된 형식으로 변환
+   * 주문 데이터를 통일된 형식으로 변환 (상세 조회 결과 기반)
    */
   function normalizeOrder(item) {
     const po = item.productOrder || item;
+    const order = item.order || {};
     return {
       productOrderId: po.productOrderId,
-      orderId: po.orderId,
-      orderDate: po.paymentDate || po.orderDate,
+      orderId: po.orderId || order.orderId,
+      orderDate: po.paymentDate || order.paymentDate,
       productOrderStatus: po.productOrderStatus,
       placeOrderStatus: po.placeOrderStatus,
-      buyerName: po.ordererName,
-      buyerTel: po.ordererTel,
+      buyerName: order.ordererName || po.ordererName,
+      buyerTel: order.ordererTel,
       productName: po.productName || '',
-      optionContent: po.optionContent || po.productOption || '',
+      optionContent: po.optionContent || '',
       quantity: po.quantity || 1,
       unitPrice: po.unitPrice || 0,
       totalPaymentAmount: po.totalPaymentAmount || 0,
@@ -136,7 +166,7 @@ module.exports = async (req, res) => {
       receiverTel2: po.shippingAddress?.tel2 || '',
       receiverAddress: `${po.shippingAddress?.baseAddress || ''} ${po.shippingAddress?.detailedAddress || ''}`.trim(),
       receiverZipCode: po.shippingAddress?.zipCode || '',
-      deliveryMemo: po.shippingMemo || po.shippingAddress?.deliveryMemo || '',
+      deliveryMemo: po.shippingMemo || '',
       trackingNumber: po.trackingNumber,
       deliveryCompanyCode: po.deliveryCompanyCode,
     };
