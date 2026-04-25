@@ -108,10 +108,11 @@ export default function JarvisApp() {
   const [isTyping, setIsTyping] = useState(false);
   const [dataPanel, setDataPanel] = useState<{
     visible: boolean;
-    type: 'collect' | 'send_email' | 'create_banner' | 'report' | 'booking' | null;
+    type: 'collect' | 'send_email' | 'create_banner' | 'report' | 'booking' | 'smartstore' | null;
     progress: number;
     message: string;
     bookingSteps?: string[];
+    actionLogs?: { step: string; status: string; detail: string; timestamp: string; elapsed: string; data?: any }[];
   }>({ visible: false, type: null, progress: 0, message: '' });
   const [stats, setStats] = useState({ collected: 247, emailsSent: 183, responseRate: 23.5, contracts: 4 });
   const [bannerImage, setBannerImage] = useState<string | null>(null);
@@ -1745,6 +1746,15 @@ export default function JarvisApp() {
         speak(action.response, undefined, () => { stopSpeakingLevel(); resolve(); });
       });
 
+      // ── 스마트스토어 행동 로그 패널 활성화 ──
+      setDataPanel({
+        visible: true,
+        type: 'smartstore',
+        progress: 5,
+        message: '스마트스토어 엔진 가동 중...',
+        actionLogs: [],
+      });
+
       try {
         // 발주서 파일 처리 (파일 업로드 UI 표시 후 처리)
         if (ssAction === 'process_order_file' || ssAction === 'process_order_file_and_send') {
@@ -1903,12 +1913,26 @@ export default function JarvisApp() {
           if (action.params?.group_by) body.groupBy = action.params.group_by;
           if (action.params?.memo) body.memo = action.params.memo;
 
+          setDataPanel(prev => ({ ...prev, progress: 15, message: 'QuotaGuard 프록시 연결 중...' }));
+
           const res = await fetch('/api/smartstore-automation', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(body),
           });
           const data = await res.json();
+
+          // 행동 로그 업데이트
+          if (data.action_logs) {
+            setDataPanel(prev => ({
+              ...prev,
+              progress: data.success ? 100 : 80,
+              message: data.success ? '작업 완료' : '오류 발생',
+              actionLogs: data.action_logs,
+            }));
+          } else {
+            setDataPanel(prev => ({ ...prev, progress: data.success ? 100 : 80, message: data.success ? '작업 완료' : '오류 발생' }));
+          }
 
           if (!data.success) throw new Error(data.error || '스마트스토어 작업 실패');
 
@@ -1978,12 +2002,18 @@ export default function JarvisApp() {
         }
 
       } catch (err) {
+        setDataPanel(prev => ({ ...prev, progress: 0, message: '❌ 오류 발생' }));
         const errMsg = `스마트스토어 작업 중 오류가 발생했습니다, 선생님. ${String(err).includes('CLIENT_ID') ? 'API 키 설정을 확인해주세요.' : String(err)}`;
         setState('speaking');
         addMessage('jarvis', errMsg);
         startSpeakingLevel();
         await new Promise<void>(resolve => { speak(errMsg, undefined, () => { stopSpeakingLevel(); resolve(); }); });
       }
+
+      // 5초 후 행동 로그 패널 자동 닫기
+      setTimeout(() => {
+        setDataPanel({ visible: false, type: null, progress: 0, message: '' });
+      }, 5000);
 
       await new Promise(r => setTimeout(r, 400));
       setState('listening');
@@ -2956,6 +2986,7 @@ export default function JarvisApp() {
             progress={dataPanel.progress}
             message={dataPanel.message}
             bookingSteps={dataPanel.bookingSteps}
+            actionLogs={dataPanel.actionLogs as any}
           />
         )}
       </AnimatePresence>
