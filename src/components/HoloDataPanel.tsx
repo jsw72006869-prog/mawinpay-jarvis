@@ -97,7 +97,7 @@ export default function HoloDataPanel({ type, progress, message, bookingSteps, a
 
   // 행동 로그 순차 표시 애니메이션
   useEffect(() => {
-    if (type === 'smartstore' && actionLogs.length > 0) {
+    if ((type === 'smartstore' || type === 'booking') && actionLogs.length > 0) {
       setVisibleLogs([]);
       let idx = 0;
       const interval = setInterval(() => {
@@ -150,7 +150,7 @@ export default function HoloDataPanel({ type, progress, message, bookingSteps, a
         top: '50%',
         transform: 'translateY(-50%)',
         zIndex: 30,
-        width: type === 'smartstore' ? 320 : 230,
+        width: (type === 'smartstore' || type === 'booking') ? 320 : 230,
       }}
     >
       {type && (
@@ -179,7 +179,7 @@ export default function HoloDataPanel({ type, progress, message, bookingSteps, a
                 </span>
               </div>
               <div className="flex items-center gap-2">
-                {type === 'smartstore' && (
+                {(type === 'smartstore' || type === 'booking') && (
                   <span style={{ fontFamily: 'Orbitron, monospace', fontSize: '0.38rem', color: 'rgba(100,116,139,0.55)' }}>
                     {visibleLogs.length}/{actionLogs.length}
                   </span>
@@ -218,8 +218,8 @@ export default function HoloDataPanel({ type, progress, message, bookingSteps, a
               </div>
             </div>
 
-            {/* ── 스마트스토어 행동 로그 (새로운 핵심 UI) ── */}
-            {type === 'smartstore' && (
+            {/* ── 행동 로그 (스마트스토어 + 브라우저 에이전트 공용) ── */}
+            {(type === 'smartstore' || type === 'booking') && (
               <div
                 ref={logContainerRef}
                 className="px-3 py-2"
@@ -328,8 +328,8 @@ export default function HoloDataPanel({ type, progress, message, bookingSteps, a
               </div>
             )}
 
-            {/* 단계 표시 (smartstore가 아닌 경우) */}
-            {type !== 'smartstore' && (
+            {/* 단계 표시 (smartstore/booking이 아닌 경우) */}
+            {type !== 'smartstore' && type !== 'booking' && (
               <div className="px-4 py-3" style={{ borderBottom: `1px solid ${config.color}08` }}>
                 {steps.map((step, i) => {
                   const isDone = completedSteps.includes(i);
