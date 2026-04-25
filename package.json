@@ -20,6 +20,7 @@
     "exceljs": "^4.4.0",
     "framer-motion": "^12.38.0",
     "https-proxy-agent": "^9.0.0",
+    "node-fetch": "^2.6.9",
     "nodemailer": "^8.0.5",
     "qrcode.react": "^4.2.0",
     "react": "^19.2.5",

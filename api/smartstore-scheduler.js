@@ -2,7 +2,8 @@
 // 매일 아침 9시 자동 실행: 스마트스토어 주문 조회 → 밤/옥수수 분리 → 텔레그램 보고 → 승인 대기
 // Vercel Cron Job으로 실행 (vercel.json에 cron 설정 필요)
 
-const { ProxyAgent } = require('undici');
+const fetch = require('node-fetch');
+const { HttpsProxyAgent } = require('https-proxy-agent');
 const PROXY_URL = process.env.QUOTAGUARDSTATIC_URL || 'http://6ddy9l3zmc2hbj:oso2bxcjx009edn2v7yu7k7u0hs3z@us-east-static-02.quotaguard.com:9293';
 const ExcelJS = require('exceljs');
 const nodemailer = require('nodemailer');
@@ -85,7 +86,7 @@ async function getSmartStoreOrders() {
     const timestamp = Date.now();
     const password = `${clientId}_${timestamp}`;
     const hashed = crypto.createHmac('sha256', clientSecret).update(password).digest('base64');
-    const proxyDispatcher = new ProxyAgent(PROXY_URL);
+    const proxyAgent = new HttpsProxyAgent(PROXY_URL);
     const tokenRes = await fetch('https://api.commerce.naver.com/external/v1/oauth2/token', {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
@@ -96,7 +97,7 @@ async function getSmartStoreOrders() {
         grant_type: 'client_credentials',
         type: 'SELF',
       }),
-      dispatcher: proxyDispatcher,
+      agent: proxyAgent,
     });
     const tokenData = await tokenRes.json();
     if (!tokenData.access_token) return [];
@@ -109,7 +110,7 @@ async function getSmartStoreOrders() {
 
     const ordersRes = await fetch(
       `https://api.commerce.naver.com/external/v1/pay-order/seller/product-orders/query-by-time?from=${from}&to=${to}&limitCount=300`,
-      { headers: { Authorization: `Bearer ${tokenData.access_token}` }, dispatcher: proxyDispatcher }
+      { headers: { Authorization: `Bearer ${tokenData.access_token}` }, agent: proxyAgent }
     );
     const ordersData = await ordersRes.json();
     return ordersData.data || [];

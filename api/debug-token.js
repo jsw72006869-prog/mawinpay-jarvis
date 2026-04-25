@@ -1,7 +1,8 @@
 // 디버그용: 네이버 커머스 API 토큰 발급 시도 및 상세 오류 반환
-// undici ProxyAgent를 사용하여 QuotaGuard 고정 IP로 요청
+// node-fetch v2 + HttpsProxyAgent로 QuotaGuard 고정 IP 경유
 const crypto = require('crypto');
-const { ProxyAgent } = require('undici');
+const fetch = require('node-fetch');
+const { HttpsProxyAgent } = require('https-proxy-agent');
 
 const PROXY_URL = process.env.QUOTAGUARDSTATIC_URL || 'http://6ddy9l3zmc2hbj:oso2bxcjx009edn2v7yu7k7u0hs3z@us-east-static-02.quotaguard.com:9293';
 
@@ -32,8 +33,8 @@ module.exports = async (req, res) => {
   }
   
   try {
-    const dispatcher = new ProxyAgent(PROXY_URL);
-    const proxyIpRes = await fetch('https://api.ipify.org?format=json', { dispatcher });
+    const agent = new HttpsProxyAgent(PROXY_URL);
+    const proxyIpRes = await fetch('https://api.ipify.org?format=json', { agent });
     const proxyIpData = await proxyIpRes.json();
     proxyIP = proxyIpData.ip;
   } catch (e) {
@@ -65,12 +66,11 @@ module.exports = async (req, res) => {
         type: 'SELF',
       });
       
-      // QuotaGuard 프록시를 경유하여 토큰 요청
-      const dispatcher = new ProxyAgent(PROXY_URL);
+      const agent = new HttpsProxyAgent(PROXY_URL);
       const tokenRes = await fetch(`https://api.commerce.naver.com/external/v1/oauth2/token?${params.toString()}`, {
         method: 'POST',
         headers: { 'content-type': 'application/x-www-form-urlencoded' },
-        dispatcher: dispatcher,
+        agent: agent,
       });
       
       const tokenData = await tokenRes.json();

@@ -1,31 +1,29 @@
 // 네이버 스마트스토어 커머스 API 인증 토큰 발급 공통 모듈
-// 인증 방식: bcrypt 서명 (네이버 커머스 API 공식 인증 방식)
-// undici ProxyAgent를 사용하여 QuotaGuard 고정 IP(52.5.238.209 / 52.6.13.167)로 요청
+// node-fetch v2 + HttpsProxyAgent로 QuotaGuard 고정 IP 경유
 const crypto = require('crypto');
-const { ProxyAgent } = require('undici');
+const fetch = require('node-fetch');
+const { HttpsProxyAgent } = require('https-proxy-agent');
 
 const CLIENT_ID = process.env.SMARTSTORE_CLIENT_ID;
 const CLIENT_SECRET = process.env.SMARTSTORE_CLIENT_SECRET;
 const PROXY_URL = process.env.QUOTAGUARDSTATIC_URL || 'http://6ddy9l3zmc2hbj:oso2bxcjx009edn2v7yu7k7u0hs3z@us-east-static-02.quotaguard.com:9293';
 const API_BASE = 'https://api.commerce.naver.com/external';
 
-// undici ProxyAgent 생성 (Node.js 내장 fetch의 dispatcher 옵션과 호환)
-function getProxyDispatcher() {
-  return new ProxyAgent(PROXY_URL);
+// QuotaGuard 프록시 에이전트 생성
+function getProxyAgent() {
+  return new HttpsProxyAgent(PROXY_URL);
 }
 
 /**
- * 프록시를 경유하는 fetch 래퍼
+ * 프록시를 경유하는 fetch 래퍼 (node-fetch v2 사용)
  */
 async function proxyFetch(url, options = {}) {
-  const dispatcher = getProxyDispatcher();
-  return fetch(url, { ...options, dispatcher });
+  const agent = getProxyAgent();
+  return fetch(url, { ...options, agent });
 }
 
 /**
  * 스마트스토어 커머스 API 인증 토큰 발급
- * @param {string} type - 'SELF' (자체 판매자) | 'SELLER' (솔루션 판매자)
- * @returns {Promise<string>} access_token
  */
 async function getSmartStoreToken(type = 'SELF') {
   const clientId = CLIENT_ID;
@@ -33,21 +31,16 @@ async function getSmartStoreToken(type = 'SELF') {
   if (!clientId || !clientSecret) {
     throw new Error('SMARTSTORE_CLIENT_ID 또는 SMARTSTORE_CLIENT_SECRET 환경변수가 설정되지 않았습니다.');
   }
-  // 타임스탬프 (밀리초)
   const timestamp = String(Date.now());
-  // 패스워드 생성: client_id_timestamp
   const pwd = `${clientId}_${timestamp}`;
-  // bcrypt 해싱 (client_secret을 salt로 사용)
   let hashed;
   try {
     const bcrypt = require('bcryptjs');
     hashed = bcrypt.hashSync(pwd, clientSecret);
   } catch (e) {
-    // bcryptjs 없을 때 fallback
     console.warn('[smartstore-auth] bcryptjs 없음, HMAC fallback 사용');
     hashed = crypto.createHmac('sha256', clientSecret).update(pwd).digest('hex');
   }
-  // Base64 인코딩
   const clientSecretSign = Buffer.from(hashed).toString('base64');
   const params = new URLSearchParams({
     client_id: clientId,
@@ -57,10 +50,11 @@ async function getSmartStoreToken(type = 'SELF') {
     type: type,
   });
 
-  // QuotaGuard 프록시를 경유하여 토큰 요청
-  const res = await proxyFetch(`${API_BASE}/v1/oauth2/token?${params.toString()}`, {
+  const agent = getProxyAgent();
+  const res = await fetch(`${API_BASE}/v1/oauth2/token?${params.toString()}`, {
     method: 'POST',
     headers: { 'content-type': 'application/x-www-form-urlencoded' },
+    agent: agent,
   });
   const data = await res.json();
   if (!data.access_token) {
@@ -75,13 +69,15 @@ async function getSmartStoreToken(type = 'SELF') {
 async function smartStoreRequest(path, options = {}) {
   const token = await getSmartStoreToken();
   const url = `${API_BASE}${path}`;
-  const res = await proxyFetch(url, {
+  const agent = getProxyAgent();
+  const res = await fetch(url, {
     ...options,
     headers: {
       'Authorization': `Bearer ${token}`,
       'Content-Type': 'application/json',
       ...(options.headers || {}),
     },
+    agent: agent,
   });
   const data = await res.json();
   return { status: res.status, data };

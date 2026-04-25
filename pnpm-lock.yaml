@@ -29,6 +29,9 @@ importers:
       https-proxy-agent:
         specifier: ^9.0.0
         version: 9.0.0
+      node-fetch:
+        specifier: ^2.6.9
+        version: 2.6.9
       nodemailer:
         specifier: ^8.0.5
         version: 8.0.5
