@@ -142,7 +142,7 @@ export default function ConversationStream({ messages, isTyping }: ConversationS
   const visibleMessages = messages.slice(-3);
 
   return (
-    <div className="w-full max-w-2xl mx-auto" style={{ minHeight: 60 }}>
+    <div className="w-full max-w-2xl mx-auto" style={{ minHeight: 60, position: 'relative', zIndex: 999 }}>
       {/* shimmer 애니메이션 CSS */}
       <style>{`
         @keyframes shimmer {
