@@ -41,13 +41,9 @@ module.exports = async (req, res) => {
 
     if (!orderIds || orderIds.length === 0) {
       if (orderId) {
-        // orderId로 상품주문번호 조회
-        const orderResult = await smartStoreRequest(`/v1/pay-order/seller/orders/${orderId}`, {
-          method: 'GET',
-        });
-        if (orderResult.status === 200 && orderResult.data.data) {
-          orderIds = (orderResult.data.data.productOrderList || []).map(p => p.productOrderId);
-        }
+        // orderId로 상품주문번호 조회 (product-orders/query 사용)
+        // orderId가 productOrderId일 수도 있으므로 직접 사용 시도
+        orderIds = [orderId];
       }
     }
 
