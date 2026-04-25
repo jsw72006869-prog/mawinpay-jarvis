@@ -935,8 +935,9 @@ export default function JarvisApp() {
             const statusText = await statusRes.text();
             try {
               statusData = JSON.parse(statusText);
+              console.log("[JARVIS] 마누스 폴링 응답:", statusData); // 추가된 로깅
             } catch {
-              console.error('[JARVIS] 폴링 응답 파싱 실패:', statusText.substring(0, 100));
+              console.error("[JARVIS] 폴링 응답 파싱 실패:", statusText.substring(0, 100));
               continue; // 파싱 실패 시 다음 폴링으로 계속
             }
 
