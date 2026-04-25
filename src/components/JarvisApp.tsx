@@ -841,28 +841,36 @@ export default function JarvisApp() {
 
         setDataPanel(prev => ({ ...prev, progress: 10, message: '마누스 에이전트 연결 중...' }));
 
-        // ── 범용 웹 작업 API 호출 ──
-        const manusRes = await fetch('/api/manus-agent/naver-booking', {
+        // ── 범용 웹 작업: /api/manus-task-create 직접 호출 ──
+        const manusPrompt = [
+          `[웹 작업 요청]`,
+          `작업 유형: ${taskType}`,
+          `대상 사이트: ${targetSite}`,
+          `업체명: ${businessName}`,
+          `작업 내용: ${taskDescription}`,
+          date ? `날짜: ${date}` : '',
+          time ? `시간: ${time}` : '',
+          (savedUserName || userName) ? `예약자명: ${savedUserName || userName}` : '',
+          (savedUserPhone || userPhone) ? `연락처: ${savedUserPhone || userPhone}` : '',
+          additionalInfo ? `추가정보: ${additionalInfo}` : '',
+          '',
+          '## 자율 판단 원칙',
+          '1. 네이버 접속 → 업체 검색 → 예약 페이지 접속 → 가능한 날짜/시간 확인',
+          '2. 로그인이 필요하면 "로그인이 필요합니다"라고 보고',
+          '3. 캡차가 나오면 "보안 문자 입력이 필요합니다"라고 보고',
+          '4. 예약 가능 시간을 찾으면 목록으로 정리하여 보고',
+          '5. 문제 발생 시 대안을 스스로 찾아 제안',
+        ].filter(Boolean).join('\n');
+
+        addMessage('jarvis', `⏳ [AGENT] 마누스 태스크 생성 중...`);
+
+        const manusRes = await fetch('/api/manus-task-create', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            // 범용 필드
-            taskType,
-            targetSite,
-            businessName,
-            taskDescription,
-            date,
-            time,
-            userName: savedUserName || userName,
-            userPhone: savedUserPhone || userPhone,
-            additionalInfo,
-            // 레거시 필드 (기존 API 호환)
-            naverUsername: naverCreds.username || '',
-            naverPassword: naverCreds.password || '',
-          }),
+          body: JSON.stringify({ prompt: manusPrompt }),
         });
 
-        // 안전한 JSON 파싱 (마누스 API가 텍스트 에러를 반환할 수 있음)
+        // 안전한 JSON 파싱
         let manusData: any;
         const manusText = await manusRes.text();
         try {
@@ -872,11 +880,13 @@ export default function JarvisApp() {
           throw new Error(`마누스 API 응답 오류: ${manusText.substring(0, 80)}`);
         }
 
-        if (!manusData.success || !manusData.taskId) {
+        if (!manusData.success || !manusData.task_id) {
           throw new Error(manusData.error || '마누스 태스크 생성 실패');
         }
 
-        const taskId = manusData.taskId;
+        const taskId = manusData.task_id;
+        addMessage('jarvis', `✅ [AGENT] 마누스 태스크 생성 완료 (ID: ${taskId.substring(0, 8)}...)`);
+        console.log('[JARVIS] 마누스 태스크 생성 성공:', taskId);
         setBookingStep(1);
         setDataPanel(prev => ({ ...prev, progress: 15, message: '마누스 태스크 생성 완료. 작업 시작...' }));
         addMessage('jarvis', `⏳ [AGENT] 태스크 ID: ${taskId.slice(0, 8)}... 생성 완료`);
