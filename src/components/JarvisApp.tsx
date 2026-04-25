@@ -793,6 +793,207 @@ export default function JarvisApp() {
 
     // ── 예약 액션 (Railway 서버 연동) ──
     if (action?.type === 'book_restaurant') {
+      const businessName = String(action.params?.business_name || '');
+      const date = String(action.params?.date || '');
+      const time = String(action.params?.time || '');
+      const userName = String(action.params?.user_name || '');
+      const userPhone = String(action.params?.user_phone || '');
+
+      // ── 마누스 기반 예약 자동화 (새로운 방식) ──
+      setState('working');
+      addMessage('jarvis', action.response);
+      startSpeakingLevel();
+      await new Promise<void>(resolve => {
+        speak(action.response, undefined, () => { stopSpeakingLevel(); resolve(); });
+      });
+
+      try {
+        // 네이버 자격증명 로드
+        const naverCreds = JSON.parse(localStorage.getItem('jarvis_naver_creds') || '{}');
+        const naverUsername = naverCreds.username || '';
+        const naverPassword = naverCreds.password || '';
+        const savedUserName = naverCreds.userName || '';
+        const savedUserPhone = naverCreds.userPhone || '';
+
+        // 마누스 예약 자동화 API 호출
+        setState('working');
+        addMessage('jarvis', `🚀 마누스 자율 예약 엔진 시작... ${businessName} 예약을 자동으로 진행하겠습니다.`);
+
+        const manusRes = await fetch('/api/manus-agent/naver-booking', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            businessName,
+            date,
+            time,
+            userName: savedUserName || userName,
+            userPhone: savedUserPhone || userPhone,
+            naverUsername,
+            naverPassword,
+          }),
+        });
+
+        const manusData = await manusRes.json();
+
+        if (!manusData.success || !manusData.taskId) {
+          throw new Error(manusData.error || '마누스 태스크 생성 실패');
+        }
+
+        const taskId = manusData.taskId;
+        setBookingStep(1);
+
+        // ── 실시간 진행 상황 폴링 ──
+        let pollCount = 0;
+        const maxPolls = 120; // 최대 6분 (3초 × 120)
+        let taskCompleted = false;
+        let taskError = false;
+
+        while (pollCount < maxPolls && !taskCompleted && !taskError) {
+          pollCount++;
+          await new Promise(r => setTimeout(r, 3000)); // 3초 대기
+
+          try {
+            const statusRes = await fetch(`/api/manus-task-status?task_id=${encodeURIComponent(taskId)}`);
+            const statusData = await statusRes.json();
+
+            if (!statusData.success) {
+              throw new Error(statusData.error || '상태 조회 실패');
+            }
+
+            const taskStatus = statusData.agent_status || 'unknown';
+            const messages = statusData.messages || [];
+            const progress = statusData.progress || [];
+
+            // ── 진행 상황 표시 ──
+            if (progress.length > 0) {
+              const latestProgress = progress[progress.length - 1];
+              const progressMsg = latestProgress.content || '';
+
+              // 진행 단계 업데이트
+              if (progressMsg.includes('로그인')) setBookingStep(1);
+              else if (progressMsg.includes('시간') || progressMsg.includes('조회')) setBookingStep(2);
+              else if (progressMsg.includes('폼') || progressMsg.includes('입력')) setBookingStep(3);
+              else if (progressMsg.includes('확인') || progressMsg.includes('완료')) setBookingStep(4);
+
+              addMessage('jarvis', `⏳ ${progressMsg}`);
+            }
+
+            // ── 대기 상태 처리 (캡차, OTP 등) ──
+            if (taskStatus === 'waiting' && statusData.waiting_detail) {
+              const waitingDetail = statusData.waiting_detail;
+              const eventType = waitingDetail.waiting_for_event_type?.toLowerCase() || '';
+
+              if (eventType.includes('captcha')) {
+                setState('speaking');
+                const captchaMsg = '🔐 캡차 인증이 필요합니다. 화면에 표시된 캡차 코드를 말씀해 주세요.';
+                addMessage('jarvis', captchaMsg, true);
+                startSpeakingLevel();
+                await new Promise<void>(resolve => {
+                  speak(captchaMsg, undefined, () => { stopSpeakingLevel(); resolve(); });
+                });
+
+                setState('listening');
+                const captchaCode = await new Promise<string>(resolve => {
+                  verificationResolveRef.current = resolve;
+                });
+
+                // 캡차 답변 제출
+                setState('working');
+                addMessage('jarvis', `캡차 답변 제출 중...`);
+                const confirmRes = await fetch('/api/manus-task-confirm', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({
+                    task_id: taskId,
+                    event_id: waitingDetail.waiting_for_event_id,
+                    input: { captcha_code: captchaCode },
+                  }),
+                });
+                const confirmData = await confirmRes.json();
+                if (!confirmData.success) {
+                  throw new Error('캡차 제출 실패');
+                }
+              } else if (eventType.includes('otp')) {
+                setState('speaking');
+                const otpMsg = '📱 인증번호가 전송되었습니다. 받으신 인증번호를 말씀해 주세요.';
+                addMessage('jarvis', otpMsg, true);
+                startSpeakingLevel();
+                await new Promise<void>(resolve => {
+                  speak(otpMsg, undefined, () => { stopSpeakingLevel(); resolve(); });
+                });
+
+                setState('listening');
+                const otpCode = await new Promise<string>(resolve => {
+                  verificationResolveRef.current = resolve;
+                });
+
+                setState('working');
+                addMessage('jarvis', `인증번호 제출 중...`);
+                const confirmRes = await fetch('/api/manus-task-confirm', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({
+                    task_id: taskId,
+                    event_id: waitingDetail.waiting_for_event_id,
+                    input: { otp_code: otpCode },
+                  }),
+                });
+                const confirmData = await confirmRes.json();
+                if (!confirmData.success) {
+                  throw new Error('인증번호 제출 실패');
+                }
+              }
+            }
+
+            // ── 완료 또는 에러 ──
+            if (taskStatus === 'stopped') {
+              taskCompleted = true;
+              setBookingStep(5);
+
+              // 최종 메시지
+              const finalMsg = messages[messages.length - 1]?.content || '예약이 완료되었습니다.';
+              setState('speaking');
+              addMessage('jarvis', `✅ ${finalMsg}`, true);
+              startSpeakingLevel();
+              await new Promise<void>(resolve => {
+                speak(`예약이 완료되었습니다, 선생님. ${finalMsg}`, undefined, () => { stopSpeakingLevel(); resolve(); });
+              });
+            } else if (taskStatus === 'error') {
+              taskError = true;
+              const errorMsg = messages[messages.length - 1]?.content || '예약 중 오류가 발생했습니다.';
+              throw new Error(errorMsg);
+            }
+          } catch (pollErr) {
+            console.error('[JARVIS] 폴링 오류:', pollErr);
+            if (pollCount >= maxPolls) {
+              throw new Error('예약 자동화 시간 초과');
+            }
+          }
+        }
+
+        if (!taskCompleted && !taskError) {
+          throw new Error('예약 자동화 시간 초과');
+        }
+      } catch (err) {
+        setBookingStep(0);
+        const errMsg = `❌ 예약 중 오류가 발생했습니다, 선생님. ${String(err)}`;
+        setState('speaking');
+        addMessage('jarvis', errMsg, true);
+        startSpeakingLevel();
+        await new Promise<void>(resolve => {
+          speak(errMsg, undefined, () => { stopSpeakingLevel(); resolve(); });
+        });
+      }
+
+      await new Promise(r => setTimeout(r, 400));
+      setBookingStep(0);
+      setState('listening');
+      setIsListening(true);
+      return;
+    }
+
+    // ── 기존 예약 로직 (폐기 예정) ──
+    if (false && action?.type === 'book_restaurant_legacy') {
       const bookAction = String(action.params?.action || 'check_availability');
       const businessName = String(action.params?.business_name || '');
       const bookingUrl = String(action.params?.booking_url || '');
