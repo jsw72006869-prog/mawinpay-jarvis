@@ -34,6 +34,7 @@ export default async function handler(req, res) {
     });
 
     const data = await response.json();
+    console.log("[Manus task.listMessages] 원본 응답:", JSON.stringify(data, null, 2)); // 추가된 로깅
 
     if (!response.ok || !data.ok) {
       console.error('[Manus task.listMessages] 오류:', data);
@@ -75,6 +76,10 @@ export default async function handler(req, res) {
       waitingDetail = statusEvent.status_update.status_detail;
     }
 
+    // 최종 output 추출 (task_completed 이벤트에서)
+    const completedEvent = events.find(e => e.type === 'task_completed');
+    const output = completedEvent?.task_completed?.output || '';
+
     return res.status(200).json({
       success: true,
       task_id,
@@ -82,6 +87,7 @@ export default async function handler(req, res) {
       messages: assistantMessages,
       progress: progressEvents,
       waiting_detail: waitingDetail,
+      output: output, // output 필드 추가
       raw_events: events,
     });
 
