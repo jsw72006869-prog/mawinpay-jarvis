@@ -1293,7 +1293,16 @@ export default function JarvisApp() {
         addMessage('jarvis', errMsg, true);
         setDataPanel(prev => ({ ...prev, message: '오류 발생: 중단됨', progress: 0 }));
         try {
-          await safeSpeak(errMsg);
+          await new Promise<void>((resolve) => {
+            try {
+              setState('speaking');
+              startSpeakingLevel();
+              speak(errMsg, undefined, () => { try { stopSpeakingLevel(); } catch(e) {} resolve(); });
+            } catch (e) {
+              try { stopSpeakingLevel(); } catch(e2) {}
+              resolve();
+            }
+          });
         } catch (speakErr) {
           console.warn('[JARVIS] 에러 메시지 speak 실패 (graceful):', speakErr);
         }
