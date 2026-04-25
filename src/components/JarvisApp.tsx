@@ -854,12 +854,12 @@ export default function JarvisApp() {
           (savedUserPhone || userPhone) ? `연락처: ${savedUserPhone || userPhone}` : '',
           additionalInfo ? `추가정보: ${additionalInfo}` : '',
           '',
-          '## 반자동 워크플로우 지침',
-          '1. [조회 단계 - 로그인 불필요]: 네이버 플레이스/예약 페이지에 접속하여 로그인 없이 가능한 날짜와 시간 목록을 먼저 추출하세요.',
-          '2. [보고 단계]: 추출된 시간 목록을 사용자에게 보고하고 선택을 기다리세요.',
-          '3. [로그인 단계]: 사용자가 특정 시간을 선택하고 예약을 요청하면, "로그인이 필요합니다. 화면에서 로그인을 완료해 주세요."라고 명확히 보고하고 대기하세요.',
-          '4. [마무리 단계]: 사용자가 로그인을 완료하면(세션 감지), 예약 폼을 자동으로 채우고 예약을 확정하세요.',
-          '5. 캡차 발생 시 즉시 보고하고 사용자 입력을 기다리세요.',
+          '## 핵심 지침: 즉시 실행 및 보고',
+          '1. [중요] 작업을 시작하자마자 "네이버 접속 중", "업체 검색 중"과 같은 진행 상황을 즉시 보고하세요.',
+          '2. [조회 우선]: 로그인 없이 네이버 플레이스 예약 페이지에서 가능한 날짜와 시간을 먼저 추출하여 보고하세요.',
+          '3. [사용자 협업]: 로그인이 필요한 시점에만 "로그인이 필요합니다"라고 보고하고 대기하세요.',
+          '4. [캡차]: 보안 문자 발생 시 즉시 보고하세요.',
+          '5. 모든 단계에서 브라우저에서 보고 있는 내용을 텍스트로 요약하여 실시간으로 전달하세요.',
         ].filter(Boolean).join('\n');
 
         addMessage('jarvis', `⏳ [AGENT] 마누스 태스크 생성 중...`);
@@ -916,8 +916,15 @@ export default function JarvisApp() {
         let taskError = false;
         let lastProgressMsg = '';
         let consecutiveErrors = 0;
+        let hasShownInitialWait = false;
 
         while (pollCount < maxPolls && !taskCompleted && !taskError) {
+          // 초기 지연 알림 (15초 동안 변화 없을 때)
+          if (pollCount === 5 && !lastProgressMsg && !hasShownInitialWait) {
+            hasShownInitialWait = true;
+            addMessage('jarvis', '⚠️ [SYSTEM] 마누스 에이전트 할당이 지연되고 있습니다. 잠시만 더 기다려 주세요...');
+            safeSpeak("선생님, 에이전트 할당이 조금 늦어지고 있습니다. 잠시만 더 기다려 주시면 바로 조회를 시작할게요.");
+          }
           pollCount++;
           await new Promise(r => setTimeout(r, 3000));
 
