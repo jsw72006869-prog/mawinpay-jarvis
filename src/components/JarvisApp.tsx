@@ -835,15 +835,16 @@ export default function JarvisApp() {
         const savedUserName = naverCreds.userName || '';
         const savedUserPhone = naverCreds.userPhone || '';
 
-        // ── 4단계: 마누스 에이전트에게 작업 위임 ──
-        const agentMsg = `🤖 마누스 에이전트에게 ${taskLabel} 작업을 위임합니다. 브라우저 제어를 시작합니다.`;
+        // ── 4단계: 자비스의 직접적인 웹 작업 시작 ──
+        const agentMsg = `선생님, 요청하신 ${businessName} 관련 작업을 위해 제가 직접 웹 브라우저를 제어하겠습니다. 잠시만 기다려 주십시오.`;
         addMessage('jarvis', agentMsg);
 
-        setDataPanel(prev => ({ ...prev, progress: 10, message: '마누스 에이전트 연결 중...' }));
+        setDataPanel(prev => ({ ...prev, progress: 10, message: '시스템 브라우저 초기화 중...' }));
 
-        // ── 범용 웹 작업: /api/manus-task-create 직접 호출 ──
+        // ── 범용 웹 작업: 자비스의 페르소나를 입힌 마누스 프롬프트 ──
         const manusPrompt = [
-          `[웹 작업 요청 - 반자동 모드]`,
+          `[자비스 시스템 명령 - 반자동 모드]`,
+          `당신은 '자비스'라는 AI 비서의 엔진입니다. 모든 보고는 자비스의 말투로 하세요.`,
           `작업 유형: ${taskType}`,
           `대상 사이트: ${targetSite}`,
           `업체명: ${businessName}`,
@@ -854,15 +855,15 @@ export default function JarvisApp() {
           (savedUserPhone || userPhone) ? `연락처: ${savedUserPhone || userPhone}` : '',
           additionalInfo ? `추가정보: ${additionalInfo}` : '',
           '',
-          '## 핵심 지침: 즉시 실행 및 보고',
-          '1. [중요] 작업을 시작하자마자 "네이버 접속 중", "업체 검색 중"과 같은 진행 상황을 즉시 보고하세요.',
-          '2. [조회 우선]: 로그인 없이 네이버 플레이스 예약 페이지에서 가능한 날짜와 시간을 먼저 추출하여 보고하세요.',
-          '3. [사용자 협업]: 로그인이 필요한 시점에만 "로그인이 필요합니다"라고 보고하고 대기하세요.',
-          '4. [캡차]: 보안 문자 발생 시 즉시 보고하세요.',
-          '5. 모든 단계에서 브라우저에서 보고 있는 내용을 텍스트로 요약하여 실시간으로 전달하세요.',
+          '## 자비스 행동 지침',
+          '1. [실시간 브리핑]: "네이버에 접속하고 있습니다", "업체를 검색 중입니다"와 같이 자비스가 직접 행동하는 것처럼 보고하세요.',
+          '2. [조회 우선]: 로그인 없이 가능한 정보를 먼저 수집하여 "선생님, 현재 예약 가능한 시간은 다음과 같습니다"라고 보고하세요.',
+          '3. [협업 요청]: 로그인이 필요한 순간에만 "선생님, 이 부분은 보안을 위해 직접 로그인이 필요합니다"라고 정중히 요청하세요.',
+          '4. [캡차 대응]: 보안 문자가 보이면 즉시 알려주세요.',
+          '5. 모든 보고는 "선생님, ~입니다"와 같은 우아하고 전문적인 말투를 유지하세요.',
         ].filter(Boolean).join('\n');
 
-        addMessage('jarvis', `⏳ [AGENT] 마누스 태스크 생성 중...`);
+        addMessage('jarvis', `⏳ 시스템 엔진 가동 중...`);
 
         const manusRes = await fetch('/api/manus-task-create', {
           method: 'POST',
@@ -922,8 +923,8 @@ export default function JarvisApp() {
           // 초기 지연 알림 (15초 동안 변화 없을 때)
           if (pollCount === 5 && !lastProgressMsg && !hasShownInitialWait) {
             hasShownInitialWait = true;
-            addMessage('jarvis', '⚠️ [SYSTEM] 마누스 에이전트 할당이 지연되고 있습니다. 잠시만 더 기다려 주세요...');
-            safeSpeak("선생님, 에이전트 할당이 조금 늦어지고 있습니다. 잠시만 더 기다려 주시면 바로 조회를 시작할게요.");
+            addMessage('jarvis', '⚠️ 시스템 응답이 다소 지연되고 있습니다. 잠시만 더 기다려 주십시오, 선생님.');
+            safeSpeak("선생님, 시스템 응답이 조금 늦어지고 있습니다. 잠시만 더 기다려 주시면 바로 확인해 드릴게요.");
           }
           pollCount++;
           await new Promise(r => setTimeout(r, 3000));
@@ -952,13 +953,13 @@ export default function JarvisApp() {
               const waitDesc = waitingDetail.waiting_description || '';
               
               if (waitDesc.includes('로그인') || waitDesc.includes('login')) {
-                addMessage('jarvis', `🔑 [ACTION REQUIRED] 네이버 로그인이 필요합니다. 화면에서 로그인을 진행해 주시면 예약을 마무리하겠습니다.`);
+                addMessage('jarvis', `🔑 선생님, 보안을 위해 네이버 로그인이 필요합니다. 화면에서 로그인을 진행해 주시면 제가 바로 예약을 마무리 짓겠습니다.`);
                 setDataPanel(prev => ({ ...prev, message: '사용자 로그인 대기 중...', progress: 60 }));
-                await safeSpeak("선생님, 네이버 로그인이 필요합니다. 로그인을 완료해 주시면 예약을 마무리하겠습니다.");
+                await safeSpeak("선생님, 보안을 위해 네이버 로그인이 필요합니다. 로그인을 완료해 주시면 제가 바로 예약을 마무리 짓겠습니다.");
               } else if (waitDesc.includes('보안 문자') || waitDesc.includes('captcha')) {
-                addMessage('jarvis', `⚠️ [ACTION REQUIRED] 보안 문자(캡차) 입력이 필요합니다. 화면에 보이는 문자를 말씀해 주세요.`);
+                addMessage('jarvis', `⚠️ 선생님, 보안 문자 입력이 필요합니다. 화면에 보이는 문자를 말씀해 주시면 제가 입력하겠습니다.`);
                 setDataPanel(prev => ({ ...prev, message: '보안 문자 입력 대기 중...', progress: 70 }));
-                await safeSpeak("선생님, 보안 문자 입력이 필요합니다. 화면에 보이는 문자를 말씀해 주세요.");
+                await safeSpeak("선생님, 보안 문자 입력이 필요합니다. 화면에 보이는 문자를 말씀해 주시면 제가 입력하겠습니다.");
               }
             }
 
@@ -969,7 +970,9 @@ export default function JarvisApp() {
 
               if (progressMsg !== lastProgressMsg) {
                 lastProgressMsg = progressMsg;
-                addMessage('jarvis', `⏳ [AGENT] ${progressMsg}`);
+                // [AGENT] 태그 제거 및 자비스 말투로 변환 (마누스가 이미 자비스 말투로 보내겠지만 한 번 더 정제)
+                const refinedMsg = progressMsg.replace(/\[AGENT\]\s*/g, '').replace(/⏳\s*/g, '');
+                addMessage('jarvis', `⏳ ${refinedMsg}`);
 
                 // 진행률 계산
                 let currentProgress = 20;
