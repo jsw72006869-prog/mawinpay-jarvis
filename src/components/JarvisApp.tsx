@@ -793,6 +793,81 @@ export default function JarvisApp() {
       return;
     }
 
+    // ── 인플루언서 맞춤 콘텐츠 생성 액션 (generate_influencer_content) ──
+    if (action?.type === 'generate_influencer_content') {
+      const params = action.params || {} as Record<string, any>;
+      const contentType = String(params.content_type || 'email');
+      const category = String(params.category || 'collab');
+      const influencerName = String(params.influencer_name || '');
+      const businessName = String(params.business_name || '');
+      const productName = String(params.product_name || '');
+      const mode = String(params.mode || 'quick');
+
+      // 행동 로그 패널 표시
+      setDataPanel({
+        visible: true,
+        type: 'influencer_content',
+        progress: 0,
+        logs: [{ step: 1, status: 'pending', message: `${influencerName} 맞춤 ${contentType === 'email' ? '이메일' : contentType === 'script' ? '스크립트' : '제안서'} 생성 준비 중...` }],
+      });
+
+      // 콘텐츠 생성 API 호출
+      try {
+        const response = await fetch('/api/content-generator', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            content_type: contentType,
+            category,
+            influencer_name: influencerName,
+            influencer_category: params.influencer_category || '',
+            subscriber_count: params.subscriber_count || 0,
+            avg_views: params.avg_views || 0,
+            recent_videos: params.recent_videos || '',
+            business_name: businessName,
+            business_desc: params.business_desc || '',
+            product_name: productName,
+            product_desc: params.product_desc || '',
+            mode,
+          }),
+        });
+
+        const data = await response.json();
+
+        if (data.success) {
+          // 행동 로그 업데이트
+          setDataPanel(prev => ({
+            ...prev,
+            progress: 100,
+            logs: [
+              ...prev.logs,
+              { step: 2, status: 'done', message: `${contentType} 생성 완료 (${data.generation_time}초)` },
+            ],
+          }));
+
+          // 생성된 콘텐츠를 메시지로 추가
+          const generatedContent = data.content || '';
+          const contentTitle = contentType === 'email' ? '이메일' : contentType === 'script' ? '스크립트' : '제안서';
+          addMessage('jarvis', `${influencerName}님께 보낼 ${contentTitle}을(를) 생성했습니다:\n\n${generatedContent}\n\n이 ${contentTitle}을(를) 바로 보낼까요?`);
+
+          // TTS
+          const speakText = `${influencerName}님 맞춤 ${contentTitle}을 생성했습니다. 확인해 주세요.`;
+          try {
+            await speakElevenLabs(speakText);
+          } catch { }
+        } else {
+          addMessage('jarvis', `콘텐츠 생성에 실패했습니다: ${data.error || '알 수 없는 오류'}`);
+        }
+      } catch (err) {
+        const errorMsg = err instanceof Error ? err.message : '알 수 없는 오류';
+        addMessage('jarvis', `콘텐츠 생성 중 오류가 발생했습니다: ${errorMsg}`);
+      }
+
+      setState('listening');
+      setIsListening(true);
+      return;
+    }
+
     // ── 유튜브 인기 영상 조회/분석 액션 (youtube_trending) ──
     if (action?.type === 'youtube_trending') {
       const ytParams = action.params || {} as Record<string, any>;

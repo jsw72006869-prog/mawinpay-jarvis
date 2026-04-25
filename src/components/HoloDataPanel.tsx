@@ -13,7 +13,7 @@ interface ActionLog {
 }
 
 interface HoloDataPanelProps {
-  type: 'collect' | 'send_email' | 'create_banner' | 'report' | 'booking' | 'smartstore' | 'youtube' | null;
+  type: 'collect' | 'send_email' | 'create_banner' | 'report' | 'booking' | 'smartstore' | 'youtube' | 'influencer_content' | null;
   progress: number;
   message: string;
   bookingSteps?: string[];
@@ -41,6 +41,13 @@ const PANEL_CONFIG = {
     color: '#FF0000',
     color2: '#FF6B6B',
     steps: ['API CONNECT', 'VIDEO FETCH', 'COMMENT SCAN', 'AI ANALYZE', 'REPORT'],
+  },
+  influencer_content: {
+    title: 'INFLUENCER CONTENT ENGINE',
+    icon: '✉',
+    color: '#9C27B0',
+    color2: '#E91E63',
+    steps: ['PROFILE ANALYSIS', 'CONTENT GENERATION', 'PERSONALIZATION', 'COMPLETION'],
   },
   collect: {
     title: 'INFLUENCER SCAN',

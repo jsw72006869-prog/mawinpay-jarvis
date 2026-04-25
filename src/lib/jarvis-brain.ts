@@ -355,6 +355,38 @@ const JARVIS_FUNCTIONS_DEF = [
     },
   },
   {
+    name: 'generate_influencer_content',
+    description: '인플루언서 맞춤 이메일, 영상 스크립트, 비즈니스 제안서를 자동 생성할 때 호출. "OO 유튜버에게 협업 이메일 써줘", "공구 제안서 만들어줘", "쇼츠 스크립트 짜줘" 등.',
+    parameters: {
+      type: 'object',
+      properties: {
+        content_type: {
+          type: 'string',
+          enum: ['email', 'script', 'proposal'],
+          description: 'email=협업/공구/판매 제안 이메일, script=영상 스크립트, proposal=비즈니스 제안서'
+        },
+        category: {
+          type: 'string',
+          enum: ['collab', 'group_buy', 'shorts', 'review', 'partner'],
+          description: '이메일: collab=협업, group_buy=공구 | 스크립트: shorts=쇼츠, review=리뷰 | 제안서: partner=파트너십'
+        },
+        influencer_name: { type: 'string', description: '대상 인플루언서/채널명' },
+        influencer_category: { type: 'string', description: '인플루언서 카테고리 (예: 라이프스타일, 푸드, 뷰티)' },
+        subscriber_count: { type: 'number', description: '구독자/팔로워 수' },
+        avg_views: { type: 'number', description: '평균 조회수' },
+        recent_videos: { type: 'string', description: '최근 영상 주제 (쉼표로 구분)' },
+        business_name: { type: 'string', description: '선생님 비즈니스명' },
+        business_desc: { type: 'string', description: '비즈니스 설명' },
+        product_name: { type: 'string', description: '제품명' },
+        product_desc: { type: 'string', description: '제품 설명' },
+        mode: { type: 'string', enum: ['quick', 'smart'], description: 'quick=GPT-4o 즉시 생성 (3초), smart=마누스 AI 심층 분석 포함 (1~7분)' },
+        response: { type: 'string', description: 'JARVIS 응답 (한국어, 콘텐츠 생성 시작 멘트)' },
+        follow_up: { type: 'string', description: '생성 완료 후 이어서 할 제안 (예: "이 이메일을 바로 보낼까요?")' },
+      },
+      required: ['content_type', 'category', 'influencer_name', 'business_name', 'product_name', 'response'],
+    },
+  },
+  {
     name: 'youtube_trending',
     description: `유튜브 인기 영상/트렌딩 영상을 조회할 때 호출.
 사용 시점:
@@ -1035,6 +1067,28 @@ function buildActionFromFunction(fnName: string, args: Record<string, string | n
         type: 'chat',
         response: fullResponse,
         followUp: args.follow_up ? String(args.follow_up) : undefined,
+      };
+    }
+    case 'generate_influencer_content': {
+      return {
+        type: 'generate_influencer_content',
+        params: {
+          content_type: String(args.content_type || 'email'),
+          category: String(args.category || 'collab'),
+          influencer_name: String(args.influencer_name || ''),
+          influencer_category: String(args.influencer_category || ''),
+          subscriber_count: Number(args.subscriber_count) || 0,
+          avg_views: Number(args.avg_views) || 0,
+          recent_videos: String(args.recent_videos || ''),
+          business_name: String(args.business_name || ''),
+          business_desc: String(args.business_desc || ''),
+          product_name: String(args.product_name || ''),
+          product_desc: String(args.product_desc || ''),
+          mode: String(args.mode || 'quick'),
+        },
+        workingMessage: `${args.influencer_name || '인플루언서'} 맞춤 ${args.content_type === 'email' ? '이메일' : args.content_type === 'script' ? '스크립트' : '제안서'} 생성 중...`,
+        response: String(args.response),
+        followUp,
       };
     }
     case 'youtube_trending': {
