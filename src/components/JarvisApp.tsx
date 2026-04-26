@@ -208,15 +208,14 @@ export default function JarvisApp() {
   });
 
   useEffect(() => {
-    if (settingsForm.geminiKey) {
-      initializeGemini(settingsForm.geminiKey);
-    } else {
-      // 키가 없을 경우 환경 변수에서 다시 시도
-      const envKey = import.meta.env.VITE_GEMINI_API_KEY;
-      if (envKey) {
-        initializeGemini(envKey);
+    const envKey = import.meta.env.VITE_GEMINI_API_KEY;
+    if (envKey) {
+      initializeGemini(envKey);
+      if (!settingsForm.geminiKey) {
         setSettingsForm(prev => ({ ...prev, geminiKey: envKey }));
       }
+    } else if (settingsForm.geminiKey) {
+      initializeGemini(settingsForm.geminiKey);
     }
   }, [settingsForm.geminiKey]);
 
@@ -5156,9 +5155,9 @@ export default function JarvisApp() {
         )}
       </AnimatePresence>
 
-      {/* ── 플랫폼 데이터 카드 (하단 고정) ── */}
+      {/* ── 플랫폼 데이터 카드 (중앙 모핑 UI) ── */}
       <AnimatePresence>
-        <PlatformDataCards visible={!neuralMapVisible && !strategyDashboardVisible} />
+        <PlatformDataCards visible={true} />
       </AnimatePresence>
 
       {/* ── 뉴럴 미션 맵 (시스템 현황) ── */}
