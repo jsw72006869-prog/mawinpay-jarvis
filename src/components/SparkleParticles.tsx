@@ -148,7 +148,8 @@ export default function SparkleParticles({ state, audioLevel, speakingLevel, cla
   const materialRef  = useRef<THREE.ShaderMaterial | null>(null);
   const posAttrRef   = useRef<THREE.BufferAttribute | null>(null);
   const animRef      = useRef<number>(0);
-  const clockRef     = useRef(new THREE.Clock());
+  // THREE.Clock deprecated → performance.now() 기반 수동 시간 관리
+  const clockStartRef = useRef(performance.now() / 1000);
 
   // CPU 파티클 상태
   const posRef   = useRef<Float32Array>(new Float32Array(COUNT * 3));
@@ -281,7 +282,7 @@ export default function SparkleParticles({ state, audioLevel, speakingLevel, cla
     const animate = () => {
       if (contextLost) return; // WebGL context lost 시 렌더링 중단
       animRef.current = requestAnimationFrame(animate);
-      const t   = clockRef.current.getElapsedTime();
+      const t   = (performance.now() / 1000) - clockStartRef.current;
       clockElapsedRef.current = t;
       const mat = materialRef.current;
       const pos = posRef.current;
@@ -507,9 +508,16 @@ export default function SparkleParticles({ state, audioLevel, speakingLevel, cla
       // 유니폼 업데이트
       mat.uniforms.uTime.value          = t;
       mat.uniforms.uAudioLevel.value    = audio;
-      mat.uniforms.uSpeakingLevel.value = speaking;;
+      mat.uniforms.uSpeakingLevel.value = speaking;
       mat.uniforms.uFaceBlend.value     = faceBlendRef.current;
       mat.uniforms.uEntryPhase.value    = ep > 0 ? Math.min(entryAge / 2.2, 1.0) : 0;
+
+      // 상태별 색상 맥동 (라우팅 시각화)
+      if (curState === 'working') {
+        // Working 상태일 때 보라색/금색 맥동 (Manus/Engine 느낌)
+        const pulse = Math.sin(t * 2.0) * 0.5 + 0.5;
+        mat.uniforms.uAudioLevel.value += pulse * 0.2;
+      }
 
       // 버스트 감쇠
       if (burstRef.current > 0) {

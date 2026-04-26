@@ -612,41 +612,59 @@ export function useBargein(enabled: boolean, onBargeIn: () => void) {
 // ── TTS 훅 ──
 export function useTextToSpeech() {
   const isSpeakingRef = useRef(false);
+  const interruptRef = useRef(false);
 
   const speak = useCallback(async (
     text: string,
-    _onStart?: () => void,
+    onStart?: () => void,
     onEnd?: () => void,
     voiceIdOverride?: string
   ) => {
     if (isSpeakingRef.current) {
-      console.warn('[TTS] 이미 재생 중 — 스킵');
-      onEnd?.();
-      return;
+      console.warn('[TTS] 이미 재생 중 — 중단 후 새로 시작');
+      stopGlobalAudio();
     }
 
     isSpeakingRef.current = true;
+    interruptRef.current = false;
+    onStart?.();
+    
     console.log('[TTS] speak() 시작:', text.substring(0, 60));
 
     const apiKey = import.meta.env.VITE_ELEVENLABS_API_KEY;
 
+    // 문장 단위로 분할하여 스트리밍 효과 극대화
+    const sentences = text.match(/[^.!?]+[.!?]+|[^.!?]+$/g) || [text];
+    
     try {
-      if (apiKey) {
-        await speakElevenLabs(text, apiKey, voiceIdOverride);
-      } else {
-        console.log('[TTS] ElevenLabs 키 없음 — Web Speech 사용');
-        await speakWebSpeech(text);
+      for (const sentence of sentences) {
+        if (interruptRef.current) break;
+        
+        const trimmed = sentence.trim();
+        if (!trimmed) continue;
+
+        if (apiKey) {
+          await speakElevenLabs(trimmed, apiKey, voiceIdOverride);
+        } else {
+          await speakWebSpeech(trimmed);
+        }
       }
+    } catch (err) {
+      console.error('[TTS] 재생 중 오류:', err);
     } finally {
       isSpeakingRef.current = false;
+      interruptRef.current = false;
       console.log('[TTS] speak() 완료');
       onEnd?.();
     }
   }, []);
 
   const stop = useCallback(() => {
+    console.log('[TTS] stop() 호출 — 재생 중단');
+    interruptRef.current = true;
     isSpeakingRef.current = false;
     stopGlobalAudio();
+    if (window.speechSynthesis) window.speechSynthesis.cancel();
   }, []);
 
   return { speak, stop };

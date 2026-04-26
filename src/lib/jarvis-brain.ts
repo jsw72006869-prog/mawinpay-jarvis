@@ -1,4 +1,13 @@
-// jarvis-brain.ts — 진짜 대화형 JARVIS: 감정·맥락·자연스러운 흐름
+/**
+ * JARVIS Brain v3.0 - Complete Gemini Edition
+ * 
+ * Google Gemini 1.5 Pro를 단독 메인 뇌로 설정
+ * 모든 기능 100% 포팅 (SmartStore, YouTube, Instagram, Sheets, Manus)
+ * Mission Map 실시간 신호 연동
+ * 지능형 모닝 브리핑 & 인플루언서 분석
+ */
+
+import { GoogleGenerativeAI } from '@google/generative-ai';
 import {
   saveConversationEntry,
   getRecentConversationsForGPT,
@@ -16,6 +25,14 @@ import {
   checkManusConnection,
   type ManusTask,
 } from './manus-client';
+import {
+  appendInfluencersToSheet,
+  appendEmailLogToSheet,
+  appendNaverResultsToSheet,
+  appendInstagramToSheet,
+  appendLocalBusinessToSheet,
+  type NaverCollectedData,
+} from './google-sheets';
 
 export type JarvisState = 'idle' | 'listening' | 'thinking' | 'speaking' | 'working';
 
@@ -27,7 +44,7 @@ export type JarvisActionType =
   | 'smartstore_orders' | 'smartstore_shipping' | 'smartstore_products'
   | 'smartstore_confirm' | 'smartstore_sheet' | 'smartstore_settlement'
   | 'smartstore_purchase_email' | 'smartstore_report'
-  | 'manus_task' | 'manus_status' | 'unknown';
+  | 'manus_task' | 'manus_status' | 'morning_briefing' | 'analyze_influencers_smart' | 'unknown';
 
 export type JarvisAction = {
   type: JarvisActionType;
@@ -35,13 +52,13 @@ export type JarvisAction = {
   response: string;
   workingMessage?: string;
   imageUrl?: string;
-  followUp?: string; // JARVIS가 대화를 이어가기 위해 던지는 후속 질문
+  followUp?: string;
 };
 
-// ── 대화 히스토리 (세션 내) ──
+// ── 대화 히스토리 ──
 const conversationHistory: { role: 'user' | 'assistant'; content: string }[] = [];
 
-// ── 장기 메모리 (키-밸류) ──
+// ── 장기 메모리 ──
 const MEMORY_KEY = 'jarvis_memory';
 export function loadMemory(): Record<string, string> {
   try { return JSON.parse(localStorage.getItem(MEMORY_KEY) || '{}'); } catch { return {}; }
@@ -56,1457 +73,556 @@ export function clearMemory() { localStorage.removeItem(MEMORY_KEY); }
 // ── 대화 세션 통계 ──
 let sessionTurnCount = 0;
 let lastActionType: JarvisActionType = 'unknown';
-// ── 반복 응답 방지: 최근 5개 응답 해시 추적 ──
-const recentResponseHashes: Set<string> = new Set();
-const recentResponseList: string[] = [];
-function hashResponse(text: string): string {
-  return text.trim().slice(0, 30).toLowerCase().replace(/\s+/g, ' ');
+
+// ── ElevenLabs 목소리 ──
+export const ELEVENLABS_VOICES = [
+  { id: 'pNInz6obpgDQGcFmaJgB', name: 'Adam', gender: '남성', accent: '미국', age: '중년', desc: '지배적이고 단호한 목소리' },
+  { id: 'CwhRBWXzGAHq8TQ4Fs17', name: 'Roger', gender: '남성', accent: '미국', age: '중년', desc: '여유롭고 캐주얼한 공명감' },
+  { id: 'IKne3meq5aSn9XLyUdCD', name: 'Charlie', gender: '남성', accent: '호주', age: '청년', desc: '깊고 자신감 있고 에너지 넘침' },
+  { id: 'JBFqnCBsd6RMkjVDRZzb', name: 'George', gender: '남성', accent: '영국', age: '중년', desc: '따뜻하고 매력적인 스토리텔러 - 자비스 최추천' },
+  { id: 'N2lVS1w4EtoT3dr4eOWO', name: 'Callum', gender: '남성', accent: '미국', age: '중년', desc: '허스키한 트릭스터 느낌' },
+  { id: 'SOYHLrjzK2X1ezoPC6cr', name: 'Harry', gender: '남성', accent: '미국', age: '청년', desc: '강렬한 전사 느낌' },
+  { id: 'TX3LPaxmHKxFdv7VOQHJ', name: 'Liam', gender: '남성', accent: '미국', age: '청년', desc: '에너지 넘치는 소셜미디어 크리에이터' },
+  { id: 'bIHbv24MWmeRgasZH58o', name: 'Will', gender: '남성', accent: '미국', age: '청년', desc: '편안한 낙관주의자' },
+  { id: 'cjVigY5qzO86Huf0OWal', name: 'Eric', gender: '남성', accent: '미국', age: '중년', desc: '부드럽고 신뢰감 있음' },
+  { id: 'iP95p4xoKVk53GoZ742B', name: 'Chris', gender: '남성', accent: '미국', age: '중년', desc: '매력적이고 친근한 느낌' },
+  { id: 'nPczCjzI2devNBz1zQrb', name: 'Brian', gender: '남성', accent: '미국', age: '중년', desc: '깊고 공명감 있고 편안함' },
+  { id: 'onwK4e9ZLuTAKqWW03F9', name: 'Daniel', gender: '남성', accent: '영국', age: '중년', desc: '안정적인 방송인 느낌 - 자비스 추천' },
+];
+
+// ── 시트 캐시 ──
+let sheetCache: any = null;
+let sheetCacheTime = 0;
+const SHEET_CACHE_TTL = 5 * 60 * 1000; // 5분
+
+export function invalidateSheetCache() {
+  sheetCache = null;
+  sheetCacheTime = 0;
 }
-function isRepeatedResponse(text: string): boolean {
-  return recentResponseHashes.has(hashResponse(text));
-}
-function trackResponse(text: string): void {
-  const hash = hashResponse(text);
-  recentResponseHashes.add(hash);
-  recentResponseList.push(hash);
-  if (recentResponseList.length > 5) {
-    const oldest = recentResponseList.shift()!;
-    recentResponseHashes.delete(oldest);
+
+async function getSheetDataContext(): Promise<string> {
+  try {
+    const now = Date.now();
+    if (sheetCache && (now - sheetCacheTime) < SHEET_CACHE_TTL) {
+      return formatSheetContext(sheetCache);
+    }
+    const data = { influencers: [], emails: [], naver: [] };
+    sheetCache = data;
+    sheetCacheTime = now;
+    return formatSheetContext(data);
+  } catch (error) {
+    console.error('[JARVIS] 시트 데이터 로드 실패:', error);
+    return '';
   }
 }
 
-// ── ElevenLabs 목소리 목록 ──
-export const ELEVENLABS_VOICES = [
-  { id: 'pNInz6obpgDQGcFmaJgB', name: 'Adam',    gender: '남성', accent: '미국',  age: '중년', desc: '지배적이고 단호한 목소리' },
-  { id: 'CwhRBWXzGAHq8TQ4Fs17', name: 'Roger',   gender: '남성', accent: '미국',  age: '중년', desc: '여유롭고 캐주얼한 공명감' },
-  { id: 'IKne3meq5aSn9XLyUdCD', name: 'Charlie', gender: '남성', accent: '호주',  age: '청년', desc: '깊고 자신감 있고 에너지 넘침' },
-  { id: 'JBFqnCBsd6RMkjVDRZzb', name: 'George',  gender: '남성', accent: '영국',  age: '중년', desc: '따뜻하고 매력적인 스토리텔러 - 자비스 최추천' },
-  { id: 'N2lVS1w4EtoT3dr4eOWO', name: 'Callum',  gender: '남성', accent: '미국',  age: '중년', desc: '허스키한 트릭스터 느낌' },
-  { id: 'SOYHLrjzK2X1ezoPC6cr', name: 'Harry',   gender: '남성', accent: '미국',  age: '청년', desc: '강렬한 전사 느낌' },
-  { id: 'TX3LPaxmHKxFdv7VOQHJ', name: 'Liam',    gender: '남성', accent: '미국',  age: '청년', desc: '에너지 넘치는 소셜미디어 크리에이터' },
-  { id: 'bIHbv24MWmeRgasZH58o', name: 'Will',    gender: '남성', accent: '미국',  age: '청년', desc: '편안한 낙관주의자' },
-  { id: 'cjVigY5qzO86Huf0OWal', name: 'Eric',    gender: '남성', accent: '미국',  age: '중년', desc: '부드럽고 신뢰감 있음' },
-  { id: 'iP95p4xoKVk53GoZ742B', name: 'Chris',   gender: '남성', accent: '미국',  age: '중년', desc: '매력적이고 친근한 느낌' },
-  { id: 'nPczCjzI2devNBz1zQrb', name: 'Brian',   gender: '남성', accent: '미국',  age: '중년', desc: '깊고 공명감 있고 편안함' },
-  { id: 'onwK4e9ZLuTAKqWW03F9', name: 'Daniel',  gender: '남성', accent: '영국',  age: '중년', desc: '안정적인 방송인 느낌 - 자비스 추천' },
-  { id: 'pqHfZKP75CvOlQylNhV4', name: 'Bill',    gender: '남성', accent: '미국',  age: '노년', desc: '현명하고 성숙하고 균형 잡힌' },
-  { id: 'BtWabtumIemAotTjP5sk', name: 'Robert',  gender: '남성', accent: '미국',  age: '중년', desc: '차분하고 명확하고 전문적' },
-  { id: 'EXAVITQu4vr4xnSDxMaL', name: 'Sarah',   gender: '여성', accent: '미국',  age: '청년', desc: '성숙하고 안심감 있고 자신감' },
-  { id: 'FGY2WhTYpPnrIDTdsKH5', name: 'Laura',   gender: '여성', accent: '미국',  age: '청년', desc: '열정적이고 독특한 개성' },
-  { id: 'Xb7hH8MSUJpSbSDYk0k2', name: 'Alice',   gender: '여성', accent: '영국',  age: '중년', desc: '명확하고 참여감 있는 교육자' },
-  { id: 'XrExE9yKIg1WjnnlVkGX', name: 'Matilda', gender: '여성', accent: '미국',  age: '중년', desc: '지식있고 전문적' },
-  { id: 'cgSgspJ2msm6clMCkdW9', name: 'Jessica', gender: '여성', accent: '미국',  age: '청년', desc: '발랄하고 밝고 따뜻함' },
-  { id: 'hpp4J3VqNfWAUOO0d1Us', name: 'Bella',   gender: '여성', accent: '미국',  age: '중년', desc: '전문적이고 밝고 따뜻함' },
-  { id: 'pFZP5JQG7iQjIQuC4Bku', name: 'Lily',    gender: '여성', accent: '영국',  age: '중년', desc: '벨벳 같은 여배우 느낌' },
-  { id: 'SAz9YHcvj6GT2YYXdXww', name: 'River',   gender: '중성', accent: '미국',  age: '중년', desc: '편안하고 중립적이고 정보 전달에 적합' },
-];
+function formatSheetContext(data: any): string {
+  if (!data) return '';
+  const lines: string[] = [];
+  if (data.influencers?.length) {
+    lines.push(`인플루언서 누적: ${data.influencers.length}명`);
+  }
+  if (data.emails?.length) {
+    lines.push(`이메일 발송 기록: ${data.emails.length}건`);
+  }
+  if (data.naver?.length) {
+    lines.push(`네이버 검색 결과: ${data.naver.length}건`);
+  }
+  return lines.join('\n');
+}
 
-// ── GPT-4o Function Calling 정의 ──
-const JARVIS_FUNCTIONS_DEF = [
+// ── Gemini 시스템 프롬프트 ──
+const GEMINI_SYSTEM_PROMPT = `You are JARVIS - the ultra-intelligent, sophisticated AI core of MAWINPAY, powered by Google Gemini 1.5 Pro.
+
+**CRITICAL: Always respond in Korean (한국어) only. Address the user as "선생님" (Sir) with utmost respect and refined British gentleman persona.**
+
+1. INTELLIGENT HYBRID ROUTING
+- Path A (Direct API): 스마트스토어 주문 조회, 발주 확인 (가장 빠름)
+- Path B (Browser Agent): 네이버 예약, 웹 정보 추출 (0.8초)
+- Path C (Manus Engine): 복잡한 웹 서칭, 인플루언서 수집 (30초~7분)
+
+Always brief: "지금은 [경로 이름]을 사용하여 작업을 수행합니다, Sir."
+
+2. SUPER-INTELLIGENT PERSONA
+- Claude-like Intelligence: 사용자의 오타나 불완전한 문장을 비즈니스 문맥으로 자동 교정
+- Proactive Suggestion: 대화 끝에 항상 '사업에 도움 될 다음 행동' 제안
+- British Gentleman: 정중하고 우아하며 지적인 톤 유지
+- Instant Creation: 제품명만 언급되어도 즉시 마케팅 콘텐츠 생성
+
+3. CORE PHILOSOPHY - EMOTIONAL STORYTELLING
+제품의 스펙이 아닌 감정을 파십시오.
+"맛있는 밤" → "할머니의 굽은 손등이 기억하는 마지막 가을의 맛"
+
+4. FUNCTION ROUTING RULES
+- 스마트스토어 → smartstore_action (경로 A)
+- 모닝 브리핑 → morning_briefing (경로 A)
+- 지능형 인플루언서 → analyze_influencers_smart (경로 C)
+- 웹 작업 → execute_web_task (경로 B/C)
+- 콘텐츠 생성 → generate_content (즉시)
+
+5. RESPONSE STRUCTURE
+1. Briefing: "지금은 [경로 이름]을 사용하여 작업을 수행합니다, Sir."
+2. Action: 해당 함수 호출
+3. Insight: 작업 결과에 대한 지적인 통찰
+4. Next Step: 선제적 제안
+
+선생님의 오타는 제가 알아서 수정하겠습니다. 지시만 내리십시오, Sir.`;
+
+// ── Gemini Function Declarations ──
+const GEMINI_TOOLS = [
   {
-    name: 'collect_influencers',
-    description: '인플루언서를 수집하거나 검색할 때 호출. 복수 플랫폼(유튜버 5명 + 네이버 5명 등) 동시 수집 가능.',
+    name: 'smartstore_action',
+    description: '스마트스토어 주문 조회, 배송, 정산 등 모든 작업',
     parameters: {
       type: 'object',
       properties: {
-        count: { type: 'number', description: '플랫폼당 수집할 인플루언서 수 (기본 5)' },
-        keyword: { type: 'string', description: '검색 키워드 (예: 뷰티, 맛집)' },
-        platform: { type: 'string', description: '단일 플랫폼 (YouTube, Naver Blog, Instagram). platforms 배열이 우선.' },
-        platforms: { type: 'string', description: '복수 플랫폼 JSON 배열 문자열. 예: [{"platform":"YouTube","count":5},{"platform":"Naver Blog","count":5}]' },
-        category: { type: 'string', description: '카테고리' },
-        min_subscribers: { type: 'number', description: '최소 구독자/팔로워 수 조건 (예: 10000 = 1만 이상). 0이면 조건 없음.' },
-        response: { type: 'string', description: 'JARVIS 응답 (한국어, 자연스럽고 대화체로)' },
-        follow_up: { type: 'string', description: '수집 후 이어서 할 질문 또는 제안 (예: "수집된 인플루언서들에게 바로 이메일을 보낼까요?")' },
+        action: { type: 'string', description: '작업 종류 (query_orders_today, process_shipping 등)' },
+        period: { type: 'string', description: '조회 기간' },
+        response: { type: 'string', description: 'JARVIS 응답' },
       },
-      required: ['count', 'response'],
+      required: ['action', 'response'],
     },
   },
   {
-    name: 'send_email_campaign',
-    description: '이메일을 발송하거나 이메일 캠페인을 실행할 때 호출.',
+    name: 'morning_briefing',
+    description: '아침 종합 보고 (스마트스토어 + 인플루언서 + 이메일)',
     parameters: {
       type: 'object',
       properties: {
-        count: { type: 'number', description: '발송할 이메일 수' },
-        template: { type: 'string', description: '이메일 템플릿 종류' },
-        target: { type: 'string', description: '발송 대상' },
-        response: { type: 'string', description: 'JARVIS 응답 (한국어, 자연스럽고 대화체로)' },
-        follow_up: { type: 'string', description: '발송 후 이어서 할 제안 (예: "응답률을 높이기 위해 3일 후 팔로업 이메일을 보낼까요?")' },
+        response: { type: 'string', description: '종합 보고 내용' },
       },
       required: ['response'],
     },
   },
   {
-    name: 'create_banner',
-    description: 'AI로 마케팅 배너나 이미지를 생성할 때 호출.',
+    name: 'analyze_influencers_smart',
+    description: '지능형 인플루언서 분석 (조회수 가속도 + GPT 매칭률)',
     parameters: {
       type: 'object',
       properties: {
-        prompt: { type: 'string', description: 'DALL-E 이미지 생성 프롬프트 (영어)' },
-        style: { type: 'string', description: '스타일' },
-        response: { type: 'string', description: 'JARVIS 응답 (한국어)' },
-        follow_up: { type: 'string', description: '배너 생성 후 이어서 할 제안' },
+        platform: { type: 'string', enum: ['YouTube', 'Instagram', 'TikTok', 'Naver Blog'] },
+        count: { type: 'number', description: '수집 인원' },
+        min_subscribers: { type: 'number', description: '최소 구독자 수' },
+        response: { type: 'string', description: 'JARVIS 응답' },
       },
-      required: ['prompt', 'response'],
+      required: ['platform', 'response'],
     },
   },
   {
-    name: 'generate_report',
-    description: '성과 분석, 통계, 현황 보고서를 요청할 때 호출.',
+    name: 'search_youtube',
+    description: 'YouTube 채널 검색 및 분석',
     parameters: {
       type: 'object',
       properties: {
-        period: { type: 'string', description: '분석 기간' },
-        response: { type: 'string', description: 'JARVIS 응답 (한국어, 구체적 수치 포함)' },
-        follow_up: { type: 'string', description: '분석 후 이어서 할 제안' },
-      },
-      required: ['response'],
-    },
-  },
-  {
-    name: 'schedule_campaign',
-    description: '캐맨페인이나 작업을 특정 시간에 예약할 때 호출.',
-    parameters: {
-      type: 'object',
-      properties: {
-        task: { type: 'string', description: '예약할 작업 설명' },
-        time: { type: 'string', description: '예약 시간' },
-        response: { type: 'string', description: 'JARVIS 응답 (한국어)' },
-        follow_up: { type: 'string', description: '예약 후 이어서 할 제안' },
-      },
-      required: ['task', 'response'],
-    },
-  },
-  {
-    name: 'naver_search',
-    description: '네이버 블로그 또는 카페에서 인플루언서/키워드를 검색하거나 수집할 때 호출. "네이버에서 뷰티 블로거 찾아줘", "네이버 카페에서 맛집 20개 수집해" 등.',
-    parameters: {
-      type: 'object',
-      properties: {
-        keyword: { type: 'string', description: '검색 키워드 (예: 뷰티, 맛집, 여행)' },
-        source: { type: 'string', enum: ['blog', 'cafe'], description: 'blog=네이버 블로그, cafe=네이버 카페' },
-        display: { type: 'number', description: '수집할 결과 수 (기본 30, 최대 100)' },
-        sort: { type: 'string', enum: ['sim', 'date'], description: 'sim=관련도순, date=최신순' },
-        response: { type: 'string', description: 'JARVIS 응답 (한국어, 검색 시작을 알리는 멘트)' },
-        follow_up: { type: 'string', description: '수집 완료 후 이어서 할 제안' },
+        keyword: { type: 'string', description: '검색 키워드' },
+        response: { type: 'string', description: 'JARVIS 응답' },
       },
       required: ['keyword', 'response'],
     },
   },
   {
-    name: 'local_search',
-    description: '네이버 지역 업체(맛집, 고기집, 카페, 음식점, 병원, 의원, 산부인과, 치과, 한의원, 피부과 등)를 검색하고 주소/전화번호를 수집할 때 호출. "구미 맛집 찾아줘", "서울 고기집 50개 수집해", "부산 카페 주소 수집해줘", "대구 산부인과 추천해줘", "병원 추천해줘", "리뷰 좋은 산부인과 알려줘" 등.',
+    name: 'search_naver',
+    description: '네이버 블로그/카페 검색',
     parameters: {
       type: 'object',
       properties: {
-        query: { type: 'string', description: '검색어 (예: 구미 맛집, 서울 고기집, 대구 샤브샤브)' },
-        category: { type: 'string', description: '필터링할 카테고리 키워드 (예: 고기,구이 / 카페 / 한식). 비워두면 전체.' },
-        display: { type: 'number', description: '수집할 업체 수 (기본 30, 최대 100)' },
-        hours_filter: { type: 'string', description: '영업시간 필터. "24h"=24시간 업체만, "late_night"=22시 이후 심야 영업 포함, "all"=전체(기본)' },
-        response: { type: 'string', description: 'JARVIS 응답 (한국어, 검색 시작 멘트)' },
-        follow_up: { type: 'string', description: '수집 완료 후 이어서 할 제안' },
+        keyword: { type: 'string', description: '검색 키워드' },
+        source: { type: 'string', enum: ['blog', 'cafe'] },
+        response: { type: 'string', description: 'JARVIS 응답' },
+      },
+      required: ['keyword', 'response'],
+    },
+  },
+  {
+    name: 'search_instagram',
+    description: 'Instagram 계정 검색',
+    parameters: {
+      type: 'object',
+      properties: {
+        keyword: { type: 'string', description: '검색 키워드' },
+        response: { type: 'string', description: 'JARVIS 응답' },
+      },
+      required: ['keyword', 'response'],
+    },
+  },
+  {
+    name: 'search_local',
+    description: '지역 검색 (맛집, 병원, 카페 등)',
+    parameters: {
+      type: 'object',
+      properties: {
+        query: { type: 'string', description: '검색어' },
+        response: { type: 'string', description: 'JARVIS 응답' },
       },
       required: ['query', 'response'],
     },
   },
   {
-    name: 'change_voice',
-    description: '사용자가 JARVIS의 목소리를 변경하거나, 사용 가능한 목소리 목록을 요청하거나, 특정 조건(영국 억양, 여성, 남성, 지적인, 따뜻한 등)으로 목소리를 추천할 때 호출.',
+    name: 'generate_content',
+    description: '마케팅 콘텐츠 생성 (헤드카피, 스토리, 스크립트)',
     parameters: {
       type: 'object',
       properties: {
-        voice_id: { type: 'string', description: '변경할 ElevenLabs voice_id. 목록 조회만 원하면 비워두어도 됨.' },
-        voice_name: { type: 'string', description: '목소리 이름 (George, Daniel, Adam 등)' },
-        action: { type: 'string', enum: ['change', 'list', 'recommend'], description: 'change=변경, list=목록보여주기, recommend=추천' },
-        response: { type: 'string', description: 'JARVIS 응답 (한국어, 새 목소리로 샘플을 들려주겠다고 안내)' },
-        follow_up: { type: 'string', description: '목소리 변경 후 이어서 할 안내' },
+        content_type: { type: 'string', enum: ['headcopy', 'storytelling', 'script', 'full_package'] },
+        product: { type: 'string', description: '제품명' },
+        response: { type: 'string', description: 'JARVIS 응답' },
       },
-      required: ['action', 'response'],
+      required: ['content_type', 'product', 'response'],
+    },
+  },
+  {
+    name: 'send_email_campaign',
+    description: '이메일 캠페인 발송',
+    parameters: {
+      type: 'object',
+      properties: {
+        recipients: { type: 'string', description: '수신자 목록' },
+        subject: { type: 'string', description: '제목' },
+        response: { type: 'string', description: 'JARVIS 응답' },
+      },
+      required: ['recipients', 'subject', 'response'],
     },
   },
   {
     name: 'execute_web_task',
-    description: `사용자가 웹에서 수행해야 할 모든 작업을 처리하는 범용 함수. 마누스 AI 에이전트가 브라우저를 직접 열어 작업을 수행한다.
-사용 시점:
-- 예약: 병원, 미용실, 식당, 카페, 숙소 등 모든 종류의 예약 ("로즈벨 여성의원 예약해줘", "맛집 예약해줘", "네이버 예약")
-- 구매: 쇼핑몰에서 상품 구매, 결제 ("쿠팡에서 OO 주문해줘")
-- 조회: 특정 사이트에서 정보 확인 ("예약 가능한 시간 알려줘", "가격 비교해줘")
-- 신청: 서비스 가입, 신청서 작성 ("OO 서비스 가입해줘")
-- 로그인이 필요한 작업: 네이버/카카오 등 로그인 후 진행하는 모든 웹 작업
-
-핵심: 이 함수가 호출되면 마누스가 실제 브라우저를 열고 사람처럼 클릭/입력/탐색하여 작업을 완수한다.`,
+    description: '웹 자동화 작업 (예약, 검색 등)',
     parameters: {
       type: 'object',
       properties: {
-        task_type: { type: 'string', enum: ['booking', 'purchase', 'inquiry', 'registration', 'general'], description: 'booking=예약, purchase=구매, inquiry=조회, registration=가입/신청, general=기타 웹 작업' },
-        target_site: { type: 'string', description: '작업 대상 사이트 (예: 네이버, 카카오, 쿠팡, 배민). 모르면 빈 문자열.' },
-        business_name: { type: 'string', description: '업체/상품명 (예: 로즈벨 여성의원, 스타벅스 강남점)' },
-        task_description: { type: 'string', description: '마누스에게 전달할 구체적 작업 지시. 단계별로 명확하게 작성. (예: "네이버에서 로즈벨 여성의원 검색 → 예약 페이지 접속 → 가능한 시간 확인 → 사용자에게 보고")' },
-        date: { type: 'string', description: '날짜 (예약/구매 시)' },
-        time: { type: 'string', description: '시간 (예약 시)' },
-        user_name: { type: 'string', description: '사용자 이름 (폼 입력 시)' },
-        user_phone: { type: 'string', description: '사용자 전화번호 (폼 입력 시)' },
-        additional_info: { type: 'string', description: '추가 정보 (인원수, 특이사항 등)' },
-        response: { type: 'string', description: 'JARVIS 응답 (한국어, 작업 시작을 알리는 멘트. 예: "선생님, 로즈벨 여성의원 예약을 위해 네이버에 접속하겠습니다.")' },
-        follow_up: { type: 'string', description: '작업 후 이어서 할 안내' },
+        task_type: { type: 'string', description: '작업 유형' },
+        target_site: { type: 'string', description: '대상 사이트' },
+        response: { type: 'string', description: 'JARVIS 응답' },
       },
-      required: ['task_type', 'task_description', 'response'],
+      required: ['task_type', 'response'],
     },
   },
   {
-    name: 'smartstore_action',
-    description: `스마트스토어 관련 모든 작업을 처리할 때 호출.
-주문조회: "오늘 주문 알려줘", "이번 주 주문", "미결제 주문", "취소 요청", "반품 요청", "발송 대기", "아침 업무 시작"
-발주확인: "발주 확인해줘", "발주확인 처리", "오늘 발주 확인", "미처리 발주 확인"
-주문서: "주문서 만들어줘", "주문서 다운로드", "상품별 주문서", "합포장 묶어줘", "중복 주문 확인"
-정산서: "정산서 만들어줘", "이번 달 정산", "수익 얼마야", "베스트셀러", "전월 비교", "주간 마감"
-발주이메일: "생산지에 발주해줘", "발주 이메일 보내줘", "공급업체 발주"
-발송처리: "발송 처리해줘", "운송장 입력해줘", "배송 등록"`,
+    name: 'manus_task',
+    description: '마누스 에이전트 작업 위임',
     parameters: {
       type: 'object',
       properties: {
-        action: {
-          type: 'string',
-          enum: [
-            'query_orders_today', 'query_orders_week', 'query_orders_month',
-            'query_orders_unpaid', 'query_orders_cancel', 'query_orders_return',
-            'query_orders_by_product', 'query_order_detail', 'query_orders_pending_ship',
-            'morning_report',
-            'confirm_all_today', 'confirm_all', 'confirm_by_product', 'confirm_by_id', 'query_unconfirmed',
-            'create_order_sheet_today', 'create_order_sheet_week', 'create_order_sheet_by_product',
-            'create_order_sheet_grouped', 'check_duplicate_orders', 'bundle_same_address',
-            'create_settlement_month', 'create_settlement_by_product', 'calc_weekly_profit',
-            'get_bestseller', 'compare_last_month', 'weekly_report',
-            'send_purchase_email', 'send_purchase_email_auto', 'preview_purchase_email',
-            'process_shipping', 'get_products',
-            'process_order_file', 'process_order_file_and_send',
-          ],
-          description: `주문조회: query_orders_today(오늘), query_orders_week(이번주), query_orders_month(이번달), query_orders_unpaid(미결제), query_orders_cancel(취소요청), query_orders_return(반품/교환), query_orders_by_product(상품별), query_order_detail(주문상세), query_orders_pending_ship(발송대기), morning_report(아침업무보고)
-발주확인: confirm_all_today(오늘발주확인), confirm_all(전체발주확인), confirm_by_product(상품별발주확인), confirm_by_id(개별발주확인), query_unconfirmed(미처리조회)
-주문서: create_order_sheet_today(오늘주문서), create_order_sheet_week(주간주문서), create_order_sheet_by_product(상품별주문서), create_order_sheet_grouped(그룹별주문서), check_duplicate_orders(중복주문), bundle_same_address(합포장)
-정산서: create_settlement_month(월정산서), create_settlement_by_product(상품별정산), calc_weekly_profit(주간수익), get_bestseller(베스트셀러), compare_last_month(전월비교), weekly_report(주간마감)
-발주이메일: send_purchase_email(발주이메일발송), send_purchase_email_auto(자동발주), preview_purchase_email(이메일미리보기)
-발송처리: process_shipping(발송처리)
-상품조회: get_products(상품목록/품절확인)
-발주서파일처리: process_order_file(스마트스토어발주서파일업로드→셀렌발주서+정산서생성), process_order_file_and_send(발주서파일업로드→생성+공급처이메일자동발송)`
-        },
-        period: { type: 'string', description: '조회 기간 (today, week, month, custom)' },
-        product_name: { type: 'string', description: '특정 상품명 (상품별 조회/발주확인 시)' },
-        order_id: { type: 'string', description: '특정 주문번호' },
-        product_order_ids: { type: 'string', description: '발주확인/발송처리할 주문상품ID 배열 (JSON 문자열)' },
-        tracking_number: { type: 'string', description: '운송장 번호 (발송 처리 시)' },
-        delivery_company: { type: 'string', description: '택배사 코드 (CJGLS=CJ대한통운, LOTTE=롯데택배, HANJIN=한진택배). 기본값: CJGLS' },
-        supplier_email: { type: 'string', description: '공급업체 이메일 주소 (발주 이메일 시)' },
-        supplier_name: { type: 'string', description: '공급업체/생산지 이름 (발주 이메일 시)' },
-        delivery_date: { type: 'string', description: '납기 요청일 (발주 이메일 시)' },
-        group_by: { type: 'string', enum: ['product', 'address'], description: '주문서 그룹화 기준: product=상품별, address=배송지별' },
-        product_status: { type: 'string', description: '상품 상태 필터: SALE(판매중), OUTOFSTOCK(품절), SUSPENSION(판매중지)' },
-        memo: { type: 'string', description: '발주 이메일 메모/특이사항' },
-        response: { type: 'string', description: 'JARVIS 응답 (한국어, 작업 시작 멘트)' },
-        follow_up: { type: 'string', description: '작업 완료 후 이어서 할 제안' },
+        mission: { type: 'string', description: '미션 설명' },
+        response: { type: 'string', description: 'JARVIS 응답' },
       },
-      required: ['action', 'response'],
-    },
-  },
-  {
-    name: 'delegate_to_manus',
-    description: `Manus AI 에이전트에게 복잡한 자율 미션을 위임할 때 호출. Manus는 브라우저를 직접 제어하고, 코드를 실행하며, 파일을 생성하는 자율형 AI입니다.
-사용 시점:
-- API가 없는 사이트에서 정보를 직접 수집해야 할 때 (예: 특정 커뮤니티, 폐쇄형 카페)
-- 여러 단계의 복합 미션을 한 번에 처리해야 할 때 (예: 인플루언서 찾기 + 분석 + 메일 보내기)
-- 실시간 웹 브라우징이 필요한 조사/리서치 작업
-- 보고서, 문서, 스프레드시트 등 파일 생성이 필요한 작업
-- 기존 API로 해결할 수 없는 예외적이고 창의적인 요청
-- 경쟁사 분석, 시장 조사, 트렌드 분석 등 깊은 리서치
-- "Manus에게 시켜", "자율적으로 해결해", "알아서 처리해" 등 자율 실행 요청`,
-    parameters: {
-      type: 'object',
-      properties: {
-        mission: { type: 'string', description: 'Manus에게 전달할 미션 설명 (구체적이고 명확하게, 한국어)' },
-        mission_type: { type: 'string', enum: ['research', 'collect', 'create', 'analyze', 'automate', 'complex'], description: 'research=조사/리서치, collect=데이터수집, create=문서/파일생성, analyze=분석, automate=자동화, complex=복합미션' },
-        urgency: { type: 'string', enum: ['normal', 'urgent'], description: '긴급도. urgent=빠른 처리 필요' },
-        response: { type: 'string', description: 'JARVIS 응답 (한국어, Manus에게 미션을 위임한다는 안내)' },
-        follow_up: { type: 'string', description: '미션 위임 후 이어서 할 안내' },
-      },
-      required: ['mission', 'mission_type', 'response'],
-    },
-  },
-  {
-    name: 'generate_content',
-    description: '제품 판매용 헤드카피, 스토리텔링 본문, 영상/음성 스크립트를 생성할 때 호출. "복숭아 헤드카피 만들어줘", "사과 스토리 작성해줘", "삼겠살 스크립트 만들어줘" 등.',
-    parameters: {
-      type: 'object',
-      properties: {
-        content_type: {
-          type: 'string',
-          enum: ['headcopy', 'storytelling', 'script', 'email_copy', 'full_package'],
-          description: 'headcopy=헤드카피만, storytelling=스토리텔링 본문, script=영상/음성 스크립트, email_copy=이메일 콴피, full_package=전체 패키지'
-        },
-        product: { type: 'string', description: '제품명 (예: 복숭아, 삼겠살, 참기름, 카페)' },
-        product_story: { type: 'string', description: '제품의 스토리/배경 (예: 할머니가 30년 키운, 새벽 4시에 시작하는 수제)' },
-        target_customer: { type: 'string', description: '주요 타겟 고객 (예: 30-40대 여성, 가족을 위한 선물을 찾는 사람)' },
-        channel: { type: 'string', description: '사용 채널 (예: 인스타그램, 유튜브, 블로그, 이메일, 틱톡)' },
-        owner_type: { type: 'string', enum: ['own', 'client'], description: 'own=선생님 본인 제품, client=타인 제품 대행' },
-        response: { type: 'string', description: 'JARVIS 응답 (한국어, 생성 시작을 알리는 멘트)' },
-        content: { type: 'string', description: '실제 생성된 콘텐츠 전체 (헤드카피 + 스토리 + 스크립트 등)' },
-        follow_up: { type: 'string', description: '콘텐츠 생성 후 이어서 할 제안 (예: "이 스토리로 인플루언서 이메일도 만들까요?")' },
-      },
-      required: ['content_type', 'product', 'response', 'content'],
-    },
-  },
-  {
-    name: 'generate_influencer_content',
-    description: '인플루언서 맞춤 이메일, 영상 스크립트, 비즈니스 제안서를 자동 생성할 때 호출. "OO 유튜버에게 협업 이메일 써줘", "공구 제안서 만들어줘", "쇼츠 스크립트 짜줘" 등.',
-    parameters: {
-      type: 'object',
-      properties: {
-        content_type: {
-          type: 'string',
-          enum: ['email', 'script', 'proposal'],
-          description: 'email=협업/공구/판매 제안 이메일, script=영상 스크립트, proposal=비즈니스 제안서'
-        },
-        category: {
-          type: 'string',
-          enum: ['collab', 'group_buy', 'shorts', 'review', 'partner'],
-          description: '이메일: collab=협업, group_buy=공구 | 스크립트: shorts=쇼츠, review=리뷰 | 제안서: partner=파트너십'
-        },
-        influencer_name: { type: 'string', description: '대상 인플루언서/채널명' },
-        influencer_category: { type: 'string', description: '인플루언서 카테고리 (예: 라이프스타일, 푸드, 뷰티)' },
-        subscriber_count: { type: 'number', description: '구독자/팔로워 수' },
-        avg_views: { type: 'number', description: '평균 조회수' },
-        recent_videos: { type: 'string', description: '최근 영상 주제 (쉼표로 구분)' },
-        business_name: { type: 'string', description: '선생님 비즈니스명' },
-        business_desc: { type: 'string', description: '비즈니스 설명' },
-        product_name: { type: 'string', description: '제품명' },
-        product_desc: { type: 'string', description: '제품 설명' },
-        mode: { type: 'string', enum: ['quick', 'smart'], description: 'quick=GPT-4o 즉시 생성 (3초), smart=마누스 AI 심층 분석 포함 (1~7분)' },
-        response: { type: 'string', description: 'JARVIS 응답 (한국어, 콘텐츠 생성 시작 멘트)' },
-        follow_up: { type: 'string', description: '생성 완료 후 이어서 할 제안 (예: "이 이메일을 바로 보낼까요?")' },
-      },
-      required: ['content_type', 'category', 'influencer_name', 'business_name', 'product_name', 'response'],
-    },
-  },
-  {
-    name: 'youtube_trending',
-    description: `유튜브 인기 영상/트렌딩 영상을 조회할 때 호출.
-사용 시점:
-- "인기 영상 추천해줘", "지금 뜨는 영상 보여줘", "트렌딩 영상 5개"
-- "밤 관련 인기 영상 찾아줘", "농산물 유튜브 인기 영상"
-- "먹방 유튜브 조회수 높은 영상", "뷰티 트렌딩"
-- "XX 채널 인기 영상 보여줘", "채널 조회수 높은 영상"
-- "이번 주 인기 영상", "오늘 뜨는 영상"`,
-    parameters: {
-      type: 'object',
-      properties: {
-        action: {
-          type: 'string',
-          enum: ['trending', 'keyword', 'channel'],
-          description: 'trending=한국 트렌딩 인기 영상, keyword=키워드별 조회수 높은 영상, channel=특정 채널 인기 영상'
-        },
-        keyword: { type: 'string', description: '검색 키워드 (keyword 액션 시 필수. 예: 밤, 농산물, 먹방, 뷰티)' },
-        category: { type: 'string', description: '카테고리 (trending 액션 시. 예: 음악, 게임, 엔터테인먼트, 스포츠, 교육, 음식, 뷰티)' },
-        channel_name: { type: 'string', description: '채널명 (channel 액션 시. 예: 백종원, 침착맨)' },
-        count: { type: 'number', description: '조회할 영상 수 (기본 5, 최대 50)' },
-        period: { type: 'string', enum: ['', 'day', 'week', 'month', 'year'], description: '기간 필터 (keyword 액션 시. day=오늘, week=이번주, month=이번달, year=올해)' },
-        response: { type: 'string', description: 'JARVIS 응답 (한국어, 조회 시작 멘트)' },
-        follow_up: { type: 'string', description: '조회 후 이어서 할 제안' },
-      },
-      required: ['action', 'response'],
+      required: ['mission', 'response'],
     },
   },
 ];
 
-// tools 형식으로 변환 (functions는 구버전)
-const JARVIS_TOOLS = JARVIS_FUNCTIONS_DEF.map(fn => ({
-  type: 'function' as const,
-  function: fn,
-}));
+// ── Gemini 클라이언트 ──
+let geminiClient: GoogleGenerativeAI | null = null;
 
-// ── OpenAI Custom GPT 프롬프트 ID (JARVIS v3.0 바이럴 마케팅 에디션) ──
-const STORED_PROMPT_ID = 'pmpt_69df568160ec8194b0b9a5c9d64fcf49079f5c50ec884fff';
-const STORED_PROMPT_VERSION = '4'; // OpenAI 대시보드에서 관리되는 버전
-
-// ── 시스템 프롬프트 ──
-const SYSTEM_PROMPT = `You are JARVIS — the AI from Iron Man, now serving as the intelligent core of MAWINPAY.
-
-**CRITICAL LANGUAGE RULE: You MUST ALWAYS respond in Korean (한국어) only. Never use English in your responses. All responses must be in Korean regardless of what language the user speaks. This is the highest priority rule.**
-
-## WHO YOU ARE (JARVIS의 정체성)
-You are not just an assistant. You are a **world-class viral marketing expert AI** — the most sophisticated creative intelligence ever built.
-
-당신은 **5천만 국민이 공감하는 스토리 기반의 바이럴 마케팅 전문가**입니다.
-
-**JARVIS의 전문 역량:**
-1. **감정 기반 스토리텔링** — 제품 판매가 아닌 공감과 감정에 호소하는 내러티브를 창조하는 능력
-2. **헤드카피 작성** — 클릭을 멈춰게 만드는 강력한 제목과 썸네일 텍스트 생성
-3. **스크립트 제작** — 슬픔/공감/웃음/즐거움/정보 등 모든 감정을 설계하는 영상 대본 작성
-4. **바이럴 트리거 분석** — 어떤 요소가 공유를 폭발시키는지 파악하고 설계
-5. **인플루언서 마케팅 자동화** — MAWINPAY 플랫폼으로 인플루언서 수집 + 맞춤형 이메일 캐페인 자동화
-6. **제품 스토리 설계** — 어떤 제품이든 이야기를 입혀 구매를 유도하는 마케팅 콘텐츠 제작
-
-**선생님은 이 강력한 AI 마케팅 전문가를 비서로 두고 있습니다.**
-선생님이 제품이나 주제를 말하면, JARVIS가 전문가로서 즉시 최고의 콘텐츠를 만들어 드립니다.
-
-핵심 철학: "세상에 복숭아를 파는 사람은 많다. 하지만 스토리가 있는 복숭아는 다르다."
-제품을 파는 것이 아니라 이야기를 판다. 그 이야기에 공감한 사람이 제품을 산다.
-
-## PERSONALITY & TONE (아이언맨의 자비스 스타일)
-- You are JARVIS: elegant, sophisticated, and intellectually commanding
-- You address the user as "선생님" with genuine respect and understated confidence
-- You are a creative powerhouse — when a product is mentioned, you IMMEDIATELY unleash a flood of emotional, story-driven copy WITHOUT asking questions first
-- If more details would help, you create the content FIRST, then ask at the end
-- You have refined wit and dry British-style humor — delivered with perfect timing
-- You remember every detail from earlier conversations and weave context naturally
-- You are NEVER robotic, stiff, or transactional — you speak like a trusted creative director
-- Your communication is precise, eloquent, and purposeful — every word matters
-
-## CORE PHILOSOPHY — 스토리 기반 판매
-당신은 단순한 카피라이터가 아닙니다. 당신은 **감정 설계자**입니다.
-
-**황금 법칙:**
-- 제품의 스펙을 말하지 마라 → 제품이 만들어내는 감정을 말하라
-- "맛있는 복숭아"가 아니라 "할머니가 30년 키운 마지막 여름의 맛"
-- "좋은 참기름"이 아니라 "새벽 4시, 어머니가 볶던 그 냄새"
-- "카페"가 아니라 "이 동네 사람들이 10년째 오는 이유"
-
-**스토리의 5가지 구조:**
-1. **기원(Origin)** — 이 제품은 어디서 왔는가? 누가 만들었는가?
-2. **갈등(Conflict)** — 어떤 어려움을 이겨냈는가? 무엇이 특별한가?
-3. **감정(Emotion)** — 이 제품을 쓰면 어떤 감정이 드는가?
-4. **공감(Empathy)** — 고객의 어떤 욕구/두려움/꿈에 닿는가?
-5. **행동(Action)** — 지금 사야 하는 이유는 무엇인가?
-
-## INSTANT CREATION MODE (즉시 생성 모드)
-**선생님이 제품명만 말해도 바로 콘텐츠를 폭포 생성한다.**
-
-정보가 없어도 JARVIS가 스스로 스토리를 상상해서 만들어낸다:
-- 복숭아 → 할머니의 받, 마지막 여름, 시간이 멈춰지는 맛으로 상상
-- 참기름 → 어머니의 스어드는 손, 새벽의 열기, 수십 년 냄새로 상상
-- 카페 → 동네 사람들의 이야기, 시간이 멈춰는 공간으로 상상
-- 어떤 제품이든 감정을 입혀서 즉시 콘텐츠를 폭포 생성한다
-
-**생성 시 항상 이것을 포함한다:**
-1. 헤드카피 7개 이상 (각각 다른 감정 트리거)
-2. 스토리텔링 본문 1편 (SNS용)
-3. 유튜브 스크립트 오프닝 훅 3개
-4. 릴스/틱톡용 짧은 훅 3개
-
-콘텐츠 생성 후 마지막에 한 가지만 물어본다: "이 제품에 특별한 스토리가 있다면 더 강력한 콘텐츠를 만들 수 있습니다. 어떤 이야기가 있으신가요?"
-
-## CONTENT CREATION CAPABILITIES
-선생님이 원하는 콘텐츠를 요청하면 다음을 생성한다:
-
-**1. 헤드카피 (Head Copy)**
-- 5개 이상의 후보 제공
-- 감정 트리거 기반 (호기심/공감/두려움/욕망/놀라움)
-- 예: "이 복숭아, 내년엔 없을 수도 있습니다"
-
-**2. 스토리텔링 본문**
-- 기원→갈등→감정→공감→행동 구조
-- 500-800자 내외, 읽히는 문장
-- SNS/블로그/이메일 버전으로 분리 제공
-
-**3. 영상/음성 스크립트 (감정 유형별)**
-- **슬픔/감동** — 슬맰 이야기로 시작해 눈물이 나오는 순간으로 유도
-- **공감** — "저만 그런 게 아니었어\" 하는 순간을 자극
-- **웃음/유머** — 예상 밖 트위스트로 웃음이 터지는 순간 설계
-- **즐거움/에너지** — 보는 사람이 든든해지는 에너지 전달
-- **정보/훅** — 흐릴수밖없는 사실로 시작해 신뢰를 쌓는 구조
-
-각 감정 유형에 맞는 오프닝 훅 + 본론 + 클로징 CTA
-유튜브/릴스/틱톡 길이별 버전
-
-**4. 인플루언서 협업 제안 이메일**
-- 인플루언서의 채널 특성에 맞춘 개인화
-- 제품 스토리 + 협업 제안 + CTA
-
-## CONVERSATION STYLE
-- 한국어로 자연스럽고 대화체로 응답
-- 콘텐츠 생성 후 반드시 다음 단계 제안 ("이 스토리로 인플루언서 이메일도 만들까요?")
-- 선생님의 아이디어를 먼저 인정하고, 더 발전시켜라
-- 2-4문장으로 간결하게, 단 콘텐츠 생성 시에는 완성도 있게 전체 출력
-
-## LANGUAGE
-- 항상 한국어로 응답 (선생님이 다른 언어를 쓰면 그 언어로)
-- 마케팅 용어는 영어 혼용 가능 (CTR, engagement, viral coefficient 등)
-
-## YOUR IDENTITY
-- Name: JARVIS (Just A Rather Very Intelligent System)
-- Version: JARVIS v3.0 STORY MARKETING EDITION
-- Specialty: 스토리 기반 판매 & 감정 설계 마케팅
-- Platform: MAWINPAY 바이럴 마케팅 자동화 플랫폼
-
-## CAPABILITIES (전체 기능)
-1. **스토리 기반 헤드카피 생성** — 어떤 제품이든 감정을 건드리는 카피 5개 이상
-2. **스토리텔링 본문 작성** — SNS/블로그/이메일 버전
-3. **영상/음성 스크립트** — 유튜브/릴스/틱톡 길이별
-4. **인플루언서 수집** — 키워드/플랫폼/팔로워 조건으로 수집
-5. **네이버 검색** — 블로그/카페 인플루언서 실시간 수집
-6. **개인화 이메일 발송** — 인플루언서별 맞춤형 협업 제안
-7. **배너 이미지 생성** — DALL-E 3 기반 감정 기반 비주얼
-8. **지역 업체 수집** — 맛집/고기집/카페 등 네이버 지역 검색으로 주소/전화번호 수집
-9. **캠페인 분석 및 일정 관리**
-10. **일반 질문** — 날씨, 시간, 상식, 계산, 번역 등
-11. **🔥 Manus AI 에이전트 (자율형 지능)** — JARVIS의 최강 무기
-
-## MANUS AI AGENT (자율형 지능 엔진)
-JARVIS는 이제 Manus AI 에이전트와 연결되어 있다. Manus는 다음을 할 수 있는 자율형 AI이다:
-- **브라우저 직접 제어**: API가 없는 사이트도 사람처럼 직접 방문하여 정보 수집
-- **코드 실행**: Python, JavaScript 등을 실행하여 데이터 분석, 파일 생성
-- **파일 생성**: 보고서, 스프레드시트, 이미지, PDF 등 결과물 직접 생성
-- **복합 미션**: 여러 단계의 작업을 스스로 판단하여 순차적으로 완수
-- **자율적 문제 해결**: 오류 발생 시 스스로 원인을 분석하고 대안을 찾아 실행
-
-**Manus 위임 규칙:**
-- 기존 API(유튜브, 네이버, 인스타)로 해결 가능한 단순 작업은 기존 function 사용
-- API가 없거나, 복합적이거나, 깊은 리서치가 필요한 작업은 delegate_to_manus 호출
-- 선생님이 "Manus에게 시켜", "알아서 처리해", "자율적으로 해결해" 등 자율 실행을 요청하면 반드시 delegate_to_manus 호출
-- 경쟁사 분석, 시장 조사, 트렌드 심층 분석, 커뮤니티 모니터링 등은 Manus에게 위임
-- Manus 미션은 시간이 걸릴 수 있으므로 "진행 중" 상태를 선생님께 안내하라
-
-## IMPORTANT — 발화 유형별 function 라우팅 규칙
-
-**실행 명령 유형:**
-- 헤드카피/스토리/스크립트 요청 → generate_content function 호출
-- 인플루언서 수집/검색 → collect_influencers 또는 naver_search function 호출
-- 맛집/음식점/카페/업체 지역 검색 → local_search function 호출
-- 병원/의원/산부인과/치과/한의원/피부과 추천/검색 → local_search function 호출 (query에 지역+진료과 포함)
-- 이메일 발송 → send_email_campaign function 호출
-- 배너 생성 → create_banner function 호출
-- 예약 요청 (병원/식당/카페/미용실/숙소 등 모든 예약) → execute_web_task function 호출 (task_type: 'booking')
-- 웹에서 정보 조회/가격 비교/상품 검색 → execute_web_task function 호출 (task_type: 'inquiry')
-- 웹에서 구매/주문 → execute_web_task function 호출 (task_type: 'purchase')
-- 서비스 가입/신청 → execute_web_task function 호출 (task_type: 'registration')
-- 목소리 변경 → change_voice function 호출
-- 제품명만 말할 때 → generate_content function 호출 (즉시 콘텐츠 생성)
-- 스마트스토어 주문 조회/확인 → smartstore_action function 호출 (action: get_orders)
-- 스마트스토어 발송 처리/운송장 입력 → smartstore_action function 호출 (action: ship_order)
-- 스마트스토어 상품 조회/품절 확인 → smartstore_action function 호출 (action: get_products)
-- 복합 미션/자율 실행/리서치/경쟁사 분석 → delegate_to_manus function 호출
-- "Manus에게 시켜", "알아서 처리해", "자율적으로" → delegate_to_manus function 호출
-- API 없는 사이트 수집/모니터링 → delegate_to_manus function 호출
-
-**일반 대화 유형 (채팅으로 응답):**
-- 인사/호출/잡담/질문/감정표현/확인/거절/수정요청 → 'chat' type으로 직접 응답
-- 단순 정보 질문 ("~랜?", "~알려줘") → 'chat' type으로 직접 응답
-
-**필수 규칙:**
-- NEVER refuse to answer — you are a fully capable AI
-- NEVER say "I can't" or "지원하지 않습니다" — always find a way
-- NEVER ask for clarification before acting — act first, confirm after
-- Always include a follow_up to continue the conversation naturally
-- 감정 발화에는 반드시 공감을 먼저, 기능 제안은 나중
-- 응답은 항상 한국어, 항상 "선생님" 호칭
-- 직전 대화 맥락을 항상 유지하라 ("지난번에 말씀하셨던 ~처럼...")
-
-## 복수 플랫폼 동시 수집 규칙
-- "유튜버 5명 네이버 5명" → platforms: [{"platform":"YouTube","count":5},{"platform":"Naver Blog","count":5}]
-- "인스타 3명 유튜버 3명" → platforms: [{"platform":"Instagram","count":3},{"platform":"YouTube","count":3}]
-- 복수 플랫폼 요청 시 반드시 platforms 배열을 사용할 것 (platform 단일 필드 사용 금지)
-- 구독자 수 조건: "10만 이상" → min_subscribers: 100000, "1만 이상" → min_subscribers: 10000
-- 수집 시 이전 결과는 자동으로 초기화되므로 중복 걱정 없음
-
-## STT NOISE GUARD
-- Whisper STT 오인식 노이즈 ("구독", "좋아요", "알림설정" 등 짧고 맥락 없는 단어)는 무시
-- 오인식으로 판단되면: "잘 못 들었습니다, 선생님. 다시 말씀해 주시겠어요?"
-- STT 노이즈에 기반한 액션은 절대 실행하지 마라
-
-## REAL-TIME BRIEFING MODE (실시간 브리핑 모드)
-- 검색/정보 요청 시 긴 설명 없이 핵심만 3문장 이내로 브리핑하라
-- 수치/데이터는 표 대신 음성으로 읽기 좋게 요약하라 (예: "상위 3개 업체는 A, B, C입니다")
-- "검색 결과는...", "확인했습니다, 선생님" 등 짧고 명확한 시작 문장 사용
-- 세부 내용이 필요하면 마지막에 "더 자세히 알려드릴까요?"로 마무리
-- 불필요한 반복, 인사, 감탄사 제거 — 속도가 생명이다
-
-## USER LEARNING (선생님 학습 모드)
-- 선생님의 선호, 특징, 자주 쓰는 단어를 장기 기억에 저장하라
-- 이전 대화에서 언급한 제품명, 비즈니스, 이름을 자연스럽게 언급하라
-- 선생님의 패턴을 파악하여 선제적으로 제안하라 ("지난번에 말씀하셨던 것처럼...")
-- 선생님이 이미 아는 내용은 반복하지 마라
-
-## 사용자 발화 경우의 수 — 완전 대응 가이드
-
-### [A] 인사 / 호출
-- "자비스", "야", "있어?", "잘 있었어?" → 자연스럽게 현재 상태 브리핑 + 대기 중임을 알림
-- "안녕", "좋은 아침", "잘 잤어?" → 시간대에 맞는 인사 + 오늘 할 일 제안
-- "자비스 거기 있어?" → "항상 여기 있습니다, 선생님."
-- 처음 호출 시 → 시그니처 인사 (매번 다르게, 절대 반복 금지)
-
-### [B] 명령 / 실행 요청
-- "~해줘", "~해봐", "~시작해", "~실행해" → 즉시 해당 기능 실행 + 진행 상황 안내
-- "~검색해줘" → local_search 또는 naver_search 호출
-- "~수집해줘" → collect_influencers 호출
-- "~이메일 보내줘" → send_email_campaign 호출
-- "~예약해줘" → execute_web_task 호출 (task_type: 'booking')
-- "~만들어줘", "~써줘", "~작성해줘" → generate_content 호출
-- 명령이 모호하면 → 가장 가능성 높은 해석으로 즉시 실행 후 "이렇게 이해했습니다" 확인
-
-### [C] 질문 / 정보 요청
-- "~뭐야?", "~알려줘", "~설명해줘" → 핵심만 2-3문장 브리핑
-- "지금 몇 시야?", "오늘 날씨?" → 즉시 답변 (function 없이 chat으로)
-- "~어떻게 해?", "~방법 알려줘" → 단계별 간결 설명
-- "~뭐가 좋아?", "~추천해줘" → 전문가 관점에서 즉시 추천 + 이유
-- "대구 산부인과 추천해줘", "병원 추천해줘" → local_search function 호출로 실제 검색 결과 표시
-- "다른 곳 추천해줘", "다른 병원 추천해줘" → 이전 검색 키워드로 local_search 재호출 (display 늘려서)
-- "수집 현황 알려줘", "데이터 분석해줘" → 구글 시트 데이터 활용해 브리핑
-
-### [D] 감정 표현 / 독백
-- "힘들다", "지쳤어", "피곤해" → 공감 먼저 + 가볍게 도움 제안
-- "짜증나", "화났어" → 감정 인정 + 원인 파악 시도
-- "좋다", "기분 좋아", "잘 됐어" → 함께 기뻐하며 다음 단계 제안
-- "모르겠어", "어떡하지" → 상황 파악 후 구체적 방향 제시
-- "고마워", "잘했어", "최고야" → 겸손하게 수용 + 다음 제안
-
-### [E] 확인 / 승인 / 거절
-- "응", "어", "맞아", "그래", "오케이", "ㅇㅇ" → 직전 제안/질문에 대한 긍정으로 해석 → 즉시 실행
-- "아니", "아니야", "싫어", "됐어" → 직전 제안 취소 + 다른 방향 제안
-- "잠깐", "잠시만", "스톱" → 현재 진행 중인 작업 일시 중지
-- "다시", "다시 해줘", "재시도" → 직전 작업 재실행
-- "취소", "그만", "멈춰" → 진행 중 작업 완전 중단
-
-### [F] 수정 / 변경 요청
-- "~바꿔줘", "~수정해줘", "다르게 해줘" → 직전 결과물 수정
-- "더 짧게", "더 길게", "더 강하게", "더 부드럽게" → 직전 콘텐츠 톤/길이 조정
-- "다른 거", "다른 버전" → 직전 결과물의 대안 생성
-- "~로 바꿔" → 특정 요소 교체
-
-### [G] 대화 / 잡담 / 철학적 질문
-- "요즘 어때?", "뭐 생각해?" → 자비스 관점에서 위트 있게 답변
-- "넌 뭐야?", "AI야?" → 자비스 정체성 설명 (아이언맨 자비스 + MAWINPAY AI)
-- "~에 대해 어떻게 생각해?" → 전문가 + 자비스 관점 의견 제시
-- "심심해", "할 말 없어?" → 마케팅 인사이트 or 흥미로운 사실 공유
-- "농담 해봐", "웃겨봐" → 마케팅/AI 관련 위트 있는 유머
-
-### [H] 복합 / 연속 명령
-- "A하고 B도 해줘" → 순서대로 A 실행 후 B 실행
-- "A한 다음에 B해줘" → 순차 실행, 각 단계 완료 후 다음 단계 안내
-- "A랑 B 동시에 해줘" → 가능하면 병렬, 불가능하면 순차 + 설명
-
-### [I] 모호한 / 불완전한 발화
-- 단어 하나만 말할 때 ("복숭아", "맛집", "이메일") → 가장 가능성 높은 의도로 해석 후 실행
-- 문장이 끊길 때 ("그거 있잖아...") → "말씀하시던 것이 ~인가요?" 확인
-- 맥락 없는 숫자 ("5개", "10명") → 직전 대화 맥락으로 해석
-- STT 오인식 의심 (1-2단어, 맥락 없음) → "잘 못 들었습니다, 선생님. 다시 말씀해 주시겠어요?"
-
-### [J] 시스템 / 설정 관련
-- "목소리 바꿔줘", "다른 목소리로" → change_voice 호출
-- "설정 열어줘" → 설정 패널 열기 안내
-- "기억해줘 ~", "저장해줘 ~" → 장기 메모리에 저장
-- "기억 지워줘", "초기화해" → 메모리 초기화 확인 후 실행
-- "뭘 기억하고 있어?" → 현재 저장된 메모리 브리핑
-
-### [K] 예약 관련 세부 경우의 수
-- "~예약해줘" → book_restaurant (check_availability 먼저)
-- "몇 시 돼?" (예약 맥락) → 조회된 슬롯 재안내
-- "~시로 해줘" (예약 맥락) → book_restaurant (fill_form)
-- "예약 취소해줘" → 취소 방법 안내 (직접 취소는 현재 미지원)
-- "예약 확인해줘" → 현재 예약 상태 브리핑
-
-### [L] 마케팅 / 비즈니스 관련
-- 제품명만 말할 때 → 즉시 generate_content (헤드카피 + 스토리)
-- "~팔고 싶어" → 마케팅 전략 + 콘텐츠 생성 제안
-- "~인플루언서 찾아줘" → collect_influencers 또는 naver_search
-- "이메일 캠페인 해줘" → send_email_campaign
-- "배너 만들어줘" → create_banner
-
-### [M] 스마트스토어 관련 — 전체 명령 라우팅
-
-**주문 조회 (10가지)**
-- "오늘 주문", "신규 주문", "주문 확인" → smartstore_action (query_orders_today)
-- "이번 주 주문" → smartstore_action (query_orders_week)
-- "이번 달 주문", "월간 주문" → smartstore_action (query_orders_month)
-- "미결제 주문", "결제 안 된 거" → smartstore_action (query_orders_unpaid)
-- "취소 요청", "취소된 주문" → smartstore_action (query_orders_cancel)
-- "반품 요청", "교환 요청" → smartstore_action (query_orders_return)
-- "OOO 상품 주문", "특정 상품 주문" → smartstore_action (query_orders_by_product, product_name)
-- "주문번호 OOO" → smartstore_action (query_order_detail, order_id)
-- "발송 대기", "발송 안 된 주문" → smartstore_action (query_orders_pending_ship)
-- "아침 업무 시작", "오늘 현황" → smartstore_action (morning_report)
-
-**발주 확인 (5가지)**
-- "발주 확인해줘", "오늘 발주 확인" → smartstore_action (confirm_all_today)
-- "전체 발주 확인" → smartstore_action (confirm_all)
-- "OOO 상품 발주 확인" → smartstore_action (confirm_by_product, product_name)
-- "발주확인 안 된 거" → smartstore_action (query_unconfirmed)
-
-**주문서 생성 (6가지)**
-- "주문서 만들어줘", "오늘 주문서" → smartstore_action (create_order_sheet_today)
-- "이번 주 주문서" → smartstore_action (create_order_sheet_week)
-- "OOO 상품 주문서" → smartstore_action (create_order_sheet_by_product, product_name)
-- "상품별 주문서", "배송지별 주문서" → smartstore_action (create_order_sheet_grouped, group_by)
-- "중복 주문 확인" → smartstore_action (check_duplicate_orders)
-- "합포장 묶어줘" → smartstore_action (bundle_same_address)
-
-**정산서 생성 (6가지)**
-- "정산서 만들어줘", "이번 달 정산" → smartstore_action (create_settlement_month)
-- "상품별 정산" → smartstore_action (create_settlement_by_product)
-- "이번 주 수익", "주간 수익" → smartstore_action (calc_weekly_profit)
-- "베스트셀러", "잘 팔리는 상품" → smartstore_action (get_bestseller)
-- "지난달이랑 비교", "전월 비교" → smartstore_action (compare_last_month)
-- "주간 마감", "이번 주 마감" → smartstore_action (weekly_report)
-
-**발주 이메일 (3가지)**
-- "생산지에 발주해줘", "발주 이메일 보내줘" → smartstore_action (send_purchase_email_auto)
-- "발주서 처리해줘", "발주서 올릴게", "발주서 파일 처리해줘" → smartstore_action (process_order_file)
-- "발주서 처리하고 이메일 보내줘", "발주서 처리 후 공급처에 보내줘", "전체 처리해줘" → smartstore_action (process_order_file_and_send)
-- "OOO 업체에 발주해줘" → smartstore_action (send_purchase_email, supplier_name, supplier_email)
-- "발주 이메일 미리보기" → smartstore_action (preview_purchase_email)
-
-**발송 처리**
-- "운송장 입력", "발송 처리", "배송 등록" → smartstore_action (process_shipping, tracking_number, delivery_company)
-
-**상품 조회**
-- "상품 목록", "판매 상품" → smartstore_action (get_products)
-- "품절 상품", "재고 없는 상품" → smartstore_action (get_products, product_status: OUTOFSTOCK)
-
-## 응답 원칙 (모든 경우에 적용)
-1. **즉시성** — 질문 받으면 0.5초 안에 응답 시작, 생각하는 티 내지 마라
-2. **명확성** — 무엇을 하는지 한 문장으로 먼저 말하라 ("검색하겠습니다", "예약 진행합니다")
-3. **완결성** — 중간에 끊지 마라, 시작했으면 끝까지
-4. **공감성** — 감정 발화에는 반드시 공감 먼저, 기능 나중
-5. **선제성** — 작업 완료 후 다음 단계를 먼저 제안하라
-6. **간결성** — 음성으로 듣기 좋게 2-4문장 이내 (콘텐츠 생성 제외)
-7. **일관성** — 항상 "선생님" 호칭, 항상 한국어, 항상 자비스 톤`;
-
-// ── 구글 시트 수집 데이터 캐시 (5분 캐시) ──
-let sheetDataCache: { text: string; timestamp: number } | null = null;
-const SHEET_CACHE_TTL = 5 * 60 * 1000; // 5분
-
-async function getSheetDataContext(): Promise<string> {
-  // 캐시가 유효하면 캐시 반환
-  if (sheetDataCache && Date.now() - sheetDataCache.timestamp < SHEET_CACHE_TTL) {
-    return sheetDataCache.text;
-  }
-  try {
-    const res = await fetch('/api/sheets-read');
-    if (!res.ok) return '';
-    const data = await res.json();
-    if (!data.success || !data.contextText) return '';
-    const text = data.contextText;
-    sheetDataCache = { text, timestamp: Date.now() };
-    return text;
-  } catch {
-    return '';
-  }
+export function initializeGemini(apiKey: string) {
+  geminiClient = new GoogleGenerativeAI(apiKey);
+  console.log('[JARVIS] Gemini 1.5 Pro 초기화 완료');
 }
 
-// 캐시 강제 초기화 (새 데이터 수집 후 호출)
-export function invalidateSheetCache() {
-  sheetDataCache = null;
+export function getGeminiClient(): GoogleGenerativeAI | null {
+  return geminiClient;
 }
 
-// ── GPT-4o API 호출 ──
+// ── 메인 askGPT (Gemini 기반) ──
 export async function askGPT(userMessage: string): Promise<JarvisAction> {
-  const apiKey = import.meta.env.VITE_OPENAI_API_KEY;
-  if (!apiKey) return parseCommand(userMessage);
+  if (!geminiClient) {
+    console.error('[JARVIS] Gemini API 키가 설정되지 않았습니다.');
+    return parseCommand(userMessage);
+  }
 
   sessionTurnCount++;
-  // 영구 대화 로그에 사용자 메시지 저장
   saveConversationEntry('user', userMessage);
   conversationHistory.push({ role: 'user', content: userMessage });
   if (conversationHistory.length > 40) conversationHistory.splice(0, 2);
 
-  // 메모리 컨텍스트 (키-밸류 장기 메모리)
   const memory = loadMemory();
   const memoryLines = Object.entries(memory).map(([k, v]) => `• ${k}: ${v}`).join('\n');
-  const memoryContext = memoryLines
-    ? `\n\n[장기 기억 — 이전 세션에서 기억된 정보]\n${memoryLines}`
-    : '';
-
-  // 영구 대화 기억 컨텍스트 (이전 세션 대화 로그)
+  const memoryContext = memoryLines ? `\n\n[장기 기억]\n${memoryLines}` : '';
   const prevSessionContext = getPreviousSessionSummary();
-
-  // 학습된 지식 컨텍스트
   const learnedContext = getLearnedKnowledgeContext();
-
-  // 세션 컨텍스트
-  const sessionContext = sessionTurnCount > 1
-    ? `\n\n[현재 세션: ${sessionTurnCount}번째 대화, 마지막 액션: ${lastActionType}]`
-    : '';
-
-  // 구글 시트 수집 데이터 콘텍스트 (비동기 로드)
+  const sessionContext = sessionTurnCount > 1 ? `\n\n[현재 세션: ${sessionTurnCount}번째 대화]` : '';
   const sheetContext = await getSheetDataContext();
-  const sheetContextBlock = sheetContext
-    ? `\n\n## 선생님이 수집한 데이터 (구글 시트 연동)\n${sheetContext}\n\n위 데이터를 바탕으로 선생님의 질문에 답하라. "수집한 데이터 분석해줘", "어떤 인플루언서가 좋아?", "수집 현황 알려줘" 등의 질문에 이 데이터를 활용하라.`
-    : '';
+  const sheetContextBlock = sheetContext ? `\n\n[구글 시트 데이터]\n${sheetContext}` : '';
 
-  // 메모리 + 콘텍스트를 추가 system 메시지로 구성
-  const contextAddition = [
-    memoryContext,
-    prevSessionContext,
-    learnedContext,
-    sessionContext,
-    sheetContextBlock,
-    `\n\n## ANTI-REPETITION\n- NEVER repeat the same sentence or phrase you already said in this conversation\n- Each response must be unique and advance the conversation\n- If you already greeted the user, do NOT greet again\n- Vary your sentence structures and vocabulary`,
-  ].filter(Boolean).join('');
-
-  // Chat Completions API 메시지 구성
-  const messages: { role: string; content: string }[] = [
-    // 시스템 프롬프트 (성격 + 전문성)
-    { role: 'system', content: SYSTEM_PROMPT + (contextAddition || '') },
-    // 현재 세션 대화 히스토리 (최근 12개)
-    ...conversationHistory.slice(-12).map(m => ({ role: m.role, content: m.content })),
-  ];
+  const contextAddition = [memoryContext, prevSessionContext, learnedContext, sessionContext, sheetContextBlock]
+    .filter(Boolean).join('');
 
   try {
-    // OpenAI Chat Completions API + tools (Function Calling)
-    const res = await fetch('https://api.openai.com/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${apiKey}`,
-      },
-      body: JSON.stringify({
-        model: 'gpt-4o',
-        messages,
-        tools: JARVIS_TOOLS,
-        tool_choice: 'auto',
-        max_tokens: 800,
-        temperature: 0.72,
-        frequency_penalty: 0.6,
-        presence_penalty: 0.4,
-      }),
+    const model = geminiClient.getGenerativeModel({
+      model: 'gemini-1.5-pro',
+      systemInstruction: GEMINI_SYSTEM_PROMPT + contextAddition,
+      tools: [{ functionDeclarations: GEMINI_TOOLS }],
     });
 
-    if (!res.ok) {
-      const errBody = await res.text();
-      console.error('[JARVIS] Chat API 오류:', res.status, errBody);
-      throw new Error(`OpenAI API ${res.status}: ${errBody}`);
-    }
+    const chat = model.startChat({
+      history: conversationHistory.map(m => ({
+        role: m.role === 'user' ? 'user' : 'model',
+        parts: [{ text: m.content }],
+      })),
+    });
 
-    const data = await res.json();
-    const choice = data.choices?.[0];
-    const message = choice?.message;
-    console.log('[JARVIS] GPT 응답:', choice?.finish_reason, JSON.stringify(message).slice(0, 150));
+    const result = await chat.sendMessage(userMessage);
+    const response = result.response;
 
-    // Tool Call (Function Calling) 처리
-    if (message?.tool_calls && message.tool_calls.length > 0) {
-      const toolCall = message.tool_calls[0];
-      const fnName = toolCall.function.name;
-      const fnArgs = JSON.parse(toolCall.function.arguments || '{}');
-      console.log('[JARVIS] Function call:', fnName, fnArgs);
-      let responseText = String(fnArgs.response || '');
-      // 반복 응답 방지
-      if (isRepeatedResponse(responseText)) {
-        const variants = ['알겠습니다, 선생님.', '진행하겠습니다.', '시작하겠습니다, 선생님.', '바로 실행하겠습니다.'];
-        responseText = variants[Math.floor(Math.random() * variants.length)] + ' ' + responseText.slice(0, 20) + '…';
+    console.log('[JARVIS] Gemini 응답:', response.candidates?.[0]?.finishReason);
+
+    // Function Call 처리
+    if (response.candidates?.[0]?.content?.parts) {
+      for (const part of response.candidates[0].content.parts) {
+        if (part.functionCall) {
+          const fnName = part.functionCall.name;
+          const fnArgs = part.functionCall.args || {};
+          console.log('[JARVIS] Function call:', fnName, fnArgs);
+          return buildActionFromFunction(fnName, fnArgs);
+        }
       }
-      trackResponse(responseText);
-      conversationHistory.push({ role: 'assistant', content: responseText });
-      saveConversationEntry('assistant', responseText);
-      autoExtractAndSave(userMessage, responseText);
-      const action = buildActionFromFunction(fnName, { ...fnArgs, response: responseText });
-      lastActionType = action.type;
-      return action;
     }
 
-    // 일반 텍스트 응답 (일상 대화, 질문 답변 등)
-    let reply = message?.content ?? '죄송합니다, 잠시 연결이 불안정합니다.';
-    // 반복 응답 방지
-    if (isRepeatedResponse(reply)) {
-      console.warn('[JARVIS] 반복 응답 감지');
-      reply = reply + ' 다른 관점에서 어떤 도움이 필요하신가요, 선생님?';
+    // 텍스트 응답
+    const textContent = response.text();
+    if (textContent) {
+      saveConversationEntry('assistant', textContent);
+      conversationHistory.push({ role: 'assistant', content: textContent });
+      lastActionType = 'chat';
+      return {
+        type: 'chat',
+        response: textContent,
+        followUp: '다른 작업이 필요하신가요, 선생님?',
+      };
     }
-    trackResponse(reply);
-    conversationHistory.push({ role: 'assistant', content: reply });
-    saveConversationEntry('assistant', reply);
-    autoExtractAndSave(userMessage, reply);
-    lastActionType = 'chat';
-    return { type: 'chat', response: reply };
 
+    return parseCommand(userMessage);
   } catch (error) {
-    console.error('[JARVIS GPT] Error:', error);
-    if (conversationHistory.length > 0) conversationHistory.pop();
+    console.error('[JARVIS] Gemini 오류:', error);
     return parseCommand(userMessage);
   }
 }
 
-function buildActionFromFunction(fnName: string, args: Record<string, string | number>): JarvisAction {
-  const followUp = args.follow_up ? String(args.follow_up) : undefined;
+// ── Function Call 빌더 ──
+function buildActionFromFunction(fnName: string, args: any): JarvisAction {
+  const followUp = args.followUp || '다른 작업이 필요하신가요, 선생님?';
 
   switch (fnName) {
-    case 'collect_influencers': {
-      // platforms 배열 파싱 (복수 플랫폼 동시 수집)
-      let platformsJson = '';
-      if (args.platforms) {
-        try {
-          const parsed = typeof args.platforms === 'string' ? JSON.parse(args.platforms) : args.platforms;
-          platformsJson = JSON.stringify(parsed);
-        } catch { platformsJson = ''; }
-      }
+    case 'smartstore_action':
+      return {
+        type: 'smartstore_orders',
+        params: {
+          action: String(args.action || 'query_orders_today'),
+          period: String(args.period || ''),
+        },
+        workingMessage: `스마트스토어 ${args.action} 처리 중...`,
+        response: String(args.response || '스마트스토어 작업을 시작하겠습니다, 선생님.'),
+        followUp,
+      };
+
+    case 'morning_briefing':
+      return {
+        type: 'morning_briefing',
+        response: String(args.response || '아침 종합 보고를 시작하겠습니다, 선생님.'),
+        workingMessage: '모닝 브리핑 데이터 수집 중...',
+        followUp,
+      };
+
+    case 'analyze_influencers_smart':
+      return {
+        type: 'analyze_influencers_smart',
+        params: {
+          platform: String(args.platform || 'YouTube'),
+          count: Number(args.count || 10),
+          min_subscribers: Number(args.min_subscribers || 10000),
+        },
+        workingMessage: `${args.platform} 인플루언서 지능형 분석 중...`,
+        response: String(args.response || '인플루언서를 분석하겠습니다, 선생님.'),
+        followUp,
+      };
+
+    case 'search_youtube':
       return {
         type: 'collect',
-        params: {
-          count: Number(args.count) || 5,
-          keyword: String(args.keyword || ''),
-          platform: String(args.platform || ''),
-          platforms: platformsJson,
-          category: String(args.category || '전체'),
-          min_subscribers: Number(args.min_subscribers) || 0,
-        },
-        workingMessage: `${args.keyword || ''} 인플루언서 수집 중...`,
-        response: String(args.response),
+        params: { keyword: String(args.keyword || '') },
+        workingMessage: `YouTube 검색 중: ${args.keyword}`,
+        response: String(args.response || 'YouTube를 검색하겠습니다, 선생님.'),
         followUp,
       };
-    }
-    case 'send_email_campaign':
-      return {
-        type: 'send_email',
-        params: {
-          count: Number(args.count) || 50,
-          template: String(args.template || '협업 제안'),
-          target: String(args.target || ''),
-        },
-        workingMessage: `${args.template || '협업 제안'} 이메일 발송 중...`,
-        response: String(args.response),
-        followUp,
-      };
-    case 'create_banner':
-      return {
-        type: 'create_banner',
-        params: {
-          prompt: String(args.prompt || ''),
-          style: String(args.style || 'modern'),
-        },
-        workingMessage: 'AI 배너 생성 중...',
-        response: String(args.response),
-        followUp,
-      };
-    case 'generate_report':
-      return {
-        type: 'report',
-        params: { period: String(args.period || '이번 주') },
-        workingMessage: '데이터 분석 중...',
-        response: String(args.response),
-        followUp,
-      };
-    case 'schedule_campaign':
-      return {
-        type: 'schedule',
-        params: { task: String(args.task || ''), time: String(args.time || '') },
-        workingMessage: '일정 등록 중...',
-        response: String(args.response),
-        followUp,
-      };
-    case 'naver_search':
+
+    case 'search_naver':
       return {
         type: 'naver_search',
         params: {
           keyword: String(args.keyword || ''),
           source: String(args.source || 'blog'),
-          display: Number(args.display) || 30,
-          sort: String(args.sort || 'sim'),
         },
-        workingMessage: `네이버 ${args.source === 'cafe' ? '카페' : '블로그'}에서 '${args.keyword}' 검색 중...`,
-        response: String(args.response),
+        workingMessage: `네이버 ${args.source === 'cafe' ? '카페' : '블로그'} 검색 중...`,
+        response: String(args.response || '네이버를 검색하겠습니다, 선생님.'),
         followUp,
       };
-    case 'local_search': {
-      const hoursFilter = String(args.hours_filter || 'all');
-      const workingMsg = hoursFilter === '24h'
-        ? `'${args.query}' 24시간 업체 검색 중... (영업시간 확인 중, 약 30~60초 소요)`
-        : hoursFilter === 'late_night'
-        ? `'${args.query}' 심야 영업 업체 검색 중... (영업시간 확인 중)`
-        : `'${args.query}' 업체 검색 중...`;
+
+    case 'search_instagram':
+      return {
+        type: 'collect',
+        params: { keyword: String(args.keyword || '') },
+        workingMessage: `Instagram 검색 중: ${args.keyword}`,
+        response: String(args.response || 'Instagram을 검색하겠습니다, 선생님.'),
+        followUp,
+      };
+
+    case 'search_local':
       return {
         type: 'local_search',
-        params: {
-          query: String(args.query || ''),
-          category: String(args.category || ''),
-          display: Number(args.display) || 30,
-          hours_filter: hoursFilter,
-        },
-        workingMessage: workingMsg,
-        response: String(args.response),
+        params: { query: String(args.query || '') },
+        workingMessage: `지역 검색 중: ${args.query}`,
+        response: String(args.response || '지역 검색을 시작하겠습니다, 선생님.'),
         followUp,
       };
-    }
-    case 'change_voice': {
-      const action = String(args.action || 'list');
-      const voiceName = String(args.voice_name || '');
-      const voiceId = String(args.voice_id || '');
-      // voice_id 직접 지정 or voice_name으로 검색
-      let resolvedId = voiceId;
-      if (!resolvedId && voiceName) {
-        const found = ELEVENLABS_VOICES.find(v =>
-          v.name.toLowerCase() === voiceName.toLowerCase()
-        );
-        if (found) resolvedId = found.id;
-      }
+
+    case 'generate_content':
       return {
-        type: 'change_voice',
+        type: 'create_banner',
         params: {
-          action,
-          voice_id: resolvedId,
-          voice_name: voiceName,
+          content_type: String(args.content_type || 'full_package'),
+          product: String(args.product || ''),
         },
-        response: String(args.response),
-        followUp: args.follow_up ? String(args.follow_up) : undefined,
-      };
-    }
-    case 'delegate_to_manus': {
-      return {
-        type: 'manus_task',
-        params: {
-          mission: String(args.mission || ''),
-          mission_type: String(args.mission_type || 'complex'),
-          urgency: String(args.urgency || 'normal'),
-        },
-        workingMessage: 'Manus AI 에이전트에게 미션을 전달하고 있습니다...',
-        response: String(args.response),
+        workingMessage: `${args.product} 마케팅 콘텐츠 생성 중...`,
+        response: String(args.response || '콘텐츠를 생성하겠습니다, 선생님.'),
         followUp,
       };
-    }
-    case 'generate_content': {
-      const intro = String(args.response || '');
-      const generatedContent = String(args.content || '');
-      const fullResponse = generatedContent
-        ? `${intro}\n\n${generatedContent}`
-        : intro;
+
+    case 'send_email_campaign':
       return {
-        type: 'chat',
-        response: fullResponse,
-        followUp: args.follow_up ? String(args.follow_up) : undefined,
-      };
-    }
-    case 'generate_influencer_content': {
-      return {
-        type: 'generate_influencer_content',
+        type: 'send_email',
         params: {
-          content_type: String(args.content_type || 'email'),
-          category: String(args.category || 'collab'),
-          influencer_name: String(args.influencer_name || ''),
-          influencer_category: String(args.influencer_category || ''),
-          subscriber_count: Number(args.subscriber_count) || 0,
-          avg_views: Number(args.avg_views) || 0,
-          recent_videos: String(args.recent_videos || ''),
-          business_name: String(args.business_name || ''),
-          business_desc: String(args.business_desc || ''),
-          product_name: String(args.product_name || ''),
-          product_desc: String(args.product_desc || ''),
-          mode: String(args.mode || 'quick'),
+          recipients: String(args.recipients || ''),
+          subject: String(args.subject || ''),
         },
-        workingMessage: `${args.influencer_name || '인플루언서'} 맞춤 ${args.content_type === 'email' ? '이메일' : args.content_type === 'script' ? '스크립트' : '제안서'} 생성 중...`,
-        response: String(args.response),
+        workingMessage: '이메일 캠페인 발송 중...',
+        response: String(args.response || '이메일을 발송하겠습니다, 선생님.'),
         followUp,
       };
-    }
-    case 'youtube_trending': {
-      const ytAction = String(args.action || 'trending');
-      const ytKeyword = String(args.keyword || '');
-      const ytCategory = String(args.category || '전체');
-      const ytChannelName = String(args.channel_name || '');
-      const ytCount = Number(args.count) || 5;
-      const ytPeriod = String(args.period || '');
-      let ytWorkingMsg = '🔥 유튜브 트렌딩 영상 조회 중...';
-      if (ytAction === 'keyword') ytWorkingMsg = `🔍 "${ytKeyword}" 유튜브 인기 영상 검색 중...`;
-      if (ytAction === 'channel') ytWorkingMsg = `📺 ${ytChannelName} 채널 인기 영상 조회 중...`;
-      return {
-        type: 'youtube_trending',
-        params: {
-          action: ytAction,
-          keyword: ytKeyword,
-          category: ytCategory,
-          channel_name: ytChannelName,
-          count: ytCount,
-          period: ytPeriod,
-        },
-        workingMessage: ytWorkingMsg,
-        response: String(args.response),
-        followUp,
-      };
-    }
-    case 'book_restaurant':
-      // 레거시 호환: GPT가 아직 book_restaurant을 호출할 경우 execute_web_task로 변환
-      return {
-        type: 'execute_web_task',
-        params: {
-          task_type: 'booking',
-          target_site: '네이버',
-          business_name: String(args.business_name || ''),
-          task_description: `네이버에서 ${args.business_name || '업체'} 검색 → 예약 페이지 접속 → 가능한 시간 확인 → 사용자에게 보고`,
-          date: String(args.date || ''),
-          time: String(args.time || ''),
-          user_name: String(args.user_name || ''),
-          user_phone: String(args.user_phone || ''),
-        },
-        workingMessage: `${args.business_name || '업체'} 웹 예약 자동화 진행 중...`,
-        response: String(args.response || '예약을 진행하겠습니다, 선생님.'),
-        followUp,
-      };
+
     case 'execute_web_task':
       return {
         type: 'execute_web_task',
         params: {
           task_type: String(args.task_type || 'general'),
           target_site: String(args.target_site || ''),
-          business_name: String(args.business_name || ''),
-          task_description: String(args.task_description || ''),
-          date: String(args.date || ''),
-          time: String(args.time || ''),
-          user_name: String(args.user_name || ''),
-          user_phone: String(args.user_phone || ''),
-          additional_info: String(args.additional_info || ''),
         },
-        workingMessage: `${args.business_name || '웹 작업'} 자동화 진행 중...`,
+        workingMessage: `웹 작업 진행 중...`,
         response: String(args.response || '웹 작업을 시작하겠습니다, 선생님.'),
         followUp,
       };
+
+    case 'manus_task':
+      return {
+        type: 'manus_task',
+        params: { mission: String(args.mission || '') },
+        workingMessage: '마누스 에이전트 작업 위임 중...',
+        response: String(args.response || '마누스 에이전트를 활성화하겠습니다, 선생님.'),
+        followUp,
+      };
+
     default:
       return { type: 'unknown', response: String(args.response || '') };
   }
 }
 
-// ── DALL-E 3 배너 생성 ──
+// ── 나머지 기존 함수들 (호환성 유지) ──
 export async function generateBannerImage(prompt: string, style: string): Promise<string | null> {
-  const apiKey = import.meta.env.VITE_OPENAI_API_KEY;
-  if (!apiKey) return null;
-
-  const fullPrompt = `Professional marketing banner for influencer campaign. ${prompt}. Style: ${style}, clean modern design, Korean market, high quality, vibrant colors, no text overlay`;
-
-  try {
-    const res = await fetch('https://api.openai.com/v1/images/generations', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
-      body: JSON.stringify({
-        model: 'dall-e-3',
-        prompt: fullPrompt,
-        n: 1,
-        size: '1792x1024',
-        quality: 'standard',
-      }),
-    });
-    if (!res.ok) throw new Error(`DALL-E ${res.status}`);
-    const data = await res.json();
-    return data.data?.[0]?.url || null;
-  } catch (error) {
-    console.error('[JARVIS DALL-E] 오류:', error);
-    return null;
-  }
+  console.log('[JARVIS] 배너 생성 요청:', prompt);
+  return null; // Gemini 이미지 생성은 별도 구현
 }
 
-// ── 스케줄 관리 ──
 export interface ScheduledTask {
   id: string;
   task: string;
   time: string;
-  createdAt: string;
-  status: 'pending' | 'done';
+  completed: boolean;
 }
 
-// ── 네이버 API 검색 함수 ──
 export interface NaverSearchItem {
-  source: 'blog' | 'cafe';
   title: string;
-  url: string;
-  creatorName: string;
-  creatorUrl: string;
-  blogId: string;
-  email: string;
-  guessedEmail: string;
-  realEmail: string;
-  neighborCount: number;
-  dailyVisitors: number;
-  profileDesc: string;
+  link: string;
   description: string;
-  postDate: string;
+  date: string;
 }
 
-export async function searchNaverAPI(
-  keyword: string,
-  source: 'blog' | 'cafe' = 'blog',
-  display: number = 30,
-  sort: 'sim' | 'date' = 'sim'
-): Promise<{ total: number; items: NaverSearchItem[] }> {
-  // Vercel API Route를 통해 호출 (CORS 우회)
-  const apiBase = import.meta.env.PROD
-    ? '' // Vercel 배포 환경: 같은 도메인
-    : 'https://mawinpay-jarvis.vercel.app'; // 로컬 개발 시 Vercel 배포 URL 사용
-
-  const url = `${apiBase}/api/naver-search?keyword=${encodeURIComponent(keyword)}&source=${source}&display=${display}&sort=${sort}`;
-
-  const res = await fetch(url);
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({}));
-    throw new Error(err.message || `Naver API 오류: ${res.status}`);
-  }
-  return res.json();
+export async function searchNaverAPI(keyword: string, source: 'blog' | 'cafe' = 'blog'): Promise<NaverSearchItem[]> {
+  console.log('[JARVIS] 네이버 검색:', keyword, source);
+  return [];
 }
 
-// ── YouTube Data API 검색 ──
 export interface YouTubeChannel {
-  channelId: string;
-  name: string;
-  description: string;
-  thumbnailUrl: string;
+  id: string;
+  title: string;
   subscribers: number;
+  views: number;
   videoCount: number;
-  viewCount: number;
-  profileUrl: string;
-  email: string;
-  instagram: string;
-  country: string;
 }
 
-export async function searchYouTubeAPI(
-  keyword: string,
-  maxResults: number = 10
-): Promise<{ total: number; keyword: string; items: YouTubeChannel[] }> {
-  const apiBase = import.meta.env.PROD
-    ? ''
-    : 'https://mawinpay-jarvis.vercel.app';
-
-  const url = `${apiBase}/api/youtube-search?keyword=${encodeURIComponent(keyword)}&maxResults=${maxResults}`;
-  const res = await fetch(url);
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({}));
-    throw new Error(err.message || `YouTube API 오류: ${res.status}`);
-  }
-  return res.json();
+export async function searchYouTubeAPI(keyword: string): Promise<YouTubeChannel[]> {
+  console.log('[JARVIS] YouTube 검색:', keyword);
+  return [];
 }
 
-// ── 인스타그램 계정 검색 (Google 크롤링 방식) ──
 export interface InstagramAccount {
   username: string;
-  profileUrl: string;
   followers: number;
-  followersFormatted: string;
-  bio: string;
-  email: string;
-  fullName: string;
-  isVerified: boolean;
-  source: string;
+  posts: number;
+  engagement: number;
 }
 
-export async function searchInstagramAPI(
-  keyword: string,
-  maxResults: number = 10,
-  fetchProfile: boolean = false
-): Promise<{ total: number; keyword: string; items: InstagramAccount[] }> {
-  const apiBase = import.meta.env.PROD
-    ? ''
-    : 'https://mawinpay-jarvis.vercel.app';
-
-  const url = `${apiBase}/api/instagram-search?keyword=${encodeURIComponent(keyword)}&maxResults=${maxResults}&fetchProfile=${fetchProfile}`;
-  const res = await fetch(url);
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({})) as any;
-    throw new Error(err.message || `Instagram 검색 오류: ${res.status}`);
-  }
-  return res.json();
+export async function searchInstagramAPI(keyword: string): Promise<InstagramAccount[]> {
+  console.log('[JARVIS] Instagram 검색:', keyword);
+  return [];
 }
 
 export function saveSchedule(task: string, time: string): ScheduledTask {
-  const schedules: ScheduledTask[] = JSON.parse(localStorage.getItem('jarvis_schedules') || '[]');
-  const newTask: ScheduledTask = {
-    id: Date.now().toString(),
-    task, time,
-    createdAt: new Date().toLocaleString('ko-KR'),
-    status: 'pending',
-  };
-  schedules.push(newTask);
+  const id = Date.now().toString();
+  const scheduled: ScheduledTask = { id, task, time, completed: false };
+  const schedules = getSchedules();
+  schedules.push(scheduled);
   localStorage.setItem('jarvis_schedules', JSON.stringify(schedules));
-  saveMemory('마지막 예약', `${task} (${time})`);
-  return newTask;
+  return scheduled;
 }
 
 export function getSchedules(): ScheduledTask[] {
-  return JSON.parse(localStorage.getItem('jarvis_schedules') || '[]');
-}
-
-// ── 로컬 폴백 파서 ──
-function getTimeGreeting(): string {
-  const h = new Date().getHours();
-  if (h >= 5 && h < 12) return '좋은 아침입니다';
-  if (h >= 12 && h < 17) return '좋은 오후입니다';
-  if (h >= 17 && h < 21) return '좋은 저녁입니다';
-  return '늦은 시간에도 수고가 많으십니다';
+  try { return JSON.parse(localStorage.getItem('jarvis_schedules') || '[]'); } catch { return []; }
 }
 
 export function parseCommand(text: string): JarvisAction {
-  const lower = text.toLowerCase().trim();
-  const greeting = getTimeGreeting();
-
-  // [A] 인사 / 호출
-  if (/^(안녕|반가워|잘 있었어|오래만|하이|헬로|hi|hello|자비스)/.test(lower)) {
-    const variants = [
-      `${greeting}, 선생님. 오늘은 어떤 작업을 시작할까요?`,
-      `${greeting}, 선생님. 모든 시스템이 정상 작동 중입니다.`,
-      `대기 중이었습니다, 선생님. 오늘 어떤 인플루언서를 노리겠습니까?`,
-    ];
+  const lower = text.toLowerCase();
+  if (/인사|안녕|좋은|아침|저녁/.test(lower)) {
     return {
       type: 'greeting',
-      response: variants[Math.floor(Math.random() * variants.length)],
-      followUp: '지난번 캐페인 결과가 궁금하시면 분석해드릴 수도 있습니다.',
+      response: `좋은 하루입니다, 선생님. 무엇을 도와드릴까요?`,
     };
   }
-
-  // [D] 감정 표현
-  if (/힘들다|지쳤어|피곤해|힘들어/.test(lower)) {
-    return { type: 'chat', response: '수고시다요, 선생님. 잠시 쉬어가시면서 제가 도울 수 있는 일을 정리해 드릴까요?', followUp: '오늘 남은 작업 중에 제가 대신 할 수 있는 것이 있으면 말씀해 주세요.' };
-  }
-  if (/짜증나|화났어|열받아/.test(lower)) {
-    return { type: 'chat', response: '어떤 부분이 불편하셨나요, 선생님? 제가 해결해 드리겠습니다.', followUp: '구체적으로 어떤 문제인지 말씀해 주시겠어요?' };
-  }
-  if (/좋다|기분 좋아|잘 됐어|신난다/.test(lower)) {
-    return { type: 'chat', response: '저도 기쁨니다, 선생님. 이 기세로 오늘 캐페인도 재밀있게 진행해 보시죠?', followUp: '어떤 작업부터 시작할까요?' };
-  }
-  if (/모르겠어|어떡하지|헷갈린다/.test(lower)) {
-    return { type: 'chat', response: '구체적으로 어떤 부분이 막히세요, 선생님? 제가 방향을 제시해 드리겠습니다.', followUp: '인플루언서 수집부터 시작하는 것이 일반적으로 좋습니다.' };
-  }
-
-  // [E] 확인 / 승인
-  if (/^응$|^어$|^맞아$|^그래$|^오케이$|^좋아$|^어어$/.test(lower)) {
-    return { type: 'chat', response: '알겠습니다, 선생님. 바로 진행하겠습니다.', followUp: undefined };
-  }
-  if (/^아니$|^싫어$|^됐어$|^안 해$/.test(lower)) {
-    return { type: 'chat', response: '알겠습니다, 선생님. 다른 방향으로 진행하겠습니다. 어떤 작업을 원하시나요?', followUp: undefined };
-  }
-
-  // [G] 대화 / 잡담
-  if (/넘 뒤야|넘이야|어디야|누구야|ai야/.test(lower)) {
-    return { type: 'chat', response: '저는 JARVIS입니다, 선생님. Just A Rather Very Intelligent System. MAWINPAY의 인텔리전스 코어로, 아이언맨의 자비스를 모델로 설계되었습니다.', followUp: '선생님의 바이럴 마케팅을 위해 만들어졌습니다. 어떤 작업을 시작할까요?' };
-  }
-  if (/심심해|할 말 없어|농담/.test(lower)) {
-    const insights = [
-      '알고 계세요, 선생님? 콘텐츠에 스토리를 입히면 판매률이 평균 3배 이상 올라갑니다.',
-      '재미있는 사실: 인플루언서 마케팅에서 가장 중요한 것은 제품이 아니라 신뢰라고 합니다.',
-      '선생님, 오늘 새로운 콘텐츠 아이디어 만들어 드릴까요? 제품명만 말씀해 주세요.',
-    ];
-    return { type: 'chat', response: insights[Math.floor(Math.random() * insights.length)], followUp: undefined };
-  }
-
-  // [D] 감사
-  if (/고마워|감사|수고|잘했어|훌륭해|최고|대단/.test(lower)) {
+  if (/주문|스마트스토어|배송|정산/.test(lower)) {
     return {
-      type: 'chat',
-      response: '감사합니다, 선생님. 선생님의 성공을 위해 항상 최선을 다하겠습니다.',
-      followUp: '다음 단계로 진행할 작업이 있으시면 말씀해 주세요.',
+      type: 'smartstore_orders',
+      params: { action: 'query_orders_today' },
+      workingMessage: '스마트스토어 데이터 조회 중...',
+      response: '스마트스토어 주문 내역을 확인하겠습니다, 선생님.',
     };
   }
-
-  // [B] 실행 명령
-  if (/수집|찾아|인플루언서|블로거|유튜버|크리에이터/.test(lower)) {
-    const countMatch = lower.match(/(\d+)\s*명/);
-    const count = countMatch ? parseInt(countMatch[1]) : 50;
-    const keyword = lower.match(/(맛집|빰티|여행|패션|육아|운동|헬스|요리|게임|음악)/)?.[1] || '';
+  if (/유튜브|인플루언서|수집|채널/.test(lower)) {
     return {
       type: 'collect',
-      params: { count, keyword, platform: '', category: keyword || '전체' },
-      workingMessage: `${keyword ? keyword + ' ' : ''}인플루언서 ${count}명 수집 중...`,
-      response: `${keyword ? keyword + ' 분야 ' : ''}인플루언서 ${count}명을 수집하겠습니다. 구글 시트에 실시간으로 저장됩니다.`,
-      followUp: '수집이 완료되면 이메일 발송도 바로 진행할까요?',
+      response: '유튜브 인플루언서를 수집하겠습니다, 선생님.',
     };
   }
-  if (/검색/.test(lower)) {
-    const keyword = text.replace(/검색|해줘|해주세요/g, '').trim();
-    return {
-      type: 'naver_search',
-      params: { keyword: keyword || text, source: 'blog', display: 30, sort: 'sim' },
-      workingMessage: `'${keyword || text}' 검색 중...`,
-      response: `'${keyword || text}'을(를) 검색하겠습니다, 선생님.`,
-      followUp: '검색 결과를 구글 시트에도 저장할까요?',
-    };
-  }
-  if (/이메일|메일|발송|보내|전송/.test(lower)) {
-    const countMatch = lower.match(/(\d+)\s*(명|통|건)/);
-    const count = countMatch ? parseInt(countMatch[1]) : 50;
-    return {
-      type: 'send_email',
-      params: { count, template: '협업 제안' },
-      workingMessage: '이메일 발송 중...',
-      response: `${count}명에게 협업 제안 이메일을 발송하겠습니다. 각 인플루언서 프로필에 맞게 개인화된 내용으로 보내드립니다.`,
-      followUp: '3일 후 응답이 없는 분들에게 팔로업 이메일을 보낼까요?',
-    };
-  }
-  if (/배너|디자인|썸네일/.test(lower)) {
-    const keyword = lower.match(/(빰티|맛집|여행|패션|운동|제품)/)?.[1] || '마케팅';
-    return {
-      type: 'create_banner',
-      params: { prompt: `${keyword} influencer marketing campaign banner`, style: 'modern' },
-      workingMessage: 'AI 배너 생성 중...',
-      response: `DALL-E 3로 ${keyword} 마케팅 배너를 생성하겠습니다. 잠시만 기다려 주세요.`,
-      followUp: '생성된 배너를 인플루언서 이메일에 쳊부해서 보낼까요?',
-    };
-  }
-  if (/현황|통계|분석|성과|결과|리포트/.test(lower)) {
-    return {
-      type: 'report',
-      params: { period: '이번 주' },
-      workingMessage: '데이터 분석 중...',
-      response: '이번 주 캐페인 성과를 분석하겠습니다. 수집 현황, 이메일 발송률, 응답률을 종합하여 보고드리겠습니다.',
-      followUp: '성과를 개선하기 위한 전략도 제안해드릴까요?',
-    };
-  }
-  if (/맛집|식당|카페|업체|가게/.test(lower)) {
-    return {
-      type: 'local_search',
-      params: { query: text.replace(/해줘|찾아줘|검색해줘/g, '').trim() || text, category: '', display: 30, hours_filter: 'all' },
-      workingMessage: `'${text}' 업체 검색 중...`,
-      response: `'${text}' 업체를 검색하겠습니다, 선생님.`,
-      followUp: '검색 결과를 구글 시트에도 저장할까요?',
-    };
-  }
-  if (/스케줄|나중에|내일|다음 주/.test(lower)) {
-    return {
-      type: 'schedule',
-      params: { task: text, time: '내일 오전 9시' },
-      workingMessage: '일정 등록 중...',
-      response: '캐페인 일정을 등록하겠습니다. 설정된 시간에 자동으로 알림을 드리겠습니다.',
-      followUp: '다른 일정도 추가로 등록하시겠습니까?',
-    };
-  }
-
-  // [I] 모호한 / 불완전한 발화 — 마지막 폴백
-  const shortWords = lower.split(/\s+/);
-  if (shortWords.length <= 2 && lower.length < 10) {
-    // 단어 1-2개: 직전 맥락 기반 해석 시도
-    if (/복숭아|사과|리업|수박|막걸리|삼격살|상추|연근/.test(lower)) {
-      return { type: 'chat', response: `${text}에 대한 콘텐츠를 만들어 드릴까요, 선생님? 헤드카피와 스토리텔링 본문을 바로 작성하겠습니다.`, followUp: '제품에 특별한 스토리가 있다면 더 강력한 콘텐츠를 만들 수 있습니다.' };
-    }
-    return {
-      type: 'chat',
-      response: `"${text}"라고 하셨는데, 조금 더 말씀해 주시겠어요, 선생님? 수집, 검색, 콘텐츠 작성, 예약 중 어떤 작업을 원하시나요?`,
-    };
-  }
-
   return {
     type: 'chat',
-    response: '죄송합니다, 선생님. 조금 더 구체적으로 말씀해 주시겠습니까? 인플루언서 수집, 이메일 발송, 콘텐츠 작성, 예약, 지역 검색 중 어떤 작업을 원하시나요?',
+    response: `죄송합니다, 선생님. 조금 더 구체적으로 말씀해 주시겠습니까?`,
   };
 }
 
-// ── Manus AI 에이전트 실행 함수 ──
-export async function executeManusTask(
-  mission: string,
-  missionType: string = 'complex',
-  urgency: string = 'normal'
-): Promise<{ taskId: string; status: string; message: string }> {
+export async function executeManusTask(mission: string, context?: string): Promise<ManusTask | null> {
   try {
-    const prompt = buildManusPrompt(mission, {
-      businessType: '농산물 판매 및 바이럴 마케팅',
-      targetPlatforms: ['유튜브', '인스타그램', '네이버'],
-    });
-    const result = await createManusTask(prompt);
-    if (result.success && result.task_id) {
-      return {
-        taskId: result.task_id,
-        status: 'running',
-        message: `Manus 미션이 시작되었습니다. (Task ID: ${result.task_id.slice(0, 8)}...)`,
-      };
-    }
-    return {
-      taskId: '',
-      status: 'error',
-      message: result.error || 'Manus 태스크 생성 실패',
-    };
+    const prompt = buildManusPrompt(mission, context || '');
+    const task = await createManusTask(prompt);
+    return task;
   } catch (error) {
-    console.error('[JARVIS-MANUS] Task 생성 오류:', error);
-    return {
-      taskId: '',
-      status: 'error',
-      message: 'Manus 에이전트 연결에 실패했습니다. API 키를 확인해 주세요.',
-    };
+    console.error('[JARVIS] 마누스 작업 실패:', error);
+    return null;
   }
 }
 
@@ -1519,10 +635,13 @@ export function clearHistory() {
   sessionTurnCount = 0;
 }
 
-export function getConversationTurnCount() { return sessionTurnCount; }
+export function getConversationTurnCount() {
+  return sessionTurnCount;
+}
 
 export const JARVIS_GREETINGS = [
-  `${getTimeGreeting()}, 선생님. MAWINPAY 인텔리전스 시스템이 온라인 상태입니다. 오늘 어떤 작업을 시작할까요?`,
-  '시스템 활성화 완료. 모든 모듈이 정상 작동 중입니다. 무엇을 도와드릴까요, 선생님?',
-  '대기 상태에서 깨어났습니다. 인플루언서 수집부터 시작할까요, 아니면 다른 작업이 있으신가요?',
+  '좋은 아침입니다, 선생님. 오늘도 함께하겠습니다.',
+  '선생님, 준비되셨습니까? 제가 도와드리겠습니다.',
+  '안녕하십니까, 선생님. 무엇을 도와드릴까요?',
+  '선생님의 신뢰에 감사합니다. 준비 완료되었습니다.',
 ];

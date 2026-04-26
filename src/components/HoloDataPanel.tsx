@@ -13,7 +13,7 @@ interface ActionLog {
 }
 
 interface HoloDataPanelProps {
-  type: 'collect' | 'send_email' | 'create_banner' | 'report' | 'booking' | 'smartstore' | 'youtube' | 'influencer_content' | null;
+  type: 'collect' | 'send_email' | 'create_banner' | 'report' | 'booking' | 'smartstore' | 'youtube' | 'influencer_content' | 'manus' | null;
   progress: number;
   message: string;
   bookingSteps?: string[];
@@ -22,25 +22,32 @@ interface HoloDataPanelProps {
 
 const PANEL_CONFIG = {
   smartstore: {
-    title: 'SMARTSTORE ENGINE',
+    title: 'SMARTSTORE (PATH A)',
     icon: '⬡',
     color: '#00E676',
     color2: '#00B0FF',
     steps: ['PROXY AUTH', 'API CONNECT', 'DATA FETCH', 'CLASSIFY', 'PROCESS', 'REPORT'],
   },
   booking: {
-    title: 'AUTONOMOUS BOOKING',
+    title: 'BROWSER (PATH B)',
     icon: '◈',
     color: '#F59E0B',
     color2: '#EF4444',
     steps: ['NAVER LOGIN', 'SEARCH BUSINESS', 'TIME SELECTION', 'FORM FILLING', 'CONFIRMATION'],
   },
   youtube: {
-    title: 'YOUTUBE INTELLIGENCE',
+    title: 'YOUTUBE (PATH B/C)',
     icon: '▶',
     color: '#FF0000',
     color2: '#FF6B6B',
     steps: ['API CONNECT', 'VIDEO FETCH', 'COMMENT SCAN', 'AI ANALYZE', 'REPORT'],
+  },
+  manus: {
+    title: 'MANUS ENGINE (PATH C)',
+    icon: '🧠',
+    color: '#C8A96E',
+    color2: '#E8D5A3',
+    steps: ['PLANNING', 'EXECUTING', 'REASONING', 'VALIDATING', 'COMPLETING'],
   },
   influencer_content: {
     title: 'INFLUENCER CONTENT ENGINE',
@@ -111,7 +118,7 @@ export default function HoloDataPanel({ type, progress, message, bookingSteps, a
 
   // 행동 로그 순차 표시 애니메이션
   useEffect(() => {
-    if ((type === 'smartstore' || type === 'booking' || type === 'youtube') && actionLogs.length > 0) {
+    if ((type === 'smartstore' || type === 'booking' || type === 'youtube' || type === 'manus') && actionLogs.length > 0) {
       setVisibleLogs([]);
       let idx = 0;
       const interval = setInterval(() => {
@@ -164,7 +171,7 @@ export default function HoloDataPanel({ type, progress, message, bookingSteps, a
         top: '50%',
         transform: 'translateY(-50%)',
         zIndex: 30,
-        width: (type === 'smartstore' || type === 'booking' || type === 'youtube') ? 320 : 230,
+          width: (type === 'smartstore' || type === 'booking' || type === 'youtube' || type === 'manus') ? 320 : 230,
       }}
     >
       {type && (
@@ -193,7 +200,7 @@ export default function HoloDataPanel({ type, progress, message, bookingSteps, a
                 </span>
               </div>
               <div className="flex items-center gap-2">
-                {(type === 'smartstore' || type === 'booking' || type === 'youtube') && (
+                {(type === 'smartstore' || type === 'booking' || type === 'youtube' || type === 'manus') && (
                   <span style={{ fontFamily: 'Orbitron, monospace', fontSize: '0.38rem', color: 'rgba(100,116,139,0.55)' }}>
                     {visibleLogs.length}/{actionLogs.length}
                   </span>
@@ -233,7 +240,7 @@ export default function HoloDataPanel({ type, progress, message, bookingSteps, a
             </div>
 
             {/* ── 행동 로그 (스마트스토어 + 브라우저 에이전트 공용) ── */}
-            {(type === 'smartstore' || type === 'booking' || type === 'youtube') && (
+            {(type === 'smartstore' || type === 'booking' || type === 'youtube' || type === 'manus') && (
               <div
                 ref={logContainerRef}
                 className="px-3 py-2"

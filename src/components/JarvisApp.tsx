@@ -1,7 +1,7 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { QRCodeSVG } from 'qrcode.react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { askGPT, parseCommand, generateBannerImage, saveSchedule, saveMemory, searchNaverAPI, searchYouTubeAPI, searchInstagramAPI, invalidateSheetCache, executeManusTask, getManusTaskStatus, sendManusMsg as sendManusMessage, type JarvisState, type JarvisAction, type NaverSearchItem, type YouTubeChannel, type InstagramAccount } from '../lib/jarvis-brain';
+import { askGPT, parseCommand, generateBannerImage, saveSchedule, saveMemory, searchNaverAPI, searchYouTubeAPI, searchInstagramAPI, invalidateSheetCache, executeManusTask, getManusTaskStatus, sendManusMsg as sendManusMessage, type JarvisState, type JarvisAction, type NaverSearchItem, type YouTubeChannel, type InstagramAccount, initializeGemini, getGeminiClient } from '../lib/jarvis-brain';
 import { useSpeechRecognition, useTextToSpeech, useBargein, useWakeWord, setCurrentVoiceId, getCurrentVoiceId, ELEVENLABS_VOICES, stopGlobalAudio } from './SpeechEngine';
 import { useMicrophoneFrequency } from '../lib/audio-analyzer';
 import { saveLearnedKnowledge, getLearnedKnowledge, getMemoryStats, clearAllMemory, type LearnedKnowledge } from '../lib/jarvis-memory';
@@ -197,10 +197,18 @@ export default function JarvisApp() {
   const [settingsForm, setSettingsForm] = useState(() => {
     const stored = JSON.parse(localStorage.getItem('jarvis_api_keys') || '{}');
     return {
+      geminiKey: stored.geminiKey || '',
       openaiKey: stored.openaiKey || '',
       elevenLabsKey: stored.elevenLabsKey || '',
     };
   });
+
+  // Gemini 초기화 (저장된 키가 있으면)
+  useEffect(() => {
+    if (settingsForm.geminiKey) {
+      initializeGemini(settingsForm.geminiKey);
+    }
+  }, []);
 
   const [naverForm, setNaverForm] = useState(() => {
     const stored = JSON.parse(localStorage.getItem('jarvis_naver_creds') || '{}');
@@ -212,7 +220,7 @@ export default function JarvisApp() {
     };
   });
 
-  const { speak } = useTextToSpeech();
+  const { speak, stop: stopTTS } = useTextToSpeech();
   const stateRef = useRef(state);
   stateRef.current = state;
   const isListeningRef = useRef(isListening);
@@ -234,15 +242,16 @@ export default function JarvisApp() {
   }, []);
 
   // ── Barge-in: JARVIS 말하는 중 사용자 발화 감지 → TTS 즉시 중단 + listening 전환 ──
+  
   useBargein(
     state === 'speaking',
     useCallback(() => {
       console.log('[JARVIS] Barge-in 감지 → TTS 중단 후 listening 전환');
-      stopGlobalAudio();
+      stopTTS(); // useTextToSpeech의 stop() 호출로 문장 루프까지 중단
       stopSpeakingLevel();
       setState('listening');
       setIsListening(true);
-    }, [stopSpeakingLevel])
+    }, [stopTTS, stopSpeakingLevel])
   );
 
   // ── Wake Word 감지: idle 상태에서 "자비스" / "Jarvis" 감지 → 자동 활성화 ──
@@ -1360,7 +1369,15 @@ export default function JarvisApp() {
                 else if (msg.includes('폼') || msg.includes('입력') || msg.includes('fill') || msg.includes('form')) { currentProgress = 80; setBookingStep(4); }
                 else if (msg.includes('확인') || msg.includes('완료') || msg.includes('confirm') || msg.includes('done')) { currentProgress = 95; setBookingStep(5); }
 
-                setDataPanel(prev => ({ ...prev, progress: currentProgress, message: progressMsg }));
+                setDataPanel(prev => ({ 
+                  ...prev, 
+                  progress: currentProgress, 
+                  message: progressMsg,
+                  actionLogs: [
+                    ...(prev.actionLogs || []),
+                    { step: '진행', status: 'running', detail: refinedMsg, timestamp: new Date().toISOString(), elapsed: `${(pollCount * 3)}s` }
+                  ]
+                }));
               }
             }
 
@@ -3656,12 +3673,37 @@ export default function JarvisApp() {
             }}>
               <div style={{ fontFamily: 'Orbitron, monospace', color: THEME.gold, fontSize: '0.5rem', letterSpacing: '0.3em', marginBottom: 14, borderBottom: `1px solid ${THEME.gold}22`, paddingBottom: 8 }}>SYSTEM SETTINGS</div>
 
-              {/* OpenAI Key */}
+              {/* Google Gemini Key */}
               <div style={{ marginBottom: 12 }}>
-                <div style={{ fontFamily: 'Orbitron, monospace', color: THEME.textDim, fontSize: '0.38rem', letterSpacing: '0.2em', marginBottom: 4 }}>OPENAI API KEY</div>
+                <div style={{ fontFamily: 'Orbitron, monospace', color: '#4285F4', fontSize: '0.38rem', letterSpacing: '0.2em', marginBottom: 4 }}>GOOGLE GEMINI API KEY</div>
                 <input
                   type="password"
-                  placeholder="sk-..."
+                  placeholder="AIza..."
+                  value={settingsForm.geminiKey || ''}
+                  onChange={e => {
+                    const key = e.target.value;
+                    setSettingsForm(f => ({ ...f, geminiKey: key }));
+                    if (key) initializeGemini(key);
+                  }}
+                  style={{
+                    width: '100%', padding: '6px 10px',
+                    background: 'rgba(255,255,255,0.04)',
+                    border: `1px solid #4285F433`,
+                    color: THEME.text,
+                    fontFamily: 'monospace',
+                    fontSize: '0.55rem',
+                    outline: 'none',
+                    boxSizing: 'border-box',
+                  }}
+                />
+              </div>
+
+              {/* OpenAI Key (레거시) */}
+              <div style={{ marginBottom: 12, opacity: 0.6 }}>
+                <div style={{ fontFamily: 'Orbitron, monospace', color: THEME.textDim, fontSize: '0.38rem', letterSpacing: '0.2em', marginBottom: 4 }}>OPENAI API KEY (레거시)</div>
+                <input
+                  type="password"
+                  placeholder="sk-... (선택사항)"
                   value={settingsForm.openaiKey}
                   onChange={e => setSettingsForm(f => ({ ...f, openaiKey: e.target.value }))}
                   style={{
@@ -3977,8 +4019,10 @@ export default function JarvisApp() {
                       openaiKey: settingsForm.openaiKey,
                       elevenLabsKey: settingsForm.elevenLabsKey,
                     };
-                    localStorage.setItem('jarvis_api_keys', JSON.stringify(keys));
-                    localStorage.setItem('jarvis_naver_creds', JSON.stringify({
+                    localStorage.setItem('jarvis_api_keys', JSON.stringify(settingsForm));
+      if (settingsForm.geminiKey) {
+        initializeGemini(settingsForm.geminiKey);
+      }             localStorage.setItem('jarvis_naver_creds', JSON.stringify({
                       username: naverForm.username,
                       password: naverForm.password,
                       userName: naverForm.userName,
