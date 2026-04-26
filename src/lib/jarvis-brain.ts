@@ -534,67 +534,194 @@ export interface ScheduledTask {
   id: string;
   task: string;
   time: string;
-  completed: boolean;
+  createdAt: string;
+  status: 'pending' | 'done';
 }
 
+// ── 네이버 API 검색 함수 ──
 export interface NaverSearchItem {
+  source: 'blog' | 'cafe';
   title: string;
-  link: string;
+  url: string;
+  creatorName: string;
+  creatorUrl: string;
+  blogId: string;
+  email: string;
+  guessedEmail: string;
+  realEmail: string;
+  neighborCount: number;
+  dailyVisitors: number;
+  profileDesc: string;
   description: string;
-  date: string;
+  postDate: string;
 }
 
-export async function searchNaverAPI(keyword: string, source: 'blog' | 'cafe' = 'blog'): Promise<NaverSearchItem[]> {
-  console.log('[JARVIS] 네이버 검색:', keyword, source);
-  return [];
+export async function searchNaverAPI(
+  keyword: string,
+  source: 'blog' | 'cafe' = 'blog',
+  display: number = 30,
+  sort: 'sim' | 'date' = 'sim'
+): Promise<{ total: number; items: NaverSearchItem[] }> {
+  const apiBase = import.meta.env.PROD ? '' : 'https://mawinpay-jarvis.vercel.app';
+  const url = `${apiBase}/api/naver-search?keyword=${encodeURIComponent(keyword)}&source=${source}&display=${display}&sort=${sort}`;
+  console.log('[JARVIS] 네이버 검색 API 호출:', url);
+  const res = await fetch(url);
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error((err as any).message || `Naver API 오류: ${res.status}`);
+  }
+  return res.json();
 }
 
+// ── YouTube Data API 검색 ──
 export interface YouTubeChannel {
-  id: string;
-  title: string;
+  channelId: string;
+  name: string;
+  description: string;
+  thumbnailUrl: string;
   subscribers: number;
-  views: number;
   videoCount: number;
+  viewCount: number;
+  profileUrl: string;
+  email: string;
+  instagram: string;
+  country: string;
+  customUrl?: string;
 }
 
-export async function searchYouTubeAPI(keyword: string): Promise<YouTubeChannel[]> {
-  console.log('[JARVIS] YouTube 검색:', keyword);
-  return [];
+export async function searchYouTubeAPI(
+  keyword: string,
+  maxResults: number = 10
+): Promise<{ total: number; keyword: string; items: YouTubeChannel[] }> {
+  const apiBase = import.meta.env.PROD ? '' : 'https://mawinpay-jarvis.vercel.app';
+  const url = `${apiBase}/api/youtube-search?keyword=${encodeURIComponent(keyword)}&maxResults=${maxResults}`;
+  console.log('[JARVIS] YouTube 검색 API 호출:', url);
+  const res = await fetch(url);
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error((err as any).message || `YouTube API 오류: ${res.status}`);
+  }
+  return res.json();
 }
 
+// ── 인스타그램 계정 검색 ──
 export interface InstagramAccount {
   username: string;
+  profileUrl: string;
   followers: number;
-  posts: number;
-  engagement: number;
+  followersFormatted: string;
+  bio: string;
+  email: string;
+  fullName: string;
+  isVerified: boolean;
+  source: string;
 }
 
-export async function searchInstagramAPI(keyword: string): Promise<InstagramAccount[]> {
-  console.log('[JARVIS] Instagram 검색:', keyword);
-  return [];
+export async function searchInstagramAPI(
+  keyword: string,
+  maxResults: number = 10,
+  fetchProfile: boolean = false
+): Promise<{ total: number; keyword: string; items: InstagramAccount[] }> {
+  const apiBase = import.meta.env.PROD ? '' : 'https://mawinpay-jarvis.vercel.app';
+  const url = `${apiBase}/api/instagram-search?keyword=${encodeURIComponent(keyword)}&maxResults=${maxResults}&fetchProfile=${fetchProfile}`;
+  console.log('[JARVIS] Instagram 검색 API 호출:', url);
+  const res = await fetch(url);
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({})) as any;
+    throw new Error(err.message || `Instagram 검색 오류: ${res.status}`);
+  }
+  return res.json();
 }
 
 export function saveSchedule(task: string, time: string): ScheduledTask {
-  const id = Date.now().toString();
-  const scheduled: ScheduledTask = { id, task, time, completed: false };
-  const schedules = getSchedules();
-  schedules.push(scheduled);
+  const schedules: ScheduledTask[] = JSON.parse(localStorage.getItem('jarvis_schedules') || '[]');
+  const newTask: ScheduledTask = {
+    id: Date.now().toString(),
+    task, time,
+    createdAt: new Date().toLocaleString('ko-KR'),
+    status: 'pending',
+  };
+  schedules.push(newTask);
   localStorage.setItem('jarvis_schedules', JSON.stringify(schedules));
-  return scheduled;
+  saveMemory('마지막 예약', `${task} (${time})`);
+  return newTask;
 }
 
 export function getSchedules(): ScheduledTask[] {
-  try { return JSON.parse(localStorage.getItem('jarvis_schedules') || '[]'); } catch { return []; }
+  return JSON.parse(localStorage.getItem('jarvis_schedules') || '[]');
 }
 
+// ── 시간대별 인사 헬퍼 ──
+function getTimeGreeting(): string {
+  const h = new Date().getHours();
+  if (h >= 5 && h < 12) return '좋은 아침입니다';
+  if (h >= 12 && h < 17) return '좋은 오후입니다';
+  if (h >= 17 && h < 21) return '좋은 저녁입니다';
+  return '늦은 시간에도 수고가 많으십니다';
+}
+
+// ── 로컬 폴백 파서 (Gemini 연결 실패 시 사용) ──
 export function parseCommand(text: string): JarvisAction {
-  const lower = text.toLowerCase();
-  if (/인사|안녕|좋은|아침|저녁/.test(lower)) {
+  const lower = text.toLowerCase().trim();
+  const greeting = getTimeGreeting();
+
+  // [A] 인사 / 호출
+  if (/^(안녕|반가워|잘 있었어|오래만|하이|헬로|hi|hello|자비스)/.test(lower)) {
+    const variants = [
+      `${greeting}, 선생님. 오늘은 어떤 작업을 시작할까요?`,
+      `${greeting}, 선생님. 모든 시스템이 정상 작동 중입니다.`,
+      `대기 중이었습니다, 선생님. 오늘 어떤 인플루언서를 노리겠습니까?`,
+    ];
     return {
       type: 'greeting',
-      response: `좋은 하루입니다, 선생님. 무엇을 도와드릴까요?`,
+      response: variants[Math.floor(Math.random() * variants.length)],
+      followUp: '지난번 캠페인 결과가 궁금하시면 분석해드릴 수도 있습니다.',
     };
   }
+
+  // [B] 모닝 브리핑
+  if (/브리핑|보고|현황|모닝/.test(lower)) {
+    return {
+      type: 'morning_briefing',
+      workingMessage: '모닝 브리핑 데이터 수집 중...',
+      response: '선생님, 오늘의 업무 브리핑을 준비하겠습니다.',
+    };
+  }
+
+  // [C] 감정 표현
+  if (/힘들다|지쳤어|피곤해|힘들어/.test(lower)) {
+    return { type: 'chat', response: '수고하십니다, 선생님. 잠시 쉬어가시면서 제가 도울 수 있는 일을 정리해 드릴까요?', followUp: '오늘 남은 작업 중에 제가 대신 할 수 있는 것이 있으면 말씀해 주세요.' };
+  }
+  if (/짜증나|화났어|열받아/.test(lower)) {
+    return { type: 'chat', response: '어떤 부분이 불편하셨나요, 선생님? 제가 해결해 드리겠습니다.', followUp: '구체적으로 어떤 문제인지 말씀해 주시겠어요?' };
+  }
+  if (/좋다|기분 좋아|잘 됐어|신난다/.test(lower)) {
+    return { type: 'chat', response: '저도 기쁩니다, 선생님. 이 기세로 오늘 캠페인도 재미있게 진행해 보시죠?', followUp: '어떤 작업부터 시작할까요?' };
+  }
+
+  // [D] 확인 / 승인
+  if (/^응$|^어$|^맞아$|^그래$|^오케이$|^좋아$|^어어$/.test(lower)) {
+    return { type: 'chat', response: '알겠습니다, 선생님. 바로 진행하겠습니다.', followUp: undefined };
+  }
+  if (/^아니$|^싫어$|^됐어$|^안 해$/.test(lower)) {
+    return { type: 'chat', response: '알겠습니다, 선생님. 다른 방향으로 진행하겠습니다. 어떤 작업을 원하시나요?', followUp: undefined };
+  }
+
+  // [E] 감사
+  if (/고마워|감사|수고|잘했어|훌륭해|최고|대단/.test(lower)) {
+    return {
+      type: 'chat',
+      response: '감사합니다, 선생님. 선생님의 성공을 위해 항상 최선을 다하겠습니다.',
+      followUp: '다음 단계로 진행할 작업이 있으시면 말씀해 주세요.',
+    };
+  }
+
+  // [F] 자기 소개
+  if (/누구야|뭐야|어디야|ai야/.test(lower)) {
+    return { type: 'chat', response: '저는 JARVIS입니다, 선생님. Just A Rather Very Intelligent System. MAWINPAY의 인텔리전스 코어로, 아이언맨의 자비스를 모델로 설계되었습니다. 현재 Google Gemini 1.5 Pro의 지능으로 구동됩니다.', followUp: '선생님의 바이럴 마케팅을 위해 만들어졌습니다. 어떤 작업을 시작할까요?' };
+  }
+
+  // [G] 스마트스토어
   if (/주문|스마트스토어|배송|정산/.test(lower)) {
     return {
       type: 'smartstore_orders',
@@ -603,26 +730,117 @@ export function parseCommand(text: string): JarvisAction {
       response: '스마트스토어 주문 내역을 확인하겠습니다, 선생님.',
     };
   }
-  if (/유튜브|인플루언서|수집|채널/.test(lower)) {
+
+  // [H] 인플루언서 수집
+  if (/수집|찾아|인플루언서|블로거|유튜버|크리에이터/.test(lower)) {
+    const countMatch = lower.match(/(\d+)\s*명/);
+    const count = countMatch ? parseInt(countMatch[1]) : 50;
+    const keyword = lower.match(/(맛집|뷰티|여행|패션|육아|운동|헬스|요리|게임|음악|캠핑|농산물|밤)/)?.[1] || '';
     return {
       type: 'collect',
-      response: '유튜브 인플루언서를 수집하겠습니다, 선생님.',
+      params: { count, keyword, platform: '', category: keyword || '전체' },
+      workingMessage: `${keyword ? keyword + ' ' : ''}인플루언서 ${count}명 수집 중...`,
+      response: `${keyword ? keyword + ' 분야 ' : ''}인플루언서 ${count}명을 수집하겠습니다. 구글 시트에 실시간으로 저장됩니다.`,
+      followUp: '수집이 완료되면 이메일 발송도 바로 진행할까요?',
     };
   }
+
+  // [I] 검색
+  if (/검색/.test(lower)) {
+    const keyword = text.replace(/검색|해줘|해주세요/g, '').trim();
+    return {
+      type: 'naver_search',
+      params: { keyword: keyword || text, source: 'blog', display: 30, sort: 'sim' },
+      workingMessage: `'${keyword || text}' 검색 중...`,
+      response: `'${keyword || text}'을(를) 검색하겠습니다, 선생님.`,
+      followUp: '검색 결과를 구글 시트에도 저장할까요?',
+    };
+  }
+
+  // [J] 이메일
+  if (/이메일|메일|발송|보내|전송/.test(lower)) {
+    const countMatch = lower.match(/(\d+)\s*(명|통|건)/);
+    const count = countMatch ? parseInt(countMatch[1]) : 50;
+    return {
+      type: 'send_email',
+      params: { count, template: '협업 제안' },
+      workingMessage: '이메일 발송 중...',
+      response: `${count}명에게 협업 제안 이메일을 발송하겠습니다.`,
+      followUp: '3일 후 응답이 없는 분들에게 팔로업 이메일을 보낼까요?',
+    };
+  }
+
+  // [K] 배너/디자인
+  if (/배너|디자인|썸네일/.test(lower)) {
+    const keyword = lower.match(/(뷰티|맛집|여행|패션|운동|제품)/)?.[1] || '마케팅';
+    return {
+      type: 'create_banner',
+      params: { prompt: `${keyword} influencer marketing campaign banner`, style: 'modern' },
+      workingMessage: 'AI 배너 생성 중...',
+      response: `${keyword} 마케팅 배너를 생성하겠습니다. 잠시만 기다려 주세요.`,
+    };
+  }
+
+  // [L] 현황/리포트
+  if (/현황|통계|분석|성과|결과|리포트/.test(lower)) {
+    return {
+      type: 'report',
+      params: { period: '이번 주' },
+      workingMessage: '데이터 분석 중...',
+      response: '이번 주 캠페인 성과를 분석하겠습니다.',
+      followUp: '성과를 개선하기 위한 전략도 제안해드릴까요?',
+    };
+  }
+
+  // [M] 맛집/지역 검색
+  if (/맛집|식당|카페|업체|가게/.test(lower)) {
+    return {
+      type: 'local_search',
+      params: { query: text.replace(/해줘|찾아줘|검색해줘/g, '').trim() || text },
+      workingMessage: `'${text}' 업체 검색 중...`,
+      response: `'${text}' 업체를 검색하겠습니다, 선생님.`,
+      followUp: '검색 결과를 구글 시트에도 저장할까요?',
+    };
+  }
+
+  // [N] 모호한 발화 — 폴백
   return {
     type: 'chat',
-    response: `죄송합니다, 선생님. 조금 더 구체적으로 말씀해 주시겠습니까?`,
+    response: '죄송합니다, 선생님. 조금 더 구체적으로 말씀해 주시겠습니까? 인플루언서 수집, 이메일 발송, 콘텐츠 작성, 예약, 지역 검색 중 어떤 작업을 원하시나요?',
   };
 }
 
-export async function executeManusTask(mission: string, context?: string): Promise<ManusTask | null> {
+// ── Manus AI 에이전트 실행 함수 ──
+export async function executeManusTask(
+  mission: string,
+  missionType: string = 'complex',
+  urgency: string = 'normal'
+): Promise<{ taskId: string; status: string; message: string }> {
   try {
-    const prompt = buildManusPrompt(mission, context || '');
-    const task = await createManusTask(prompt);
-    return task;
+    const prompt = buildManusPrompt(mission, JSON.stringify({
+      businessType: '농산물 판매 및 바이럴 마케팅',
+      targetPlatforms: ['유튜브', '인스타그램', '네이버'],
+    }));
+    const result = await createManusTask(prompt);
+    if (result.success && result.task_id) {
+      return {
+        taskId: result.task_id,
+        status: 'running',
+        message: `Manus 미션이 시작되었습니다. (Task ID: ${result.task_id.slice(0, 8)}...)`,
+      };
+    }
+    return {
+      taskId: '',
+      status: 'error',
+      message: (result as any).error || 'Manus 태스크 생성 실패',
+    };
   } catch (error) {
-    console.error('[JARVIS] 마누스 작업 실패:', error);
-    return null;
+    console.error('[JARVIS-MANUS] Task 생성 오류:', error);
+    return {
+      taskId: '',
+      status: 'error',
+      message: 'Manus 에이전트 연결에 실패했습니다. API 키를 확인해 주세요.',
+    };
   }
 }
 
@@ -640,8 +858,8 @@ export function getConversationTurnCount() {
 }
 
 export const JARVIS_GREETINGS = [
-  '좋은 아침입니다, 선생님. 오늘도 함께하겠습니다.',
-  '선생님, 준비되셨습니까? 제가 도와드리겠습니다.',
-  '안녕하십니까, 선생님. 무엇을 도와드릴까요?',
-  '선생님의 신뢰에 감사합니다. 준비 완료되었습니다.',
+  `${getTimeGreeting()}, 선생님. MAWINPAY 인텔리전스 시스템이 온라인 상태입니다. 오늘 어떤 작업을 시작할까요?`,
+  '시스템 활성화 완료. Google Gemini 1.5 Pro 뇌가 정상 작동 중입니다. 무엇을 도와드릴까요, 선생님?',
+  '대기 상태에서 깨어났습니다. 인플루언서 수집부터 시작할까요, 아니면 다른 작업이 있으신가요?',
+  `${getTimeGreeting()}, 선생님. 모닝 브리핑을 원하시면 말씀해 주세요.`,
 ];
