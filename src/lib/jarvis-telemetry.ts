@@ -1,7 +1,10 @@
 /**
- * JARVIS Telemetry System v4.0
- * BroadcastChannel 기반 실시간 이벤트 시스템
- * 채팅 탭 → 시스템 맵 탭 간 실시간 동기화
+ * JARVIS Telemetry System v4.1
+ * 하이브리드 통신: CustomEvent(같은 탭) + BroadcastChannel(다른 탭)
+ * 
+ * 핵심 수정: BroadcastChannel은 같은 탭에서 자기 자신에게 메시지를 보내지 않는다.
+ * 따라서 같은 탭 내 통신은 window.dispatchEvent(CustomEvent)를 사용하고,
+ * 별도 탭(/mission-map)용으로 BroadcastChannel을 병행한다.
  */
 
 // ─── 타입 정의 ───
@@ -21,15 +24,15 @@ export interface NodeStatePayload {
 }
 
 export interface PulseLinePayload {
-  from: string;       // 'core' or node id
-  to: string;         // node id
+  from: string;
+  to: string;
   speed: 'slow' | 'normal' | 'fast' | 'intense';
   color?: string;
 }
 
 export interface MissionLogPayload {
   icon: string;
-  source: string;     // 'Gemini' | 'Manus' | 'System' | 'API'
+  source: string;
   message: string;
   logType: 'info' | 'success' | 'error' | 'warn' | 'thinking';
 }
@@ -64,15 +67,34 @@ export const FUNCTION_NODE_MAP: Record<string, { nodes: string[]; speed: PulseLi
 
 // ─── 채널 이름 ───
 const CHANNEL_NAME = 'jarvis-telemetry-v4';
+const CUSTOM_EVENT_NAME = 'jarvis-telemetry';
 
 // ─── 싱글톤 채널 ───
 let _channel: BroadcastChannel | null = null;
 
-function getChannel(): BroadcastChannel {
-  if (!_channel) {
-    _channel = new BroadcastChannel(CHANNEL_NAME);
+function getChannel(): BroadcastChannel | null {
+  try {
+    if (!_channel) {
+      _channel = new BroadcastChannel(CHANNEL_NAME);
+    }
+    return _channel;
+  } catch {
+    return null;
   }
-  return _channel;
+}
+
+// ─── 하이브리드 발송: CustomEvent(같은 탭) + BroadcastChannel(다른 탭) ───
+function emit(event: TelemetryEvent) {
+  // 1) 같은 탭 내 통신 (CustomEvent) - 이것이 핵심!
+  try {
+    window.dispatchEvent(new CustomEvent(CUSTOM_EVENT_NAME, { detail: event }));
+  } catch {}
+
+  // 2) 다른 탭 통신 (BroadcastChannel)
+  try {
+    const ch = getChannel();
+    if (ch) ch.postMessage(event);
+  } catch {}
 }
 
 // ─── 이벤트 발송 함수들 ───
@@ -84,8 +106,8 @@ export function emitNodeState(nodeId: string, state: NodeState, detail?: string,
     timestamp: Date.now(),
     payload: { nodeId, state, detail, data } as NodeStatePayload,
   };
-  getChannel().postMessage(event);
-  // 로컬 스토리지에도 최신 상태 저장 (인스펙터용)
+  emit(event);
+  // 로컬 스토리지에도 최신 상태 저장
   try {
     const stored = JSON.parse(localStorage.getItem('jarvis-node-data') || '{}');
     stored[nodeId] = { state, detail, data, lastSync: new Date().toISOString() };
@@ -93,36 +115,32 @@ export function emitNodeState(nodeId: string, state: NodeState, detail?: string,
   } catch {}
 }
 
-/** 펄스 라인 (데이터 전송 애니메이션) */
+/** 펄스 라인 */
 export function emitPulseLine(from: string, to: string, speed: PulseLinePayload['speed'] = 'normal', color?: string) {
-  const event: TelemetryEvent = {
+  emit({
     type: 'pulse_line',
     timestamp: Date.now(),
     payload: { from, to, speed, color } as PulseLinePayload,
-  };
-  getChannel().postMessage(event);
+  });
 }
 
 /** 미션 로그 */
 export function emitMissionLog(icon: string, source: string, message: string, logType: MissionLogPayload['logType'] = 'info') {
-  const event: TelemetryEvent = {
+  emit({
     type: 'mission_log',
     timestamp: Date.now(),
     payload: { icon, source, message, logType } as MissionLogPayload,
-  };
-  getChannel().postMessage(event);
+  });
 }
 
-/** 노드 데이터 업데이트 (인스펙터용) */
+/** 노드 데이터 업데이트 */
 export function emitNodeData(nodeId: string, summary: Record<string, string | number>) {
   const lastSync = new Date().toISOString();
-  const event: TelemetryEvent = {
+  emit({
     type: 'node_data',
     timestamp: Date.now(),
     payload: { nodeId, lastSync, summary } as NodeDataPayload,
-  };
-  getChannel().postMessage(event);
-  // 로컬 스토리지에도 저장
+  });
   try {
     const stored = JSON.parse(localStorage.getItem('jarvis-node-data') || '{}');
     stored[nodeId] = { ...(stored[nodeId] || {}), summary, lastSync };
@@ -132,32 +150,29 @@ export function emitNodeData(nodeId: string, summary: Record<string, string | nu
 
 /** 모닝 브리핑 시퀀스 */
 export function emitBriefingSequence(phase: BriefingSequencePayload['phase'], focusNode?: string, message?: string) {
-  const event: TelemetryEvent = {
+  emit({
     type: 'briefing_sequence',
     timestamp: Date.now(),
     payload: { phase, focusNode, message } as BriefingSequencePayload,
-  };
-  getChannel().postMessage(event);
+  });
 }
 
-// ─── 복합 헬퍼: 함수 실행 시 자동 텔레메트리 ───
+// ─── 복합 헬퍼 ───
 
-/** 함수 실행 시작 시 호출 */
+/** 함수 실행 시작 */
 export function telemetryFunctionStart(functionName: string, detail?: string) {
   const mapping = FUNCTION_NODE_MAP[functionName];
   if (!mapping) return;
 
-  // 관련 노드 활성화
   mapping.nodes.forEach(nodeId => {
     emitNodeState(nodeId, 'active', detail || `${functionName} 실행 중...`);
     emitPulseLine('jarvis_brain', nodeId, mapping.speed);
   });
 
-  // 미션 로그
   emitMissionLog(mapping.icon, 'System', detail || `${functionName} 시작`, 'info');
 }
 
-/** 함수 실행 성공 시 호출 */
+/** 함수 실행 성공 */
 export function telemetryFunctionSuccess(functionName: string, detail?: string, data?: Record<string, any>) {
   const mapping = FUNCTION_NODE_MAP[functionName];
   if (!mapping) return;
@@ -171,7 +186,6 @@ export function telemetryFunctionSuccess(functionName: string, detail?: string, 
 
   emitMissionLog('✅', 'System', detail || `${functionName} 완료`, 'success');
 
-  // 3초 후 idle로 복귀
   setTimeout(() => {
     mapping.nodes.forEach(nodeId => {
       emitNodeState(nodeId, 'idle');
@@ -179,7 +193,7 @@ export function telemetryFunctionSuccess(functionName: string, detail?: string, 
   }, 3000);
 }
 
-/** 함수 실행 에러 시 호출 */
+/** 함수 실행 에러 */
 export function telemetryFunctionError(functionName: string, errorMsg: string) {
   const mapping = FUNCTION_NODE_MAP[functionName];
   if (!mapping) return;
@@ -190,7 +204,6 @@ export function telemetryFunctionError(functionName: string, errorMsg: string) {
 
   emitMissionLog('⚠️', 'System', `${functionName} 오류: ${errorMsg}`, 'error');
 
-  // 5초 후 idle로 복귀
   setTimeout(() => {
     mapping.nodes.forEach(nodeId => {
       emitNodeState(nodeId, 'idle');
@@ -198,14 +211,32 @@ export function telemetryFunctionError(functionName: string, errorMsg: string) {
   }, 5000);
 }
 
-// ─── 수신 리스너 등록 ───
+// ─── 수신 리스너 등록 (하이브리드: CustomEvent + BroadcastChannel 모두 수신) ───
 export function onTelemetryEvent(callback: (event: TelemetryEvent) => void): () => void {
-  const channel = getChannel();
-  const handler = (e: MessageEvent<TelemetryEvent>) => {
-    callback(e.data);
+  // 1) CustomEvent 수신 (같은 탭)
+  const customHandler = (e: Event) => {
+    const ce = e as CustomEvent<TelemetryEvent>;
+    if (ce.detail) callback(ce.detail);
   };
-  channel.addEventListener('message', handler);
-  return () => channel.removeEventListener('message', handler);
+  window.addEventListener(CUSTOM_EVENT_NAME, customHandler);
+
+  // 2) BroadcastChannel 수신 (다른 탭)
+  let bcHandler: ((e: MessageEvent<TelemetryEvent>) => void) | null = null;
+  const ch = getChannel();
+  if (ch) {
+    bcHandler = (e: MessageEvent<TelemetryEvent>) => {
+      callback(e.data);
+    };
+    ch.addEventListener('message', bcHandler);
+  }
+
+  // cleanup
+  return () => {
+    window.removeEventListener(CUSTOM_EVENT_NAME, customHandler);
+    if (ch && bcHandler) {
+      ch.removeEventListener('message', bcHandler);
+    }
+  };
 }
 
 /** 채널 정리 */
