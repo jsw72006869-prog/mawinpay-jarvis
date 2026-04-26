@@ -167,11 +167,13 @@ export default function HoloDataPanel({ type, progress, message, bookingSteps, a
       transition={{ duration: 0.4, ease: 'easeOut' }}
       style={{
         position: 'fixed',
-        left: 20,
-        top: '50%',
-        transform: 'translateY(-50%)',
+        left: 12,
+        top: 12,
         zIndex: 30,
-          width: (type === 'smartstore' || type === 'booking' || type === 'youtube' || type === 'manus') ? 320 : 230,
+        width: (type === 'smartstore' || type === 'booking' || type === 'youtube' || type === 'manus') ? 280 : 200,
+        maxHeight: '45vh',
+        overflowY: 'auto',
+        scrollbarWidth: 'none',
       }}
     >
       {type && (

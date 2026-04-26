@@ -14,6 +14,7 @@ import InfluencerCards, { type InfluencerData } from './InfluencerCards';
 import LocalBusinessCards, { type LocalBusinessData } from './LocalBusinessCards';
 import { ParticleTextCanvas } from './ParticleTextCanvas';
 import NeuralMissionMap from './NeuralMissionMap';
+import PlatformDataCards from './PlatformDataCards';
 import ManusStrategyDashboard from './ManusStrategyDashboard';
 import { telemetryFunctionStart, telemetryFunctionSuccess, telemetryFunctionError, emitMissionLog, emitBriefingSequence, emitNodeState, emitNodeData, emitPulseLine } from '../lib/jarvis-telemetry';
 import VoiceParticleAura from './VoiceParticleAura';
@@ -5153,6 +5154,11 @@ export default function JarvisApp() {
             ))}
           </motion.div>
         )}
+      </AnimatePresence>
+
+      {/* ── 플랫폼 데이터 카드 (하단 고정) ── */}
+      <AnimatePresence>
+        <PlatformDataCards visible={!neuralMapVisible && !strategyDashboardVisible} />
       </AnimatePresence>
 
       {/* ── 뉴럴 미션 맵 (시스템 현황) ── */}
