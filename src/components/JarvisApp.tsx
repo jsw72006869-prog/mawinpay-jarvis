@@ -196,19 +196,27 @@ export default function JarvisApp() {
 
   const [settingsForm, setSettingsForm] = useState(() => {
     const stored = JSON.parse(localStorage.getItem('jarvis_api_keys') || '{}');
+    // 환경 변수에서 기본 키 가져오기
+    const defaultGeminiKey = import.meta.env.VITE_GEMINI_API_KEY || '';
     return {
-      geminiKey: stored.geminiKey || '',
+      geminiKey: stored.geminiKey || defaultGeminiKey,
       openaiKey: stored.openaiKey || '',
-      elevenLabsKey: stored.elevenLabsKey || '',
+      elevenlabsKey: stored.elevenlabsKey || '',
     };
   });
 
-  // Gemini 초기화 (저장된 키가 있으면)
   useEffect(() => {
     if (settingsForm.geminiKey) {
       initializeGemini(settingsForm.geminiKey);
+    } else {
+      // 키가 없을 경우 환경 변수에서 다시 시도
+      const envKey = import.meta.env.VITE_GEMINI_API_KEY;
+      if (envKey) {
+        initializeGemini(envKey);
+        setSettingsForm(prev => ({ ...prev, geminiKey: envKey }));
+      }
     }
-  }, []);
+  }, [settingsForm.geminiKey]);
 
   const [naverForm, setNaverForm] = useState(() => {
     const stored = JSON.parse(localStorage.getItem('jarvis_naver_creds') || '{}');
