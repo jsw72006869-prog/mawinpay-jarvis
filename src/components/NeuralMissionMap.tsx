@@ -2,446 +2,569 @@ import { useState, useEffect, useRef, useCallback, useMemo, Suspense } from 'rea
 import { motion, AnimatePresence } from 'framer-motion';
 import * as THREE from 'three';
 import { Canvas, useFrame } from '@react-three/fiber';
-import { Float, Text, Points, PointMaterial, Line, Sphere, MeshDistortMaterial, PerspectiveCamera, Environment, OrbitControls, ContactShadows } from '@react-three/drei';
+import { Float, Text, Points, PointMaterial, Line, Sphere, MeshDistortMaterial, PerspectiveCamera, OrbitControls } from '@react-three/drei';
+import {
+  onTelemetryEvent,
+  closeTelemetry,
+  type TelemetryEvent,
+  type NodeState,
+  type NodeStatePayload,
+  type PulseLinePayload,
+  type MissionLogPayload,
+  type NodeDataPayload,
+  type BriefingSequencePayload,
+} from '../lib/jarvis-telemetry';
 
-const THEME = {
-  gold:       '#C8A96E',
-  goldLight:  '#E8D5A3',
-  goldDim:    '#8B6F3E',
-  blue:       '#00D4FF',
-  blueLight:  '#7BB3F0',
-  silver:     '#A8B8C8',
-  silverDim:  '#5A6A7A',
-  bg:         '#060A12',
-  bgDeep:     '#030608',
-  text:       '#D4E0EC',
-  textDim:    '#5A6A7A',
-  green:      '#7EC89B',
-  purple:     '#9B8EC4',
-  orange:     '#FF3D00',
-  warn:       '#FF8C00',
+/* ─── 테마 ─── */
+const T = {
+  gold: '#C8A96E', goldLight: '#E8D5A3', goldDim: '#8B6F3E',
+  blue: '#00D4FF', blueLight: '#7BB3F0', cyan: '#00FFD4',
+  silver: '#A8B8C8', silverDim: '#5A6A7A',
+  bg: '#060A12', bgDeep: '#030608',
+  text: '#D4E0EC', textDim: '#5A6A7A',
+  green: '#00FF88', greenDim: '#7EC89B',
+  purple: '#9B8EC4', purpleLight: '#C4A8FF',
+  red: '#FF3D00', orange: '#FF8C00', warn: '#FFAA00',
 };
 
-const BOOKING_SERVER = 'https://jarvis-booking-server-production.up.railway.app';
-
-const SSE_NODE_MAP: Record<string, string> = {
-  brain:      'jarvis_brain',
-  smartstore: 'smartstore',
-  telegram:   'telegram',
-  scheduler:  'scheduler',
-  email:      'email',
-  commander:  'user',
-  ordersheet: 'ordersheet',
-  settlement: 'settlement',
-  manus:      'manus_agent',
+/* ─── 노드 상태별 색상 ─── */
+const STATE_COLORS: Record<NodeState, { color: string; glow: string; label: string }> = {
+  idle:    { color: T.blue,   glow: 'rgba(0,212,255,0.15)',  label: 'STANDBY' },
+  active:  { color: T.cyan,   glow: 'rgba(0,255,212,0.4)',   label: 'ACTIVE' },
+  success: { color: T.green,  glow: 'rgba(0,255,136,0.5)',   label: 'COMPLETE' },
+  error:   { color: T.orange, glow: 'rgba(255,140,0,0.5)',   label: 'ERROR' },
 };
 
-const SSE_FLOW_MAP: Record<string, string> = {
-  'brain->smartstore':     'brain_smartstore',
-  'brain->telegram':       'brain_telegram',
-  'brain->scheduler':      'brain_scheduler',
-  'brain->email':          'brain_email',
-  'commander->brain':      'user_brain',
-  'scheduler->brain':      'brain_scheduler',
-  'telegram->brain':       'user_brain',
-  'smartstore->brain':     'brain_smartstore',
-  'email->telegram':       'email_telegram',
-  'scheduler->smartstore': 'scheduler_smartstore',
-  'brain->ordersheet':     'brain_ordersheet',
-  'ordersheet->settlement':'ordersheet_settlement',
-  'ordersheet->email':     'ordersheet_email',
-  'settlement->telegram':  'settlement_telegram',
-  'brain->manus':          'brain_manus',
-  'manus->brain':          'brain_manus',
-  'manus->telegram':       'manus_telegram',
-};
-
-interface NodeStatus {
+/* ─── 노드 정의 ─── */
+interface MapNode {
   id: string;
   label: string;
   sublabel: string;
   icon: string;
-  status: 'online' | 'offline' | 'warning' | 'processing' | 'idle';
+  state: NodeState;
   detail: string;
-  lastUpdate?: string;
-  progress?: number;
-  x: number;
-  y: number;
-  z: number;
-  color?: string;
+  x: number; y: number; z: number;
+  baseColor: string;
+  lastSync?: string;
+  summary?: Record<string, string | number>;
 }
 
 interface LogEntry {
   time: string;
+  icon: string;
+  source: string;
   text: string;
-  type: 'info' | 'success' | 'error' | 'warn';
+  type: 'info' | 'success' | 'error' | 'warn' | 'thinking';
 }
 
-const STATUS_COLOR: Record<string, string> = {
-  online:     THEME.green,
-  offline:    THEME.orange,
-  warning:    THEME.warn,
-  processing: THEME.blue,
-  idle:       THEME.gold,
-};
+interface ActivePulse {
+  id: string;
+  from: string;
+  to: string;
+  speed: string;
+  color?: string;
+  startTime: number;
+}
 
-const STATUS_LABEL: Record<string, string> = {
-  online:     'ONLINE',
-  offline:    'OFFLINE',
-  warning:    'WARNING',
-  processing: 'PROCESSING',
-  idle:       'STANDBY',
-};
+const INITIAL_NODES: MapNode[] = [
+  { id: 'jarvis_brain', label: 'JARVIS CORE',  sublabel: 'Gemini 1.5 Pro',    icon: '🧠', state: 'idle', detail: 'Neural Core Online',        x: 0,   y: 0,    z: 0,   baseColor: T.purple },
+  { id: 'smartstore',   label: 'SMARTSTORE',    sublabel: 'Naver Commerce',     icon: '🛒', state: 'idle', detail: 'Awaiting query',             x: -22, y: 14,   z: -8,  baseColor: T.green },
+  { id: 'youtube',      label: 'YOUTUBE',       sublabel: 'Data API v3',        icon: '▶️', state: 'idle', detail: 'Search standby',             x: 22,  y: 14,   z: -8,  baseColor: '#FF0000' },
+  { id: 'naver',        label: 'NAVER',         sublabel: 'Search API',         icon: '🔍', state: 'idle', detail: 'Blog/Cafe scanner ready',    x: -28, y: -6,   z: -5,  baseColor: '#1EC800' },
+  { id: 'instagram',    label: 'INSTAGRAM',     sublabel: 'Graph API',          icon: '📸', state: 'idle', detail: 'Influencer scanner ready',   x: 28,  y: -6,   z: -5,  baseColor: '#E1306C' },
+  { id: 'email',        label: 'EMAIL',         sublabel: 'Gmail MCP',          icon: '✉️', state: 'idle', detail: 'Campaign engine standby',    x: -16, y: -20,  z: -3,  baseColor: T.blueLight },
+  { id: 'sheets',       label: 'SHEETS',        sublabel: 'Google Sheets',      icon: '📋', state: 'idle', detail: 'Data warehouse ready',       x: 16,  y: -20,  z: -3,  baseColor: T.goldLight },
+  { id: 'manus_agent',  label: 'MANUS AI',      sublabel: 'Autonomous Agent',   icon: '🤖', state: 'idle', detail: 'Manus 1.6 Max Standby',     x: 0,   y: 28,   z: 0,   baseColor: T.blueLight },
+  { id: 'user',         label: 'COMMANDER',     sublabel: 'Sir',                icon: '👤', state: 'idle', detail: 'Awaiting command',            x: 0,   y: -32,  z: 15,  baseColor: T.gold },
+];
 
-function BackgroundParticles() {
-  const points = useMemo(() => {
-    const p = new Float32Array(2000 * 3);
-    for (let i = 0; i < 2000; i++) {
-      p[i * 3] = (Math.random() - 0.5) * 200;
-      p[i * 3 + 1] = (Math.random() - 0.5) * 200;
-      p[i * 3 + 2] = (Math.random() - 0.5) * 200;
+const CONNECTIONS: [string, string][] = [
+  ['jarvis_brain', 'smartstore'], ['jarvis_brain', 'youtube'], ['jarvis_brain', 'naver'],
+  ['jarvis_brain', 'instagram'], ['jarvis_brain', 'email'], ['jarvis_brain', 'sheets'],
+  ['jarvis_brain', 'manus_agent'], ['user', 'jarvis_brain'],
+  ['manus_agent', 'youtube'], ['manus_agent', 'naver'],
+  ['sheets', 'email'],
+];
+
+/* ─── 3D Background Particles ─── */
+function BgParticles() {
+  const positions = useMemo(() => {
+    const p = new Float32Array(1500 * 3);
+    for (let i = 0; i < 1500; i++) {
+      p[i * 3]     = (Math.random() - 0.5) * 180;
+      p[i * 3 + 1] = (Math.random() - 0.5) * 180;
+      p[i * 3 + 2] = (Math.random() - 0.5) * 180;
     }
     return p;
   }, []);
-
   const ref = useRef<THREE.Points>(null);
-  useFrame((state) => {
-    if (ref.current) {
-      ref.current.rotation.y = state.clock.getElapsedTime() * 0.01;
-    }
-  });
-
+  useFrame(({ clock }) => { if (ref.current) ref.current.rotation.y = clock.getElapsedTime() * 0.008; });
   return (
-    <Points ref={ref} positions={points} stride={3} frustumCulled={false}>
-      <PointMaterial
-        transparent
-        color={THEME.blue}
-        size={0.25}
-        sizeAttenuation={true}
-        depthWrite={false}
-        blending={THREE.AdditiveBlending}
-        opacity={0.3}
-      />
+    <Points ref={ref} positions={positions} stride={3} frustumCulled={false}>
+      <PointMaterial transparent color={T.blue} size={0.2} sizeAttenuation depthWrite={false} blending={THREE.AdditiveBlending} opacity={0.25} />
     </Points>
   );
 }
 
-function Node3D({ node, isSelected, onSelect }: { node: NodeStatus, isSelected: boolean, onSelect: (id: string) => void }) {
-  const baseColor = node.color || STATUS_COLOR[node.status];
-  const isProcessing = node.status === 'processing';
+/* ─── 3D Node ─── */
+function Node3D({ node, isSelected, onSelect }: { node: MapNode; isSelected: boolean; onSelect: (id: string) => void }) {
+  const stateStyle = STATE_COLORS[node.state];
+  const color = node.state === 'idle' ? node.baseColor : stateStyle.color;
+  const isActive = node.state === 'active';
+  const isError = node.state === 'error';
   const groupRef = useRef<THREE.Group>(null);
   const ringRef = useRef<THREE.Mesh>(null);
+  const glowRef = useRef<THREE.Mesh>(null);
 
-  useFrame((state) => {
+  useFrame(({ camera, clock }) => {
     if (groupRef.current) {
-      groupRef.current.children.forEach((child) => {
-        if (child.name === 'billboard') {
-          child.quaternion.copy(state.camera.quaternion);
-        }
-      });
+      groupRef.current.children.forEach(c => { if (c.name === 'bb') c.quaternion.copy(camera.quaternion); });
     }
     if (ringRef.current) {
-      ringRef.current.rotation.z += isProcessing ? 0.05 : 0.01;
+      ringRef.current.rotation.z += isActive ? 0.06 : isError ? 0.08 : 0.01;
+    }
+    if (glowRef.current) {
+      const s = isActive ? 1 + Math.sin(clock.getElapsedTime() * 6) * 0.3 : isError ? 1 + Math.sin(clock.getElapsedTime() * 10) * 0.4 : 1;
+      glowRef.current.scale.setScalar(s);
     }
   });
-  
+
   return (
-    <Float speed={2} rotationIntensity={0.3} floatIntensity={0.6} position={[node.x, node.y, node.z]}>
+    <Float speed={isActive ? 4 : 2} rotationIntensity={isActive ? 0.6 : 0.2} floatIntensity={isActive ? 1 : 0.5} position={[node.x, node.y, node.z]}>
       <group ref={groupRef} onClick={(e) => { e.stopPropagation(); onSelect(node.id); }}>
         {/* Core Sphere */}
         <Sphere args={[1.5, 32, 32]}>
           <MeshDistortMaterial
-            color={baseColor}
-            speed={isProcessing ? 4 : 1.5}
-            distort={isProcessing ? 0.4 : 0.15}
+            color={color}
+            speed={isActive ? 5 : isError ? 8 : 1.5}
+            distort={isActive ? 0.45 : isError ? 0.5 : 0.12}
             radius={1}
-            emissive={baseColor}
-            emissiveIntensity={isSelected ? 5 : 2}
+            emissive={color}
+            emissiveIntensity={isActive ? 6 : isError ? 7 : isSelected ? 4 : 2}
           />
         </Sphere>
-        
-        {/* Icon (Emoji as Text) */}
-        <Text
-          name="billboard"
-          position={[0, 0, 0.5]}
-          fontSize={1.8}
-          color="white"
-          anchorX="center"
-          anchorY="middle"
-        >
+
+        {/* Glow sphere */}
+        <Sphere ref={glowRef} args={[2.5, 16, 16]}>
+          <meshStandardMaterial color={color} transparent opacity={isActive ? 0.15 : isError ? 0.2 : 0.05} />
+        </Sphere>
+
+        {/* Icon */}
+        <Text name="bb" position={[0, 0, 0.6]} fontSize={1.8} color="white" anchorX="center" anchorY="middle">
           {node.icon}
         </Text>
 
-        {/* Outer Ring */}
+        {/* Ring */}
         <mesh ref={ringRef} rotation={[Math.PI / 2, 0, 0]}>
-          <torusGeometry args={[2.8, 0.08, 16, 100]} />
-          <meshStandardMaterial 
-            color={baseColor} 
-            emissive={baseColor} 
-            emissiveIntensity={3} 
-            transparent 
-            opacity={0.5} 
-          />
+          <torusGeometry args={[2.8, isActive ? 0.12 : 0.06, 16, 100]} />
+          <meshStandardMaterial color={color} emissive={color} emissiveIntensity={isActive ? 5 : 2} transparent opacity={isActive ? 0.8 : 0.4} />
         </mesh>
 
-        {/* Label & Status */}
-        <group name="billboard" position={[0, -3.5, 0]}>
-          <Text
-            fontSize={1.0}
-            color={THEME.text}
-            anchorX="center"
-            anchorY="middle"
-            outlineWidth={0.08}
-            outlineColor="#000000"
-            fontWeight="bold"
-          >
+        {/* Second ring for active/error */}
+        {(isActive || isError) && (
+          <mesh rotation={[Math.PI / 3, Math.PI / 4, 0]}>
+            <torusGeometry args={[3.2, 0.04, 16, 80]} />
+            <meshStandardMaterial color={color} emissive={color} emissiveIntensity={4} transparent opacity={0.5} />
+          </mesh>
+        )}
+
+        {/* Labels */}
+        <group name="bb" position={[0, -3.8, 0]}>
+          <Text fontSize={0.95} color={T.text} anchorX="center" anchorY="middle" outlineWidth={0.06} outlineColor="#000" fontWeight="bold">
             {node.label}
           </Text>
-          <Text
-            position={[0, -1.2, 0]}
-            fontSize={0.6}
-            color={baseColor}
-            anchorX="center"
-            anchorY="middle"
-            outlineWidth={0.04}
-            outlineColor="#000000"
-          >
-            {STATUS_LABEL[node.status]}
+          <Text position={[0, -1.2, 0]} fontSize={0.55} color={color} anchorX="center" anchorY="middle" outlineWidth={0.03} outlineColor="#000">
+            {stateStyle.label}
           </Text>
         </group>
-        
-        {/* Selection Glow */}
-        {isSelected && (
-          <Sphere args={[2.2, 32, 32]}>
-            <meshStandardMaterial color={baseColor} transparent opacity={0.2} />
-          </Sphere>
-        )}
       </group>
     </Float>
   );
 }
 
-function ConnectionLine({ start, end, active }: { start: [number, number, number], end: [number, number, number], active: boolean }) {
-  const points = useMemo(() => [new THREE.Vector3(...start), new THREE.Vector3(...end)], [start, end]);
-  
+/* ─── Connection Line with Pulse ─── */
+function ConnLine({ start, end, active, pulseSpeed }: { start: [number, number, number]; end: [number, number, number]; active: boolean; pulseSpeed?: string }) {
+  const pts = useMemo(() => [new THREE.Vector3(...start), new THREE.Vector3(...end)], [start, end]);
+  const dashRef = useRef<any>(null);
+
+  useFrame(() => {
+    if (dashRef.current && active) {
+      const speed = pulseSpeed === 'intense' ? 0.08 : pulseSpeed === 'fast' ? 0.05 : 0.02;
+      dashRef.current.material.dashOffset -= speed;
+    }
+  });
+
   return (
-    <Line
-      points={points}
-      color={active ? THEME.blue : THEME.blue}
-      lineWidth={active ? 4 : 1.2}
-      transparent
-      opacity={active ? 1 : 0.25}
-      dashed={!active}
-      dashScale={3}
-      gapSize={0.5}
-    />
+    <group>
+      <Line
+        ref={dashRef}
+        points={pts}
+        color={active ? T.cyan : T.blue}
+        lineWidth={active ? 3.5 : 1}
+        transparent
+        opacity={active ? 0.9 : 0.15}
+        dashed
+        dashScale={active ? 6 : 3}
+        gapSize={active ? 0.3 : 0.5}
+      />
+      {active && (
+        <Line
+          points={pts}
+          color={T.cyan}
+          lineWidth={8}
+          transparent
+          opacity={0.08}
+        />
+      )}
+    </group>
   );
 }
 
+/* ─── 메인 컴포넌트 ─── */
 export default function NeuralMissionMap({ onClose }: { onClose: () => void }) {
-  const [nodes, setNodes] = useState<NodeStatus[]>([
-    { id: 'jarvis_brain', label: 'JARVIS CORE', sublabel: 'Railway Server', icon: '🧠', status: 'idle', detail: 'Connecting...', x: 0, y: 0, z: 0, color: THEME.purple },
-    { id: 'smartstore', label: 'SMARTSTORE', sublabel: 'Naver Commerce', icon: '🛒', status: 'idle', detail: 'Smartstore API', x: -22, y: 12, z: -12, color: THEME.green },
-    { id: 'telegram', label: 'TELEGRAM', sublabel: 'Notification Bot', icon: '📡', status: 'idle', detail: 'Telegram Bot', x: 22, y: 12, z: -12, color: THEME.blue },
-    { id: 'scheduler', label: 'SCHEDULER', sublabel: 'Auto Task', icon: '⏰', status: 'idle', detail: 'Scheduler', x: -22, y: -12, z: -12, color: THEME.gold },
-    { id: 'email', label: 'EMAIL', sublabel: 'Order Dispatch', icon: '✉️', status: 'idle', detail: 'Order Email', x: 22, y: -12, z: -12, color: THEME.silver },
-    { id: 'ordersheet', label: 'ORDER SHEET', sublabel: 'Logistics', icon: '📋', status: 'idle', detail: 'Sorting...', x: -12, y: -22, z: 8, color: THEME.orange },
-    { id: 'settlement', label: 'SETTLEMENT', sublabel: 'Accounting', icon: '🧮', status: 'idle', detail: 'Calculating...', x: 12, y: -22, z: 8, color: THEME.green },
-    { id: 'manus_agent', label: 'MANUS AI', sublabel: 'Autonomous Agent', icon: '🤖', status: 'idle', detail: 'Manus 1.6 Max Standby', x: 0, y: 28, z: 0, color: THEME.blueLight },
-    { id: 'user', label: 'COMMANDER', sublabel: 'Boss', icon: '👤', status: 'online', detail: 'Awaiting command', x: 0, y: -32, z: 20, color: THEME.gold },
-  ]);
-
+  const [nodes, setNodes] = useState<MapNode[]>(INITIAL_NODES);
   const [logs, setLogs] = useState<LogEntry[]>([
-    { time: '--:--:--', text: 'JARVIS Neural Mission Map v3.2 initializing...', type: 'info' },
+    { time: new Date().toLocaleTimeString('ko-KR', { hour12: false }), icon: '🚀', source: 'System', text: 'JARVIS Neural Mission Map v4.0 Online', type: 'info' },
+    { time: new Date().toLocaleTimeString('ko-KR', { hour12: false }), icon: '🧠', source: 'Gemini', text: 'Neural Core: Gemini 1.5 Pro Active', type: 'success' },
   ]);
   const [selectedNode, setSelectedNode] = useState<string | null>('jarvis_brain');
-  const [activeConnections, setActiveConnections] = useState<string[]>([]);
-  const [missionPhase, setMissionPhase] = useState<string>('STANDBY');
-  const [sseStatus, setSseStatus] = useState<'connecting' | 'connected' | 'disconnected'>('disconnected');
+  const [activePulses, setActivePulses] = useState<Set<string>>(new Set());
+  const [pulseSpeedMap, setPulseSpeedMap] = useState<Record<string, string>>({});
+  const [briefingActive, setBriefingActive] = useState(false);
+  const [missionPhase, setMissionPhase] = useState('STANDBY');
   const logsEndRef = useRef<HTMLDivElement>(null);
-  const sseRef = useRef<EventSource | null>(null);
 
-  const addLog = useCallback((text: string, type: LogEntry['type'] = 'info') => {
-    const now = new Date();
-    const time = now.toLocaleTimeString('ko-KR', { hour12: false });
-    setLogs(prev => [...prev.slice(-49), { time, text, type }]);
+  // 노드 좌표 맵
+  const nodePositions = useMemo(() => {
+    const map: Record<string, [number, number, number]> = {};
+    INITIAL_NODES.forEach(n => { map[n.id] = [n.x, n.y, n.z]; });
+    return map;
   }, []);
 
-  const updateNode = useCallback((id: string, updates: Partial<NodeStatus>) => {
-    setNodes(prev => prev.map(n => n.id === id ? { ...n, ...updates } : n));
+  // 로그 자동 스크롤
+  useEffect(() => { logsEndRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [logs]);
+
+  // 로그 추가 헬퍼
+  const addLog = useCallback((icon: string, source: string, text: string, type: LogEntry['type'] = 'info') => {
+    const time = new Date().toLocaleTimeString('ko-KR', { hour12: false });
+    setLogs(prev => [...prev.slice(-80), { time, icon, source, text, type }]);
   }, []);
 
+  // 노드 상태 업데이트 헬퍼
+  const updateNodeState = useCallback((nodeId: string, state: NodeState, detail?: string, data?: Record<string, any>) => {
+    setNodes(prev => prev.map(n => n.id === nodeId ? {
+      ...n,
+      state,
+      detail: detail || n.detail,
+      lastSync: new Date().toISOString(),
+      summary: data ? { ...(n.summary || {}), ...data } : n.summary,
+    } : n));
+  }, []);
+
+  // 펄스 라인 활성화 헬퍼
+  const activatePulse = useCallback((from: string, to: string, speed: string = 'normal') => {
+    const key = `${from}->${to}`;
+    setActivePulses(prev => new Set(prev).add(key));
+    setPulseSpeedMap(prev => ({ ...prev, [key]: speed }));
+    const duration = speed === 'intense' ? 8000 : speed === 'fast' ? 5000 : 3000;
+    setTimeout(() => {
+      setActivePulses(prev => { const next = new Set(prev); next.delete(key); return next; });
+    }, duration);
+  }, []);
+
+  // 모닝 브리핑 시퀀스
+  const runBriefingSequence = useCallback(async (focusNode?: string, message?: string) => {
+    if (focusNode) {
+      updateNodeState(focusNode, 'active', message);
+      activatePulse('jarvis_brain', focusNode, 'normal');
+      if (message) addLog('☀️', 'Briefing', message, 'info');
+      return;
+    }
+    // 전체 시퀀스
+    setBriefingActive(true);
+    setMissionPhase('MORNING BRIEFING');
+    addLog('☀️', 'System', '전 계통 점검 시작 (All Systems Check)', 'info');
+
+    const sequence = ['smartstore', 'sheets', 'youtube', 'naver', 'instagram', 'email', 'manus_agent'];
+    for (let i = 0; i < sequence.length; i++) {
+      await new Promise(r => setTimeout(r, 400));
+      updateNodeState(sequence[i], 'active', '시스템 점검 중...');
+      activatePulse('jarvis_brain', sequence[i], 'normal');
+    }
+    await new Promise(r => setTimeout(r, 800));
+    sequence.forEach(id => updateNodeState(id, 'success', '시스템 정상'));
+    addLog('✅', 'System', '전 시스템 이상 무 (All Systems Nominal)', 'success');
+    await new Promise(r => setTimeout(r, 2000));
+    sequence.forEach(id => updateNodeState(id, 'idle'));
+    setBriefingActive(false);
+  }, [updateNodeState, activatePulse, addLog]);
+
+  // ─── BroadcastChannel 수신 ───
   useEffect(() => {
-    const connectSSE = () => {
-      if (sseRef.current) sseRef.current.close();
-      setSseStatus('connecting');
-      const es = new EventSource(`${BOOKING_SERVER}/events`);
-      sseRef.current = es;
-      es.onopen = () => {
-        setSseStatus('connected');
-        addLog('JARVIS 시스템 연결됨 | 실시간 모니터링 시작', 'success');
-      };
-      es.onmessage = (e) => {
-        try {
-          const data = JSON.parse(e.data);
-          const nodeId = data.node ? SSE_NODE_MAP[data.node] : null;
-          if (nodeId) {
-            updateNode(nodeId, { 
-              status: data.type === 'node_active' ? 'processing' : 'online',
-              detail: data.message,
-              progress: data.progress
-            });
+    const unsubscribe = onTelemetryEvent((event: TelemetryEvent) => {
+      switch (event.type) {
+        case 'node_state': {
+          const p = event.payload as NodeStatePayload;
+          updateNodeState(p.nodeId, p.state, p.detail, p.data);
+          if (p.state === 'active') {
+            setMissionPhase('EXECUTING');
+            activatePulse('jarvis_brain', p.nodeId, 'normal');
+          } else if (p.state === 'success') {
+            setMissionPhase('COMPLETE');
+            setTimeout(() => setMissionPhase('STANDBY'), 3000);
+          } else if (p.state === 'error') {
+            setMissionPhase('ERROR');
+            setTimeout(() => setMissionPhase('STANDBY'), 5000);
           }
-          if (data.flow) {
-            const conns = data.flow.map((f: string) => SSE_FLOW_MAP[f]).filter(Boolean);
-            setActiveConnections(prev => [...new Set([...prev, ...conns])]);
-            setTimeout(() => setActiveConnections(prev => prev.filter(c => !conns.includes(c))), 5000);
+          break;
+        }
+        case 'pulse_line': {
+          const p = event.payload as PulseLinePayload;
+          activatePulse(p.from, p.to, p.speed);
+          break;
+        }
+        case 'mission_log': {
+          const p = event.payload as MissionLogPayload;
+          addLog(p.icon, p.source, p.message, p.logType);
+          break;
+        }
+        case 'node_data': {
+          const p = event.payload as NodeDataPayload;
+          setNodes(prev => prev.map(n => n.id === p.nodeId ? {
+            ...n, lastSync: p.lastSync, summary: { ...(n.summary || {}), ...p.summary }
+          } : n));
+          break;
+        }
+        case 'briefing_sequence': {
+          const p = event.payload as BriefingSequencePayload;
+          if (p.phase === 'start') {
+            runBriefingSequence();
+          } else if (p.phase === 'node_focus' && p.focusNode) {
+            runBriefingSequence(p.focusNode, p.message);
+          } else if (p.phase === 'complete') {
+            setMissionPhase('BRIEFING COMPLETE');
+            addLog('✅', 'Briefing', p.message || '모닝 브리핑 완료', 'success');
+            setTimeout(() => setMissionPhase('STANDBY'), 3000);
           }
-          addLog(data.message, data.type === 'node_error' ? 'error' : 'info');
-        } catch (err) {}
-      };
-      es.onerror = () => {
-        setSseStatus('disconnected');
-        es.close();
-        setTimeout(connectSSE, 10000);
-      };
-    };
+          break;
+        }
+        case 'system_status': {
+          setMissionPhase(event.payload.phase || 'STANDBY');
+          break;
+        }
+      }
+    });
 
-    connectSSE();
-    return () => sseRef.current?.close();
-  }, [addLog, updateNode]);
+    // 초기 로드 시 localStorage에서 노드 데이터 복원
+    try {
+      const stored = JSON.parse(localStorage.getItem('jarvis-node-data') || '{}');
+      Object.entries(stored).forEach(([nodeId, data]: [string, any]) => {
+        if (data.summary) {
+          setNodes(prev => prev.map(n => n.id === nodeId ? {
+            ...n, lastSync: data.lastSync, summary: data.summary
+          } : n));
+        }
+      });
+    } catch {}
 
-  const selectedNodeData = useMemo(() => nodes.find(n => n.id === selectedNode), [nodes, selectedNode]);
+    return () => { unsubscribe(); };
+  }, [updateNodeState, activatePulse, addLog, runBriefingSequence]);
+
+  // 선택된 노드 데이터
+  const selNode = useMemo(() => nodes.find(n => n.id === selectedNode), [nodes, selectedNode]);
+
+  // 연결선 활성 여부 판단
+  const isConnectionActive = useCallback((from: string, to: string) => {
+    return activePulses.has(`${from}->${to}`) || activePulses.has(`${to}->${from}`);
+  }, [activePulses]);
+
+  const getConnectionPulseSpeed = useCallback((from: string, to: string) => {
+    return pulseSpeedMap[`${from}->${to}`] || pulseSpeedMap[`${to}->${from}`] || 'normal';
+  }, [pulseSpeedMap]);
 
   return (
-    <motion.div
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      exit={{ opacity: 0 }}
-      style={{
-        position: 'fixed', inset: 0, zIndex: 1000,
-        background: THEME.bgDeep, color: THEME.text,
-        display: 'flex', flexDirection: 'column',
-        fontFamily: 'Inter, sans-serif', overflow: 'hidden'
-      }}
-    >
-      <div style={{ padding: '20px 40px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: `1px solid ${THEME.blue}22`, background: 'rgba(6,10,18,0.85)', backdropFilter: 'blur(15px)', zIndex: 10 }}>
+    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+      style={{ position: 'fixed', inset: 0, zIndex: 1000, background: T.bgDeep, color: T.text, display: 'flex', flexDirection: 'column', fontFamily: 'Inter, sans-serif', overflow: 'hidden' }}>
+
+      {/* ─── Header ─── */}
+      <div style={{ padding: '16px 32px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: `1px solid ${T.blue}22`, background: 'rgba(6,10,18,0.9)', backdropFilter: 'blur(15px)', zIndex: 10 }}>
         <div>
-          <div style={{ fontSize: '1.3rem', fontWeight: 'bold', letterSpacing: '0.25em', color: THEME.gold }}>JARVIS NEURAL MISSION MAP v3.2</div>
-          <div style={{ fontSize: '0.75rem', color: THEME.textDim, letterSpacing: '0.15em' }}>MISSION PHASE: <span style={{ color: THEME.blue, fontWeight: 'bold' }}>{missionPhase}</span></div>
+          <div style={{ fontSize: '1.2rem', fontWeight: 'bold', letterSpacing: '0.25em', color: T.gold }}>JARVIS NEURAL MISSION MAP v4.0</div>
+          <div style={{ fontSize: '0.7rem', color: T.textDim, letterSpacing: '0.15em', marginTop: 2 }}>
+            MISSION PHASE: <span style={{ color: missionPhase === 'ERROR' ? T.orange : missionPhase === 'STANDBY' ? T.blue : T.cyan, fontWeight: 'bold' }}>{missionPhase}</span>
+            {briefingActive && <span style={{ marginLeft: 12, color: T.gold }}>☀️ BRIEFING IN PROGRESS</span>}
+          </div>
         </div>
-        <button onClick={onClose} style={{ background: 'rgba(0,212,255,0.1)', border: `1px solid ${THEME.blue}66`, color: THEME.blue, padding: '10px 24px', cursor: 'pointer', borderRadius: '6px', fontWeight: 'bold', letterSpacing: '0.1em', transition: 'all 0.3s' }}>CLOSE TERMINAL</button>
+        <button onClick={onClose} style={{ background: 'rgba(0,212,255,0.1)', border: `1px solid ${T.blue}66`, color: T.blue, padding: '8px 20px', cursor: 'pointer', borderRadius: 6, fontWeight: 'bold', letterSpacing: '0.1em' }}>
+          CLOSE
+        </button>
       </div>
 
+      {/* ─── Main Content ─── */}
       <div style={{ flex: 1, display: 'flex', position: 'relative' }}>
+
+        {/* ─── 3D Canvas ─── */}
         <div style={{ flex: 1, position: 'relative', background: 'radial-gradient(circle at center, #0d1b2e 0%, #030608 100%)' }}>
           <Canvas shadows dpr={[1, 2]}>
             <PerspectiveCamera makeDefault position={[0, 0, 75]} fov={50} />
-            <OrbitControls enablePan={true} enableZoom={true} maxDistance={150} minDistance={30} />
-            
-            <ambientLight intensity={1.0} />
-            <pointLight position={[30, 30, 30]} intensity={2.5} color={THEME.blue} />
-            <pointLight position={[-30, -30, -30]} intensity={1.5} color={THEME.gold} />
-            
-            <BackgroundParticles />
-            
+            <OrbitControls enablePan enableZoom maxDistance={150} minDistance={30} />
+            <ambientLight intensity={0.8} />
+            <pointLight position={[30, 30, 30]} intensity={2} color={T.blue} />
+            <pointLight position={[-30, -30, -30]} intensity={1.5} color={T.gold} />
+
+            <BgParticles />
+
             <Suspense fallback={null}>
               {nodes.map(node => (
                 <Node3D key={node.id} node={node} isSelected={selectedNode === node.id} onSelect={setSelectedNode} />
               ))}
-              
-              <ConnectionLine start={[0, 0, 0]} end={[-22, 12, -12]} active={activeConnections.includes('brain_smartstore')} />
-              <ConnectionLine start={[0, 0, 0]} end={[22, 12, -12]} active={activeConnections.includes('brain_telegram')} />
-              <ConnectionLine start={[0, 0, 0]} end={[-22, -12, -12]} active={activeConnections.includes('brain_scheduler')} />
-              <ConnectionLine start={[0, 0, 0]} end={[22, -12, -12]} active={activeConnections.includes('brain_email')} />
-              <ConnectionLine start={[0, 0, 0]} end={[0, 28, 0]} active={activeConnections.includes('brain_manus')} />
-              <ConnectionLine start={[0, -32, 20]} end={[0, 0, 0]} active={activeConnections.includes('user_brain')} />
-              <ConnectionLine start={[0, 0, 0]} end={[-12, -22, 8]} active={activeConnections.includes('brain_ordersheet')} />
-              <ConnectionLine start={[-12, -22, 8]} end={[12, -22, 8]} active={activeConnections.includes('ordersheet_settlement')} />
-              <ConnectionLine start={[12, -22, 8]} end={[22, 12, -12]} active={activeConnections.includes('settlement_telegram')} />
-              <ConnectionLine start={[0, 28, 0]} end={[22, 12, -12]} active={activeConnections.includes('manus_telegram')} />
+              {CONNECTIONS.map(([from, to], i) => {
+                const fromPos = nodePositions[from];
+                const toPos = nodePositions[to];
+                if (!fromPos || !toPos) return null;
+                const active = isConnectionActive(from, to);
+                return (
+                  <ConnLine
+                    key={i}
+                    start={fromPos as [number, number, number]}
+                    end={toPos as [number, number, number]}
+                    active={active}
+                    pulseSpeed={active ? getConnectionPulseSpeed(from, to) : undefined}
+                  />
+                );
+              })}
             </Suspense>
-
-            <Environment preset="night" />
-            <ContactShadows position={[0, -40, 0]} opacity={0.4} scale={100} blur={2} far={10} />
           </Canvas>
 
-          <div style={{ position: 'absolute', bottom: 35, left: 35, pointerEvents: 'none', zIndex: 10 }}>
-            <div style={{ fontSize: '0.7rem', color: THEME.textDim, marginBottom: 10, letterSpacing: '0.3em' }}>SYSTEM STATUS</div>
-            <div style={{ display: 'flex', gap: 15 }}>
-              <div style={{ padding: '8px 20px', background: 'rgba(0,212,255,0.15)', border: `1px solid ${THEME.blue}55`, borderRadius: 6, fontSize: '0.8rem', backdropFilter: 'blur(8px)', boxShadow: '0 0 15px rgba(0,212,255,0.2)' }}>
-                SSE: <span style={{ color: sseStatus === 'connected' ? THEME.green : THEME.orange, fontWeight: 'bold' }}>{sseStatus.toUpperCase()}</span>
+          {/* ─── Status Bar (bottom-left) ─── */}
+          <div style={{ position: 'absolute', bottom: 30, left: 30, pointerEvents: 'none', zIndex: 10 }}>
+            <div style={{ fontSize: '0.65rem', color: T.textDim, marginBottom: 8, letterSpacing: '0.3em' }}>TELEMETRY STATUS</div>
+            <div style={{ display: 'flex', gap: 12 }}>
+              <div style={{ padding: '6px 16px', background: 'rgba(0,255,136,0.1)', border: `1px solid ${T.green}44`, borderRadius: 6, fontSize: '0.75rem', backdropFilter: 'blur(8px)' }}>
+                SYNC: <span style={{ color: T.green, fontWeight: 'bold' }}>BROADCAST</span>
               </div>
-              <div style={{ padding: '8px 20px', background: 'rgba(200,169,110,0.15)', border: `1px solid ${THEME.gold}55`, borderRadius: 6, fontSize: '0.8rem', backdropFilter: 'blur(8px)', boxShadow: '0 0 15px rgba(200,169,110,0.2)' }}>
-                NODES: <span style={{ fontWeight: 'bold' }}>{nodes.length} ACTIVE</span>
+              <div style={{ padding: '6px 16px', background: 'rgba(200,169,110,0.1)', border: `1px solid ${T.gold}44`, borderRadius: 6, fontSize: '0.75rem', backdropFilter: 'blur(8px)' }}>
+                NODES: <span style={{ fontWeight: 'bold' }}>{nodes.filter(n => n.state !== 'idle').length}/{nodes.length}</span>
+              </div>
+              <div style={{ padding: '6px 16px', background: 'rgba(0,212,255,0.1)', border: `1px solid ${T.blue}44`, borderRadius: 6, fontSize: '0.75rem', backdropFilter: 'blur(8px)' }}>
+                BRAIN: <span style={{ color: T.cyan, fontWeight: 'bold' }}>GEMINI 1.5</span>
               </div>
             </div>
           </div>
         </div>
 
-        <div style={{ width: 420, background: 'rgba(3,6,8,0.92)', borderLeft: `1px solid ${THEME.blue}33`, display: 'flex', flexDirection: 'column', zIndex: 10, backdropFilter: 'blur(25px)' }}>
-          <div style={{ padding: 35, borderBottom: `1px solid ${THEME.blue}22` }}>
-            <div style={{ fontSize: '0.7rem', color: THEME.textDim, letterSpacing: '0.4em', marginBottom: 25 }}>NODE INSPECTOR</div>
-            {selectedNodeData ? (
-              <motion.div initial={{ opacity: 0, x: 30 }} animate={{ opacity: 1, x: 0 }} key={selectedNodeData.id}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 20, marginBottom: 25 }}>
-                  <div style={{ fontSize: '3.5rem', filter: 'drop-shadow(0 0 15px rgba(255,255,255,0.3))' }}>{selectedNodeData.icon}</div>
+        {/* ─── Right Panel ─── */}
+        <div style={{ width: 400, background: 'rgba(3,6,8,0.95)', borderLeft: `1px solid ${T.blue}22`, display: 'flex', flexDirection: 'column', zIndex: 10, backdropFilter: 'blur(25px)' }}>
+
+          {/* ─── Node Inspector ─── */}
+          <div style={{ padding: '24px 28px', borderBottom: `1px solid ${T.blue}15` }}>
+            <div style={{ fontSize: '0.65rem', color: T.textDim, letterSpacing: '0.4em', marginBottom: 20 }}>NODE INSPECTOR</div>
+            {selNode ? (
+              <motion.div initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} key={selNode.id}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginBottom: 18 }}>
+                  <div style={{ fontSize: '2.8rem', filter: 'drop-shadow(0 0 12px rgba(255,255,255,0.2))' }}>{selNode.icon}</div>
                   <div>
-                    <div style={{ fontSize: '1.5rem', fontWeight: 'bold', color: selectedNodeData.color || STATUS_COLOR[selectedNodeData.status], letterSpacing: '0.05em' }}>{selectedNodeData.label}</div>
-                    <div style={{ fontSize: '0.85rem', color: THEME.textDim }}>{selectedNodeData.sublabel}</div>
+                    <div style={{ fontSize: '1.3rem', fontWeight: 'bold', color: selNode.state === 'idle' ? selNode.baseColor : STATE_COLORS[selNode.state].color, letterSpacing: '0.05em' }}>{selNode.label}</div>
+                    <div style={{ fontSize: '0.75rem', color: T.textDim }}>{selNode.sublabel}</div>
                   </div>
                 </div>
-                <div style={{ padding: 22, background: 'rgba(255,255,255,0.03)', borderRadius: 12, border: `1px solid ${THEME.blue}22`, marginBottom: 25, boxShadow: 'inset 0 0 20px rgba(0,212,255,0.05)' }}>
-                  <div style={{ fontSize: '1.05rem', lineHeight: 1.7, color: THEME.text }}>{selectedNodeData.detail}</div>
-                  {selectedNodeData.progress !== undefined && (
-                    <div style={{ marginTop: 20 }}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8, fontSize: '0.75rem', color: THEME.textDim }}>
-                        <span>TASK PROGRESS</span>
-                        <span>{selectedNodeData.progress}%</span>
-                      </div>
-                      <div style={{ height: 8, background: 'rgba(255,255,255,0.05)', borderRadius: 4, overflow: 'hidden' }}>
-                        <motion.div 
-                          initial={{ width: 0 }} 
-                          animate={{ width: `${selectedNodeData.progress}%` }} 
-                          style={{ height: '100%', background: selectedNodeData.color || STATUS_COLOR[selectedNodeData.status], boxShadow: `0 0 20px ${selectedNodeData.color || STATUS_COLOR[selectedNodeData.status]}` }} 
-                        />
-                      </div>
-                    </div>
+
+                {/* Status Badge */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16 }}>
+                  <div style={{
+                    width: 8, height: 8, borderRadius: '50%',
+                    background: STATE_COLORS[selNode.state].color,
+                    boxShadow: `0 0 8px ${STATE_COLORS[selNode.state].color}`,
+                    animation: selNode.state === 'active' ? 'pulse 1s infinite' : selNode.state === 'error' ? 'pulse 0.5s infinite' : 'none',
+                  }} />
+                  <span style={{ fontSize: '0.8rem', color: STATE_COLORS[selNode.state].color, fontWeight: 'bold', letterSpacing: '0.15em' }}>
+                    {STATE_COLORS[selNode.state].label}
+                  </span>
+                  {selNode.lastSync && (
+                    <span style={{ fontSize: '0.65rem', color: T.textDim, marginLeft: 'auto' }}>
+                      {new Date(selNode.lastSync).toLocaleTimeString('ko-KR', { hour12: false })}
+                    </span>
                   )}
                 </div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                  <div style={{ width: 10, height: 10, borderRadius: '50%', background: STATUS_COLOR[selectedNodeData.status], boxShadow: `0 0 10px ${STATUS_COLOR[selectedNodeData.status]}` }} />
-                  <div style={{ fontSize: '0.9rem', color: STATUS_COLOR[selectedNodeData.status], fontWeight: 'bold', letterSpacing: '0.15em' }}>{STATUS_LABEL[selectedNodeData.status]}</div>
+
+                {/* Detail Box */}
+                <div style={{ padding: 16, background: 'rgba(255,255,255,0.02)', borderRadius: 10, border: `1px solid ${T.blue}15`, marginBottom: 14 }}>
+                  <div style={{ fontSize: '0.9rem', lineHeight: 1.6, color: T.text }}>{selNode.detail}</div>
                 </div>
+
+                {/* Summary Data (from API results) */}
+                {selNode.summary && Object.keys(selNode.summary).length > 0 && (
+                  <div style={{ padding: 14, background: 'rgba(0,212,255,0.03)', borderRadius: 10, border: `1px solid ${T.cyan}15` }}>
+                    <div style={{ fontSize: '0.6rem', color: T.textDim, letterSpacing: '0.3em', marginBottom: 10 }}>LATEST DATA</div>
+                    {Object.entries(selNode.summary).map(([key, val]) => (
+                      <div key={key} style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 0', borderBottom: `1px solid ${T.blue}08`, fontSize: '0.8rem' }}>
+                        <span style={{ color: T.textDim }}>{key}</span>
+                        <span style={{ color: T.cyan, fontWeight: 'bold' }}>{String(val)}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </motion.div>
             ) : (
-              <div style={{ color: THEME.textDim, fontSize: '1rem', textAlign: 'center', padding: '60px 0', border: '1px dashed rgba(0,212,255,0.2)', borderRadius: 12 }}>Select a node to inspect</div>
+              <div style={{ color: T.textDim, fontSize: '0.9rem', textAlign: 'center', padding: '40px 0', border: `1px dashed ${T.blue}20`, borderRadius: 10 }}>
+                Select a node to inspect
+              </div>
             )}
           </div>
 
+          {/* ─── Mission Logs ─── */}
           <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-            <div style={{ padding: '25px 35px 12px', fontSize: '0.7rem', color: THEME.textDim, letterSpacing: '0.4em' }}>MISSION LOGS</div>
-            <div style={{ flex: 1, overflowY: 'auto', padding: '0 35px 35px', fontSize: '0.85rem', scrollbarWidth: 'thin', scrollbarColor: `${THEME.blue}33 transparent` }}>
-              {logs.map((log, i) => (
-                <div key={i} style={{ marginBottom: 12, display: 'flex', gap: 15, borderLeft: `3px solid ${log.type === 'error' ? THEME.orange : log.type === 'success' ? THEME.green : THEME.blue}55`, paddingLeft: 15, background: 'rgba(255,255,255,0.01)', padding: '8px 15px', borderRadius: '0 8px 8px 0' }}>
-                  <span style={{ color: THEME.textDim, opacity: 0.7, fontSize: '0.75rem', whiteSpace: 'nowrap', fontFamily: 'monospace' }}>{log.time}</span>
-                  <span style={{ color: log.type === 'error' ? THEME.orange : log.type === 'success' ? THEME.green : THEME.text, lineHeight: 1.5 }}>{log.text}</span>
-                </div>
-              ))}
+            <div style={{ padding: '18px 28px 8px', fontSize: '0.65rem', color: T.textDim, letterSpacing: '0.4em', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <span>MISSION LOGS</span>
+              <span style={{ color: T.blue, fontSize: '0.6rem' }}>{logs.length} entries</span>
+            </div>
+            <div style={{ flex: 1, overflowY: 'auto', padding: '0 28px 20px', scrollbarWidth: 'thin', scrollbarColor: `${T.blue}33 transparent` }}>
+              <AnimatePresence>
+                {logs.map((log, i) => {
+                  const borderColor = log.type === 'error' ? T.orange : log.type === 'success' ? T.green : log.type === 'warn' ? T.warn : log.type === 'thinking' ? T.purple : T.blue;
+                  return (
+                    <motion.div
+                      key={i}
+                      initial={{ opacity: 0, x: 10 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      style={{
+                        marginBottom: 8, display: 'flex', gap: 10,
+                        borderLeft: `3px solid ${borderColor}66`,
+                        padding: '6px 12px', borderRadius: '0 6px 6px 0',
+                        background: `linear-gradient(90deg, ${borderColor}06, transparent)`,
+                      }}
+                    >
+                      <span style={{ fontSize: '0.7rem', color: T.textDim, whiteSpace: 'nowrap', fontFamily: 'monospace', opacity: 0.6 }}>{log.time}</span>
+                      <span style={{ fontSize: '0.8rem' }}>{log.icon}</span>
+                      <span style={{ fontSize: '0.65rem', color: borderColor, fontWeight: 'bold', minWidth: 50 }}>{log.source}</span>
+                      <span style={{ fontSize: '0.78rem', color: log.type === 'error' ? T.orange : T.text, lineHeight: 1.4, flex: 1 }}>{log.text}</span>
+                    </motion.div>
+                  );
+                })}
+              </AnimatePresence>
               <div ref={logsEndRef} />
             </div>
           </div>
         </div>
       </div>
 
-      <div style={{ padding: '18px 40px', background: THEME.bgDeep, borderTop: `1px solid ${THEME.blue}33`, display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem', color: THEME.textDim, zIndex: 10 }}>
-        <div>MAWINPAY INTELLIGENCE · SYSTEM v3.2.0</div>
-        <div style={{ display: 'flex', gap: 30 }}>
-          <span>LATENCY: <span style={{ color: THEME.blue }}>24ms</span></span>
-          <span>UPTIME: <span style={{ color: THEME.blue }}>99.9%</span></span>
-          <span style={{ color: THEME.green, fontWeight: 'bold', letterSpacing: '0.05em' }}>SECURE CONNECTION</span>
+      {/* ─── Footer ─── */}
+      <div style={{ padding: '14px 32px', background: T.bgDeep, borderTop: `1px solid ${T.blue}22`, display: 'flex', justifyContent: 'space-between', fontSize: '0.75rem', color: T.textDim, zIndex: 10 }}>
+        <div>MAWINPAY INTELLIGENCE · JARVIS v4.0 · GEMINI NEURAL ENGINE</div>
+        <div style={{ display: 'flex', gap: 24 }}>
+          <span>SYNC: <span style={{ color: T.green }}>BROADCAST</span></span>
+          <span>NODES: <span style={{ color: T.blue }}>{nodes.length}</span></span>
+          <span style={{ color: T.green, fontWeight: 'bold' }}>SECURE</span>
         </div>
       </div>
+
+      {/* CSS Animation */}
+      <style>{`
+        @keyframes pulse {
+          0%, 100% { opacity: 1; }
+          50% { opacity: 0.3; }
+        }
+      `}</style>
     </motion.div>
   );
 }

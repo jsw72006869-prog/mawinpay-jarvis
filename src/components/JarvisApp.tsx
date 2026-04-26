@@ -15,6 +15,7 @@ import LocalBusinessCards, { type LocalBusinessData } from './LocalBusinessCards
 import { ParticleTextCanvas } from './ParticleTextCanvas';
 import NeuralMissionMap from './NeuralMissionMap';
 import ManusStrategyDashboard from './ManusStrategyDashboard';
+import { telemetryFunctionStart, telemetryFunctionSuccess, telemetryFunctionError, emitMissionLog, emitBriefingSequence, emitNodeState, emitNodeData, emitPulseLine } from '../lib/jarvis-telemetry';
 import VoiceParticleAura from './VoiceParticleAura';
 import GoldenFlare from './GoldenFlare';
 
@@ -373,6 +374,7 @@ export default function JarvisApp() {
           if (isYT) {
             try {
               console.log(`[JARVIS] YouTube API 수집: ${keyword}, ${cnt}명`);
+              telemetryFunctionStart('search_youtube', `YouTube 수집: "${keyword}" ${cnt}명`);
               const result = await searchYouTubeAPI(keyword, Math.min(cnt * 3, 50)); // 필터 고려 3배 요청
               const items: InfluencerData[] = result.items.map((ch: YouTubeChannel) => ({
                 name: ch.name,
@@ -388,13 +390,16 @@ export default function JarvisApp() {
                 collectedAt,
               }));
               const filtered = filterBySubscribers(items);
+              telemetryFunctionSuccess('search_youtube', `YouTube ${filtered.slice(0, cnt).length}명 수집 완료`, { count: filtered.slice(0, cnt).length, keyword: keyword });
               return filtered.slice(0, cnt);
             } catch (err) {
               console.error('[JARVIS] YouTube 수집 실패:', err);
+              telemetryFunctionError('search_youtube', `YouTube 수집 실패: ${err}`);
               return [];
             }
           } else if (isIG) {
             try {
+              telemetryFunctionStart('search_instagram', `Instagram 수집: "${keyword}" ${cnt}명`);
               const result = await searchInstagramAPI(keyword, Math.min(cnt * 2, 20), true);
               const items: InfluencerData[] = (result.items as InstagramAccount[]).map(acc => ({
                 name: acc.fullName || acc.username,
@@ -409,14 +414,17 @@ export default function JarvisApp() {
                 collectedAt,
               }));
               const filtered = filterBySubscribers(items);
+              telemetryFunctionSuccess('search_instagram', `Instagram ${filtered.slice(0, cnt).length}명 수집 완료`, { count: filtered.slice(0, cnt).length, keyword: keyword });
               return filtered.slice(0, cnt);
             } catch (err) {
               console.error('[JARVIS] Instagram 수집 실패:', err);
+              telemetryFunctionError('search_instagram', `Instagram 수집 실패: ${err}`);
               return [];
             }
           } else {
             // 네이버 블로그
             try {
+              telemetryFunctionStart('search_naver', `네이버 블로그 수집: "${keyword}" ${cnt}명`);
               const result = await searchNaverAPI(keyword, 'blog', Math.min(cnt * 3, 100), 'sim');
               const items: InfluencerData[] = result.items.map(item => ({
                 name: item.creatorName || item.title.replace(/<[^>]*>/g, '').substring(0, 20),
@@ -438,9 +446,11 @@ export default function JarvisApp() {
               }));
               appendNaverResultsToSheet(sheetData).then(() => invalidateSheetCache()).catch(err => console.warn('[JARVIS] 네이버 시트 저장 실패:', err));
               const filtered = filterBySubscribers(items);
+              telemetryFunctionSuccess('search_naver', `네이버 ${filtered.slice(0, cnt).length}명 수집 완료`, { count: filtered.slice(0, cnt).length, keyword: keyword });
               return filtered.slice(0, cnt);
             } catch (err) {
               console.error('[JARVIS] 네이버 수집 실패:', err);
+              telemetryFunctionError('search_naver', `네이버 수집 실패: ${err}`);
               return [];
             }
           }
@@ -500,6 +510,7 @@ export default function JarvisApp() {
           .filter(inf => inf.email && inf.email.includes('@'))
           .slice(0, count);
 
+        telemetryFunctionStart('send_email_campaign', `이메일 발송: ${emailTargets.length}명 대상`);
         if (emailTargets.length > 0) {
           // ── Resend로 실제 발송 ──
           const recipients = emailTargets.map(inf => {
@@ -515,6 +526,7 @@ export default function JarvisApp() {
           console.log(`[JARVIS] Resend 발송 시작: ${recipients.length}명`);
           sendEmailsViaResend(recipients).then(result => {
             console.log(`[JARVIS] Resend 발송 완료: ${result.sent}/${result.total}`);
+            telemetryFunctionSuccess('send_email_campaign', `이메일 ${result.sent}건 발송 완료`, { sent: result.sent, failed: result.failed, total: result.total });
             setStats(prev => ({ ...prev, emailsSent: prev.emailsSent + result.sent }));
             saveMemory('마지막 이메일 발송',
               `${result.sent}명 발송 성공 / ${result.failed}명 실패 (${new Date().toLocaleDateString('ko-KR')})`);
@@ -525,6 +537,7 @@ export default function JarvisApp() {
         } else {
           // 이메일 없는 경우 안내
           console.warn('[JARVIS] 이메일 주소가 있는 인플루언서가 없습니다.');
+          telemetryFunctionSuccess('send_email_campaign', `이메일 ${count}건 발송 (시뮬레이션)`, { sent: count, mode: 'simulation' });
           setStats(prev => ({ ...prev, emailsSent: prev.emailsSent + count }));
           const logs = generateEmailLogs(generateMockInfluencers(count, '전체', ''), template);
           appendEmailLogToSheet(logs);
@@ -533,10 +546,14 @@ export default function JarvisApp() {
       } else if (action.type === 'create_banner') {
         const prompt = String(action.params?.prompt || 'influencer marketing campaign');
         const style = String(action.params?.style || 'modern');
+        telemetryFunctionStart('generate_banner', `배너 생성: ${prompt.substring(0, 30)}`);
         const imageUrl = await generateBannerImage(prompt, style);
         if (imageUrl) {
           setBannerImage(imageUrl);
           saveMemory('마지막 배너', `${prompt} (${new Date().toLocaleDateString('ko-KR')})`);
+          telemetryFunctionSuccess('generate_banner', '배너 생성 완료', { prompt: prompt.substring(0, 30) });
+        } else {
+          telemetryFunctionError('generate_banner', '배너 생성 실패');
         }
       } else if (action.type === 'schedule') {
         const task = String(action.params?.task || '');
@@ -551,6 +568,8 @@ export default function JarvisApp() {
       const mission = String(action.params?.mission || '');
       const missionType = String(action.params?.mission_type || 'complex');
       const urgency = String(action.params?.urgency || 'normal');
+
+      telemetryFunctionStart('execute_web_task', `Manus 미션: ${mission.substring(0, 50)}`);
 
       setState('working');
       addMessage('jarvis', action.response);
@@ -579,6 +598,7 @@ export default function JarvisApp() {
             try {
               const status = await getManusTaskStatus(result.taskId);
               if (status.status === 'stopped') {
+                telemetryFunctionSuccess('execute_web_task', `Manus 미션 완료`, { mission: mission.substring(0, 50) });
                 const lastMsg = status.messages?.length > 0 ? status.messages[0].content : '결과를 확인해 주세요.';
                 const completeMsg = `Manus 미션이 완료되었습니다, 선생님. ${lastMsg}`;
                 setState('speaking');
@@ -590,6 +610,7 @@ export default function JarvisApp() {
                 completed = true;
                 break;
               } else if (status.status === 'error') {
+                telemetryFunctionError('execute_web_task', `Manus 미션 오류: ${status.messages?.[0]?.content || '알 수 없는 오류'}`);
                 const lastMsg = status.messages?.length > 0 ? status.messages[0].content : '다시 시도해 보겠습니다.';
                 const failMsg = `Manus 미션 수행 중 문제가 발생했습니다, 선생님. ${lastMsg}`;
                 setState('speaking');
@@ -895,6 +916,8 @@ export default function JarvisApp() {
       const ytCount = Number(ytParams.count) || 5;
       const ytPeriod = String(ytParams.period || '');
 
+      telemetryFunctionStart('search_youtube', `유튜브 ${ytAction}: ${ytKeyword || ytChannelName || ytCategory}`);
+
       // 행동 로그 패널 표시
       setDataPanel({
         visible: true,
@@ -944,6 +967,7 @@ export default function JarvisApp() {
         const ytData = await ytRes.json();
 
         if (ytData.success && ytData.videos?.length > 0) {
+          telemetryFunctionSuccess('search_youtube', `유튜브 ${ytData.videos.length}건 조회 완료`, { videoCount: ytData.videos.length, keyword: ytKeyword || ytCategory });
           // 영상 목록 포맷팅
           let videoListText = '';
           ytData.videos.slice(0, ytCount).forEach((v: any, i: number) => {
@@ -979,9 +1003,11 @@ export default function JarvisApp() {
             speak(speakText, undefined, () => { resolve(); });
           });
         } else {
+          telemetryFunctionError('search_youtube', ytData.error || '유튜브 영상 조회 실패');
           addMessage('jarvis', ytData.error || '유튜브 인기 영상을 찾을 수 없습니다.');
         }
       } catch (err: any) {
+        telemetryFunctionError('search_youtube', `유튜브 조회 오류: ${err.message}`);
         addMessage('jarvis', `유튜브 조회 중 오류가 발생했습니다: ${err.message}`);
       }
 
@@ -1005,6 +1031,8 @@ export default function JarvisApp() {
       const userName = String(action.params?.user_name || '');
       const userPhone = String(action.params?.user_phone || '');
       const additionalInfo = String(action.params?.additional_info || '');
+
+      telemetryFunctionStart('execute_web_task', `웹 작업: ${taskType} - ${businessName || taskDescription || targetSite}`);
 
       // ── 1단계: 자비스 음성 응답 (작업 시작 알림) ──
       setState('speaking');
@@ -1445,6 +1473,7 @@ export default function JarvisApp() {
             if (taskStatus === 'stopped') {
               taskCompleted = true;
               setBookingStep(5);
+              telemetryFunctionSuccess('execute_web_task', `${taskLabel} 완료: ${businessName}`, { taskType, businessName: businessName || targetSite });
               setDataPanel(prev => ({ ...prev, progress: 100, message: `${taskLabel} 자동화 완료` }));
 
               // 마누스의 최종 결과물(output) 또는 마지막 메시지 가져오기
@@ -1463,6 +1492,7 @@ export default function JarvisApp() {
             } else if (taskStatus === 'error') {
               taskError = true;
               const errorMsg = msgs[msgs.length - 1]?.content || `${taskLabel} 중 오류가 발생했습니다.`;
+              telemetryFunctionError('execute_web_task', errorMsg);
               addMessage('jarvis', `❌ [AGENT] 에러: ${errorMsg}`);
               throw new Error(errorMsg);
             }
@@ -1497,6 +1527,7 @@ export default function JarvisApp() {
       } catch (err) {
         setBookingStep(0);
         const errStr = err instanceof Error ? err.message : String(err);
+        telemetryFunctionError('execute_web_task', errStr);
         const errMsg = `선생님, ${businessName || taskLabel} 작업 중 문제가 발생했습니다. ${errStr}. 다른 방법을 시도해 볼까요?`;
         addMessage('jarvis', errMsg, true);
         setDataPanel(prev => ({ ...prev, message: '오류 발생: 중단됨', progress: 0 }));
@@ -2131,6 +2162,10 @@ export default function JarvisApp() {
         speak(action.response, undefined, () => { stopSpeakingLevel(); resolve(); });
       });
 
+      // 텔레메트리: 모닝 브리핑 시퀀스 시작
+      emitBriefingSequence('start', undefined, '모닝 브리핑 프로토콜 가동');
+      telemetryFunctionStart('morning_briefing', '모닝 브리핑 데이터 수집 시작');
+
       // 행동 로그 패널 활성화
       setDataPanel({
         visible: true,
@@ -2142,6 +2177,7 @@ export default function JarvisApp() {
 
       try {
         // ── Step 1: 스마트스토어 데이터 수집 ──
+        emitBriefingSequence('node_focus', 'smartstore', '스마트스토어 데이터 수집 중...');
         setDataPanel(prev => ({
           ...prev,
           progress: 10,
@@ -2181,6 +2217,7 @@ export default function JarvisApp() {
         }
 
         // ── Step 2: Gmail 스캔 (MCP) ──
+        emitBriefingSequence('node_focus', 'email', 'Gmail 메일함 스캔 중...');
         setDataPanel(prev => ({
           ...prev,
           progress: 70,
@@ -2192,6 +2229,7 @@ export default function JarvisApp() {
         // Gmail MCP는 프론트엔드에서 직접 호출 불가 → 브리핑 텍스트에 안내만 포함
 
         // ── Step 3: Gemini 통합 브리핑 생성 ──
+        emitBriefingSequence('node_focus', 'jarvis_brain', 'Gemini 종합 브리핑 보고서 생성 중...');
         setDataPanel(prev => ({
           ...prev,
           progress: 85,
@@ -2252,6 +2290,25 @@ export default function JarvisApp() {
           ],
         }));
 
+        // 텔레메트리: 브리핑 완료 + 노드 데이터 업데이트
+        emitBriefingSequence('complete', undefined, '모닝 브리핑 완료');
+        telemetryFunctionSuccess('morning_briefing', '모닝 브리핑 완료', {
+          newOrders: ss.newOrders || 0,
+          pendingShipping: ss.pendingShipping || 0,
+          totalAmount: ss.totalAmount || 0,
+          influencerTotal: inf.total || 0,
+        });
+        emitNodeData('smartstore', {
+          '신규주문': ss.newOrders || 0,
+          '배송대기': ss.pendingShipping || 0,
+          '오늘매출': `${(ss.totalAmount || 0).toLocaleString()}원`,
+          '전일대비': `${revenueSign}${ss.revenueChangePercent || 0}%`,
+        });
+        emitNodeData('sheets', {
+          '인플루언서총계': inf.total || 0,
+          '어제신규': inf.newYesterday || 0,
+        });
+
         // 화면에 보고서 표시 + 음성 브리핑
         setState('speaking');
         addMessage('jarvis', briefingDisplay, true);
@@ -2263,6 +2320,7 @@ export default function JarvisApp() {
         });
 
       } catch (err) {
+        telemetryFunctionError('morning_briefing', `모닝 브리핑 실패: ${err}`);
         setDataPanel(prev => ({
           ...prev,
           progress: 0,
@@ -2321,6 +2379,8 @@ export default function JarvisApp() {
       await new Promise<void>(resolve => {
         speak(action.response, undefined, () => { stopSpeakingLevel(); resolve(); });
       });
+
+      telemetryFunctionStart('smartstore_action', `스마트스토어: ${ssAction}`);
 
       // ── 스마트스토어 행동 로그 패널 활성화 ──
       setDataPanel({
@@ -2512,6 +2572,9 @@ export default function JarvisApp() {
 
           if (!data.success) throw new Error(data.error || '스마트스토어 작업 실패');
 
+          // 텔레메트리: 스마트스토어 성공
+          telemetryFunctionSuccess('smartstore_action', `스마트스토어 ${ssAction} 완료`, { action: ssAction });
+
           // 결과 메시지 생성
           let resultMsg = '';
           let doneText = '';
@@ -2578,6 +2641,7 @@ export default function JarvisApp() {
         }
 
       } catch (err) {
+        telemetryFunctionError('smartstore_action', `스마트스토어 오류: ${err}`);
         setDataPanel(prev => ({ ...prev, progress: 0, message: '❌ 오류 발생' }));
         const errMsg = `스마트스토어 작업 중 오류가 발생했습니다, 선생님. ${String(err).includes('CLIENT_ID') ? 'API 키 설정을 확인해주세요.' : String(err)}`;
         setState('speaking');
@@ -2646,6 +2710,10 @@ export default function JarvisApp() {
         setTimeout(() => setVoiceListVisible(false), 15000); // 15초 후 자동 숨김
       }
     }
+
+    // 텔레메트리: Gemini 뇌 사고 완료 → jarvis_brain 노드 idle 복귀
+    emitNodeState('jarvis_brain', 'success', '응답 생성 완료');
+    setTimeout(() => emitNodeState('jarvis_brain', 'idle'), 2000);
 
     // ── 메인 응답 발화 ──
     setIsListening(false); // speaking 중 STT 완전 차단 (에코 방지)
@@ -2763,6 +2831,9 @@ export default function JarvisApp() {
     addMessage('user', transcript);
     try {
       // 4. GPT-4o API 호출 (폴백: 로컬 파서)
+      emitNodeState('jarvis_brain', 'active', 'Gemini 뇌 사고 중...');
+      emitPulseLine('user', 'jarvis_brain', 'fast');
+      emitMissionLog('🧠', 'Gemini', '사용자 명령 분석 중...', 'thinking');
       const action = await askGPT(transcript).catch(() => parseCommand(transcript));
       console.log('[JARVIS] GPT 응답 액션:', action.type, action.response.substring(0, 60));
       // 5. 응답 처리 (TTS 재생 + 후속 처리)
@@ -2807,6 +2878,9 @@ export default function JarvisApp() {
     setState('thinking');
     addMessage('user', text);
     try {
+      emitNodeState('jarvis_brain', 'active', 'Gemini 뇌 사고 중...');
+      emitPulseLine('user', 'jarvis_brain', 'fast');
+      emitMissionLog('🧠', 'Gemini', '사용자 명령 분석 중...', 'thinking');
       const action = await askGPT(text).catch(() => parseCommand(text));
       await jarvisRespond(action.response, action);
     } catch (err) {
