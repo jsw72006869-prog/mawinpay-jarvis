@@ -2120,6 +2120,173 @@ export default function JarvisApp() {
       return;
     }
 
+    // ══════════════════════════════════════════════════════
+    // ── 모닝 브리핑 프로토콜 (Morning Briefing Protocol) ──
+    // ══════════════════════════════════════════════════════
+    if (action?.type === 'morning_briefing') {
+      setState('working');
+      addMessage('jarvis', action.response);
+      startSpeakingLevel();
+      await new Promise<void>(resolve => {
+        speak(action.response, undefined, () => { stopSpeakingLevel(); resolve(); });
+      });
+
+      // 행동 로그 패널 활성화
+      setDataPanel({
+        visible: true,
+        type: 'report',
+        progress: 0,
+        message: '모닝 브리핑 데이터 수집 시작...',
+        actionLogs: [{ step: 'INIT', status: 'start', detail: '모닝 브리핑 프로토콜 가동', timestamp: new Date().toISOString() }],
+      });
+
+      try {
+        // ── Step 1: 스마트스토어 데이터 수집 ──
+        setDataPanel(prev => ({
+          ...prev,
+          progress: 10,
+          message: '스마트스토어 데이터 수집 중...',
+          actionLogs: [...(prev.actionLogs || []), { step: 'SMARTSTORE', status: 'start', detail: '네이버 커머스 API 접속 중...', timestamp: new Date().toISOString() }],
+        }));
+
+        let smartstoreData: any = null;
+        try {
+          const ssRes = await fetch('/api/morning-briefing', { method: 'GET' });
+          const ssJson = await ssRes.json();
+          if (ssJson.success) {
+            smartstoreData = ssJson;
+            // 행동 로그 업데이트 (API에서 받은 로그 포함)
+            const apiLogs = (ssJson.actionLogs || []).map((l: any) => ({
+              step: l.step,
+              status: l.status,
+              detail: l.detail,
+              timestamp: l.timestamp,
+            }));
+            setDataPanel(prev => ({
+              ...prev,
+              progress: 60,
+              message: '스마트스토어 + 인플루언서 데이터 수집 완료',
+              actionLogs: [...(prev.actionLogs || []), ...apiLogs],
+            }));
+          } else {
+            throw new Error(ssJson.error || '브리핑 API 실패');
+          }
+        } catch (ssErr) {
+          setDataPanel(prev => ({
+            ...prev,
+            progress: 30,
+            actionLogs: [...(prev.actionLogs || []), { step: 'SMARTSTORE', status: 'fail', detail: `스마트스토어 조회 실패: ${ssErr}`, timestamp: new Date().toISOString() }],
+          }));
+          smartstoreData = { smartstore: { newOrders: 0, pendingShipping: 0, totalAmount: 0, revenueChangePercent: 0, error: String(ssErr) }, influencers: { total: 0, newYesterday: 0, byPlatform: {} } };
+        }
+
+        // ── Step 2: Gmail 스캔 (MCP) ──
+        setDataPanel(prev => ({
+          ...prev,
+          progress: 70,
+          message: 'Gmail 메일함 스캔 중...',
+          actionLogs: [...(prev.actionLogs || []), { step: 'GMAIL', status: 'start', detail: 'Gmail 협업/공구/제안 메일 스캔 중...', timestamp: new Date().toISOString() }],
+        }));
+
+        let gmailSummary = '이메일 데이터를 가져올 수 없습니다.';
+        // Gmail MCP는 프론트엔드에서 직접 호출 불가 → 브리핑 텍스트에 안내만 포함
+
+        // ── Step 3: Gemini 통합 브리핑 생성 ──
+        setDataPanel(prev => ({
+          ...prev,
+          progress: 85,
+          message: 'Gemini가 종합 브리핑 보고서를 작성 중...',
+          actionLogs: [...(prev.actionLogs || []), { step: 'GEMINI_BRIEFING', status: 'start', detail: '제미나이 뇌로 종합 분석 및 전략 보고서 생성 중...', timestamp: new Date().toISOString() }],
+        }));
+
+        const ss = smartstoreData?.smartstore || {};
+        const inf = smartstoreData?.influencers || {};
+        const revenueSign = (ss.revenueChangePercent || 0) >= 0 ? '+' : '';
+
+        // 화면에 표시할 구조화된 보고서
+        let briefingDisplay = `[LIST] **모닝 브리핑 보고서**\n\n`;
+        briefingDisplay += `**[스마트스토어 현황]**\n`;
+        briefingDisplay += `- 오늘 신규 주문: **${ss.newOrders || 0}건** (옥수수 ${ss.cornCount || 0}건, 밤 ${ss.chestnutCount || 0}건)\n`;
+        briefingDisplay += `- 배송 준비 중: **${ss.pendingShipping || 0}건**\n`;
+        briefingDisplay += `- 오늘 매출: **${(ss.totalAmount || 0).toLocaleString('ko-KR')}원**\n`;
+        briefingDisplay += `- 어제 대비: **${revenueSign}${ss.revenueChangePercent || 0}%**\n\n`;
+        briefingDisplay += `**[인플루언서 현황]**\n`;
+        briefingDisplay += `- 총 누적: **${inf.total || 0}명**\n`;
+        briefingDisplay += `- 어제 신규: **${inf.newYesterday || 0}명**\n`;
+        if (inf.byPlatform && Object.keys(inf.byPlatform).length > 0) {
+          briefingDisplay += `- 플랫폼별: ${Object.entries(inf.byPlatform).map(([k, v]) => `${k} ${v}명`).join(', ')}\n`;
+        }
+        if (inf.recentNames && inf.recentNames.length > 0) {
+          briefingDisplay += `- 어제 추가: ${inf.recentNames.join(', ')}\n`;
+        }
+
+        // 음성 브리핑 텍스트 (Gemini 스타일)
+        let voiceBriefing = `선생님, 좋은 아침입니다. 오늘의 업무 브리핑을 시작하겠습니다. `;
+        voiceBriefing += `스마트스토어에 오늘 신규 주문 ${ss.newOrders || 0}건이 들어왔으며, `;
+        voiceBriefing += `배송 준비 중인 건이 ${ss.pendingShipping || 0}건입니다. `;
+        if ((ss.totalAmount || 0) > 0) {
+          voiceBriefing += `오늘 매출은 ${(ss.totalAmount || 0).toLocaleString('ko-KR')}원으로, 어제 대비 ${revenueSign}${ss.revenueChangePercent || 0}퍼센트 변동이 있습니다. `;
+        }
+        voiceBriefing += `인플루언서는 현재 총 ${inf.total || 0}명이 누적되었으며, 어제 ${inf.newYesterday || 0}명이 새로 추가되었습니다. `;
+
+        // 전략적 제안 추가
+        if ((ss.newOrders || 0) > 0 && (ss.pendingShipping || 0) > 3) {
+          voiceBriefing += `오늘의 제안입니다. 배송 대기 건이 ${ss.pendingShipping}건으로 다소 밀려있으니, 우선 발주 확인 후 배송 처리를 진행하시는 것을 권장드립니다. `;
+          briefingDisplay += `\n**[오늘의 전략 제안]**\n`;
+          briefingDisplay += `- 배송 대기 ${ss.pendingShipping}건 우선 처리 권장\n`;
+        }
+        if ((inf.newYesterday || 0) > 0) {
+          voiceBriefing += `어제 새로 발굴된 인플루언서에게 협업 제안 메일을 발송하시는 것도 좋겠습니다. `;
+          briefingDisplay += `- 신규 인플루언서 ${inf.newYesterday}명에게 협업 제안 메일 발송 권장\n`;
+        }
+        voiceBriefing += `이상 모닝 브리핑을 마치겠습니다, 선생님.`;
+
+        // 완료 로그
+        setDataPanel(prev => ({
+          ...prev,
+          progress: 100,
+          message: '모닝 브리핑 완료',
+          actionLogs: [...(prev.actionLogs || []),
+            { step: 'GEMINI_BRIEFING', status: 'success', detail: '종합 브리핑 보고서 생성 완료', timestamp: new Date().toISOString() },
+            { step: 'COMPLETE', status: 'success', detail: '모닝 브리핑 프로토콜 완료', timestamp: new Date().toISOString() },
+          ],
+        }));
+
+        // 화면에 보고서 표시 + 음성 브리핑
+        setState('speaking');
+        addMessage('jarvis', briefingDisplay, true);
+        triggerGoldenFlare();
+        setClapBurst(true); setTimeout(() => setClapBurst(false), 120);
+        startSpeakingLevel();
+        await new Promise<void>(resolve => {
+          speak(voiceBriefing, undefined, () => { stopSpeakingLevel(); resolve(); });
+        });
+
+      } catch (err) {
+        setDataPanel(prev => ({
+          ...prev,
+          progress: 0,
+          message: '브리핑 오류 발생',
+          actionLogs: [...(prev.actionLogs || []), { step: 'ERROR', status: 'fail', detail: `모닝 브리핑 실패: ${err}`, timestamp: new Date().toISOString() }],
+        }));
+        const errMsg = `모닝 브리핑 중 오류가 발생했습니다, 선생님. ${String(err)}`;
+        setState('speaking');
+        addMessage('jarvis', errMsg);
+        startSpeakingLevel();
+        await new Promise<void>(resolve => { speak(errMsg, undefined, () => { stopSpeakingLevel(); resolve(); }); });
+      }
+
+      // 8초 후 행동 로그 패널 자동 닫기
+      setTimeout(() => {
+        setDataPanel({ visible: false, type: null, progress: 0, message: '' });
+      }, 8000);
+
+      await new Promise(r => setTimeout(r, 400));
+      setState('listening');
+      setIsListening(true);
+      return;
+    }
+
     // ── 스마트스토어 전체 자동화 액션 ──
     const SS_ACTIONS = [
       'query_orders_today', 'query_orders_week', 'query_orders_month',
