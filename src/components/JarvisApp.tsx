@@ -9,7 +9,7 @@ import { appendInfluencersToSheet, appendEmailLogToSheet, appendNaverResultsToSh
 import ConversationStream, { type Message } from './ConversationStream';
 import SparkleParticles from './SparkleParticles';
 import ClapDetector from './ClapDetector';
-import HoloDataPanel from './HoloDataPanel';
+// import HoloDataPanel from './HoloDataPanel'; // 제거됨
 import InfluencerCards, { type InfluencerData } from './InfluencerCards';
 import LocalBusinessCards, { type LocalBusinessData } from './LocalBusinessCards';
 import { ParticleTextCanvas } from './ParticleTextCanvas';
@@ -209,13 +209,19 @@ export default function JarvisApp() {
 
   useEffect(() => {
     const envKey = import.meta.env.VITE_GEMINI_API_KEY;
+    console.log('[JARVIS] Gemini 초기화 시도:', { envKey: envKey ? '***' : 'MISSING', storedKey: settingsForm.geminiKey ? '***' : 'NONE' });
+    
     if (envKey) {
+      console.log('[JARVIS] 환경 변수에서 Gemini 키 로드 성공');
       initializeGemini(envKey);
       if (!settingsForm.geminiKey) {
         setSettingsForm(prev => ({ ...prev, geminiKey: envKey }));
       }
     } else if (settingsForm.geminiKey) {
+      console.log('[JARVIS] localStorage에서 Gemini 키 로드 성공');
       initializeGemini(settingsForm.geminiKey);
+    } else {
+      console.warn('[JARVIS] WARNING: Gemini API 키를 찾을 수 없습니다. 설정창에서 키를 입력해주세요.');
     }
   }, [settingsForm.geminiKey]);
 
@@ -1198,6 +1204,7 @@ export default function JarvisApp() {
                 const safeSpeak = (text: string): Promise<void> => {
                   return new Promise((resolve) => {
                     try {
+                      stopGlobalAudio(); // 기존 음성 중지
                       setState('speaking');
                       startSpeakingLevel();
                       speak(text, undefined, () => { try { stopSpeakingLevel(); } catch(e) {} resolve(); });
@@ -1229,7 +1236,7 @@ export default function JarvisApp() {
                 addMessage('jarvis', noDateMsg, true);
                 const safeSpeak2 = (text: string): Promise<void> => {
                   return new Promise((resolve) => {
-                    try { setState('speaking'); startSpeakingLevel(); speak(text, undefined, () => { try { stopSpeakingLevel(); } catch(e) {} resolve(); }); } catch (e) { try { stopSpeakingLevel(); } catch(e2) {} resolve(); }
+                    try { stopGlobalAudio(); setState('speaking'); startSpeakingLevel(); speak(text, undefined, () => { try { stopSpeakingLevel(); } catch(e) {} resolve(); }); } catch (e) { try { stopSpeakingLevel(); } catch(e2) {} resolve(); }
                   });
                 };
                 await safeSpeak2(noDateMsg);
@@ -1318,6 +1325,7 @@ export default function JarvisApp() {
         const safeSpeak = (text: string): Promise<void> => {
           return new Promise((resolve) => {
             try {
+              stopGlobalAudio(); // 기존 음성 중지
               setState('speaking');
               startSpeakingLevel();
               speak(text, undefined, () => { 
@@ -3628,18 +3636,7 @@ export default function JarvisApp() {
         </div>
       </motion.footer>
 
-      {/* ── 홀로그램 데이터 패널 ── */}
-      <AnimatePresence>
-        {dataPanel.visible && (
-          <HoloDataPanel
-            type={dataPanel.type}
-            progress={dataPanel.progress}
-            message={dataPanel.message}
-            bookingSteps={dataPanel.bookingSteps}
-            actionLogs={dataPanel.actionLogs as any}
-          />
-        )}
-      </AnimatePresence>
+      {/* ── 홀로그램 데이터 패널 제거됨 (MISSION LOGS로 대체) ── */}
 
       {/* ── 인플루언서 카드 UI ── */}
       <InfluencerCards
@@ -5155,11 +5152,10 @@ export default function JarvisApp() {
         )}
       </AnimatePresence>
 
-      {/* ── 플랫폼 데이터 카드 (중앙 모핑 UI) ── */}
+      {/* ── 플래트폼 데이터 카드 (명령 시에만 표시) ── */}
       <AnimatePresence>
-        <PlatformDataCards visible={true} />
+        <PlatformDataCards visible={false} />
       </AnimatePresence>
-
       {/* ── 뉴럴 미션 맵 (시스템 현황) ── */}
       <AnimatePresence>
         {neuralMapVisible && (
