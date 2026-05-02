@@ -21,6 +21,8 @@ import VoiceParticleAura from './VoiceParticleAura';
 import GoldenFlare from './GoldenFlare';
 import AgentConsolePanel from './AgentConsolePanel';
 import HologramWorkPanel from './HologramWorkPanel';
+import MarketIntelCard from './MarketIntelCard';
+import BookingPanel from './BookingPanel';
 
 // ── 시그니처 응답 목록 (GPT 대기 없이 즉시 재생) ──
 const SIGNATURE_RESPONSES = [
@@ -195,6 +197,8 @@ export default function JarvisApp() {
   // ─── Agent Console & HUD 상태 (v4.2) ───
   const [agentConsoleVisible, setAgentConsoleVisible] = useState(false);
   const [coreDimLevel, setCoreDimLevel] = useState(0); // 0=정상, 1=최대감소
+  const [marketIntelVisible, setMarketIntelVisible] = useState(false);
+  const [bookingPanelData, setBookingPanelData] = useState<{ businessName?: string; date?: string; time?: string; currentStep?: number; availableSlots?: string[]; captchaImage?: string; screenshot?: string } | null>(null);
 
   const triggerGoldenFlare = useCallback(() => {
     setShowGoldenFlare(true);
@@ -1050,6 +1054,7 @@ export default function JarvisApp() {
       if (taskType === 'booking') {
         emitNodeState('booking', 'active', `네이버 예약 시작: ${businessName} ${date} ${time}`);
         emitMissionLog('info', `예약 에이전트 가동: ${businessName}`, 'booking');
+        setBookingPanelData({ businessName, date, time, currentStep: 0 });
       }
 
       // ── 1단계: 자비스 음성 응답 (작업 시작 알림) ──
@@ -1512,6 +1517,7 @@ export default function JarvisApp() {
               if (taskType === 'booking') {
                 emitNodeState('booking', 'success', `예약 완료: ${businessName} ${date} ${time}`);
                 emitNodeData('booking', { businessName, date, time, status: 'confirmed' });
+                setTimeout(() => setBookingPanelData(null), 3000); // 3초 후 패널 닫기
               }
               setDataPanel(prev => ({ ...prev, progress: 100, message: `${taskLabel} 자동화 완료` }));
 
@@ -1536,6 +1542,8 @@ export default function JarvisApp() {
               if (taskType === 'booking') {
                 emitNodeState('booking', 'error', errorMsg);
                 emitMissionLog('error', `예약 실패: ${errorMsg}`, 'booking');
+                setBookingPanelData(prev => prev ? { ...prev, currentStep: -1 } : null); // 에러 상태 표시
+                setTimeout(() => setBookingPanelData(null), 5000); // 5초 후 패널 닫기
               }
               addMessage('jarvis', `❌ [AGENT] 에러: ${errorMsg}`);
               throw new Error(errorMsg);
@@ -2265,6 +2273,7 @@ export default function JarvisApp() {
         // ── Step 2: 농산물 시장 분석 (MarketIntelligence) ──
         emitBriefingSequence('node_focus', 'market_intel', '농산물 시장 데이터 수집 중...');
         emitNodeState('market_intel', 'active', '농산물 가격 데이터 수집 중');
+        setMarketIntelVisible(true); // MarketIntelCard 활성화 (v4.2)
         setDataPanel(prev => ({
           ...prev,
           progress: 45,
@@ -5248,6 +5257,34 @@ export default function JarvisApp() {
 
       {/* ── 홀로그램 작업 패널 (v4.2) - 텔레메트리 기반 자동 표시 ── */}
       <HologramWorkPanel onCoreDimChange={setCoreDimLevel} />
+
+      {/* ── 마켓 인텔리전스 카드 (v4.2) - 텔레메트리 기반 자동 표시 ── */}
+      <MarketIntelCard visible={marketIntelVisible} onClose={() => setMarketIntelVisible(false)} />
+
+      {/* ── 예약 전용 패널 (v4.2) - 단계별 진행 표시 ── */}
+      <BookingPanel
+        visible={!!bookingPanelData}
+        businessName={bookingPanelData?.businessName || ''}
+        date={bookingPanelData?.date || ''}
+        time={bookingPanelData?.time || ''}
+        currentStep={bookingPanelData?.currentStep || 0}
+        availableSlots={bookingPanelData?.availableSlots || []}
+        captchaImage={bookingPanelData?.captchaImage || ''}
+        screenshot={bookingPanelData?.screenshot || ''}
+        onSlotSelect={(slot) => {
+          if (verificationResolveRef.current) {
+            verificationResolveRef.current(slot);
+            verificationResolveRef.current = null;
+          }
+        }}
+        onCaptchaSubmit={(value) => {
+          if (verificationResolveRef.current) {
+            verificationResolveRef.current(value);
+            verificationResolveRef.current = null;
+          }
+        }}
+        onClose={() => setBookingPanelData(null)}
+      />
 
       {/* ── 에이전트 콘솔 패널 (v4.2) - 실시간 작업 로그 ── */}
       <AgentConsolePanel
