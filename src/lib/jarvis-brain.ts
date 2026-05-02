@@ -747,16 +747,53 @@ export function parseCommand(text: string): JarvisAction {
     };
   }
 
-  // [H] 인플루언서 수집
-  if (/수집|찾아|인플루언서|블로거|유튜버|크리에이터/.test(lower)) {
+  // [H] 인플루언서 수집 (유튜브/인스타/네이버 자동 감지)
+  if (/수집|찾아|인플루언서|블로거|유튜버|크리에이터|유튜브|인스타|instagram|youtube/.test(lower)) {
     const countMatch = lower.match(/(\d+)\s*명/);
     const count = countMatch ? parseInt(countMatch[1]) : 50;
-    const keyword = lower.match(/(맛집|뷰티|여행|패션|육아|운동|헬스|요리|게임|음악|캠핑|농산물|밤)/)?.[1] || '';
+    const keyword = lower.match(/(맛집|뷰티|여행|패션|육아|운동|헬스|요리|게임|음악|캠핑|농산물|밤|먹방|리뷰|테크|IT|푸드|라이프)/)?.[1] || '';
+    
+    // 플랫폼 자동 감지
+    const hasYouTube = /유튜브|유튜버|youtube|yt|영상/.test(lower);
+    const hasInstagram = /인스타|instagram|ig|릴스/.test(lower);
+    const hasNaver = /네이버|블로거|블로그|naver/.test(lower);
+    
+    // 복수 플랫폼 감지
+    let platform = '';
+    let platforms: { platform: string; count: number }[] = [];
+    
+    if ((hasYouTube && hasInstagram) || (hasYouTube && hasNaver) || (hasInstagram && hasNaver)) {
+      // 복수 플랫폼
+      if (hasYouTube) platforms.push({ platform: 'YouTube', count: Math.ceil(count / 2) });
+      if (hasInstagram) platforms.push({ platform: 'Instagram', count: Math.ceil(count / 3) });
+      if (hasNaver) platforms.push({ platform: 'Naver Blog', count: Math.ceil(count / 3) });
+    } else if (hasYouTube) {
+      platform = 'YouTube';
+    } else if (hasInstagram) {
+      platform = 'Instagram';
+    } else if (hasNaver) {
+      platform = 'Naver Blog';
+    }
+    // 플랫폼 미지정 시 유튜브+네이버 동시 수집
+    if (!platform && platforms.length === 0) {
+      platforms = [
+        { platform: 'YouTube', count: Math.ceil(count / 2) },
+        { platform: 'Naver Blog', count: Math.ceil(count / 2) },
+      ];
+    }
+    
+    const platformLabel = platform || platforms.map(p => p.platform).join('+');
     return {
       type: 'collect',
-      params: { count, keyword, platform: '', category: keyword || '전체' },
-      workingMessage: `${keyword ? keyword + ' ' : ''}인플루언서 ${count}명 수집 중...`,
-      response: `${keyword ? keyword + ' 분야 ' : ''}인플루언서 ${count}명을 수집하겠습니다. 구글 시트에 실시간으로 저장됩니다.`,
+      params: { 
+        count, 
+        keyword, 
+        platform, 
+        platforms: platforms.length > 0 ? JSON.stringify(platforms) : '',
+        category: keyword || '전체' 
+      },
+      workingMessage: `${platformLabel} ${keyword ? keyword + ' ' : ''}인플루언서 ${count}명 수집 중...`,
+      response: `${platformLabel}에서 ${keyword ? keyword + ' 분야 ' : ''}인플루언서 ${count}명을 수집하겠습니다. 구글 시트에 실시간으로 저장됩니다.`,
       followUp: '수집이 완료되면 이메일 발송도 바로 진행할까요?',
     };
   }

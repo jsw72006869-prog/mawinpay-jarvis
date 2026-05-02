@@ -176,18 +176,18 @@ export default function ConversationStream({ messages, isTyping }: ConversationS
                   className="flex-shrink-0 w-7 h-7 rounded-full flex items-center justify-center font-bold"
                   style={{
                     background: msg.isCompletion
-                      ? 'linear-gradient(135deg, rgba(255,215,0,0.4), rgba(0,245,255,0.3))'
+                      ? 'linear-gradient(135deg, rgba(0,245,255,0.4), rgba(0,180,255,0.3))'
                       : 'linear-gradient(135deg, rgba(0,102,255,0.3), rgba(0,245,255,0.2))',
-                    border: `1px solid ${msg.isCompletion ? 'rgba(255,215,0,0.6)' : 'rgba(0,245,255,0.45)'}`,
-                    color: msg.isCompletion ? '#FFD700' : '#00F5FF',
+                    border: `1px solid ${msg.isCompletion ? 'rgba(0,245,255,0.6)' : 'rgba(0,245,255,0.45)'}`,
+                    color: msg.isCompletion ? '#00F5FF' : '#00F5FF',
                     fontFamily: 'Orbitron, monospace',
                     fontSize: '0.5rem',
                     letterSpacing: '0.05em',
-                    boxShadow: msg.isCompletion ? '0 0 14px rgba(255,215,0,0.4)' : '0 0 10px rgba(0,245,255,0.2)',
+                    boxShadow: msg.isCompletion ? '0 0 14px rgba(0,245,255,0.4)' : '0 0 10px rgba(0,245,255,0.2)',
                   }}
                   animate={isLast ? {
                     boxShadow: msg.isCompletion
-                      ? ['0 0 14px rgba(255,215,0,0.4)', '0 0 24px rgba(255,215,0,0.8)', '0 0 14px rgba(255,215,0,0.4)']
+                      ? ['0 0 14px rgba(0,245,255,0.4)', '0 0 24px rgba(0,245,255,0.8)', '0 0 14px rgba(0,245,255,0.4)']
                       : ['0 0 10px rgba(0,245,255,0.2)', '0 0 18px rgba(0,245,255,0.5)', '0 0 10px rgba(0,245,255,0.2)']
                   } : {}}
                   transition={{ duration: 2, repeat: Infinity }}
@@ -203,17 +203,17 @@ export default function ConversationStream({ messages, isTyping }: ConversationS
                   padding: '10px 16px',
                   borderRadius: isJarvis ? '4px 16px 16px 16px' : '16px 4px 16px 16px',
                   background: msg.isCompletion
-                    ? 'linear-gradient(135deg, rgba(255,215,0,0.08), rgba(0,245,255,0.06))'
+                    ? 'linear-gradient(135deg, rgba(0,245,255,0.08), rgba(0,180,255,0.06))'
                     : isJarvis
                       ? 'linear-gradient(135deg, rgba(0,102,255,0.1), rgba(0,245,255,0.06))'
-                      : 'linear-gradient(135deg, rgba(255,107,53,0.1), rgba(255,179,71,0.06))',
-                  border: `1px solid ${msg.isCompletion ? 'rgba(255,215,0,0.35)' : isJarvis ? 'rgba(0,245,255,0.22)' : 'rgba(255,107,53,0.22)'}`,
+                      : 'linear-gradient(135deg, rgba(100,180,255,0.08), rgba(140,200,255,0.04))',
+                  border: `1px solid ${msg.isCompletion ? 'rgba(0,245,255,0.35)' : isJarvis ? 'rgba(0,245,255,0.22)' : 'rgba(100,180,255,0.22)'}`,
                   backdropFilter: 'blur(12px)',
                   boxShadow: msg.isCompletion
-                    ? '0 4px 20px rgba(255,215,0,0.12), inset 0 1px 0 rgba(255,215,0,0.1)'
+                     ? '0 4px 20px rgba(0,245,255,0.12), inset 0 1px 0 rgba(0,245,255,0.1)'
                     : isJarvis
                       ? '0 4px 20px rgba(0,102,255,0.08), inset 0 1px 0 rgba(0,245,255,0.08)'
-                      : '0 4px 20px rgba(255,107,53,0.08), inset 0 1px 0 rgba(255,107,53,0.08)',
+                      : '0 4px 20px rgba(100,180,255,0.06), inset 0 1px 0 rgba(100,180,255,0.06)',
                   position: 'relative',
                   overflow: 'hidden',
                 }}
@@ -223,7 +223,7 @@ export default function ConversationStream({ messages, isTyping }: ConversationS
                   <motion.div
                     style={{
                       position: 'absolute', inset: 0,
-                      background: 'linear-gradient(135deg, rgba(255,215,0,0.04), rgba(0,245,255,0.04))',
+                      background: 'linear-gradient(135deg, rgba(0,245,255,0.04), rgba(0,180,255,0.04))',
                       pointerEvents: 'none',
                     }}
                     animate={{ opacity: [0.5, 1, 0.5] }}
@@ -235,7 +235,7 @@ export default function ConversationStream({ messages, isTyping }: ConversationS
                 <div style={{
                   fontFamily: 'Orbitron, monospace',
                   fontSize: '0.48rem',
-                  color: msg.isCompletion ? 'rgba(255,215,0,0.7)' : isJarvis ? 'rgba(0,245,255,0.55)' : 'rgba(255,107,53,0.55)',
+                  color: msg.isCompletion ? 'rgba(0,245,255,0.7)' : isJarvis ? 'rgba(0,245,255,0.55)' : 'rgba(100,180,255,0.55)',
                   letterSpacing: '0.2em',
                   marginBottom: '5px',
                 }}>
@@ -244,7 +244,7 @@ export default function ConversationStream({ messages, isTyping }: ConversationS
 
                 {/* 텍스트 */}
                 <p style={{
-                  color: isJarvis ? 'rgba(224,242,254,0.92)' : 'rgba(255,237,213,0.92)',
+                  color: isJarvis ? 'rgba(224,242,254,0.92)' : 'rgba(220,235,255,0.92)',
                   fontSize: '0.82rem',
                   lineHeight: 1.6,
                   letterSpacing: '0.01em',
@@ -274,12 +274,12 @@ export default function ConversationStream({ messages, isTyping }: ConversationS
                 <div
                   className="flex-shrink-0 w-7 h-7 rounded-full flex items-center justify-center"
                   style={{
-                    background: 'linear-gradient(135deg, rgba(255,107,53,0.3), rgba(255,179,71,0.2))',
-                    border: '1px solid rgba(255,107,53,0.4)',
-                    color: '#FF6B35',
+                    background: 'linear-gradient(135deg, rgba(100,180,255,0.3), rgba(140,200,255,0.2))',
+                    border: '1px solid rgba(100,180,255,0.4)',
+                    color: '#64B4FF',
                     fontFamily: 'Orbitron, monospace',
                     fontSize: '0.5rem',
-                    boxShadow: '0 0 10px rgba(255,107,53,0.2)',
+                    boxShadow: '0 0 10px rgba(100,180,255,0.2)',
                   }}
                 >
                   YOU
