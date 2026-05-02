@@ -67,7 +67,7 @@ interface ActivePulse {
 }
 
 const INITIAL_NODES: MapNode[] = [
-  { id: 'jarvis_brain', label: 'JARVIS CORE',  sublabel: 'Gemini 1.5 Pro',    icon: '🧠', state: 'idle', detail: 'Neural Core Online',        x: 0,   y: 0,    z: 0,   baseColor: T.purple },
+  { id: 'jarvis_brain', label: 'JARVIS CORE',  sublabel: 'GPT-4.1-mini',    icon: '🧠', state: 'idle', detail: 'Neural Core Online',        x: 0,   y: 0,    z: 0,   baseColor: T.purple },
   { id: 'smartstore',   label: 'SMARTSTORE',    sublabel: 'Naver Commerce',     icon: '🛒', state: 'idle', detail: 'Awaiting query',             x: -22, y: 14,   z: -8,  baseColor: T.green },
   { id: 'youtube',      label: 'YOUTUBE',       sublabel: 'Data API v3',        icon: '▶️', state: 'idle', detail: 'Search standby',             x: 22,  y: 14,   z: -8,  baseColor: '#FF0000' },
   { id: 'naver',        label: 'NAVER',         sublabel: 'Search API',         icon: '🔍', state: 'idle', detail: 'Blog/Cafe scanner ready',    x: -28, y: -6,   z: -5,  baseColor: '#1EC800' },
@@ -235,7 +235,7 @@ export default function NeuralMissionMap({ onClose }: { onClose: () => void }) {
   const [nodes, setNodes] = useState<MapNode[]>(INITIAL_NODES);
   const [logs, setLogs] = useState<LogEntry[]>([
     { time: new Date().toLocaleTimeString('ko-KR', { hour12: false }), icon: '🚀', source: 'System', text: 'JARVIS Neural Mission Map v4.0 Online', type: 'info' },
-    { time: new Date().toLocaleTimeString('ko-KR', { hour12: false }), icon: '🧠', source: 'Gemini', text: 'Neural Core: Gemini 1.5 Pro Active', type: 'success' },
+    { time: new Date().toLocaleTimeString('ko-KR', { hour12: false }), icon: '🧠', source: 'GPT', text: 'Neural Core: OpenAI GPT-4.1 Active', type: 'success' },
   ]);
   const [selectedNode, setSelectedNode] = useState<string | null>('jarvis_brain');
   const [activePulses, setActivePulses] = useState<Set<string>>(new Set());
@@ -457,7 +457,7 @@ export default function NeuralMissionMap({ onClose }: { onClose: () => void }) {
                 NODES: <span style={{ fontWeight: 'bold' }}>{nodes.filter(n => n.state !== 'idle').length}/{nodes.length}</span>
               </div>
               <div style={{ padding: '6px 16px', background: 'rgba(0,212,255,0.1)', border: `1px solid ${T.blue}44`, borderRadius: 6, fontSize: '0.75rem', backdropFilter: 'blur(8px)' }}>
-                BRAIN: <span style={{ color: T.cyan, fontWeight: 'bold' }}>GEMINI 1.5</span>
+                BRAIN: <span style={{ color: T.cyan, fontWeight: 'bold' }}>GPT-4.1</span>
               </div>
             </div>
           </div>
@@ -560,7 +560,7 @@ export default function NeuralMissionMap({ onClose }: { onClose: () => void }) {
 
       {/* ─── Footer ─── */}
       <div style={{ padding: '14px 32px', background: T.bgDeep, borderTop: `1px solid ${T.blue}22`, display: 'flex', justifyContent: 'space-between', fontSize: '0.75rem', color: T.textDim, zIndex: 10 }}>
-        <div>MAWINPAY INTELLIGENCE · JARVIS v4.0 · GEMINI NEURAL ENGINE</div>
+        <div>MAWINPAY INTELLIGENCE · JARVIS v5.0 · GPT NEURAL ENGINE</div>
         <div style={{ display: 'flex', gap: 24 }}>
           <span>SYNC: <span style={{ color: T.green }}>BROADCAST</span></span>
           <span>NODES: <span style={{ color: T.blue }}>{nodes.length}</span></span>

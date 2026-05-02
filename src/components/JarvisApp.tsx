@@ -212,29 +212,30 @@ export default function JarvisApp() {
   const [settingsForm, setSettingsForm] = useState(() => {
     const stored = JSON.parse(localStorage.getItem('jarvis_api_keys') || '{}');
     // 환경 변수에서 기본 키 가져오기
-    const defaultGeminiKey = import.meta.env.VITE_GEMINI_API_KEY || '';
+    const defaultOpenAIKey = import.meta.env.VITE_OPENAI_API_KEY || '';
     return {
-      geminiKey: stored.geminiKey || defaultGeminiKey,
-      openaiKey: stored.openaiKey || '',
+      geminiKey: stored.geminiKey || stored.openaiKey || defaultOpenAIKey,
+      openaiKey: stored.openaiKey || defaultOpenAIKey,
       elevenlabsKey: stored.elevenlabsKey || '',
     };
   });
 
   useEffect(() => {
-    const envKey = import.meta.env.VITE_GEMINI_API_KEY;
-    console.log('[JARVIS] Gemini 초기화 시도:', { envKey: envKey ? '***' : 'MISSING', storedKey: settingsForm.geminiKey ? '***' : 'NONE' });
+    const envKey = import.meta.env.VITE_OPENAI_API_KEY;
+    const storedKey = settingsForm.geminiKey || settingsForm.openaiKey;
+    console.log('[JARVIS] OpenAI GPT 초기화 시도:', { envKey: envKey ? '***' : 'MISSING', storedKey: storedKey ? '***' : 'NONE' });
     
     if (envKey) {
-      console.log('[JARVIS] 환경 변수에서 Gemini 키 로드 성공');
+      console.log('[JARVIS] 환경 변수에서 OpenAI 키 로드 성공');
       initializeGemini(envKey);
       if (!settingsForm.geminiKey) {
         setSettingsForm(prev => ({ ...prev, geminiKey: envKey }));
       }
-    } else if (settingsForm.geminiKey) {
-      console.log('[JARVIS] localStorage에서 Gemini 키 로드 성공');
-      initializeGemini(settingsForm.geminiKey);
+    } else if (storedKey) {
+      console.log('[JARVIS] localStorage에서 OpenAI 키 로드 성공');
+      initializeGemini(storedKey);
     } else {
-      console.warn('[JARVIS] WARNING: Gemini API 키를 찾을 수 없습니다. 설정창에서 키를 입력해주세요.');
+      console.warn('[JARVIS] WARNING: OpenAI API 키를 찾을 수 없습니다.');
     }
   }, [settingsForm.geminiKey]);
 
@@ -4058,16 +4059,16 @@ export default function JarvisApp() {
             }}>
               <div style={{ fontFamily: 'Orbitron, monospace', color: THEME.gold, fontSize: '0.5rem', letterSpacing: '0.3em', marginBottom: 14, borderBottom: `1px solid ${THEME.gold}22`, paddingBottom: 8 }}>SYSTEM SETTINGS</div>
 
-              {/* Google Gemini Key */}
+              {/* OpenAI API Key (Main Brain) */}
               <div style={{ marginBottom: 12 }}>
-                <div style={{ fontFamily: 'Orbitron, monospace', color: '#4285F4', fontSize: '0.38rem', letterSpacing: '0.2em', marginBottom: 4 }}>GOOGLE GEMINI API KEY</div>
+                <div style={{ fontFamily: 'Orbitron, monospace', color: '#10B981', fontSize: '0.38rem', letterSpacing: '0.2em', marginBottom: 4 }}>OPENAI API KEY (GPT BRAIN)</div>
                 <input
                   type="password"
-                  placeholder="AIza..."
+                  placeholder="sk-proj-..."
                   value={settingsForm.geminiKey || ''}
                   onChange={e => {
                     const key = e.target.value;
-                    setSettingsForm(f => ({ ...f, geminiKey: key }));
+                    setSettingsForm(f => ({ ...f, geminiKey: key, openaiKey: key }));
                     if (key) initializeGemini(key);
                   }}
                   style={{
@@ -4083,12 +4084,12 @@ export default function JarvisApp() {
                 />
               </div>
 
-              {/* OpenAI Key (레거시) */}
+              {/* OpenAI Key (Whisper STT) */}
               <div style={{ marginBottom: 12, opacity: 0.6 }}>
-                <div style={{ fontFamily: 'Orbitron, monospace', color: THEME.textDim, fontSize: '0.38rem', letterSpacing: '0.2em', marginBottom: 4 }}>OPENAI API KEY (레거시)</div>
+                <div style={{ fontFamily: 'Orbitron, monospace', color: THEME.textDim, fontSize: '0.38rem', letterSpacing: '0.2em', marginBottom: 4 }}>OPENAI KEY (자동 동기됨)</div>
                 <input
                   type="password"
-                  placeholder="sk-... (선택사항)"
+                  placeholder="위 키와 동일"
                   value={settingsForm.openaiKey}
                   onChange={e => setSettingsForm(f => ({ ...f, openaiKey: e.target.value }))}
                   style={{
@@ -4405,8 +4406,8 @@ export default function JarvisApp() {
                       elevenLabsKey: settingsForm.elevenLabsKey,
                     };
                     localStorage.setItem('jarvis_api_keys', JSON.stringify(settingsForm));
-      if (settingsForm.geminiKey) {
-        initializeGemini(settingsForm.geminiKey);
+      if (settingsForm.geminiKey || settingsForm.openaiKey) {
+        initializeGemini(settingsForm.geminiKey || settingsForm.openaiKey);
       }             localStorage.setItem('jarvis_naver_creds', JSON.stringify({
                       username: naverForm.username,
                       password: naverForm.password,
