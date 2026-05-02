@@ -39,7 +39,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ taskType, params }),
-        signal: AbortSignal.timeout(30000)
+        signal: AbortSignal.timeout(55000)
       });
       
       if (!response.ok) {
