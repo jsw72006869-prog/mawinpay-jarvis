@@ -1,0 +1,10 @@
+nohup: ignoring input
+[JARVIS] 브라우저 엔진 초기화 중...
+[JARVIS] 브라우저 엔진 준비 완료 ✓
+
+[JARVIS v5.0] 서버 시작됨
+📍 포트: 3001
+🌐 WebSocket: ws://localhost:3001
+📡 REST API: http://localhost:3001/api
+✓ 자비스 클라우드 엔진 준비 완료!
+

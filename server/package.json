@@ -1,0 +1,25 @@
+{
+  "name": "jarvis-persistent-server",
+  "version": "5.0.0",
+  "description": "JARVIS v5.0 Persistent Cloud Server - 24시간 상주하는 자비스의 신체",
+  "main": "jarvis-persistent-server.js",
+  "scripts": {
+    "start": "node jarvis-persistent-server.js",
+    "dev": "nodemon jarvis-persistent-server.js",
+    "install-deps": "npm install"
+  },
+  "dependencies": {
+    "express": "^4.18.2",
+    "ws": "^8.13.0",
+    "playwright": "^1.40.0",
+    "axios": "^1.6.0",
+    "dotenv": "^16.3.1",
+    "cors": "^2.8.5"
+  },
+  "devDependencies": {
+    "nodemon": "^3.0.2"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}

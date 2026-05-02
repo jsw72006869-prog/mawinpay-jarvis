@@ -24,6 +24,7 @@ import HologramWorkPanel from './HologramWorkPanel';
 import MarketIntelCard from './MarketIntelCard';
 import MarketIntelChart from './MarketIntelChart';
 import BookingPanel from './BookingPanel';
+import CloudStatusOverlay from './CloudStatusOverlay';
 
 // ── 시그니처 응답 목록 (GPT 대기 없이 즉시 재생) ──
 const SIGNATURE_RESPONSES = [
@@ -3172,6 +3173,9 @@ export default function JarvisApp() {
         }
       }}
     >
+      {/* ── Cloud Engine Status Overlay (v5.0) ── */}
+      <CloudStatusOverlay />
+
       {/* ── Three.js 파티클 배경 ── */}
       <SparkleParticles state={state} audioLevel={micLevel} speakingLevel={speakingLevel} clapBurst={clapBurst} freqData={micFreqData ?? undefined} />
       
