@@ -22,6 +22,7 @@ import GoldenFlare from './GoldenFlare';
 import AgentConsolePanel from './AgentConsolePanel';
 import HologramWorkPanel from './HologramWorkPanel';
 import MarketIntelCard from './MarketIntelCard';
+import MarketIntelChart from './MarketIntelChart';
 import BookingPanel from './BookingPanel';
 
 // ── 시그니처 응답 목록 (GPT 대기 없이 즉시 재생) ──
@@ -198,6 +199,8 @@ export default function JarvisApp() {
   const [agentConsoleVisible, setAgentConsoleVisible] = useState(false);
   const [coreDimLevel, setCoreDimLevel] = useState(0); // 0=정상, 1=최대감소
   const [marketIntelVisible, setMarketIntelVisible] = useState(false);
+  const [marketChartVisible, setMarketChartVisible] = useState(false);
+  const [marketChartData, setMarketChartData] = useState<any>(null);
   const [bookingPanelData, setBookingPanelData] = useState<{ businessName?: string; date?: string; time?: string; currentStep?: number; availableSlots?: string[]; captchaImage?: string; screenshot?: string } | null>(null);
 
   const triggerGoldenFlare = useCallback(() => {
@@ -389,6 +392,7 @@ export default function JarvisApp() {
           if (isYT) {
             try {
               console.log(`[JARVIS] YouTube API 수집: ${keyword}, ${cnt}명`);
+              emitNodeState('influencer', 'active');
               telemetryFunctionStart('search_youtube', `YouTube 수집: "${keyword}" ${cnt}명`);
               const result = await searchYouTubeAPI(keyword, Math.min(cnt * 3, 50)); // 필터 고려 3배 요청
               const items: InfluencerData[] = result.items.map((ch: YouTubeChannel) => ({
@@ -406,10 +410,13 @@ export default function JarvisApp() {
               }));
               const filtered = filterBySubscribers(items);
               telemetryFunctionSuccess('search_youtube', `YouTube ${filtered.slice(0, cnt).length}명 수집 완료`, { count: filtered.slice(0, cnt).length, keyword: keyword });
+              emitNodeData('influencer', { scannedVideos: result.items.length, selectedInfluencers: filtered.slice(0, cnt).length, emailsFound: filtered.slice(0, cnt).filter((i: any) => i.email).length, keyword, lastUpdated: new Date().toISOString() });
+              emitNodeState('influencer', 'success');
               return filtered.slice(0, cnt);
             } catch (err) {
               console.error('[JARVIS] YouTube 수집 실패:', err);
               telemetryFunctionError('search_youtube', `YouTube 수집 실패: ${err}`);
+              emitNodeState('influencer', 'error');
               return [];
             }
           } else if (isIG) {
@@ -1053,7 +1060,7 @@ export default function JarvisApp() {
       // 텔레메트리: 예약 노드 활성화 (v4.2)
       if (taskType === 'booking') {
         emitNodeState('booking', 'active', `네이버 예약 시작: ${businessName} ${date} ${time}`);
-        emitMissionLog('info', `예약 에이전트 가동: ${businessName}`, 'booking');
+        emitMissionLog('🤖', 'booking', `예약 에이전트 가동: ${businessName}`, 'info');
         setBookingPanelData({ businessName, date, time, currentStep: 0 });
       }
 
@@ -1280,7 +1287,7 @@ export default function JarvisApp() {
               addMessage('jarvis', `⚠️ 브라우저 에이전트 오류. 마누스 엔진으로 전환합니다.`);
               // 텔레메트리: 예약 오류 보고 (v4.2)
               telemetryFunctionError('execute_web_task', `브라우저 에이전트 오류: ${browserAgentErr.message}`);
-              emitMissionLog('error', `예약 실패: ${browserAgentErr.message}`, 'booking');
+              emitMissionLog('❌', 'booking', `예약 실패: ${browserAgentErr.message}`, 'error');
             }
             // 마누스 폴백으로 계속 진행
           }
@@ -1457,7 +1464,7 @@ export default function JarvisApp() {
               setDataPanel(prev => ({ ...prev, message: `⚠️ 사용자 입력 대기: ${description}` }));
 
               if (eventType.includes('captcha')) {
-                emitMissionLog('warn', '캐차 보안 문자 감지 - 사용자 입력 대기', 'booking');
+                emitMissionLog('⚠️', 'booking', '캐차 보안 문자 감지 - 사용자 입력 대기', 'warn');
                 setVerificationMode('captcha');
                 setAgentConsoleVisible(true);
                 const captchaMsg = '선생님, 보안 문자가 감지되었습니다. 화면에 표시된 코드를 말씀해 주세요.';
@@ -1472,7 +1479,7 @@ export default function JarvisApp() {
                   body: JSON.stringify({ task_id: taskId, event_id: waitingDetail.waiting_for_event_id, input: { captcha_code: captchaCode } }),
                 });
               } else if (eventType.includes('otp')) {
-                emitMissionLog('warn', 'OTP 인증번호 요청 - 사용자 입력 대기', 'booking');
+                emitMissionLog('🔑', 'booking', 'OTP 인증번호 요청 - 사용자 입력 대기', 'warn');
                 setVerificationMode('otp');
                 setAgentConsoleVisible(true);
                 const otpMsg = '선생님, 인증번호가 전송되었습니다. 받으신 번호를 말씀해 주세요.';
@@ -1488,7 +1495,7 @@ export default function JarvisApp() {
                 });
               } else if (eventType.includes('login')) {
                 // 로그인 필요 시 사용자에게 안내
-                emitMissionLog('warn', `${targetSite || '사이트'} 로그인 필요 - 사용자 직접 로그인 대기`, 'booking');
+                emitMissionLog('🔒', 'booking', `${targetSite || '사이트'} 로그인 필요 - 사용자 직접 로그인 대기`, 'warn');
                 setAgentConsoleVisible(true);
                 const loginMsg = `선생님, ${targetSite || '해당 사이트'} 로그인이 필요합니다. 화면에서 로그인을 진행해 주시면 ${taskLabel}을 마무리짓겠습니다.`;
                 addMessage('jarvis', loginMsg, true);
@@ -1541,11 +1548,22 @@ export default function JarvisApp() {
               // 텔레메트리: 예약 노드 오류 (v4.2)
               if (taskType === 'booking') {
                 emitNodeState('booking', 'error', errorMsg);
-                emitMissionLog('error', `예약 실패: ${errorMsg}`, 'booking');
-                setBookingPanelData(prev => prev ? { ...prev, currentStep: -1 } : null); // 에러 상태 표시
-                setTimeout(() => setBookingPanelData(null), 5000); // 5초 후 패널 닫기
+                emitMissionLog('❌', 'booking', `예약 실패: ${errorMsg}`, 'error');
+                setBookingPanelData(prev => prev ? { ...prev, currentStep: -1 } : null);
+                setTimeout(() => setBookingPanelData(null), 8000);
+                
+                // 예약 실패 시 대안 시간대 추천 로직 (v4.2.1)
+                const failureMsg = errorMsg.includes('시간') || errorMsg.includes('slot') || errorMsg.includes('마감')
+                  ? `Sir, 요청하신 시간대는 예약이 마감되었습니다. 다른 시간대를 확인해 보시겠습니까? 또는 직접 예약 페이지를 확인하실 수 있도록 링크를 준비하겠습니다.`
+                  : errorMsg.includes('로그인') || errorMsg.includes('login') || errorMsg.includes('세션')
+                  ? `Sir, 로그인 세션이 만료되었습니다. 설정 화면에서 네이버 로그인을 다시 진행해 주시면 예약을 재시도하겠습니다.`
+                  : `Sir, 예약 중 문제가 발생했습니다. 수동으로 예약 페이지를 확인하시거나, 다시 시도해 주십시오.`;
+                
+                addMessage('jarvis', `❌ ${failureMsg}`);
+                await safeSpeak(failureMsg);
+              } else {
+                addMessage('jarvis', `❌ [AGENT] 에러: ${errorMsg}`);
               }
-              addMessage('jarvis', `❌ [AGENT] 에러: ${errorMsg}`);
               throw new Error(errorMsg);
             }
 
@@ -1891,7 +1909,11 @@ export default function JarvisApp() {
           const availData = await availRes.json();
 
           if (availData.success) {
-            if (availData.screenshot) setBookingScreenshot(availData.screenshot);
+            if (availData.screenshot) {
+              setBookingScreenshot(availData.screenshot);
+              // AgentConsolePanel에 스크린샷 전송 (v4.2.1)
+              emitMissionLog('📷', 'booking', '예약 가능 시간대 조회 화면 캡처', 'info', { screenshot: availData.screenshot });
+            }
 
             // ── 케이스 1: 네이버 예약 시스템 없는 업체 ──
             if (availData.bookingAvailable === false) {
@@ -2148,7 +2170,10 @@ export default function JarvisApp() {
           const fillData = await fillRes.json();
           if (fillData.success) {
             setBookingStep(5);
-            if (fillData.screenshot) setBookingScreenshot(fillData.screenshot);
+            if (fillData.screenshot) {
+              setBookingScreenshot(fillData.screenshot);
+              emitMissionLog('📷', 'booking', '예약 폼 작성 완료 화면 캡처', 'info', { screenshot: fillData.screenshot });
+            }
             if (fillData.paymentUrl) setPaymentUrl(fillData.paymentUrl);
             setBookingPanelVisible(true);
             const fillText = `예약 정보 입력이 완료되었습니다, 토니. 화면에 결제 링크가 표시되었습니다. 링크를 클릭하시거나 QR코드를 스캔하시면 결제 페이지로 바로 이동합니다.`;
@@ -2301,6 +2326,12 @@ export default function JarvisApp() {
               movingAvg20: marketJson.analysis?.movingAvg20 || 0,
             });
             emitNodeState('market_intel', 'success', '농산물 가격 분석 완료');
+            // HUD 차트 활성화 (v4.2.1)
+            if (marketJson.data?.hudChartData) {
+              setMarketChartData(marketJson.data.hudChartData);
+              setMarketChartVisible(true);
+              setTimeout(() => setMarketChartVisible(false), 15000); // 15초 후 자동 닫기
+            }
             setDataPanel(prev => ({
               ...prev,
               progress: 55,
@@ -5260,6 +5291,7 @@ export default function JarvisApp() {
 
       {/* ── 마켓 인텔리전스 카드 (v4.2) - 텔레메트리 기반 자동 표시 ── */}
       <MarketIntelCard visible={marketIntelVisible} onClose={() => setMarketIntelVisible(false)} />
+      <MarketIntelChart visible={marketChartVisible} data={marketChartData} onClose={() => setMarketChartVisible(false)} />
 
       {/* ── 예약 전용 패널 (v4.2) - 단계별 진행 표시 ── */}
       <BookingPanel

@@ -35,6 +35,8 @@ export interface MissionLogPayload {
   source: string;
   message: string;
   logType: 'info' | 'success' | 'error' | 'warn' | 'thinking';
+  screenshot?: string; // base64 이미지 또는 URL (AgentConsolePanel에서 표시)
+  extra?: Record<string, any>;
 }
 
 export interface NodeDataPayload {
@@ -131,11 +133,11 @@ export function emitPulseLine(from: string, to: string, speed: PulseLinePayload[
 }
 
 /** 미션 로그 */
-export function emitMissionLog(icon: string, source: string, message: string, logType: MissionLogPayload['logType'] = 'info') {
+export function emitMissionLog(icon: string, source: string, message: string, logType: MissionLogPayload['logType'] = 'info', extra?: { screenshot?: string; [key: string]: any }) {
   emit({
     type: 'mission_log',
     timestamp: Date.now(),
-    payload: { icon, source, message, logType } as MissionLogPayload,
+    payload: { icon, source, message, logType, screenshot: extra?.screenshot, extra } as MissionLogPayload,
   });
 }
 

@@ -63,6 +63,36 @@ function calculateChangeRate(current, previous) {
   return ((current - previous) / previous * 100).toFixed(2);
 }
 
+// ─── 볼린저 밴드 계산 (20일 기준, 2σ) ───
+function calculateBollingerBands(prices, period = 20, multiplier = 2) {
+  const bands = [];
+  for (let i = 0; i < prices.length; i++) {
+    if (i < period - 1) {
+      bands.push({ upper: null, lower: null, middle: null });
+      continue;
+    }
+    const slice = prices.slice(i - period + 1, i + 1);
+    const mean = slice.reduce((s, p) => s + p, 0) / period;
+    const variance = slice.reduce((s, p) => s + Math.pow(p - mean, 2), 0) / period;
+    const std = Math.sqrt(variance);
+    bands.push({
+      upper: Math.round(mean + multiplier * std),
+      lower: Math.round(mean - multiplier * std),
+      middle: Math.round(mean),
+    });
+  }
+  return bands;
+}
+
+// ─── 변동성 지표 (% 기준) ───
+function calculateVolatilityPercent(prices) {
+  if (prices.length < 2) return 0;
+  const mean = prices.reduce((s, p) => s + p, 0) / prices.length;
+  if (mean === 0) return 0;
+  const variance = prices.reduce((s, p) => s + Math.pow(p - mean, 2), 0) / prices.length;
+  return (Math.sqrt(variance) / mean * 100);
+}
+
 // ─── 매입/매도 추천 로직 ───
 function getTradeRecommendation(currentPrice, sma7, sma14, volatility) {
   if (!sma7 || !sma14) return { action: 'HOLD', reason: '데이터 부족 - 분석 대기' };
@@ -170,6 +200,20 @@ function analyzeMarketData(rawData, itemName) {
   const changeRate = calculateChangeRate(currentPrice, previousPrice);
   const recommendation = getTradeRecommendation(currentPrice, sma7, sma14, volatility);
   
+  // 볼린저 밴드 계산
+  const bollingerBands = calculateBollingerBands(prices, 20, 2);
+  const volatilityPercent = calculateVolatilityPercent(prices);
+  
+  // MA5, MA20 시리즈 계산 (HUD 차트용)
+  const ma5Series = prices.map((_, i) => i >= 4 ? Math.round(calculateSMA(prices.slice(0, i + 1), 5)) : null);
+  const ma20Series = prices.map((_, i) => i >= 19 ? Math.round(calculateSMA(prices.slice(0, i + 1), 20)) : null);
+  
+  // 매입/매도 신뢰도 점수 (0-100)
+  let confidenceScore = 50;
+  if (recommendation.confidence === 'HIGH') confidenceScore = 85;
+  else if (recommendation.confidence === 'MEDIUM') confidenceScore = 65;
+  else confidenceScore = 40;
+  
   return {
     item: itemName,
     status: 'SUCCESS',
@@ -183,7 +227,8 @@ function analyzeMarketData(rawData, itemName) {
     sma7: sma7 ? Math.round(sma7) : null,
     sma14: sma14 ? Math.round(sma14) : null,
     volatility: Math.round(volatility),
-    recommendation,
+    volatilityPercent: parseFloat(volatilityPercent.toFixed(2)),
+    recommendation: { ...recommendation, confidenceScore },
     trend: changeRate > 0 ? 'UP' : changeRate < 0 ? 'DOWN' : 'FLAT',
     lastUpdated: new Date().toISOString(),
     // Chart.js용 데이터 구조
@@ -191,9 +236,33 @@ function analyzeMarketData(rawData, itemName) {
       labels: priceData.map(p => p.date),
       datasets: [
         { label: `${itemName} 가격`, data: prices, borderColor: '#00D4FF', fill: false },
-        ...(sma7 ? [{ label: '7일 이동평균', data: prices.map((_, i) => i >= 6 ? calculateSMA(prices.slice(0, i + 1), 7) : null), borderColor: '#FFD700', borderDash: [5, 5] }] : []),
-        ...(sma14 ? [{ label: '14일 이동평균', data: prices.map((_, i) => i >= 13 ? calculateSMA(prices.slice(0, i + 1), 14) : null), borderColor: '#FF6B6B', borderDash: [10, 5] }] : []),
+        { label: '5일 이동평균', data: ma5Series, borderColor: '#FFD700', borderDash: [4, 4] },
+        { label: '20일 이동평균', data: ma20Series, borderColor: '#FF6B6B', borderDash: [8, 4] },
+        { label: '볼린저 상단', data: bollingerBands.map(b => b.upper), borderColor: 'rgba(0,150,255,0.4)', fill: false },
+        { label: '볼린저 하단', data: bollingerBands.map(b => b.lower), borderColor: 'rgba(0,150,255,0.4)', fill: '-1' },
       ],
+    },
+    // HUD 차트 컨트롤러용 데이터 (MarketIntelChart.tsx)
+    hudChartData: {
+      item: itemName,
+      unit: '원/kg',
+      prices: priceData.map((p, i) => ({
+        date: p.date,
+        price: p.price,
+        ma5: ma5Series[i],
+        ma20: ma20Series[i],
+        upperBand: bollingerBands[i]?.upper || null,
+        lowerBand: bollingerBands[i]?.lower || null,
+      })),
+      recommendation: recommendation.action === 'BUY' ? 'buy' : recommendation.action === 'SELL' ? 'sell' : 'hold',
+      confidence: confidenceScore,
+      summary: {
+        maxPrice,
+        minPrice,
+        avgPrice,
+        trend: changeRate > 0 ? 'up' : changeRate < 0 ? 'down' : 'stable',
+        volatility: parseFloat(volatilityPercent.toFixed(1)),
+      },
     },
   };
 }

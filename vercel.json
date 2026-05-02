@@ -3,5 +3,11 @@
     { "source": "/api/(.*)", "destination": "/api/$1" },
     { "source": "/mission-map", "destination": "/index.html" },
     { "source": "/((?!api/).*)", "destination": "/index.html" }
+  ],
+  "crons": [
+    {
+      "path": "/api/cron/market-daily",
+      "schedule": "0 7 * * *"
+    }
   ]
 }
