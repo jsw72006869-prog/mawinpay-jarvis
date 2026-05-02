@@ -2813,6 +2813,104 @@ export default function JarvisApp() {
       return;
     }
 
+    // ── 인플루언서 지능형 분석 액션 ──
+    if (action?.type === 'analyze_influencers_smart') {
+      const platform = String(action.params?.platform || 'YouTube');
+      const count = Number(action.params?.count) || 10;
+      const keyword = String(action.params?.keyword || '');
+      const minSubscribers = Number(action.params?.min_subscribers) || 10000;
+      setState('working');
+      addMessage('jarvis', action.response);
+      startSpeakingLevel();
+      await new Promise<void>(resolve => {
+        speak(action.response, undefined, () => { stopSpeakingLevel(); resolve(); });
+      });
+      try {
+        emitNodeState('influencer', 'active');
+        telemetryFunctionStart('analyze_influencers_smart', `${platform} 인플루언서 분석: "${keyword}" ${count}명`);
+        const isYT = platform.toLowerCase().includes('youtube') || platform.toLowerCase().includes('유튜브');
+        const isIG = platform.toLowerCase().includes('instagram') || platform.toLowerCase().includes('인스타');
+        let collected: InfluencerData[] = [];
+        if (isYT) {
+          const result = await searchYouTubeAPI(keyword || '인플루언서', Math.min(count * 3, 50));
+          collected = result.items.map((ch: YouTubeChannel) => ({
+            id: ch.channelId || `yt-${Date.now()}-${Math.random()}`,
+            name: ch.name || ch.customUrl || '',
+            platform: 'YouTube',
+            followers: ch.subscribers ? `${(ch.subscribers / 10000).toFixed(1)}만` : '-',
+            email: ch.email || '',
+            profileUrl: ch.profileUrl || '',
+            category: keyword || '전체',
+            collectedAt: new Date().toLocaleString('ko-KR'),
+            status: 'new' as const,
+          }));
+        } else if (isIG) {
+          const result = await searchInstagramAPI(keyword || '인플루언서', Math.min(count * 2, 20), true);
+          collected = result.items.map((acc: InstagramAccount) => ({
+            id: acc.username || `ig-${Date.now()}-${Math.random()}`,
+            name: acc.fullName || acc.username || '',
+            platform: 'Instagram',
+            followers: acc.followersFormatted || '-',
+            email: acc.email || '',
+            profileUrl: acc.profileUrl || '',
+            category: keyword || '전체',
+            collectedAt: new Date().toLocaleString('ko-KR'),
+            status: 'new' as const,
+          }));
+        } else {
+          // Naver Blog fallback
+          const result = await searchNaverAPI(keyword || '인플루언서', 'blog', Math.min(count * 3, 100), 'sim');
+          collected = result.items.map((item: NaverSearchItem) => ({
+            id: `naver-${Date.now()}-${Math.random()}`,
+            name: item.bloggername?.replace(/<[^>]*>/g, '') || '',
+            platform: 'Naver Blog',
+            followers: '-',
+            email: '',
+            profileUrl: item.bloggerlink || '',
+            category: keyword || '전체',
+            collectedAt: new Date().toLocaleString('ko-KR'),
+            status: 'new' as const,
+          }));
+        }
+        // 구독자 수 필터
+        if (minSubscribers > 0) {
+          collected = collected.filter(i => {
+            const f = i.followers || '';
+            const m = f.match(/([\d.]+)(만|K|k|M|m)?/);
+            if (!m) return false;
+            const num = parseFloat(m[1]);
+            const unit = m[2];
+            let actual = num;
+            if (unit === '만') actual = num * 10000;
+            else if (unit === 'K' || unit === 'k') actual = num * 1000;
+            else if (unit === 'M' || unit === 'm') actual = num * 1000000;
+            return actual >= minSubscribers;
+          });
+        }
+        collected = collected.slice(0, count);
+        setInfluencerResults(prev => [...prev, ...collected]);
+        setShowInfluencerCards(true);
+        emitNodeState('influencer', 'done');
+        const doneText = `${platform} 인플루언서 ${collected.length}명을 분석 완료했습니다, 선생님. 화면에 결과를 표시합니다.`;
+        setState('speaking');
+        addMessage('jarvis', `**${platform} 인플루언서 분석 완료** - ${collected.length}명 수집\n\n${collected.slice(0, 5).map((c, i) => `${i + 1}. ${c.name} (${c.followers})`).join('\n')}${collected.length > 5 ? `\n... 외 ${collected.length - 5}명` : ''}`, true);
+        startSpeakingLevel();
+        await new Promise<void>(resolve => { speak(doneText, undefined, () => { stopSpeakingLevel(); resolve(); }); });
+      } catch (err: any) {
+        console.error('[JARVIS] 인플루언서 분석 오류:', err);
+        emitNodeState('influencer', 'error');
+        const errMsg = `인플루언서 분석 중 오류가 발생했습니다: ${err.message}`;
+        setState('speaking');
+        addMessage('jarvis', errMsg);
+        startSpeakingLevel();
+        await new Promise<void>(resolve => { speak(errMsg, undefined, () => { stopSpeakingLevel(); resolve(); }); });
+      }
+      await new Promise(r => setTimeout(r, 400));
+      setState('listening');
+      setIsListening(true);
+      return;
+    }
+
     // ── 목소리 변경 액션 ──
     if (action?.type === 'change_voice') {
       const voiceAction = String(action.params?.action || 'list');
