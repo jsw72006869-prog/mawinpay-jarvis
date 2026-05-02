@@ -13,8 +13,19 @@ export interface InfluencerData {
   channelUrl?: string;
   instagram?: string;
   tiktok?: string;
+  instagramUsername?: string;
+  tiktokUsername?: string;
   website?: string;
   profileUrl?: string;
+  thumbnailUrl?: string;
+  channelId?: string;
+  subscriberCount?: number;
+  viewCount?: number;
+  viewCountFormatted?: string;
+  videoCount?: number;
+  description?: string;
+  topVideoTitle?: string;
+  topVideoUrl?: string;
   status: string;
   collectedAt: string;
 }
@@ -77,18 +88,24 @@ export async function appendInfluencersToSheet(
   if (firstPlatform.includes('youtube') || firstPlatform.includes('유튜브')) type = 'youtube';
   else if (firstPlatform.includes('instagram') || firstPlatform.includes('인스타')) type = 'instagram';
 
-  const mapped = influencers.map(inf => ({
+  const mapped = influencers.map((inf: any) => ({
     name: inf.name,
     email: inf.email,
     platform: inf.platform,
     category: inf.category,
-    subscribers: inf.followers,
-    followers: inf.followers,
-    instagram: inf.instagram || '',
-    tiktok: inf.tiktok || '',
-    website: inf.website || inf.channelUrl || '',
+    subscribers: inf.subscriberCount || inf.followers || '',
+    subscriberFormatted: inf.followers || '',
+    viewCount: inf.viewCount || '',
+    viewCountFormatted: inf.viewCountFormatted || '',
+    videoCount: inf.videoCount || '',
+    channelUrl: inf.channelUrl || inf.profileUrl || '',
     profileUrl: inf.profileUrl || inf.channelUrl || '',
-    notes: '',
+    topVideoTitle: inf.topVideoTitle || '',
+    topVideoUrl: inf.topVideoUrl || '',
+    instagram: inf.instagramUsername || inf.instagram || '',
+    tiktok: inf.tiktokUsername || inf.tiktok || '',
+    website: inf.website || inf.channelUrl || '',
+    collectedAt: inf.collectedAt || new Date().toISOString(),
   }));
 
   return saveToSheets(type, mapped);

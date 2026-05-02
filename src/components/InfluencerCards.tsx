@@ -8,72 +8,77 @@ export interface InfluencerData {
   category: string;
   email: string;
   profileUrl: string;
+  channelUrl?: string;
   thumbnailUrl?: string;
   channelId?: string;
   status?: string;
   subscriberCount?: number;
   subscribers?: number;
+  viewCount?: number;
+  viewCountFormatted?: string;
+  videoCount?: number;
   description?: string;
   address?: string;
   phone?: string;
   mapx?: string;
   mapy?: string;
   collectedAt?: string;
+  topVideoTitle?: string;
+  topVideoUrl?: string;
+  instagramUsername?: string;
+  tiktokUsername?: string;
+  website?: string;
+  instagram?: string;
+  tiktok?: string;
+  avgViews?: number;
+  fitScore?: number;
 }
 
 interface InfluencerCardsProps {
   influencers: InfluencerData[];
   visible: boolean;
   onClose: () => void;
+  onSendEmail?: (influencers: InfluencerData[]) => void;
+  onAiProposal?: (influencers: InfluencerData[]) => void;
 }
 
 const PLATFORM_THEME: Record<string, {
   primary: string; secondary: string; glow: string; label: string;
-  bg: string; holoBg: string; accent: string;
+  bg: string; holoBg: string; accent: string; icon: string;
 }> = {
   YouTube: {
-    primary: '#FF3333',
-    secondary: '#FF8C00',
-    glow: 'rgba(255,51,51,0.7)',
-    label: '▶',
+    primary: '#FF3333', secondary: '#FF8C00', glow: 'rgba(255,51,51,0.7)',
+    label: '▶', icon: '▶',
     bg: 'linear-gradient(160deg, #0a0000 0%, #1a0000 50%, #0a0000 100%)',
-    holoBg: 'linear-gradient(135deg, rgba(255,51,51,0.15) 0%, rgba(255,140,0,0.08) 100%)',
+    holoBg: 'linear-gradient(135deg, rgba(255,51,51,0.12) 0%, rgba(255,140,0,0.06) 100%)',
     accent: '#FF6B35',
   },
   Instagram: {
-    primary: '#E1306C',
-    secondary: '#F77737',
-    glow: 'rgba(225,48,108,0.7)',
-    label: '◈',
+    primary: '#E1306C', secondary: '#F77737', glow: 'rgba(225,48,108,0.7)',
+    label: '◈', icon: '◈',
     bg: 'linear-gradient(160deg, #0a0005 0%, #1a000e 50%, #0a0005 100%)',
-    holoBg: 'linear-gradient(135deg, rgba(225,48,108,0.15) 0%, rgba(247,119,55,0.08) 100%)',
+    holoBg: 'linear-gradient(135deg, rgba(225,48,108,0.12) 0%, rgba(247,119,55,0.06) 100%)',
     accent: '#C13584',
   },
   Naver: {
-    primary: '#03C75A',
-    secondary: '#00FF88',
-    glow: 'rgba(3,199,90,0.7)',
-    label: '◉',
+    primary: '#03C75A', secondary: '#00FF88', glow: 'rgba(3,199,90,0.7)',
+    label: '◉', icon: 'N',
     bg: 'linear-gradient(160deg, #000a03 0%, #001a08 50%, #000a03 100%)',
-    holoBg: 'linear-gradient(135deg, rgba(3,199,90,0.15) 0%, rgba(0,255,136,0.08) 100%)',
+    holoBg: 'linear-gradient(135deg, rgba(3,199,90,0.12) 0%, rgba(0,255,136,0.06) 100%)',
     accent: '#00E676',
   },
   TikTok: {
-    primary: '#69C9D0',
-    secondary: '#EE1D52',
-    glow: 'rgba(105,201,208,0.7)',
-    label: '♪',
+    primary: '#69C9D0', secondary: '#EE1D52', glow: 'rgba(105,201,208,0.7)',
+    label: '♪', icon: '♪',
     bg: 'linear-gradient(160deg, #000a0a 0%, #001a1a 50%, #000a0a 100%)',
-    holoBg: 'linear-gradient(135deg, rgba(105,201,208,0.15) 0%, rgba(238,29,82,0.08) 100%)',
+    holoBg: 'linear-gradient(135deg, rgba(105,201,208,0.12) 0%, rgba(238,29,82,0.06) 100%)',
     accent: '#40E0D0',
   },
   default: {
-    primary: '#00F5FF',
-    secondary: '#0066FF',
-    glow: 'rgba(0,245,255,0.7)',
-    label: '◆',
+    primary: '#00F5FF', secondary: '#0066FF', glow: 'rgba(0,245,255,0.7)',
+    label: '◆', icon: '◆',
     bg: 'linear-gradient(160deg, #000a0a 0%, #001a1a 50%, #000a0a 100%)',
-    holoBg: 'linear-gradient(135deg, rgba(0,245,255,0.15) 0%, rgba(0,102,255,0.08) 100%)',
+    holoBg: 'linear-gradient(135deg, rgba(0,245,255,0.12) 0%, rgba(0,102,255,0.06) 100%)',
     accent: '#00BFFF',
   },
 };
@@ -92,249 +97,145 @@ function ensureHttps(url: string): string {
 }
 
 function getChannelUrl(influencer: InfluencerData): string {
+  if (influencer.channelUrl) return ensureHttps(influencer.channelUrl);
+  if (influencer.profileUrl && influencer.profileUrl.startsWith('http')) return ensureHttps(influencer.profileUrl);
   if (influencer.channelId) return `https://www.youtube.com/channel/${influencer.channelId}`;
   if (influencer.profileUrl) return ensureHttps(influencer.profileUrl);
   return `https://www.youtube.com/results?search_query=${encodeURIComponent(influencer.name)}`;
 }
 
-// ── 3D 공중 부양 카드 ──
-function FloatingCard({ influencer, index, visible }: { influencer: InfluencerData; index: number; visible: boolean }) {
+function formatNumber(n: number): string {
+  if (!n) return '-';
+  if (n >= 100000000) return `${(n / 100000000).toFixed(1)}억`;
+  if (n >= 10000) return `${(n / 10000).toFixed(1)}만`;
+  if (n >= 1000) return `${(n / 1000).toFixed(1)}K`;
+  return n.toLocaleString();
+}
+
+// ── 개별 인플루언서 카드 ──
+function InfluencerCard({ influencer, index, visible, selected, onSelect }: {
+  influencer: InfluencerData; index: number; visible: boolean;
+  selected: boolean; onSelect: (i: number) => void;
+}) {
   const theme = getPlatformTheme(influencer.platform);
   const channelUrl = getChannelUrl(influencer);
   const [imgError, setImgError] = useState(false);
   const [hovered, setHovered] = useState(false);
-  const [mousePos, setMousePos] = useState({ x: 0, y: 0 });
   const cardRef = useRef<HTMLDivElement>(null);
 
-  // 마우스 위치에 따른 3D 기울기
-  const handleMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
-    if (!cardRef.current) return;
-    const rect = cardRef.current.getBoundingClientRect();
-    const x = (e.clientX - rect.left) / rect.width - 0.5;
-    const y = (e.clientY - rect.top) / rect.height - 0.5;
-    setMousePos({ x, y });
-  };
-
-  const handleMouseLeave = () => {
-    setHovered(false);
-    setMousePos({ x: 0, y: 0 });
-  };
-
-  // 카드별 부유 애니메이션 오프셋 (자연스러운 랜덤 느낌)
-  const floatOffset = (index % 3) * 0.4;
-  const floatDuration = 2.8 + (index % 4) * 0.3;
+  const instaId = influencer.instagramUsername || influencer.instagram || '';
+  const tiktokId = influencer.tiktokUsername || influencer.tiktok || '';
 
   return (
     <motion.div
-      initial={{ opacity: 0, y: 80, rotateY: -30, scale: 0.6, z: -100 }}
+      initial={{ opacity: 0, y: 60, scale: 0.7, rotateX: -15 }}
       animate={visible
-        ? { opacity: 1, y: 0, rotateY: 0, scale: 1, z: 0 }
-        : { opacity: 0, y: 80, rotateY: -30, scale: 0.6, z: -100 }
+        ? { opacity: 1, y: 0, scale: 1, rotateX: 0 }
+        : { opacity: 0, y: 60, scale: 0.7, rotateX: -15 }
       }
-      exit={{ opacity: 0, y: 40, scale: 0.7, rotateY: 20 }}
-      transition={{
-        delay: index * 0.08,
-        duration: 0.6,
-        ease: [0.16, 1, 0.3, 1],
-      }}
-      style={{
-        flexShrink: 0,
-        width: '150px',
-        perspective: '800px',
-        perspectiveOrigin: '50% 50%',
-      }}
+      exit={{ opacity: 0, scale: 0.8, y: 30 }}
+      transition={{ delay: index * 0.04, duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
+      style={{ flexShrink: 0, width: '220px', perspective: '1000px' }}
     >
-      {/* 공중 부유 애니메이션 래퍼 */}
       <motion.div
-        animate={{
-          y: [0, -10, 0, -6, 0],
-          rotateZ: [0, 0.5, 0, -0.5, 0],
+        ref={cardRef}
+        animate={hovered ? { scale: 1.03, y: -6 } : { scale: 1, y: 0 }}
+        transition={{ duration: 0.2 }}
+        onMouseEnter={() => setHovered(true)}
+        onMouseLeave={() => setHovered(false)}
+        onClick={() => onSelect(index)}
+        style={{
+          cursor: 'pointer',
+          position: 'relative',
+          borderRadius: '16px',
+          overflow: 'hidden',
+          background: 'rgba(8,12,20,0.95)',
+          border: selected
+            ? `2px solid ${theme.primary}`
+            : `1px solid ${theme.primary}40`,
+          boxShadow: hovered
+            ? `0 0 40px ${theme.glow}44, 0 20px 60px rgba(0,0,0,0.8), inset 0 1px 0 rgba(255,255,255,0.05)`
+            : selected
+              ? `0 0 30px ${theme.glow}33, 0 10px 40px rgba(0,0,0,0.6)`
+              : `0 0 15px ${theme.glow}22, 0 8px 30px rgba(0,0,0,0.5)`,
+          transition: 'box-shadow 0.3s, border 0.3s',
         }}
-        transition={{
-          duration: floatDuration,
-          repeat: Infinity,
-          ease: 'easeInOut',
-          delay: floatOffset,
-        }}
-        style={{ transformStyle: 'preserve-3d' }}
       >
-        {/* 카드 그림자 (공중 부유 효과 강조) */}
+        {/* 배경 그라데이션 */}
+        <div style={{
+          position: 'absolute', inset: 0,
+          background: theme.holoBg,
+          pointerEvents: 'none',
+        }} />
+
+        {/* 스캔라인 */}
         <motion.div
-          animate={{
-            scaleX: [1, 0.85, 1, 0.9, 1],
-            opacity: [0.4, 0.2, 0.4, 0.25, 0.4],
-          }}
-          transition={{
-            duration: floatDuration,
-            repeat: Infinity,
-            ease: 'easeInOut',
-            delay: floatOffset,
-          }}
+          animate={{ y: ['-100%', '300%'] }}
+          transition={{ duration: 5, repeat: Infinity, ease: 'linear', delay: index * 0.2 }}
           style={{
-            position: 'absolute',
-            bottom: '-18px',
-            left: '50%',
-            transform: 'translateX(-50%)',
-            width: '80%',
-            height: '12px',
-            background: `radial-gradient(ellipse, ${theme.glow} 0%, transparent 70%)`,
-            borderRadius: '50%',
-            filter: 'blur(4px)',
-            zIndex: 0,
+            position: 'absolute', left: 0, right: 0, height: '1px',
+            background: `linear-gradient(90deg, transparent, ${theme.primary}44, transparent)`,
+            pointerEvents: 'none', zIndex: 15,
           }}
         />
 
-        {/* 메인 카드 */}
-        <motion.div
-          ref={cardRef}
-          animate={hovered
-            ? {
-                rotateY: mousePos.x * 20,
-                rotateX: -mousePos.y * 15,
-                scale: 1.08,
-                z: 40,
-              }
-            : { rotateY: 0, rotateX: 0, scale: 1, z: 0 }
-          }
-          transition={{ duration: 0.2, ease: 'easeOut' }}
-          onMouseMove={handleMouseMove}
-          onMouseEnter={() => setHovered(true)}
-          onMouseLeave={handleMouseLeave}
-          style={{
-            cursor: 'pointer',
-            position: 'relative',
-            transformStyle: 'preserve-3d',
-            borderRadius: '14px',
-            overflow: 'hidden',
-            background: theme.bg,
-            border: `1.5px solid ${theme.primary}55`,
-            boxShadow: hovered
-              ? `
-                0 0 60px ${theme.glow},
-                0 20px 60px rgba(0,0,0,0.8),
-                0 0 120px ${theme.glow}33,
-                inset 0 0 30px rgba(255,255,255,0.03)
-              `
-              : `
-                0 0 25px ${theme.glow}55,
-                0 10px 40px rgba(0,0,0,0.7),
-                inset 0 0 15px rgba(255,255,255,0.01)
-              `,
-            transition: 'box-shadow 0.3s ease',
-          }}
-          onClick={() => window.open(channelUrl, '_blank')}
-        >
-          {/* 홀로그램 배경 */}
-          <div style={{
-            position: 'absolute', inset: 0,
-            background: theme.holoBg,
-            pointerEvents: 'none',
-          }} />
-
-          {/* 홀로그램 shimmer (호버 시) */}
-          <motion.div
-            animate={hovered
-              ? { opacity: [0, 0.3, 0], x: ['-120%', '220%'] }
-              : { opacity: 0 }
-            }
-            transition={{ duration: 0.6, ease: 'linear' }}
-            style={{
-              position: 'absolute', inset: 0,
-              background: 'linear-gradient(105deg, transparent 25%, rgba(255,255,255,0.6) 50%, transparent 75%)',
-              pointerEvents: 'none',
-              zIndex: 20,
-            }}
-          />
-
-          {/* 스캔 라인 효과 */}
-          <motion.div
-            animate={{ y: ['-100%', '200%'] }}
-            transition={{ duration: 4, repeat: Infinity, delay: index * 0.15, ease: 'linear' }}
-            style={{
-              position: 'absolute', left: 0, right: 0,
-              height: '2px',
-              background: `linear-gradient(90deg, transparent, ${theme.primary}66, transparent)`,
-              pointerEvents: 'none',
-              zIndex: 15,
-            }}
-          />
-
-          {/* 상단 플랫폼 배지 */}
-          <div style={{
-            display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'center',
-            padding: '8px 10px 6px',
-            background: `linear-gradient(90deg, ${theme.primary}20, transparent)`,
-            borderBottom: `1px solid ${theme.primary}30`,
-            position: 'relative', zIndex: 5,
-          }}>
+        {/* 상단 헤더 - 플랫폼 + 체크박스 */}
+        <div style={{
+          display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+          padding: '10px 12px 8px',
+          background: `linear-gradient(90deg, ${theme.primary}15, transparent)`,
+          borderBottom: `1px solid ${theme.primary}25`,
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
             <span style={{
-              fontSize: '8px',
-              color: theme.primary,
-              fontFamily: 'monospace',
-              fontWeight: 700,
-              letterSpacing: '2px',
+              fontSize: '9px', color: theme.primary, fontFamily: 'monospace',
+              fontWeight: 800, letterSpacing: '2px',
               textShadow: `0 0 8px ${theme.primary}`,
             }}>
               {influencer.platform.toUpperCase().replace(' BLOG', '')}
             </span>
-            <motion.div
-              animate={{ opacity: [1, 0.2, 1], scale: [1, 1.4, 1] }}
-              transition={{ duration: 1.5, repeat: Infinity, delay: index * 0.25 }}
-              style={{
-                width: '5px', height: '5px', borderRadius: '50%',
-                background: theme.primary,
-                boxShadow: `0 0 10px ${theme.primary}, 0 0 20px ${theme.primary}66`,
-              }}
-            />
+            {influencer.fitScore && (
+              <span style={{
+                fontSize: '8px', color: '#FFD700', fontFamily: 'monospace',
+                background: 'rgba(255,215,0,0.1)', border: '1px solid rgba(255,215,0,0.3)',
+                borderRadius: '8px', padding: '1px 5px',
+              }}>
+                FIT {influencer.fitScore}%
+              </span>
+            )}
           </div>
+          <motion.div
+            animate={selected ? { scale: [1, 1.2, 1] } : {}}
+            transition={{ duration: 0.3 }}
+            onClick={(e) => { e.stopPropagation(); onSelect(index); }}
+            style={{
+              width: '16px', height: '16px', borderRadius: '4px',
+              border: selected ? `2px solid ${theme.primary}` : '1.5px solid rgba(255,255,255,0.2)',
+              background: selected ? `${theme.primary}30` : 'transparent',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              fontSize: '10px', color: theme.primary,
+            }}
+          >
+            {selected && '✓'}
+          </motion.div>
+        </div>
 
-          {/* 프로필 이미지 영역 */}
-          <div style={{
-            width: '100%',
-            height: '105px',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            position: 'relative',
-            background: `radial-gradient(ellipse at center, ${theme.primary}15 0%, transparent 65%)`,
-            overflow: 'hidden',
-          }}>
-            {/* 회전 링 */}
+        {/* 프로필 영역 */}
+        <div style={{
+          display: 'flex', alignItems: 'center', gap: '12px',
+          padding: '12px',
+        }}>
+          {/* 프로필 이미지 */}
+          <div style={{ position: 'relative', flexShrink: 0 }}>
             <motion.div
               animate={{ rotate: 360 }}
-              transition={{ duration: 10, repeat: Infinity, ease: 'linear' }}
+              transition={{ duration: 12, repeat: Infinity, ease: 'linear' }}
               style={{
-                position: 'absolute',
-                width: '90px', height: '90px',
+                position: 'absolute', inset: '-4px',
                 borderRadius: '50%',
                 border: `1px dashed ${theme.primary}30`,
               }}
             />
-            <motion.div
-              animate={{ rotate: -360 }}
-              transition={{ duration: 15, repeat: Infinity, ease: 'linear' }}
-              style={{
-                position: 'absolute',
-                width: '75px', height: '75px',
-                borderRadius: '50%',
-                border: `1px solid ${theme.secondary}20`,
-              }}
-            />
-
-            {/* 펄스 글로우 */}
-            <motion.div
-              animate={{ scale: [1, 1.15, 1], opacity: [0.3, 0.6, 0.3] }}
-              transition={{ duration: 2.2, repeat: Infinity, delay: index * 0.35 }}
-              style={{
-                position: 'absolute',
-                width: '72px', height: '72px',
-                borderRadius: '50%',
-                background: `radial-gradient(circle, ${theme.primary}25 0%, transparent 70%)`,
-              }}
-            />
-
             {influencer.thumbnailUrl && !imgError ? (
               <img
                 src={influencer.thumbnailUrl}
@@ -343,433 +244,575 @@ function FloatingCard({ influencer, index, visible }: { influencer: InfluencerDa
                 referrerPolicy="no-referrer"
                 crossOrigin="anonymous"
                 style={{
-                  width: '70px', height: '70px',
-                  borderRadius: '50%',
+                  width: '52px', height: '52px', borderRadius: '50%',
                   objectFit: 'cover',
-                  border: `2.5px solid ${theme.primary}99`,
-                  boxShadow: `
-                    0 0 20px ${theme.glow},
-                    0 0 40px ${theme.glow}55,
-                    0 0 60px ${theme.glow}22
-                  `,
-                  position: 'relative', zIndex: 3,
+                  border: `2px solid ${theme.primary}88`,
+                  boxShadow: `0 0 15px ${theme.glow}55`,
                 }}
               />
             ) : (
               <div style={{
-                width: '70px', height: '70px',
-                borderRadius: '50%',
-                background: `linear-gradient(135deg, ${theme.primary}40, ${theme.secondary}25)`,
-                border: `2.5px solid ${theme.primary}99`,
+                width: '52px', height: '52px', borderRadius: '50%',
+                background: `linear-gradient(135deg, ${theme.primary}30, ${theme.secondary}20)`,
+                border: `2px solid ${theme.primary}88`,
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
-                fontSize: '26px',
-                boxShadow: `0 0 25px ${theme.glow}, 0 0 50px ${theme.glow}44`,
-                position: 'relative', zIndex: 3,
-                color: theme.primary,
-                textShadow: `0 0 15px ${theme.primary}`,
+                fontSize: '20px', color: theme.primary,
+                boxShadow: `0 0 15px ${theme.glow}55`,
               }}>
                 {theme.label}
               </div>
             )}
-
-            {/* 구독자 배지 */}
-            {influencer.followers && influencer.followers !== '-' && (
-              <motion.div
-                initial={{ opacity: 0, scale: 0.5, y: 5 }}
-                animate={{ opacity: 1, scale: 1, y: 0 }}
-                transition={{ delay: index * 0.08 + 0.5 }}
-                style={{
-                  position: 'absolute',
-                  bottom: '4px', right: '6px',
-                  background: `rgba(0,0,0,0.85)`,
-                  border: `1px solid ${theme.primary}66`,
-                  borderRadius: '10px',
-                  padding: '2px 7px',
-                  fontSize: '7.5px',
-                  color: theme.primary,
-                  fontFamily: 'monospace',
-                  fontWeight: 700,
-                  backdropFilter: 'blur(6px)',
-                  textShadow: `0 0 6px ${theme.primary}`,
-                  zIndex: 4,
-                }}
-              >
-                {influencer.followers}
-              </motion.div>
-            )}
           </div>
 
-          {/* 이름 + 정보 */}
-          <div style={{
-            padding: '8px 10px 6px',
-            borderTop: `1px solid ${theme.primary}25`,
-            background: `linear-gradient(180deg, ${theme.primary}10, transparent)`,
-            position: 'relative', zIndex: 5,
-          }}>
+          {/* 이름 + 카테고리 */}
+          <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{
-              fontSize: '11px',
-              fontWeight: 700,
-              color: '#FFFFFF',
-              fontFamily: 'monospace',
-              letterSpacing: '0.3px',
-              whiteSpace: 'nowrap',
-              overflow: 'hidden',
-              textOverflow: 'ellipsis',
+              fontSize: '12px', fontWeight: 700, color: '#FFF',
+              fontFamily: 'monospace', letterSpacing: '0.3px',
+              whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
               marginBottom: '3px',
-              textShadow: `0 0 12px ${theme.primary}55`,
+              textShadow: `0 0 10px ${theme.primary}44`,
             }}>
               {influencer.name}
             </div>
-
             <div style={{
-              fontSize: '7.5px',
-              color: `${theme.primary}99`,
-              fontFamily: 'monospace',
-              marginBottom: '6px',
-              whiteSpace: 'nowrap',
-              overflow: 'hidden',
-              textOverflow: 'ellipsis',
+              fontSize: '9px', color: `${theme.primary}88`,
+              fontFamily: 'monospace', marginBottom: '4px',
             }}>
               # {influencer.category}
             </div>
-
-            {/* 이메일 */}
-            {influencer.email ? (
-              <div style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: '4px',
-                background: 'rgba(34,197,94,0.1)',
-                border: '1px solid rgba(34,197,94,0.3)',
-                borderRadius: '5px',
-                padding: '3px 6px',
-                marginBottom: '6px',
-              }}>
-                <span style={{ fontSize: '7.5px', color: '#22C55E', flexShrink: 0 }}>✉</span>
+            {/* 구독자 + 조회수 */}
+            <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+              {influencer.followers && influencer.followers !== '-' && (
                 <span style={{
-                  fontSize: '7.5px',
-                  color: '#22C55E',
-                  fontFamily: 'monospace',
-                  whiteSpace: 'nowrap',
-                  overflow: 'hidden',
-                  textOverflow: 'ellipsis',
+                  fontSize: '8px', color: theme.primary, fontFamily: 'monospace',
+                  fontWeight: 700, textShadow: `0 0 6px ${theme.primary}66`,
                 }}>
-                  {influencer.email}
+                  ⊕ {influencer.followers}
                 </span>
-              </div>
-            ) : (
-              <div style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: '4px',
+              )}
+              {influencer.viewCountFormatted && influencer.viewCountFormatted !== '-' && (
+                <span style={{
+                  fontSize: '8px', color: theme.accent, fontFamily: 'monospace',
+                }}>
+                  ◎ {influencer.viewCountFormatted}
+                </span>
+              )}
+              {influencer.videoCount && influencer.videoCount > 0 && (
+                <span style={{
+                  fontSize: '8px', color: '#888', fontFamily: 'monospace',
+                }}>
+                  ▷ {influencer.videoCount}
+                </span>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* 소셜 ID 영역 */}
+        <div style={{
+          padding: '0 12px 8px',
+          display: 'flex', flexDirection: 'column', gap: '4px',
+        }}>
+          {/* 이메일 */}
+          {influencer.email && (
+            <div style={{
+              display: 'flex', alignItems: 'center', gap: '5px',
+              background: 'rgba(34,197,94,0.08)',
+              border: '1px solid rgba(34,197,94,0.25)',
+              borderRadius: '6px', padding: '4px 8px',
+            }}>
+              <span style={{ fontSize: '9px', color: '#22C55E', flexShrink: 0 }}>✉</span>
+              <span style={{
+                fontSize: '8.5px', color: '#22C55E', fontFamily: 'monospace',
+                whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+              }}>
+                {influencer.email}
+              </span>
+            </div>
+          )}
+          {/* 인스타그램 */}
+          {instaId && (
+            <div style={{
+              display: 'flex', alignItems: 'center', gap: '5px',
+              background: 'rgba(225,48,108,0.08)',
+              border: '1px solid rgba(225,48,108,0.25)',
+              borderRadius: '6px', padding: '4px 8px',
+            }}>
+              <span style={{ fontSize: '9px', color: '#E1306C', flexShrink: 0 }}>◈</span>
+              <span style={{
+                fontSize: '8.5px', color: '#E1306C', fontFamily: 'monospace',
+                whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+                cursor: 'pointer',
+              }}
+                onClick={(e) => { e.stopPropagation(); window.open(`https://instagram.com/${instaId}`, '_blank'); }}
+              >
+                @{instaId}
+              </span>
+            </div>
+          )}
+          {/* 틱톡 */}
+          {tiktokId && (
+            <div style={{
+              display: 'flex', alignItems: 'center', gap: '5px',
+              background: 'rgba(105,201,208,0.08)',
+              border: '1px solid rgba(105,201,208,0.25)',
+              borderRadius: '6px', padding: '4px 8px',
+            }}>
+              <span style={{ fontSize: '9px', color: '#69C9D0', flexShrink: 0 }}>♪</span>
+              <span style={{
+                fontSize: '8.5px', color: '#69C9D0', fontFamily: 'monospace',
+                whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+                cursor: 'pointer',
+              }}
+                onClick={(e) => { e.stopPropagation(); window.open(`https://tiktok.com/@${tiktokId}`, '_blank'); }}
+              >
+                @{tiktokId}
+              </span>
+            </div>
+          )}
+        </div>
+
+        {/* 인기 영상 */}
+        {influencer.topVideoTitle && (
+          <div style={{
+            padding: '0 12px 8px',
+          }}>
+            <div
+              onClick={(e) => { e.stopPropagation(); if (influencer.topVideoUrl) window.open(influencer.topVideoUrl, '_blank'); }}
+              style={{
+                fontSize: '8px', color: '#888', fontFamily: 'monospace',
                 background: 'rgba(255,255,255,0.02)',
                 border: '1px solid rgba(255,255,255,0.06)',
-                borderRadius: '5px',
-                padding: '3px 6px',
-                marginBottom: '6px',
-              }}>
-                <span style={{ fontSize: '7.5px', color: '#333' }}>✉</span>
-                <span style={{ fontSize: '7.5px', color: '#333', fontFamily: 'monospace' }}>NO EMAIL</span>
-              </div>
-            )}
-          </div>
-
-          {/* 하단 버튼 */}
-          <div style={{ padding: '0 10px 10px', display: 'flex', gap: '5px', position: 'relative', zIndex: 5 }}>
-            <button
-              onClick={(e) => { e.stopPropagation(); window.open(channelUrl, '_blank'); }}
-              style={{
-                flex: 1,
-                background: `${theme.primary}15`,
-                border: `1px solid ${theme.primary}55`,
-                borderRadius: '6px',
-                color: theme.primary,
-                fontSize: '7.5px',
-                fontFamily: 'monospace',
-                fontWeight: 700,
-                padding: '5px 0',
-                cursor: 'pointer',
-                letterSpacing: '1px',
-                textShadow: `0 0 6px ${theme.primary}66`,
-                transition: 'all 0.2s',
-              }}
-              onMouseEnter={e => {
-                (e.target as HTMLButtonElement).style.background = `${theme.primary}30`;
-                (e.target as HTMLButtonElement).style.boxShadow = `0 0 12px ${theme.glow}55`;
-              }}
-              onMouseLeave={e => {
-                (e.target as HTMLButtonElement).style.background = `${theme.primary}15`;
-                (e.target as HTMLButtonElement).style.boxShadow = 'none';
+                borderRadius: '5px', padding: '5px 8px',
+                whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+                cursor: influencer.topVideoUrl ? 'pointer' : 'default',
               }}
             >
-              OPEN →
-            </button>
-            {influencer.email && (
-              <button
-                onClick={(e) => { e.stopPropagation(); window.open(`mailto:${influencer.email}`, '_blank'); }}
-                style={{
-                  flex: 1,
-                  background: 'rgba(34,197,94,0.1)',
-                  border: '1px solid rgba(34,197,94,0.4)',
-                  borderRadius: '6px',
-                  color: '#22C55E',
-                  fontSize: '7.5px',
-                  fontFamily: 'monospace',
-                  fontWeight: 700,
-                  padding: '5px 0',
-                  cursor: 'pointer',
-                  letterSpacing: '1px',
-                  transition: 'all 0.2s',
-                }}
-                onMouseEnter={e => {
-                  (e.target as HTMLButtonElement).style.background = 'rgba(34,197,94,0.2)';
-                  (e.target as HTMLButtonElement).style.boxShadow = '0 0 12px rgba(34,197,94,0.4)';
-                }}
-                onMouseLeave={e => {
-                  (e.target as HTMLButtonElement).style.background = 'rgba(34,197,94,0.1)';
-                  (e.target as HTMLButtonElement).style.boxShadow = 'none';
-                }}
-              >
-                EMAIL ✓
-              </button>
-            )}
+              🎬 {influencer.topVideoTitle}
+            </div>
           </div>
+        )}
 
-          {/* 하단 수평 스캔 라인 */}
-          <motion.div
-            animate={{ x: ['-100%', '250%'] }}
-            transition={{ duration: 2.5, repeat: Infinity, delay: index * 0.1, ease: 'linear' }}
+        {/* 하단 액션 버튼 */}
+        <div style={{
+          padding: '6px 12px 12px',
+          display: 'flex', gap: '6px',
+        }}>
+          <button
+            onClick={(e) => { e.stopPropagation(); window.open(channelUrl, '_blank'); }}
             style={{
-              position: 'absolute',
-              bottom: '3px', left: 0,
-              width: '40%', height: '1px',
-              background: `linear-gradient(90deg, transparent, ${theme.primary}99, transparent)`,
-              pointerEvents: 'none',
-              zIndex: 10,
+              flex: 1, background: `${theme.primary}12`,
+              border: `1px solid ${theme.primary}44`,
+              borderRadius: '8px', color: theme.primary,
+              fontSize: '8px', fontFamily: 'monospace', fontWeight: 700,
+              padding: '6px 0', cursor: 'pointer', letterSpacing: '1px',
+              transition: 'all 0.2s',
             }}
-          />
+            onMouseEnter={e => { (e.target as HTMLButtonElement).style.background = `${theme.primary}25`; }}
+            onMouseLeave={e => { (e.target as HTMLButtonElement).style.background = `${theme.primary}12`; }}
+          >
+            CHANNEL
+          </button>
+          {influencer.email && (
+            <button
+              onClick={(e) => { e.stopPropagation(); window.open(`mailto:${influencer.email}`, '_blank'); }}
+              style={{
+                flex: 1, background: 'rgba(34,197,94,0.08)',
+                border: '1px solid rgba(34,197,94,0.35)',
+                borderRadius: '8px', color: '#22C55E',
+                fontSize: '8px', fontFamily: 'monospace', fontWeight: 700,
+                padding: '6px 0', cursor: 'pointer', letterSpacing: '1px',
+                transition: 'all 0.2s',
+              }}
+              onMouseEnter={e => { (e.target as HTMLButtonElement).style.background = 'rgba(34,197,94,0.18)'; }}
+              onMouseLeave={e => { (e.target as HTMLButtonElement).style.background = 'rgba(34,197,94,0.08)'; }}
+            >
+              MAIL
+            </button>
+          )}
+        </div>
 
-          {/* 코너 장식 */}
-          {[
-            { top: '0', left: '0', borderTop: `2px solid ${theme.primary}88`, borderLeft: `2px solid ${theme.primary}88` },
-            { top: '0', right: '0', borderTop: `2px solid ${theme.primary}88`, borderRight: `2px solid ${theme.primary}88` },
-            { bottom: '0', left: '0', borderBottom: `2px solid ${theme.primary}88`, borderLeft: `2px solid ${theme.primary}88` },
-            { bottom: '0', right: '0', borderBottom: `2px solid ${theme.primary}88`, borderRight: `2px solid ${theme.primary}88` },
-          ].map((style, i) => (
-            <div key={i} style={{
-              position: 'absolute',
-              width: '10px', height: '10px',
-              ...style,
-              zIndex: 10,
-            }} />
-          ))}
-        </motion.div>
+        {/* 코너 장식 */}
+        {[
+          { top: 0, left: 0, borderTop: `2px solid ${theme.primary}66`, borderLeft: `2px solid ${theme.primary}66` },
+          { top: 0, right: 0, borderTop: `2px solid ${theme.primary}66`, borderRight: `2px solid ${theme.primary}66` },
+          { bottom: 0, left: 0, borderBottom: `2px solid ${theme.primary}66`, borderLeft: `2px solid ${theme.primary}66` },
+          { bottom: 0, right: 0, borderBottom: `2px solid ${theme.primary}66`, borderRight: `2px solid ${theme.primary}66` },
+        ].map((s, i) => (
+          <div key={i} style={{ position: 'absolute', width: '10px', height: '10px', ...s, zIndex: 10 }} />
+        ))}
       </motion.div>
     </motion.div>
   );
 }
 
-export default function InfluencerCards({ influencers, visible, onClose }: InfluencerCardsProps) {
-  const [showAll, setShowAll] = useState(false);
-  const displayList = showAll ? influencers : influencers.slice(0, 20);
+// ── 메인 컴포넌트: 풀스크린 HUD 패널 ──
+export default function InfluencerCards({ influencers, visible, onClose, onSendEmail, onAiProposal }: InfluencerCardsProps) {
+  const [selectedIndices, setSelectedIndices] = useState<Set<number>>(new Set());
+  const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
+  const [filterPlatform, setFilterPlatform] = useState<string>('all');
+  const [filterEmail, setFilterEmail] = useState<boolean>(false);
+  const [sortBy, setSortBy] = useState<'default' | 'subscribers' | 'views'>('default');
+  const scrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    if (!visible) setShowAll(false);
+    if (!visible) {
+      setSelectedIndices(new Set());
+      setFilterPlatform('all');
+      setFilterEmail(false);
+    }
   }, [visible]);
 
-  // 플랫폼별 통계
-  const ytCount = influencers.filter(i => i.platform?.toLowerCase().includes('youtube')).length;
-  const naverCount = influencers.filter(i => i.platform?.toLowerCase().includes('naver')).length;
-  const igCount = influencers.filter(i => i.platform?.toLowerCase().includes('instagram')).length;
-  const emailCount = influencers.filter(i => i.email).length;
+  const toggleSelect = (idx: number) => {
+    setSelectedIndices(prev => {
+      const next = new Set(prev);
+      if (next.has(idx)) next.delete(idx);
+      else next.add(idx);
+      return next;
+    });
+  };
+
+  const selectAll = () => {
+    if (selectedIndices.size === filteredList.length) {
+      setSelectedIndices(new Set());
+    } else {
+      setSelectedIndices(new Set(filteredList.map((_, i) => i)));
+    }
+  };
+
+  // 필터링
+  let filteredList = [...influencers];
+  if (filterPlatform !== 'all') {
+    filteredList = filteredList.filter(i => i.platform.toLowerCase().includes(filterPlatform));
+  }
+  if (filterEmail) {
+    filteredList = filteredList.filter(i => i.email && i.email.includes('@'));
+  }
+
+  // 정렬
+  if (sortBy === 'subscribers') {
+    filteredList.sort((a, b) => (b.subscriberCount || 0) - (a.subscriberCount || 0));
+  } else if (sortBy === 'views') {
+    filteredList.sort((a, b) => (b.viewCount || 0) - (a.viewCount || 0));
+  }
+
+  // 통계
+  const stats = {
+    total: influencers.length,
+    filtered: filteredList.length,
+    emailCount: influencers.filter(i => i.email && i.email.includes('@')).length,
+    instaCount: influencers.filter(i => i.instagramUsername || i.instagram).length,
+    tiktokCount: influencers.filter(i => i.tiktokUsername || i.tiktok).length,
+    ytCount: influencers.filter(i => i.platform?.toLowerCase().includes('youtube')).length,
+    naverCount: influencers.filter(i => i.platform?.toLowerCase().includes('naver')).length,
+    selected: selectedIndices.size,
+  };
+
+  const selectedInfluencers = Array.from(selectedIndices).map(i => filteredList[i]).filter(Boolean);
 
   return (
     <AnimatePresence>
       {visible && influencers.length > 0 && (
         <motion.div
-          initial={{ opacity: 0, y: -20 }}
-          animate={{ opacity: 1, y: 0 }}
-          exit={{ opacity: 0, y: -10 }}
-          transition={{ duration: 0.35 }}
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          transition={{ duration: 0.3 }}
           style={{
-            position: 'absolute',
-            top: '55px',
-            left: 0,
-            right: 0,
-            zIndex: 50,
-            padding: '12px 14px 16px',
-            background: 'rgba(0,0,0,0.92)',
-            borderTop: '1px solid rgba(0,245,255,0.15)',
-            borderBottom: '1px solid rgba(0,245,255,0.15)',
-            backdropFilter: 'blur(24px)',
+            position: 'fixed', inset: 0, zIndex: 60,
+            background: 'rgba(4,8,16,0.96)',
+            backdropFilter: 'blur(20px)',
+            display: 'flex', flexDirection: 'column',
+            overflow: 'hidden',
           }}
         >
-          {/* 헤더 */}
-          <div style={{
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            marginBottom: '14px',
-          }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-              <motion.div
-                animate={{ opacity: [1, 0.2, 1], scale: [1, 1.3, 1] }}
-                transition={{ duration: 1.0, repeat: Infinity }}
-                style={{
-                  width: '8px', height: '8px', borderRadius: '50%',
-                  background: '#00F5FF',
-                  boxShadow: '0 0 12px #00F5FF, 0 0 24px #00F5FF55',
-                }}
-              />
-              <span style={{
-                fontSize: '10px', color: '#00F5FF',
-                fontFamily: 'monospace', fontWeight: 700, letterSpacing: '2.5px',
-                textShadow: '0 0 10px #00F5FF',
-              }}>
-                INFLUENCER SCAN COMPLETE
-              </span>
-              <span style={{
-                fontSize: '10px', color: '#00F5FF44',
-                fontFamily: 'monospace', letterSpacing: '1px',
-              }}>
-                [{influencers.length} FOUND]
-              </span>
+          {/* ═══ 상단 HUD 헤더 ═══ */}
+          <motion.div
+            initial={{ y: -40, opacity: 0 }}
+            animate={{ y: 0, opacity: 1 }}
+            transition={{ delay: 0.1, duration: 0.4 }}
+            style={{
+              padding: '16px 24px',
+              borderBottom: '1px solid rgba(0,245,255,0.12)',
+              background: 'linear-gradient(180deg, rgba(0,245,255,0.04) 0%, transparent 100%)',
+              display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+              flexShrink: 0,
+            }}
+          >
+            {/* 왼쪽: 타이틀 + 통계 */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <motion.div
+                  animate={{ opacity: [1, 0.3, 1], scale: [1, 1.3, 1] }}
+                  transition={{ duration: 1.2, repeat: Infinity }}
+                  style={{
+                    width: '10px', height: '10px', borderRadius: '50%',
+                    background: '#00F5FF',
+                    boxShadow: '0 0 12px #00F5FF, 0 0 24px #00F5FF55',
+                  }}
+                />
+                <span style={{
+                  fontSize: '13px', color: '#00F5FF', fontFamily: 'monospace',
+                  fontWeight: 800, letterSpacing: '3px',
+                  textShadow: '0 0 12px #00F5FF',
+                }}>
+                  INFLUENCER DATABASE
+                </span>
+              </div>
+
+              {/* 미니 통계 */}
+              <div style={{ display: 'flex', gap: '12px', marginLeft: '8px' }}>
+                {[
+                  { v: stats.total, l: 'TOTAL', c: '#00F5FF' },
+                  { v: stats.emailCount, l: 'EMAIL', c: '#22C55E' },
+                  { v: stats.instaCount, l: 'INSTA', c: '#E1306C' },
+                  { v: stats.tiktokCount, l: 'TIKTOK', c: '#69C9D0' },
+                ].filter(s => s.v > 0).map(s => (
+                  <div key={s.l} style={{ textAlign: 'center' }}>
+                    <div style={{ fontSize: '14px', fontWeight: 800, color: s.c, fontFamily: 'monospace', textShadow: `0 0 8px ${s.c}66` }}>
+                      {s.v}
+                    </div>
+                    <div style={{ fontSize: '7px', color: '#555', fontFamily: 'monospace', letterSpacing: '1px' }}>
+                      {s.l}
+                    </div>
+                  </div>
+                ))}
+              </div>
             </div>
+
+            {/* 오른쪽: 닫기 */}
             <button
               onClick={onClose}
               style={{
-                background: 'rgba(255,50,50,0.08)',
-                border: '1px solid rgba(255,80,80,0.35)',
-                color: '#FF6666',
-                cursor: 'pointer',
-                fontSize: '9px',
-                padding: '4px 12px',
-                borderRadius: '5px',
-                fontFamily: 'monospace',
-                letterSpacing: '1px',
-                transition: 'all 0.2s',
+                background: 'rgba(255,50,50,0.08)', border: '1px solid rgba(255,80,80,0.3)',
+                color: '#FF6666', cursor: 'pointer', fontSize: '10px',
+                padding: '6px 16px', borderRadius: '6px', fontFamily: 'monospace',
+                letterSpacing: '1px', transition: 'all 0.2s',
               }}
-              onMouseEnter={e => {
-                (e.target as HTMLButtonElement).style.background = 'rgba(255,50,50,0.2)';
-                (e.target as HTMLButtonElement).style.boxShadow = '0 0 10px rgba(255,80,80,0.4)';
-              }}
-              onMouseLeave={e => {
-                (e.target as HTMLButtonElement).style.background = 'rgba(255,50,50,0.08)';
-                (e.target as HTMLButtonElement).style.boxShadow = 'none';
-              }}
+              onMouseEnter={e => { (e.target as HTMLButtonElement).style.background = 'rgba(255,50,50,0.2)'; }}
+              onMouseLeave={e => { (e.target as HTMLButtonElement).style.background = 'rgba(255,50,50,0.08)'; }}
             >
               ✕ CLOSE
             </button>
-          </div>
+          </motion.div>
 
-          {/* 3D 공중 부양 카드 가로 스크롤 */}
-          <div style={{
-            display: 'flex',
-            gap: '14px',
-            overflowX: 'auto',
-            paddingBottom: '20px', // 그림자 공간
-            paddingTop: '8px',
-            paddingLeft: '4px',
-            paddingRight: '4px',
-            scrollbarWidth: 'none',
-            msOverflowStyle: 'none',
-            // 3D 원근감 적용
-            perspective: '1200px',
-            perspectiveOrigin: '50% 100%',
-          }}>
-            {displayList.map((inf, i) => (
-              <FloatingCard key={`${inf.name}-${inf.platform}-${i}`} influencer={inf} index={i} visible={visible} />
-            ))}
-
-            {/* 더보기 카드 */}
-            {!showAll && influencers.length > 20 && (
-              <motion.div
-                initial={{ opacity: 0, scale: 0.7 }}
-                animate={{ opacity: 1, scale: 1 }}
-                transition={{ delay: 20 * 0.08 + 0.4 }}
-              >
-                <motion.div
-                  animate={{ y: [0, -8, 0] }}
-                  transition={{ duration: 3, repeat: Infinity, ease: 'easeInOut' }}
-                  onClick={() => setShowAll(true)}
+          {/* ═══ 필터/액션 바 ═══ */}
+          <motion.div
+            initial={{ y: -20, opacity: 0 }}
+            animate={{ y: 0, opacity: 1 }}
+            transition={{ delay: 0.2, duration: 0.3 }}
+            style={{
+              padding: '10px 24px',
+              borderBottom: '1px solid rgba(255,255,255,0.04)',
+              display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+              flexShrink: 0, flexWrap: 'wrap', gap: '8px',
+            }}
+          >
+            {/* 필터 */}
+            <div style={{ display: 'flex', gap: '6px', alignItems: 'center', flexWrap: 'wrap' }}>
+              {[
+                { key: 'all', label: 'ALL', color: '#00F5FF' },
+                { key: 'youtube', label: 'YOUTUBE', color: '#FF3333' },
+                { key: 'naver', label: 'NAVER', color: '#03C75A' },
+                { key: 'instagram', label: 'INSTA', color: '#E1306C' },
+              ].map(f => (
+                <button
+                  key={f.key}
+                  onClick={() => setFilterPlatform(f.key)}
                   style={{
-                    width: '150px',
-                    height: '270px',
-                    background: 'rgba(0,245,255,0.02)',
-                    border: '1.5px dashed rgba(0,245,255,0.25)',
-                    borderRadius: '14px',
-                    display: 'flex',
-                    flexDirection: 'column',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    cursor: 'pointer',
-                    gap: '10px',
-                    boxShadow: '0 0 20px rgba(0,245,255,0.08)',
+                    background: filterPlatform === f.key ? `${f.color}20` : 'transparent',
+                    border: `1px solid ${filterPlatform === f.key ? f.color : 'rgba(255,255,255,0.1)'}`,
+                    color: filterPlatform === f.key ? f.color : '#555',
+                    fontSize: '8px', fontFamily: 'monospace', fontWeight: 700,
+                    padding: '4px 10px', borderRadius: '12px', cursor: 'pointer',
+                    letterSpacing: '1px', transition: 'all 0.2s',
                   }}
                 >
-                  <motion.span
-                    animate={{ scale: [1, 1.2, 1], opacity: [0.5, 1, 0.5] }}
-                    transition={{ duration: 2, repeat: Infinity }}
-                    style={{ fontSize: '32px', color: '#00F5FF55' }}
+                  {f.label}
+                </button>
+              ))}
+
+              <div style={{ width: '1px', height: '16px', background: 'rgba(255,255,255,0.1)', margin: '0 4px' }} />
+
+              <button
+                onClick={() => setFilterEmail(!filterEmail)}
+                style={{
+                  background: filterEmail ? 'rgba(34,197,94,0.15)' : 'transparent',
+                  border: `1px solid ${filterEmail ? '#22C55E' : 'rgba(255,255,255,0.1)'}`,
+                  color: filterEmail ? '#22C55E' : '#555',
+                  fontSize: '8px', fontFamily: 'monospace', fontWeight: 700,
+                  padding: '4px 10px', borderRadius: '12px', cursor: 'pointer',
+                  letterSpacing: '1px', transition: 'all 0.2s',
+                }}
+              >
+                ✉ EMAIL ONLY
+              </button>
+
+              <div style={{ width: '1px', height: '16px', background: 'rgba(255,255,255,0.1)', margin: '0 4px' }} />
+
+              {/* 정렬 */}
+              {[
+                { key: 'default', label: 'DEFAULT' },
+                { key: 'subscribers', label: '구독자↓' },
+                { key: 'views', label: '조회수↓' },
+              ].map(s => (
+                <button
+                  key={s.key}
+                  onClick={() => setSortBy(s.key as any)}
+                  style={{
+                    background: sortBy === s.key ? 'rgba(0,245,255,0.1)' : 'transparent',
+                    border: `1px solid ${sortBy === s.key ? '#00F5FF55' : 'rgba(255,255,255,0.06)'}`,
+                    color: sortBy === s.key ? '#00F5FF' : '#444',
+                    fontSize: '8px', fontFamily: 'monospace',
+                    padding: '4px 8px', borderRadius: '10px', cursor: 'pointer',
+                    transition: 'all 0.2s',
+                  }}
+                >
+                  {s.label}
+                </button>
+              ))}
+            </div>
+
+            {/* 액션 버튼 */}
+            <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+              <button
+                onClick={selectAll}
+                style={{
+                  background: 'rgba(0,245,255,0.08)', border: '1px solid rgba(0,245,255,0.3)',
+                  color: '#00F5FF', fontSize: '8px', fontFamily: 'monospace', fontWeight: 700,
+                  padding: '5px 12px', borderRadius: '8px', cursor: 'pointer',
+                  letterSpacing: '1px', transition: 'all 0.2s',
+                }}
+              >
+                {selectedIndices.size === filteredList.length ? '✓ DESELECT' : '☐ SELECT ALL'}
+              </button>
+
+              {stats.selected > 0 && (
+                <>
+                  <motion.button
+                    initial={{ scale: 0.8, opacity: 0 }}
+                    animate={{ scale: 1, opacity: 1 }}
+                    onClick={() => onSendEmail?.(selectedInfluencers)}
+                    style={{
+                      background: 'linear-gradient(135deg, rgba(34,197,94,0.15), rgba(34,197,94,0.08))',
+                      border: '1px solid rgba(34,197,94,0.5)',
+                      color: '#22C55E', fontSize: '9px', fontFamily: 'monospace', fontWeight: 700,
+                      padding: '6px 14px', borderRadius: '8px', cursor: 'pointer',
+                      letterSpacing: '1px', transition: 'all 0.2s',
+                      boxShadow: '0 0 12px rgba(34,197,94,0.2)',
+                    }}
                   >
-                    +
-                  </motion.span>
-                  <span style={{
-                    fontSize: '9px', color: '#00F5FF66',
-                    fontFamily: 'monospace', textAlign: 'center',
-                    letterSpacing: '1.5px',
-                  }}>
-                    {influencers.length - 20} MORE
-                  </span>
-                </motion.div>
-              </motion.div>
+                    ✉ SEND EMAIL ({stats.selected})
+                  </motion.button>
+
+                  <motion.button
+                    initial={{ scale: 0.8, opacity: 0 }}
+                    animate={{ scale: 1, opacity: 1 }}
+                    onClick={() => onAiProposal?.(selectedInfluencers)}
+                    style={{
+                      background: 'linear-gradient(135deg, rgba(255,215,0,0.15), rgba(255,140,0,0.08))',
+                      border: '1px solid rgba(255,215,0,0.5)',
+                      color: '#FFD700', fontSize: '9px', fontFamily: 'monospace', fontWeight: 700,
+                      padding: '6px 14px', borderRadius: '8px', cursor: 'pointer',
+                      letterSpacing: '1px', transition: 'all 0.2s',
+                      boxShadow: '0 0 12px rgba(255,215,0,0.2)',
+                    }}
+                  >
+                    ⚡ AI PROPOSAL ({stats.selected})
+                  </motion.button>
+                </>
+              )}
+            </div>
+          </motion.div>
+
+          {/* ═══ 카드 그리드 ═══ */}
+          <div
+            ref={scrollRef}
+            style={{
+              flex: 1, overflowY: 'auto', overflowX: 'hidden',
+              padding: '20px 24px',
+              scrollbarWidth: 'thin',
+              scrollbarColor: 'rgba(0,245,255,0.2) transparent',
+            }}
+          >
+            {filteredList.length === 0 ? (
+              <div style={{
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                height: '200px', color: '#333', fontFamily: 'monospace', fontSize: '12px',
+              }}>
+                NO RESULTS MATCHING FILTERS
+              </div>
+            ) : (
+              <div style={{
+                display: 'flex', flexWrap: 'wrap', gap: '16px',
+                justifyContent: 'flex-start',
+              }}>
+                {filteredList.map((inf, i) => (
+                  <InfluencerCard
+                    key={`${inf.name}-${inf.platform}-${i}`}
+                    influencer={inf}
+                    index={i}
+                    visible={visible}
+                    selected={selectedIndices.has(i)}
+                    onSelect={toggleSelect}
+                  />
+                ))}
+              </div>
             )}
           </div>
 
-          {/* 하단 통계 */}
+          {/* ═══ 하단 상태바 ═══ */}
           <motion.div
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.5 }}
+            initial={{ y: 20, opacity: 0 }}
+            animate={{ y: 0, opacity: 1 }}
+            transition={{ delay: 0.3 }}
             style={{
-              marginTop: '8px',
-              padding: '8px 16px',
+              padding: '10px 24px',
+              borderTop: '1px solid rgba(0,245,255,0.1)',
               background: 'rgba(0,245,255,0.02)',
-              border: '1px solid rgba(0,245,255,0.1)',
-              borderRadius: '8px',
-              display: 'flex',
-              justifyContent: 'space-around',
+              display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+              flexShrink: 0,
             }}
           >
-            {[
-              { value: influencers.length, label: 'TOTAL', color: '#00F5FF' },
-              { value: emailCount, label: 'EMAIL', color: '#22C55E' },
-              { value: ytCount, label: 'YOUTUBE', color: '#FF4444' },
-              { value: naverCount, label: 'NAVER', color: '#03C75A' },
-              ...(igCount > 0 ? [{ value: igCount, label: 'INSTA', color: '#E1306C' }] : []),
-            ].map(stat => (
-              <div key={stat.label} style={{ textAlign: 'center' }}>
-                <motion.div
-                  initial={{ opacity: 0, scale: 0.5 }}
-                  animate={{ opacity: 1, scale: 1 }}
-                  transition={{ delay: 0.6 }}
-                  style={{
-                    fontSize: '15px', fontWeight: 700,
-                    color: stat.color, fontFamily: 'monospace',
-                    textShadow: `0 0 12px ${stat.color}88`,
-                  }}
-                >
-                  {stat.value}
-                </motion.div>
-                <div style={{
-                  fontSize: '7.5px', color: '#444',
-                  fontFamily: 'monospace', letterSpacing: '1px',
+            <div style={{ display: 'flex', gap: '16px', alignItems: 'center' }}>
+              <span style={{ fontSize: '9px', color: '#555', fontFamily: 'monospace' }}>
+                SHOWING {filteredList.length} / {stats.total}
+              </span>
+              {stats.selected > 0 && (
+                <span style={{ fontSize: '9px', color: '#00F5FF', fontFamily: 'monospace' }}>
+                  ● {stats.selected} SELECTED
+                </span>
+              )}
+            </div>
+            <div style={{ display: 'flex', gap: '12px' }}>
+              {[
+                { v: stats.ytCount, l: 'YT', c: '#FF3333' },
+                { v: stats.naverCount, l: 'NV', c: '#03C75A' },
+                { v: stats.emailCount, l: '✉', c: '#22C55E' },
+                { v: stats.instaCount, l: 'IG', c: '#E1306C' },
+                { v: stats.tiktokCount, l: 'TT', c: '#69C9D0' },
+              ].filter(s => s.v > 0).map(s => (
+                <span key={s.l} style={{
+                  fontSize: '8px', color: s.c, fontFamily: 'monospace', fontWeight: 700,
+                  textShadow: `0 0 6px ${s.c}44`,
                 }}>
-                  {stat.label}
-                </div>
-              </div>
-            ))}
+                  {s.l}:{s.v}
+                </span>
+              ))}
+            </div>
           </motion.div>
+
+          {/* 배경 장식 - 움직이는 그리드 */}
+          <div style={{
+            position: 'absolute', inset: 0, pointerEvents: 'none', zIndex: -1,
+            opacity: 0.03,
+            backgroundImage: `
+              linear-gradient(rgba(0,245,255,0.3) 1px, transparent 1px),
+              linear-gradient(90deg, rgba(0,245,255,0.3) 1px, transparent 1px)
+            `,
+            backgroundSize: '60px 60px',
+          }} />
         </motion.div>
       )}
     </AnimatePresence>

@@ -400,13 +400,23 @@ export default function JarvisApp() {
               const items: InfluencerData[] = result.items.map((ch: YouTubeChannel) => ({
                 name: ch.name,
                 platform: 'YouTube',
-                followers: ch.subscribers > 0 ? (ch.subscribers >= 10000 ? `${(ch.subscribers / 10000).toFixed(1)}만` : `${(ch.subscribers / 1000).toFixed(1)}K`) : '-',
+                followers: ch.subscribers > 0 ? (ch.subscribers >= 10000 ? `${(ch.subscribers / 10000).toFixed(1)}만` : ch.subscribers >= 1000 ? `${(ch.subscribers / 1000).toFixed(1)}K` : `${ch.subscribers}`) : '-',
                 subscriberCount: ch.subscribers,
+                viewCount: ch.viewCount || 0,
+                viewCountFormatted: ch.viewCount ? (ch.viewCount >= 100000000 ? `${(ch.viewCount / 100000000).toFixed(1)}억` : ch.viewCount >= 10000 ? `${(ch.viewCount / 10000).toFixed(0)}만` : ch.viewCount.toLocaleString()) : '-',
+                videoCount: ch.videoCount || 0,
                 category: keyword || category,
                 email: ch.email || '',
-                profileUrl: (ch as any).customUrl || ch.profileUrl || '',
+                profileUrl: ch.profileUrl || (ch as any).customUrl ? `https://www.youtube.com/${(ch as any).customUrl}` : '',
+                channelUrl: ch.profileUrl || ((ch as any).customUrl ? `https://www.youtube.com/${(ch as any).customUrl}` : `https://www.youtube.com/channel/${ch.channelId}`),
                 thumbnailUrl: ch.thumbnailUrl || '',
                 channelId: ch.channelId || '',
+                topVideoTitle: (ch as any).topVideoTitle || '',
+                topVideoUrl: (ch as any).topVideoUrl || '',
+                instagramUsername: (ch as any).instagramUsername || (ch as any).instagram || '',
+                tiktokUsername: (ch as any).tiktokUsername || (ch as any).tiktok || '',
+                website: (ch as any).website || '',
+                description: ch.description || '',
                 status: '활성',
                 collectedAt,
               }));
@@ -3897,6 +3907,46 @@ export default function JarvisApp() {
         influencers={collectedInfluencers}
         visible={influencerCardsVisible}
         onClose={() => setInfluencerCardsVisible(false)}
+        onSendEmail={async (selected) => {
+          const emailTargets = selected.filter(inf => inf.email && inf.email.includes('@'));
+          if (emailTargets.length === 0) return;
+          try {
+            const res = await fetch(`${import.meta.env.VITE_API_BASE || ''}/api/cloud-proxy`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ endpoint: 'ai-proposal-email', params: {
+                influencers: emailTargets.map(inf => ({
+                  name: inf.name, email: inf.email, category: inf.category,
+                  subscribersFormatted: inf.followers, avgViews: inf.viewCount,
+                  description: inf.description || '', topVideoTitle: inf.topVideoTitle || '',
+                })),
+                sendEmail: true,
+              }}),
+            });
+            const data = await res.json();
+            console.log('[JARVIS] 이메일 발송 결과:', data);
+          } catch (err) { console.error('[JARVIS] 이메일 발송 실패:', err); }
+        }}
+        onAiProposal={async (selected) => {
+          const targets = selected.filter(inf => inf.email && inf.email.includes('@'));
+          if (targets.length === 0) return;
+          try {
+            const res = await fetch(`${import.meta.env.VITE_API_BASE || ''}/api/cloud-proxy`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ endpoint: 'ai-proposal-email', params: {
+                influencers: targets.map(inf => ({
+                  name: inf.name, email: inf.email, category: inf.category,
+                  subscribersFormatted: inf.followers, avgViews: inf.viewCount,
+                  description: inf.description || '', topVideoTitle: inf.topVideoTitle || '',
+                })),
+                sendEmail: true,
+              }}),
+            });
+            const data = await res.json();
+            console.log('[JARVIS] AI 공구제안 발송 결과:', data);
+          } catch (err) { console.error('[JARVIS] AI 공구제안 실패:', err); }
+        }}
       />
 
       {/* ── 지역업체 카드 UI ── */}
