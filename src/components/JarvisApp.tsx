@@ -25,6 +25,7 @@ import MarketIntelCard from './MarketIntelCard';
 import MarketIntelChart from './MarketIntelChart';
 import BookingPanel from './BookingPanel';
 import CloudStatusOverlay from './CloudStatusOverlay';
+import LiveBrowserViewer from './LiveBrowserViewer';
 
 // ── 시그니처 응답 목록 (GPT 대기 없이 즉시 재생) ──
 const SIGNATURE_RESPONSES = [
@@ -164,6 +165,8 @@ export default function JarvisApp() {
   // ── 예약 기능 상태 ──
   const [bookingSessionId, setBookingSessionId] = useState<string | null>(null);
   const [bookingPanelVisible, setBookingPanelVisible] = useState(false);
+  const [liveViewerVisible, setLiveViewerVisible] = useState(false);
+  const [liveViewerTask, setLiveViewerTask] = useState<{ type: string; businessName?: string; step?: number; message?: string } | null>(null);
   const [bookingSlots, setBookingSlots] = useState<string[]>([]);
   const [bookingScreenshot, setBookingScreenshot] = useState<string | null>(null);
   // 0: idle, 1: 로그인 중, 2: 시간 조회 중, 3: 확인 대기, 4: 폼 입력 중, 5: 완료
@@ -1075,6 +1078,9 @@ export default function JarvisApp() {
         emitNodeState('booking', 'active', `네이버 예약 시작: ${businessName} ${date} ${time}`);
         emitMissionLog('🤖', 'booking', `예약 에이전트 가동: ${businessName}`, 'info');
         setBookingPanelData({ businessName, date, time, currentStep: 0 });
+        // 라이브 브라우저 뷰어 자동 활성화
+        setLiveViewerVisible(true);
+        setLiveViewerTask({ type: 'booking', businessName, step: 0, message: `${businessName} 예약 준비 중...` });
       }
 
       // ── 1단계: 자비스 음성 응답 (작업 시작 알림) ──
@@ -1107,179 +1113,84 @@ export default function JarvisApp() {
         const savedUserName = naverCreds.userName || '';
         const savedUserPhone = naverCreds.userPhone || '';
 
-        // ── 4단계: 브라우저 에이전트 우선 경로 (예약 작업) ──
+        // ── 4단계: 클라우드 서버 브라우저 에이전트 (실시간 스크린샷 스트리밍) ──
         if (taskType === 'booking' && (targetSite.includes('네이버') || targetSite === '' || businessName)) {
-          addMessage('jarvis', `선생님, ${businessName || '해당 업체'} 예약 가능 일정을 직접 조회하겠습니다.`);
-          setDataPanel(prev => ({ ...prev, progress: 10, message: '브라우저 에이전트 가동 중...', actionLogs: [] }));
+          addMessage('jarvis', `선생님, ${businessName || '해당 업체'} 예약 가능 일정을 직접 조회하겠습니다. 실시간 화면을 표시합니다.`);
+          setDataPanel(prev => ({ ...prev, progress: 10, message: '클라우드 브라우저 에이전트 가동 중...', actionLogs: [] }));
 
           try {
-            // 1. 업체 검색 (bizId가 없는 경우)
-            let bizId = '';
-            let itemId = '';
-            const knownPlaces: Record<string, { bizId: string; itemId: string }> = {
-              '로즈벨': { bizId: '379909', itemId: '3506026' },
-              '로즈벨여성의원': { bizId: '379909', itemId: '3506026' },
-              '로즈벨 여성의원': { bizId: '379909', itemId: '3506026' },
-            };
-
-            const matchedPlace = Object.entries(knownPlaces).find(([key]) => 
-              businessName.includes(key)
-            );
-
-            if (matchedPlace) {
-              bizId = matchedPlace[1].bizId;
-              itemId = matchedPlace[1].itemId;
-            } else {
-              // 네이버 검색으로 bizId 찾기
-              setDataPanel(prev => ({
-                ...prev, progress: 15, message: `"${businessName}" 네이버 검색 중...`,
-                actionLogs: [...(prev.actionLogs || []), {
-                  step: '네이버 검색', status: 'start',
-                  detail: `"${businessName}" 업체를 네이버에서 검색합니다...`,
-                  timestamp: new Date().toISOString(), elapsed: '0.0s',
-                }],
-              }));
-
-              const searchRes = await fetch('/api/browser-agent', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ action: 'search_place', params: { query: businessName + ' 예약' } }),
-              });
-              const searchData = await searchRes.json();
-
-              if (searchData.success && searchData.result?.bookingBizId) {
-                bizId = searchData.result.bookingBizId;
-                setDataPanel(prev => ({
-                  ...prev, progress: 25,
-                  actionLogs: [...(prev.actionLogs || []), {
-                    step: '검색 완료', status: 'success',
-                    detail: `"${businessName}" 예약 페이지를 찾았습니다. (bizId: ${bizId})`,
-                    timestamp: new Date().toISOString(), elapsed: '2.0s',
-                  }],
-                }));
-              } else {
-                setDataPanel(prev => ({
-                  ...prev,
-                  actionLogs: [...(prev.actionLogs || []), {
-                    step: '검색 결과', status: 'warning',
-                    detail: `"${businessName}"의 네이버 예약 페이지를 찾을 수 없습니다. 마누스 엔진으로 전환합니다.`,
-                    timestamp: new Date().toISOString(), elapsed: '3.0s',
-                  }],
-                }));
-                throw new Error('FALLBACK_TO_MANUS');
-              }
-            }
-
-            // 2. 예약 가능 일정 조회
-            setDataPanel(prev => ({
-              ...prev, progress: 35, message: '예약 가능 일정 조회 중...',
-              actionLogs: [...(prev.actionLogs || []), {
-                step: '예약 조회 시작', status: 'start',
-                detail: `"${businessName}" 예약 가능 날짜를 조회합니다...`,
-                timestamp: new Date().toISOString(), elapsed: '3.0s',
-              }],
-            }));
-
-            const checkRes = await fetch('/api/browser-agent', {
+            // 클라우드 서버에 예약 스캔 요청 (실시간 스크린샷은 WebSocket으로 자동 전송됨)
+            const cloudServerUrl = import.meta.env.VITE_CLOUD_SERVER_URL || 'http://35.243.215.119:3001';
+            const scanRes = await fetch(`${cloudServerUrl}/api/task`, {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({
-                action: 'check_reservation',
-                params: { placeName: businessName, bizId, itemId },
+                taskType: 'naver_reservation_scan',
+                params: {
+                  businessName: businessName,
+                  date: date || new Date().toISOString().split('T')[0],
+                  preferredTime: time || '19:00',
+                  guestCount: 2,
+                },
               }),
             });
-            const checkData = await checkRes.json();
+            const scanData = await scanRes.json();
 
-            if (checkData.success && checkData.result) {
-              const result = checkData.result;
-              const availDates = (result.availableDates || []).filter((d: any) => d.available);
-
-              // 행동 로그 병합
-              const agentLogs = (checkData.actionLogs || []).map((log: any) => ({
-                step: log.step,
-                status: log.status,
-                detail: log.detail,
-                timestamp: log.timestamp || new Date().toISOString(),
-                elapsed: log.elapsed || '0s',
-                data: log.data,
-              }));
+            if (scanData.success && scanData.result) {
+              const result = scanData.result;
+              const slots = result.availableSlots || [];
+              const rec = result.recommendation;
 
               setDataPanel(prev => ({
-                ...prev,
-                progress: 80,
-                message: `${availDates.length}개 예약 가능 날짜 발견`,
-                actionLogs: agentLogs,
+                ...prev, progress: 90,
+                message: `${slots.length}개 예약 가능 시간 발견`,
+                actionLogs: (result.steps || []).map((s: any) => ({
+                  step: s.action, status: s.status,
+                  detail: s.action,
+                  timestamp: new Date().toISOString(), elapsed: '0s',
+                })),
               }));
 
               // 결과 보고
-              if (availDates.length > 0) {
-                const dateList = availDates.slice(0, 7).map((d: any) => 
-                  `${d.date} (${d.dayOfWeek})`
-                ).join(', ');
-
-                const reportMsg = `선생님, ${businessName} 예약 가능 일정을 확인했습니다.\n\n` +
-                  `📍 ${result.place?.name || businessName}\n` +
-                  `📋 ${result.selectedItem?.name || '진료'}\n` +
-                  `📅 예약 가능: ${dateList}\n\n` +
-                  `${date ? `요청하신 ${date}은(는) ${availDates.some((d: any) => d.date === date) ? '예약 가능합니다.' : '예약이 불가합니다.'}` : '어떤 날짜로 예약하시겠습니까?'}`;
+              if (slots.length > 0) {
+                const slotList = slots.slice(0, 8).map((s: any) => s.time || s.label).join(', ');
+                const reportMsg = `선생님, ${businessName} 예약 가능 시간을 확인했습니다.\n\n` +
+                  `📍 ${businessName}\n` +
+                  `📅 ${date || '오늘'}\n` +
+                  `⏰ 예약 가능: ${slotList}\n` +
+                  (rec ? `\n👉 AI 추천: ${rec.time} (${rec.reason})` : '') +
+                  (rec?.alternatives?.length ? `\n   대안: ${rec.alternatives.join(', ')}` : '') +
+                  (result.aiAnalysis ? `\n\n🤖 ${result.aiAnalysis}` : '');
 
                 addMessage('jarvis', reportMsg, true);
-
-                // 예약 가능 시간 슬롯 표시
-                setBookingSlots(availDates.slice(0, 10).map((d: any) => `${d.date} (${d.dayOfWeek})`));
+                setBookingSlots(slots.map((s: any) => s.time || s.label));
                 setBookingPanelVisible(true);
 
-              setDataPanel(prev => ({
-                ...prev, progress: 100, message: '예약 일정 조회 완료',
-                actionLogs: [...(prev.actionLogs || []), {
-                  step: '조회 완료', status: 'success',
-                  detail: `${availDates.length}개 예약 가능 날짜를 사용자에게 보고했습니다.`,
-                  timestamp: new Date().toISOString(), elapsed: `${((Date.now() - Date.now()) / 1000).toFixed(1)}s`,
-                }],
-              }));
-              // 텔레메트리: 예약 가능 슬롯 데이터 전송 (v4.2)
-              emitNodeData('booking', { availableSlots: availDates.length, date: date || 'N/A', business: businessName });
-              telemetryFunctionSuccess('execute_web_task', `예약 조회 완료: ${businessName}`, { availableSlots: availDates.length, businessName });
+                setDataPanel(prev => ({ ...prev, progress: 100, message: '예약 일정 조회 완료' }));
+                emitNodeData('booking', { availableSlots: slots.length, date: date || 'N/A', business: businessName });
+                telemetryFunctionSuccess('execute_web_task', `예약 조회 완료: ${businessName}`, { availableSlots: slots.length });
 
                 const safeSpeak = (text: string): Promise<void> => {
                   return new Promise((resolve) => {
-                    try {
-                      stopGlobalAudio(); // 기존 음성 중지
-                      setState('speaking');
-                      startSpeakingLevel();
-                      speak(text, undefined, () => { try { stopSpeakingLevel(); } catch(e) {} resolve(); });
-                    } catch (e) {
-                      try { stopSpeakingLevel(); } catch(e2) {}
-                      resolve();
-                    }
+                    try { stopGlobalAudio(); setState('speaking'); startSpeakingLevel(); speak(text, undefined, () => { try { stopSpeakingLevel(); } catch(e) {} resolve(); }); } catch (e) { try { stopSpeakingLevel(); } catch(e2) {} resolve(); }
                   });
                 };
+                await safeSpeak(`선생님, ${businessName} 예약 가능 시간을 확인했습니다. ${slots.length}개 시간이 가능합니다. ${rec ? `AI 추천은 ${rec.time}입니다.` : ''} 화면에서 원하시는 시간을 선택해 주세요.`);
 
-                await safeSpeak(`선생님, ${businessName} 예약 가능 일정을 확인했습니다. ${availDates.length}개 날짜가 가능합니다. 화면에서 원하시는 날짜를 선택해 주세요.`);
-
-                // 예약 로그인 필요 안내
-                if (result.requiresLogin) {
-                  addMessage('jarvis', `ℹ️ 실제 예약을 진행하려면 네이버 로그인이 필요합니다. 날짜를 선택하시면 예약 페이지로 안내해 드리겠습니다.`);
-                }
-
-                // 패널 자동 닫기 (10초 후)
-                setTimeout(() => {
-                  setDataPanel({ visible: false, type: null, progress: 0, message: '' });
-                }, 10000);
-
+                setTimeout(() => { setDataPanel({ visible: false, type: null, progress: 0, message: '' }); }, 10000);
                 setBookingStep(0);
                 setState('listening');
                 setIsListening(true);
                 return;
               } else {
-                const noDateMsg = `선생님, ${businessName}의 예약 가능한 날짜가 현재 없습니다. 다음 달 일정을 확인해 드릴까요?`;
-                addMessage('jarvis', noDateMsg, true);
+                const noSlotMsg = `선생님, ${businessName}의 ${date || '오늘'} 예약 가능한 시간이 현재 없습니다. 다른 날짜를 확인해 드릴까요?`;
+                addMessage('jarvis', noSlotMsg, true);
                 const safeSpeak2 = (text: string): Promise<void> => {
                   return new Promise((resolve) => {
                     try { stopGlobalAudio(); setState('speaking'); startSpeakingLevel(); speak(text, undefined, () => { try { stopSpeakingLevel(); } catch(e) {} resolve(); }); } catch (e) { try { stopSpeakingLevel(); } catch(e2) {} resolve(); }
                   });
                 };
-                await safeSpeak2(noDateMsg);
+                await safeSpeak2(noSlotMsg);
               }
             } else {
               throw new Error('FALLBACK_TO_MANUS');
@@ -5536,6 +5447,13 @@ export default function JarvisApp() {
           />
         )}
       </AnimatePresence>
+
+      {/* ── 라이브 브라우저 뷰어 (실시간 크롤링 화면) ── */}
+      <LiveBrowserViewer
+        visible={liveViewerVisible}
+        onClose={() => setLiveViewerVisible(false)}
+        taskInfo={liveViewerTask || undefined}
+      />
     </main>
   );
 }
