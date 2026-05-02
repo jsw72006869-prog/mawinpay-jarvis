@@ -17,115 +17,17 @@ interface ConversationStreamProps {
 
 // 작업 완료 메시지 전용 스파클링 텍스트 컴포넌트
 function SparkleCompletionText({ text, isNew }: { text: string; isNew: boolean }) {
-  const [displayed, setDisplayed] = useState(isNew ? '' : text);
-  const [done, setDone] = useState(!isNew);
-  const [sparkles, setSparkles] = useState<{ id: number; x: number; y: number; size: number; color: string }[]>([]);
-  const containerRef = useRef<HTMLSpanElement>(null);
-
-  useEffect(() => {
-    if (!isNew) { setDisplayed(text); setDone(true); return; }
-    setDisplayed('');
-    setDone(false);
-    let i = 0;
-    const speed = text.length > 80 ? 14 : text.length > 40 ? 18 : 22;
-    let sparkleId = 0;
-    const timer = setInterval(() => {
-      i++;
-      setDisplayed(text.slice(0, i));
-      // 타이핑 중 랜덤하게 스파클 생성
-      if (Math.random() > 0.6) {
-        const newSparkle = {
-          id: sparkleId++,
-          x: Math.random() * 100,
-          y: Math.random() * 100,
-          size: 3 + Math.random() * 5,
-          color: ['#00F5FF', '#FFD700', '#FF6B9D', '#7FFF00', '#FF8C00'][Math.floor(Math.random() * 5)],
-        };
-        setSparkles(prev => [...prev.slice(-12), newSparkle]);
-        setTimeout(() => {
-          setSparkles(prev => prev.filter(s => s.id !== newSparkle.id));
-        }, 600);
-      }
-      if (i >= text.length) {
-        clearInterval(timer);
-        setDone(true);
-        // 완료 시 폭발적 스파클
-        for (let j = 0; j < 20; j++) {
-          setTimeout(() => {
-            const burst = {
-              id: sparkleId++,
-              x: Math.random() * 100,
-              y: Math.random() * 100,
-              size: 4 + Math.random() * 8,
-              color: ['#00F5FF', '#FFD700', '#FF6B9D', '#7FFF00', '#FF8C00', '#FFFFFF'][Math.floor(Math.random() * 6)],
-            };
-            setSparkles(prev => [...prev.slice(-20), burst]);
-            setTimeout(() => {
-              setSparkles(prev => prev.filter(s => s.id !== burst.id));
-            }, 800);
-          }, j * 40);
-        }
-      }
-    }, speed);
-    return () => clearInterval(timer);
-  }, [text, isNew]);
-
+  // 금색/무지개 그라데이션 제거 - 깔끔한 텍스트로 표시
   return (
-    <span ref={containerRef} style={{ position: 'relative', display: 'inline' }}>
-      {/* 스파클 파티클들 */}
-      {sparkles.map(s => (
-        <motion.span
-          key={s.id}
-          initial={{ opacity: 1, scale: 0, x: 0, y: 0 }}
-          animate={{ opacity: 0, scale: 1.5, x: (Math.random() - 0.5) * 30, y: (Math.random() - 0.5) * 30 }}
-          transition={{ duration: 0.6, ease: 'easeOut' }}
-          style={{
-            position: 'absolute',
-            left: `${s.x}%`,
-            top: `${s.y}%`,
-            width: s.size,
-            height: s.size,
-            borderRadius: '50%',
-            backgroundColor: s.color,
-            pointerEvents: 'none',
-            boxShadow: `0 0 ${s.size * 2}px ${s.color}`,
-            zIndex: 10,
-          }}
-        />
-      ))}
-      {/* 텍스트 */}
+    <span style={{ position: 'relative', display: 'inline' }}>
       <span style={{
-        background: done
-          ? 'linear-gradient(90deg, #00F5FF, #FFD700, #FF6B9D, #7FFF00, #00F5FF)'
-          : 'linear-gradient(90deg, #00F5FF, #7FFF00)',
-        backgroundSize: '200% auto',
-        WebkitBackgroundClip: 'text',
-        WebkitTextFillColor: 'transparent',
-        backgroundClip: 'text',
-        animation: done ? 'shimmer 2s linear infinite' : 'none',
-        fontWeight: 600,
+        color: 'rgba(200,230,255,0.95)',
+        fontWeight: 500,
+        lineHeight: 1.6,
       }}>
-        {displayed}
+        {text}
       </span>
-      {!done && (
-        <motion.span
-          animate={{ opacity: [1, 0, 1], scale: [1, 1.3, 1] }}
-          transition={{ duration: 0.5, repeat: Infinity }}
-          style={{ color: '#FFD700', marginLeft: 2 }}
-        >
-          ✦
-        </motion.span>
-      )}
-      {done && (
-        <motion.span
-          initial={{ opacity: 0, scale: 0 }}
-          animate={{ opacity: 1, scale: 1 }}
-          transition={{ type: 'spring', stiffness: 300 }}
-          style={{ marginLeft: 4, fontSize: '0.9em' }}
-        >
-          ✅
-        </motion.span>
-      )}
+      <span style={{ marginLeft: 4, fontSize: '0.9em', color: '#00F5FF' }}>✓</span>
     </span>
   );
 }
@@ -139,10 +41,11 @@ export default function ConversationStream({ messages, isTyping }: ConversationS
   }, [messages, isTyping]);
 
   // 최근 3개 메시지만 표시
-  const visibleMessages = messages.slice(-3);
+  // 하단 자막 형태: 최신 1개 메시지만 표시
+  const visibleMessages = messages.slice(-1);
 
   return (
-    <div className="w-full max-w-2xl mx-auto" style={{ minHeight: 60, position: 'relative', zIndex: 999 }}>
+    <div className="w-full max-w-2xl mx-auto" style={{ minHeight: 0, position: 'relative', zIndex: 999 }}>
       {/* shimmer 애니메이션 CSS */}
       <style>{`
         @keyframes shimmer {

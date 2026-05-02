@@ -610,14 +610,28 @@ export async function searchYouTubeAPI(
   maxResults: number = 10
 ): Promise<{ total: number; keyword: string; items: YouTubeChannel[] }> {
   const apiBase = import.meta.env.PROD ? '' : 'https://mawinpay-jarvis.vercel.app';
-  const url = `${apiBase}/api/youtube-search?keyword=${encodeURIComponent(keyword)}&maxResults=${maxResults}`;
-  console.log('[JARVIS] YouTube 검색 API 호출:', url);
-  const res = await fetch(url);
+  // 클라우드 서버 프록시를 통해 YouTube 검색 실행
+  const url = `${apiBase}/api/cloud-proxy`;
+  console.log('[JARVIS] YouTube 검색 (Cloud Proxy):', keyword, maxResults);
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      endpoint: 'task',
+      taskType: 'youtube-search',
+      params: { keyword, maxResults }
+    })
+  });
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
     throw new Error((err as any).message || `YouTube API 오류: ${res.status}`);
   }
-  return res.json();
+  const data = await res.json();
+  // 클라우드 서버 응답을 YouTubeChannel 형식으로 변환
+  if (data.result && Array.isArray(data.result)) {
+    return { total: data.result.length, keyword, items: data.result };
+  }
+  return data;
 }
 
 // ── 인스타그램 계정 검색 ──
@@ -794,7 +808,7 @@ export function parseCommand(text: string): JarvisAction {
       },
       workingMessage: `${platformLabel} ${keyword ? keyword + ' ' : ''}인플루언서 ${count}명 수집 중...`,
       response: `${platformLabel}에서 ${keyword ? keyword + ' 분야 ' : ''}인플루언서 ${count}명을 수집하겠습니다. 구글 시트에 실시간으로 저장됩니다.`,
-      followUp: '수집이 완료되면 이메일 발송도 바로 진행할까요?',
+      followUp: undefined, // 수집 완료 후에만 질문하도록 변경
     };
   }
 

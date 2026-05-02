@@ -2267,10 +2267,15 @@ export default function JarvisApp() {
 
         let smartstoreData: any = null;
         try {
-          const ssRes = await fetch('/api/morning-briefing-v2', { method: 'GET' });
+          // 클라우드 서버를 통해 스마트스토어 직접 접속
+          const ssRes = await fetch('/api/cloud-proxy', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ endpoint: 'task', taskType: 'smartstore-orders', params: {} })
+          });
           const ssJson = await ssRes.json();
-          if (ssJson.success || ssJson.partialSuccess) {
-            smartstoreData = ssJson;
+          if (ssJson.success || ssJson.result) {
+            smartstoreData = ssJson.result || ssJson;
             // 행동 로그 업데이트 (API에서 받은 로그 포함)
             const apiLogs = (ssJson.actionLogs || []).map((l: any) => ({
               step: l.step,
@@ -3490,16 +3495,17 @@ export default function JarvisApp() {
         </div>
       </motion.aside>
 
-      {/* ── 대화 스트림 ── */}
+      {/* ── 대화 스트림 (하단 자막 형태 - 화면 가리지 않음) ── */}
       <div style={{
         position: 'fixed',
-        // 타이핑 모드 활성 시 위로 올려서 갹침 방지
-        bottom: textInputMode ? 160 : 0,
+        bottom: textInputMode ? 140 : 12,
         left: '50%', transform: 'translateX(-50%)',
-        width: '100%', maxWidth: '760px',
-        padding: '0 28px 56px',
+        width: '100%', maxWidth: '560px',
+        padding: '0 20px',
         zIndex: 25, pointerEvents: 'none',
         transition: 'bottom 0.25s ease',
+        maxHeight: '80px',
+        overflow: 'hidden',
       }}>
         <AnimatePresence>
           {messages.length > 0 && (
