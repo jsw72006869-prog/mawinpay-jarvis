@@ -59,14 +59,17 @@ export async function createManusTask(
   }
 ): Promise<{ success: boolean; task_id?: string; task_url?: string; error?: string }> {
   try {
-    const response = await fetch(`${API_BASE}/api/manus-task-create`, {
+    const response = await fetch(`${API_BASE}/api/cloud-proxy`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        prompt,
-        connectors: options?.connectors,
-        enable_skills: options?.enable_skills,
-        force_skills: options?.force_skills,
+        endpoint: 'manus-task-create',
+        params: {
+          prompt,
+          connectors: options?.connectors,
+          enable_skills: options?.enable_skills,
+          force_skills: options?.force_skills,
+        },
       }),
     });
 
@@ -93,7 +96,7 @@ export async function getManusTaskStatus(
 ): Promise<ManusTask> {
   try {
     const response = await fetch(
-      `${API_BASE}/api/manus-task-status?task_id=${encodeURIComponent(taskId)}&order=desc&limit=20`
+      `${API_BASE}/api/cloud-proxy?endpoint=manus-task-status&task_id=${encodeURIComponent(taskId)}&order=desc&limit=20`
     );
     const data = await response.json();
 
@@ -131,10 +134,10 @@ export async function sendManusMessage(
   message: string
 ): Promise<{ success: boolean; error?: string }> {
   try {
-    const response = await fetch(`${API_BASE}/api/manus-task-send`, {
+    const response = await fetch(`${API_BASE}/api/cloud-proxy`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ task_id: taskId, message }),
+      body: JSON.stringify({ endpoint: 'manus-task-send', params: { task_id: taskId, message } }),
     });
     const data = await response.json();
     return { success: data.success, error: data.error };
@@ -152,10 +155,10 @@ export async function confirmManusAction(
   input?: Record<string, unknown>
 ): Promise<{ success: boolean; error?: string }> {
   try {
-    const response = await fetch(`${API_BASE}/api/manus-task-confirm`, {
+    const response = await fetch(`${API_BASE}/api/cloud-proxy`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ task_id: taskId, event_id: eventId, input }),
+      body: JSON.stringify({ endpoint: 'manus-task-confirm', params: { task_id: taskId, event_id: eventId, input } }),
     });
     const data = await response.json();
     return { success: data.success, error: data.error };
@@ -275,10 +278,10 @@ export async function checkManusConnection(): Promise<{
 }> {
   try {
     // 간단한 테스트 태스크 생성으로 연결 확인
-    const response = await fetch(`${API_BASE}/api/manus-task-create`, {
+    const response = await fetch(`${API_BASE}/api/cloud-proxy`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ prompt: '연결 테스트: "JARVIS 연결 성공"이라고만 답해주세요.' }),
+      body: JSON.stringify({ endpoint: 'manus-task-create', params: { prompt: '연결 테스트: "JARVIS 연결 성공"이라고만 답해주세요.' } }),
     });
     const data = await response.json();
     

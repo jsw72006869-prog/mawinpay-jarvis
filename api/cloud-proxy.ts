@@ -14,12 +14,21 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   try {
     if (req.method === 'GET') {
-      // GET: 상태 조회 또는 히스토리 조회
+      // GET: 상태 조회, 히스토리, 또는 범용 API 전달
       const endpoint = req.query.endpoint as string || 'status';
-      const url = `${CLOUD_SERVER}/api/${endpoint}`;
+      
+      // 쿼리 파라미터를 서버로 그대로 전달 (endpoint 제외)
+      const queryParams = new URLSearchParams();
+      for (const [key, value] of Object.entries(req.query)) {
+        if (key !== 'endpoint' && value) {
+          queryParams.set(key, String(value));
+        }
+      }
+      const qs = queryParams.toString();
+      const url = `${CLOUD_SERVER}/api/${endpoint}${qs ? `?${qs}` : ''}`;
       
       const response = await fetch(url, {
-        signal: AbortSignal.timeout(8000)
+        signal: AbortSignal.timeout(15000)
       });
       
       if (!response.ok) {
@@ -31,14 +40,19 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
 
     if (req.method === 'POST') {
-      // POST: 작업 실행
-      const { endpoint, taskType, params } = req.body;
+      // POST: 작업 실행 또는 범용 API 전달
+      const { endpoint, taskType, params, ...rest } = req.body;
       const url = `${CLOUD_SERVER}/api/${endpoint || 'task'}`;
+      
+      // taskType이 있으면 task 형식, 없으면 body 그대로 전달
+      const body = taskType 
+        ? JSON.stringify({ taskType, params })
+        : JSON.stringify({ ...params, ...rest });
       
       const response = await fetch(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ taskType, params }),
+        body,
         signal: AbortSignal.timeout(55000)
       });
       

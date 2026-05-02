@@ -778,10 +778,11 @@ export default function JarvisApp() {
       try {
         // 영업시간 필터가 있으면 플레이스 파싱 API 사용, 없으면 기본 검색 API
         const useHoursApi = hoursFilter === '24h' || hoursFilter === 'late_night';
-        const apiUrl = useHoursApi
-          ? `/api/naver-place-hours?query=${encodeURIComponent(query)}&display=${display}&hours_filter=${hoursFilter}${category ? `&category=${encodeURIComponent(category)}` : ''}`
-          : `/api/naver-local-search?query=${encodeURIComponent(query)}&display=${display}${category ? `&category=${encodeURIComponent(category)}` : ''}`;
-        const res = await fetch(apiUrl);
+        const proxyEndpoint = useHoursApi ? 'naver-place-hours' : 'naver-local-search';
+        const proxyParams = new URLSearchParams({ endpoint: proxyEndpoint, query, display: String(display) });
+        if (useHoursApi) proxyParams.set('hours_filter', hoursFilter);
+        if (category) proxyParams.set('category', category);
+        const res = await fetch(`/api/cloud-proxy?${proxyParams.toString()}`);
         const data = await res.json();
 
         if (!res.ok || !data.success) {
@@ -966,7 +967,7 @@ export default function JarvisApp() {
 
         if (ytAction === 'keyword' && ytKeyword) {
           // 마누스 AI 분석 포함 모드
-          endpoint = '/api/youtube-analyze';
+          endpoint = 'youtube-analyze';
           queryParams = { keyword: ytKeyword, count: String(ytCount), mode: 'smart' };
           if (ytPeriod) queryParams.period = ytPeriod;
 
@@ -978,16 +979,16 @@ export default function JarvisApp() {
             ],
           }));
         } else if (ytAction === 'channel' && ytChannelName) {
-          endpoint = '/api/youtube-trending';
+          endpoint = 'youtube-trending';
           queryParams = { action: 'channel', channelName: ytChannelName, maxResults: String(ytCount) };
         } else {
-          endpoint = '/api/youtube-trending';
+          endpoint = 'youtube-trending';
           queryParams = { action: 'trending', maxResults: String(ytCount) };
           if (ytCategory && ytCategory !== '전체') queryParams.category = ytCategory;
         }
 
-        const qs = new URLSearchParams(queryParams).toString();
-        const ytRes = await fetch(`${apiBase}${endpoint}?${qs}`);
+        const proxyQs = new URLSearchParams({ endpoint, ...queryParams }).toString();
+        const ytRes = await fetch(`${apiBase}/api/cloud-proxy?${proxyQs}`);
         const ytData = await ytRes.json();
 
         if (ytData.success && ytData.videos?.length > 0) {
@@ -1325,10 +1326,10 @@ export default function JarvisApp() {
 
         addMessage('jarvis', `⏳ 시스템 엔진 가동 중...`);
 
-        const manusRes = await fetch('/api/manus-task-create', {
+        const manusRes = await fetch('/api/cloud-proxy', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ prompt: manusPrompt }),
+          body: JSON.stringify({ endpoint: 'manus-task-create', params: { prompt: manusPrompt } }),
         });
 
         // 안전한 JSON 파싱
@@ -1391,7 +1392,7 @@ export default function JarvisApp() {
           await new Promise(r => setTimeout(r, 3000));
 
           try {
-            const statusRes = await fetch(`/api/manus-task-status?task_id=${encodeURIComponent(taskId)}`);
+            const statusRes = await fetch(`/api/cloud-proxy?endpoint=manus-task-status&task_id=${encodeURIComponent(taskId)}`);
             let statusData: any;
             const statusText = await statusRes.text();
             try {
@@ -1476,9 +1477,9 @@ export default function JarvisApp() {
                 const captchaCode = await new Promise<string>(resolve => { verificationResolveRef.current = resolve; });
                 setState('working');
                 addMessage('jarvis', `[INPUT] 캡차 코드 "${captchaCode}" 제출 중...`);
-                await fetch('/api/manus-task-confirm', {
+                await fetch('/api/cloud-proxy', {
                   method: 'POST', headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({ task_id: taskId, event_id: waitingDetail.waiting_for_event_id, input: { captcha_code: captchaCode } }),
+                  body: JSON.stringify({ endpoint: 'manus-task-confirm', params: { task_id: taskId, event_id: waitingDetail.waiting_for_event_id, input: { captcha_code: captchaCode } } }),
                 });
               } else if (eventType.includes('otp')) {
                 emitMissionLog('🔑', 'booking', 'OTP 인증번호 요청 - 사용자 입력 대기', 'warn');
@@ -1491,9 +1492,9 @@ export default function JarvisApp() {
                 const otpCode = await new Promise<string>(resolve => { verificationResolveRef.current = resolve; });
                 setState('working');
                 addMessage('jarvis', `[INPUT] 인증번호 "${otpCode}" 제출 중...`);
-                await fetch('/api/manus-task-confirm', {
+                await fetch('/api/cloud-proxy', {
                   method: 'POST', headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({ task_id: taskId, event_id: waitingDetail.waiting_for_event_id, input: { otp_code: otpCode } }),
+                  body: JSON.stringify({ endpoint: 'manus-task-confirm', params: { task_id: taskId, event_id: waitingDetail.waiting_for_event_id, input: { otp_code: otpCode } } }),
                 });
               } else if (eventType.includes('login')) {
                 // 로그인 필요 시 사용자에게 안내
@@ -1507,9 +1508,9 @@ export default function JarvisApp() {
                 await new Promise<string>(resolve => { verificationResolveRef.current = resolve; });
                 setState('working');
                 addMessage('jarvis', `[INPUT] 로그인 완료 신호 전송 중...`);
-                await fetch('/api/manus-task-confirm', {
+                await fetch('/api/cloud-proxy', {
                   method: 'POST', headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({ task_id: taskId, event_id: waitingDetail.waiting_for_event_id, input: { login_completed: true } }),
+                  body: JSON.stringify({ endpoint: 'manus-task-confirm', params: { task_id: taskId, event_id: waitingDetail.waiting_for_event_id, input: { login_completed: true } } }),
                 });
               }
             }
@@ -2573,14 +2574,17 @@ export default function JarvisApp() {
               const today = new Date().toLocaleDateString('ko-KR', { month: 'long', day: 'numeric' });
               const apiAction = isSendEmail ? 'full_process' : 'create_order';
 
-              const res = await fetch('/api/smartstore-process-order', {
+              const res = await fetch('/api/cloud-proxy', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
-                  action: apiAction,
-                  fileBase64,
-                  fileName: uploadedFile.name,
-                  date: today,
+                  endpoint: 'smartstore-process-order',
+                  params: {
+                    action: apiAction,
+                    fileBase64,
+                    fileName: uploadedFile.name,
+                    date: today,
+                  },
                 }),
               });
               const data = await res.json();
@@ -2658,7 +2662,7 @@ export default function JarvisApp() {
         if (ssAction === 'get_products') {
           const productStatus = String(action.params?.product_status || 'SALE');
           const params = new URLSearchParams({ status: productStatus, size: '50' });
-          const res = await fetch(`/api/smartstore-products?${params.toString()}`);
+          const res = await fetch(`/api/cloud-proxy?endpoint=smartstore-products&${params.toString()}`);
           const data = await res.json();
           if (!data.success) throw new Error(data.error || '상품 조회 실패');
           const products = data.products || [];

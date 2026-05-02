@@ -108,7 +108,7 @@ async function getSheetDataContext(): Promise<string> {
     }
 
     // 백엔드 API에서 실제 데이터 가져오기
-    const response = await fetch('/api/sheets-read');
+    const response = await fetch('/api/cloud-proxy?endpoint=sheets-read');
     if (!response.ok) {
       console.warn('[JARVIS] 시트 데이터 API 호출 실패:', response.status);
       const data = { influencers: [], emails: [], naver: [] };
@@ -688,8 +688,7 @@ export async function searchInstagramAPI(
   maxResults: number = 10,
   fetchProfile: boolean = false
 ): Promise<{ total: number; keyword: string; items: InstagramAccount[] }> {
-  const apiBase = import.meta.env.PROD ? '' : 'https://mawinpay-jarvis.vercel.app';
-  const url = `${apiBase}/api/instagram-search?keyword=${encodeURIComponent(keyword)}&maxResults=${maxResults}&fetchProfile=${fetchProfile}`;
+  const url = `/api/cloud-proxy?endpoint=instagram-search&keyword=${encodeURIComponent(keyword)}&maxResults=${maxResults}&fetchProfile=${fetchProfile}`;
   console.log('[JARVIS] Instagram 검색 API 호출:', url);
   const res = await fetch(url);
   if (!res.ok) {

@@ -45,10 +45,10 @@ export interface NaverCollectedData {
 // ── Vercel API 경유 Google Sheets 저장 ──
 async function saveToSheets(type: string, data: any[]): Promise<{ success: boolean; count: number; message: string }> {
   try {
-    const res = await fetch(`${API_BASE}/api/sheets-save`, {
+    const res = await fetch(`${API_BASE}/api/cloud-proxy`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ type, data }),
+      body: JSON.stringify({ endpoint: 'sheets-save', params: { type, data } }),
     });
     if (!res.ok) {
       const err = await res.json().catch(() => ({})) as any;
