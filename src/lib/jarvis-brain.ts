@@ -106,7 +106,23 @@ async function getSheetDataContext(): Promise<string> {
     if (sheetCache && (now - sheetCacheTime) < SHEET_CACHE_TTL) {
       return formatSheetContext(sheetCache);
     }
-    const data = { influencers: [], emails: [], naver: [] };
+
+    // 백엔드 API에서 실제 데이터 가져오기
+    const response = await fetch('/api/sheets-read');
+    if (!response.ok) {
+      console.warn('[JARVIS] 시트 데이터 API 호출 실패:', response.status);
+      const data = { influencers: [], emails: [], naver: [] };
+      sheetCache = data;
+      sheetCacheTime = now;
+      return formatSheetContext(data);
+    }
+
+    const result = await response.json();
+    const data = {
+      influencers: result.summary?.influencers || [],
+      emails: result.summary?.emails || [],
+      naver: result.summary?.naver || [],
+    };
     sheetCache = data;
     sheetCacheTime = now;
     return formatSheetContext(data);

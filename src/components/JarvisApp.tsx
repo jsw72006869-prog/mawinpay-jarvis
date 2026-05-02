@@ -14,11 +14,13 @@ import InfluencerCards, { type InfluencerData } from './InfluencerCards';
 import LocalBusinessCards, { type LocalBusinessData } from './LocalBusinessCards';
 import { ParticleTextCanvas } from './ParticleTextCanvas';
 import NeuralMissionMap from './NeuralMissionMap';
-import PlatformDataCards from './PlatformDataCards';
+import PlatformDataCardsEnhanced from './PlatformDataCards_Enhanced';
 import ManusStrategyDashboard from './ManusStrategyDashboard';
 import { telemetryFunctionStart, telemetryFunctionSuccess, telemetryFunctionError, emitMissionLog, emitBriefingSequence, emitNodeState, emitNodeData, emitPulseLine } from '../lib/jarvis-telemetry';
 import VoiceParticleAura from './VoiceParticleAura';
 import GoldenFlare from './GoldenFlare';
+import AgentConsolePanel from './AgentConsolePanel';
+import HologramWorkPanel from './HologramWorkPanel';
 
 // ── 시그니처 응답 목록 (GPT 대기 없이 즉시 재생) ──
 const SIGNATURE_RESPONSES = [
@@ -190,6 +192,9 @@ export default function JarvisApp() {
   const [textInputValue, setTextInputValue] = useState('');
   const textInputRef = useRef<HTMLInputElement>(null);
   const [showGoldenFlare, setShowGoldenFlare] = useState(false);
+  // ─── Agent Console & HUD 상태 (v4.2) ───
+  const [agentConsoleVisible, setAgentConsoleVisible] = useState(false);
+  const [coreDimLevel, setCoreDimLevel] = useState(0); // 0=정상, 1=최대감소
 
   const triggerGoldenFlare = useCallback(() => {
     setShowGoldenFlare(true);
@@ -1039,6 +1044,13 @@ export default function JarvisApp() {
       const additionalInfo = String(action.params?.additional_info || '');
 
       telemetryFunctionStart('execute_web_task', `웹 작업: ${taskType} - ${businessName || taskDescription || targetSite}`);
+      // Agent Console 자동 활성화 (v4.2)
+      setAgentConsoleVisible(true);
+      // 텔레메트리: 예약 노드 활성화 (v4.2)
+      if (taskType === 'booking') {
+        emitNodeState('booking', 'active', `네이버 예약 시작: ${businessName} ${date} ${time}`);
+        emitMissionLog('info', `예약 에이전트 가동: ${businessName}`, 'booking');
+      }
 
       // ── 1단계: 자비스 음성 응답 (작업 시작 알림) ──
       setState('speaking');
@@ -1192,14 +1204,17 @@ export default function JarvisApp() {
                 setBookingSlots(availDates.slice(0, 10).map((d: any) => `${d.date} (${d.dayOfWeek})`));
                 setBookingPanelVisible(true);
 
-                setDataPanel(prev => ({
-                  ...prev, progress: 100, message: '예약 일정 조회 완료',
-                  actionLogs: [...(prev.actionLogs || []), {
-                    step: '조회 완료', status: 'success',
-                    detail: `${availDates.length}개 예약 가능 날짜를 사용자에게 보고했습니다.`,
-                    timestamp: new Date().toISOString(), elapsed: `${((Date.now() - Date.now()) / 1000).toFixed(1)}s`,
-                  }],
-                }));
+              setDataPanel(prev => ({
+                ...prev, progress: 100, message: '예약 일정 조회 완료',
+                actionLogs: [...(prev.actionLogs || []), {
+                  step: '조회 완료', status: 'success',
+                  detail: `${availDates.length}개 예약 가능 날짜를 사용자에게 보고했습니다.`,
+                  timestamp: new Date().toISOString(), elapsed: `${((Date.now() - Date.now()) / 1000).toFixed(1)}s`,
+                }],
+              }));
+              // 텔레메트리: 예약 가능 슬롯 데이터 전송 (v4.2)
+              emitNodeData('booking', { availableSlots: availDates.length, date: date || 'N/A', business: businessName });
+              telemetryFunctionSuccess('execute_web_task', `예약 조회 완료: ${businessName}`, { availableSlots: availDates.length, businessName });
 
                 const safeSpeak = (text: string): Promise<void> => {
                   return new Promise((resolve) => {
@@ -1258,6 +1273,9 @@ export default function JarvisApp() {
             if (browserAgentErr.message !== 'FALLBACK_TO_MANUS') {
               console.error('[JARVIS] 브라우저 에이전트 오류:', browserAgentErr);
               addMessage('jarvis', `⚠️ 브라우저 에이전트 오류. 마누스 엔진으로 전환합니다.`);
+              // 텔레메트리: 예약 오류 보고 (v4.2)
+              telemetryFunctionError('execute_web_task', `브라우저 에이전트 오류: ${browserAgentErr.message}`);
+              emitMissionLog('error', `예약 실패: ${browserAgentErr.message}`, 'booking');
             }
             // 마누스 폴백으로 계속 진행
           }
@@ -1434,6 +1452,9 @@ export default function JarvisApp() {
               setDataPanel(prev => ({ ...prev, message: `⚠️ 사용자 입력 대기: ${description}` }));
 
               if (eventType.includes('captcha')) {
+                emitMissionLog('warn', '캐차 보안 문자 감지 - 사용자 입력 대기', 'booking');
+                setVerificationMode('captcha');
+                setAgentConsoleVisible(true);
                 const captchaMsg = '선생님, 보안 문자가 감지되었습니다. 화면에 표시된 코드를 말씀해 주세요.';
                 addMessage('jarvis', captchaMsg, true);
                 await safeSpeak(captchaMsg);
@@ -1446,6 +1467,9 @@ export default function JarvisApp() {
                   body: JSON.stringify({ task_id: taskId, event_id: waitingDetail.waiting_for_event_id, input: { captcha_code: captchaCode } }),
                 });
               } else if (eventType.includes('otp')) {
+                emitMissionLog('warn', 'OTP 인증번호 요청 - 사용자 입력 대기', 'booking');
+                setVerificationMode('otp');
+                setAgentConsoleVisible(true);
                 const otpMsg = '선생님, 인증번호가 전송되었습니다. 받으신 번호를 말씀해 주세요.';
                 addMessage('jarvis', otpMsg, true);
                 await safeSpeak(otpMsg);
@@ -1459,6 +1483,8 @@ export default function JarvisApp() {
                 });
               } else if (eventType.includes('login')) {
                 // 로그인 필요 시 사용자에게 안내
+                emitMissionLog('warn', `${targetSite || '사이트'} 로그인 필요 - 사용자 직접 로그인 대기`, 'booking');
+                setAgentConsoleVisible(true);
                 const loginMsg = `선생님, ${targetSite || '해당 사이트'} 로그인이 필요합니다. 화면에서 로그인을 진행해 주시면 ${taskLabel}을 마무리짓겠습니다.`;
                 addMessage('jarvis', loginMsg, true);
                 await safeSpeak(loginMsg);
@@ -1482,6 +1508,11 @@ export default function JarvisApp() {
               taskCompleted = true;
               setBookingStep(5);
               telemetryFunctionSuccess('execute_web_task', `${taskLabel} 완료: ${businessName}`, { taskType, businessName: businessName || targetSite });
+              // 텔레메트리: 예약 노드 완료 (v4.2)
+              if (taskType === 'booking') {
+                emitNodeState('booking', 'success', `예약 완료: ${businessName} ${date} ${time}`);
+                emitNodeData('booking', { businessName, date, time, status: 'confirmed' });
+              }
               setDataPanel(prev => ({ ...prev, progress: 100, message: `${taskLabel} 자동화 완료` }));
 
               // 마누스의 최종 결과물(output) 또는 마지막 메시지 가져오기
@@ -1501,6 +1532,11 @@ export default function JarvisApp() {
               taskError = true;
               const errorMsg = msgs[msgs.length - 1]?.content || `${taskLabel} 중 오류가 발생했습니다.`;
               telemetryFunctionError('execute_web_task', errorMsg);
+              // 텔레메트리: 예약 노드 오류 (v4.2)
+              if (taskType === 'booking') {
+                emitNodeState('booking', 'error', errorMsg);
+                emitMissionLog('error', `예약 실패: ${errorMsg}`, 'booking');
+              }
               addMessage('jarvis', `❌ [AGENT] 에러: ${errorMsg}`);
               throw new Error(errorMsg);
             }
@@ -2173,6 +2209,8 @@ export default function JarvisApp() {
       // 텔레메트리: 모닝 브리핑 시퀀스 시작
       emitBriefingSequence('start', undefined, '모닝 브리핑 프로토콜 가동');
       telemetryFunctionStart('morning_briefing', '모닝 브리핑 데이터 수집 시작');
+      // Agent Console 자동 활성화 (v4.2)
+      setAgentConsoleVisible(true);
 
       // 행동 로그 패널 활성화
       setDataPanel({
@@ -2195,9 +2233,9 @@ export default function JarvisApp() {
 
         let smartstoreData: any = null;
         try {
-          const ssRes = await fetch('/api/morning-briefing', { method: 'GET' });
+          const ssRes = await fetch('/api/morning-briefing-v2', { method: 'GET' });
           const ssJson = await ssRes.json();
-          if (ssJson.success) {
+          if (ssJson.success || ssJson.partialSuccess) {
             smartstoreData = ssJson;
             // 행동 로그 업데이트 (API에서 받은 로그 포함)
             const apiLogs = (ssJson.actionLogs || []).map((l: any) => ({
@@ -2224,7 +2262,54 @@ export default function JarvisApp() {
           smartstoreData = { smartstore: { newOrders: 0, pendingShipping: 0, totalAmount: 0, revenueChangePercent: 0, error: String(ssErr) }, influencers: { total: 0, newYesterday: 0, byPlatform: {} } };
         }
 
-        // ── Step 2: Gmail 스캔 (MCP) ──
+        // ── Step 2: 농산물 시장 분석 (MarketIntelligence) ──
+        emitBriefingSequence('node_focus', 'market_intel', '농산물 시장 데이터 수집 중...');
+        emitNodeState('market_intel', 'active', '농산물 가격 데이터 수집 중');
+        setDataPanel(prev => ({
+          ...prev,
+          progress: 45,
+          message: 'KAMIS 농산물 시장 데이터 수집 중...',
+          actionLogs: [...(prev.actionLogs || []), { step: 'MARKET_INTEL', status: 'start', detail: 'KAMIS API 농산물 가격 데이터 수집 중...', timestamp: new Date().toISOString() }],
+        }));
+
+        let marketData: any = null;
+        try {
+          const marketRes = await fetch('/api/market-intelligence?itemCode=225&period=week');
+          const marketJson = await marketRes.json();
+          if (marketJson.success) {
+            marketData = marketJson;
+            emitNodeData('market_intel', {
+              item: '옥수수',
+              maxPrice: marketJson.analysis?.maxPrice || 0,
+              minPrice: marketJson.analysis?.minPrice || 0,
+              avgPrice: marketJson.analysis?.avgPrice || 0,
+              trend: marketJson.analysis?.trend || 'stable',
+              changePercent: marketJson.analysis?.changePercent || 0,
+              recommendation: marketJson.analysis?.recommendation || 'hold',
+              lastUpdated: new Date().toLocaleTimeString('ko-KR'),
+              totalRecords: marketJson.analysis?.totalRecords || 0,
+              movingAvg5: marketJson.analysis?.movingAvg5 || 0,
+              movingAvg20: marketJson.analysis?.movingAvg20 || 0,
+            });
+            emitNodeState('market_intel', 'success', '농산물 가격 분석 완료');
+            setDataPanel(prev => ({
+              ...prev,
+              progress: 55,
+              actionLogs: [...(prev.actionLogs || []), { step: 'MARKET_INTEL', status: 'success', detail: `옥수수 평균가 ${(marketJson.analysis?.avgPrice || 0).toLocaleString()}원, 추천: ${marketJson.analysis?.recommendation || 'hold'}`, timestamp: new Date().toISOString() }],
+            }));
+          } else {
+            throw new Error(marketJson.error || 'KAMIS API 실패');
+          }
+        } catch (marketErr) {
+          emitNodeState('market_intel', 'error', `시장 데이터 수집 실패: ${marketErr}`);
+          setDataPanel(prev => ({
+            ...prev,
+            progress: 50,
+            actionLogs: [...(prev.actionLogs || []), { step: 'MARKET_INTEL', status: 'fail', detail: `농산물 시장 데이터 수집 실패: ${marketErr}`, timestamp: new Date().toISOString() }],
+          }));
+        }
+
+        // ── Step 3: Gmail 스캔 (MCP) ──
         emitBriefingSequence('node_focus', 'email', 'Gmail 메일함 스캔 중...');
         setDataPanel(prev => ({
           ...prev,
@@ -3075,12 +3160,16 @@ export default function JarvisApp() {
         />
       </div>
 
-      {/* ── 중앙 JARVIS 코어 ── */}
-      <div style={{
-        position: 'fixed', inset: 0,
-        display: 'flex', alignItems: 'center', justifyContent: 'center',
-        pointerEvents: 'none', zIndex: 5,
-      }}>
+      {/* ── 중앙 JARVIS 코어 (coreDimLevel 적용) ── */}
+      <motion.div
+        animate={{ opacity: 1 - coreDimLevel * 0.6, scale: 1 - coreDimLevel * 0.05 }}
+        transition={{ duration: 0.8, ease: 'easeInOut' }}
+        style={{
+          position: 'fixed', inset: 0,
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          pointerEvents: 'none', zIndex: 5,
+        }}
+      >
         {/* 외부 장식 링 */}
         <motion.div
           style={{
@@ -3195,7 +3284,7 @@ export default function JarvisApp() {
             ))}
           </div>
         </div>
-      </div>
+      </motion.div>
 
       {/* ── 상단 헤더 ── */}
       <motion.header
@@ -5154,8 +5243,27 @@ export default function JarvisApp() {
 
       {/* ── 플래트폼 데이터 카드 (명령 시에만 표시) ── */}
       <AnimatePresence>
-        <PlatformDataCards visible={false} />
+        <PlatformDataCardsEnhanced visible={false} />
       </AnimatePresence>
+
+      {/* ── 홀로그램 작업 패널 (v4.2) - 텔레메트리 기반 자동 표시 ── */}
+      <HologramWorkPanel onCoreDimChange={setCoreDimLevel} />
+
+      {/* ── 에이전트 콘솔 패널 (v4.2) - 실시간 작업 로그 ── */}
+      <AgentConsolePanel
+        visible={agentConsoleVisible}
+        onClose={() => setAgentConsoleVisible(false)}
+        onUserInput={(value) => {
+          // 캔차/OTP 입력 처리
+          if (verificationResolveRef.current) {
+            verificationResolveRef.current(value);
+            verificationResolveRef.current = null;
+          }
+        }}
+        captchaImage={captchaScreenshot}
+        captchaMode={verificationMode}
+        isWorking={state === 'working' || state === 'thinking'}
+      />
       {/* ── 뉴럴 미션 맵 (시스템 현황) ── */}
       <AnimatePresence>
         {neuralMapVisible && (

@@ -76,6 +76,11 @@ const INITIAL_NODES: MapNode[] = [
   { id: 'sheets',       label: 'SHEETS',        sublabel: 'Google Sheets',      icon: '📋', state: 'idle', detail: 'Data warehouse ready',       x: 16,  y: -20,  z: -3,  baseColor: T.goldLight },
   { id: 'manus_agent',  label: 'MANUS AI',      sublabel: 'Autonomous Agent',   icon: '🤖', state: 'idle', detail: 'Manus 1.6 Max Standby',     x: 0,   y: 28,   z: 0,   baseColor: T.blueLight },
   { id: 'user',         label: 'COMMANDER',     sublabel: 'Sir',                icon: '👤', state: 'idle', detail: 'Awaiting command',            x: 0,   y: -32,  z: 15,  baseColor: T.gold },
+  // ─── 신규 모듈 노드 (v4.2) ───
+  { id: 'market_intel', label: 'MARKET INTEL',  sublabel: 'KAMIS / 가락시장',   icon: '📈', state: 'idle', detail: 'Price tracker standby',      x: -32, y: 6,    z: -10, baseColor: '#FF9800' },
+  { id: 'influencer',   label: 'INFLUENCER',    sublabel: 'Agent Scanner',      icon: '🎯', state: 'idle', detail: 'Influencer agent ready',     x: 32,  y: 6,    z: -10, baseColor: '#9C27B0' },
+  { id: 'rank_tracker', label: 'RANK TRACKER',  sublabel: 'Naver Shopping',     icon: '🏆', state: 'idle', detail: 'Rank monitor standby',       x: -10, y: 24,   z: -6,  baseColor: '#FFD700' },
+  { id: 'booking',      label: 'BOOKING',       sublabel: 'Real Action Agent',  icon: '📅', state: 'idle', detail: 'Reservation engine ready',   x: 10,  y: 24,   z: -6,  baseColor: '#F44336' },
 ];
 
 const CONNECTIONS: [string, string][] = [
@@ -84,6 +89,11 @@ const CONNECTIONS: [string, string][] = [
   ['jarvis_brain', 'manus_agent'], ['user', 'jarvis_brain'],
   ['manus_agent', 'youtube'], ['manus_agent', 'naver'],
   ['sheets', 'email'],
+  // ─── 신규 모듈 연결 (v4.2) ───
+  ['jarvis_brain', 'market_intel'], ['jarvis_brain', 'influencer'],
+  ['jarvis_brain', 'rank_tracker'], ['jarvis_brain', 'booking'],
+  ['market_intel', 'sheets'], ['influencer', 'youtube'], ['influencer', 'email'],
+  ['rank_tracker', 'smartstore'], ['booking', 'manus_agent'],
 ];
 
 /* ─── 3D Background Particles ─── */
