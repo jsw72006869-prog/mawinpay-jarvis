@@ -2689,14 +2689,26 @@ export default function JarvisApp() {
           if (action.params?.group_by) body.groupBy = action.params.group_by;
           if (action.params?.memo) body.memo = action.params.memo;
 
-          setDataPanel(prev => ({ ...prev, progress: 15, message: 'QuotaGuard 프록시 연결 중...' }));
+          setDataPanel(prev => ({ ...prev, progress: 15, message: '클라우드 서버 연결 중... (CDP 브라우저)' }));
 
-          const res = await fetch('/api/smartstore-automation', {
+          // 클라우드 서버를 통해 실제 스마트스토어 데이터 조회 (CDP 크롤링)
+          const res = await fetch('/api/cloud-proxy', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(body),
+            body: JSON.stringify({ endpoint: 'task', taskType: 'smartstore-orders', params: body }),
           });
-          const data = await res.json();
+          const rawData = await res.json();
+          // 클라우드 서버 응답 포맷 변환 (result 래핑 해제)
+          const data = rawData.result ? {
+            success: rawData.result.success ?? rawData.success,
+            ...rawData.result.smartstore,
+            action_logs: rawData.result.actionLogs,
+            data: rawData.result.smartstore,
+            newOrders: rawData.result.smartstore?.newOrders ?? 0,
+            pendingShipping: rawData.result.smartstore?.pendingShipping ?? 0,
+            cancelOrders: rawData.result.smartstore?.cancelRequests ?? 0,
+            summary: `신규주문 ${rawData.result.smartstore?.newOrders ?? 0}건, 배송준비 ${rawData.result.smartstore?.pendingShipping ?? 0}건, 배송완료 ${rawData.result.smartstore?.delivered ?? 0}건, 구매확정 ${rawData.result.smartstore?.purchaseDecided ?? 0}건\n정산예정: ${(rawData.result.smartstore?.settlementAmount ?? 0).toLocaleString()}원\n판매중 상품: ${rawData.result.smartstore?.sellingProducts ?? 0}개, 품절: ${rawData.result.smartstore?.soldOutProducts ?? 0}개`,
+          } : rawData;
 
           // 행동 로그 업데이트
           if (data.action_logs) {
@@ -2851,7 +2863,7 @@ export default function JarvisApp() {
       }
     }
 
-    // 텔레메트리: Gemini 뇌 사고 완료 → jarvis_brain 노드 idle 복귀
+    // 텔레메트리: GPT 뇌 사고 완료 → jarvis_brain 노드 idle 복귀
     emitNodeState('jarvis_brain', 'success', '응답 생성 완료');
     setTimeout(() => emitNodeState('jarvis_brain', 'idle'), 2000);
 
@@ -2971,9 +2983,9 @@ export default function JarvisApp() {
     addMessage('user', transcript);
     try {
       // 4. GPT-4o API 호출 (폴백: 로컬 파서)
-      emitNodeState('jarvis_brain', 'active', 'Gemini 뇌 사고 중...');
+      emitNodeState('jarvis_brain', 'active', 'GPT 뇌 사고 중...');
       emitPulseLine('user', 'jarvis_brain', 'fast');
-      emitMissionLog('🧠', 'Gemini', '사용자 명령 분석 중...', 'thinking');
+      emitMissionLog('🧠', 'GPT', '사용자 명령 분석 중...', 'thinking');
       const action = await askGPT(transcript).catch(() => parseCommand(transcript));
       console.log('[JARVIS] GPT 응답 액션:', action.type, action.response.substring(0, 60));
       // 5. 응답 처리 (TTS 재생 + 후속 처리)
@@ -3018,9 +3030,9 @@ export default function JarvisApp() {
     setState('thinking');
     addMessage('user', text);
     try {
-      emitNodeState('jarvis_brain', 'active', 'Gemini 뇌 사고 중...');
+      emitNodeState('jarvis_brain', 'active', 'GPT 뇌 사고 중...');
       emitPulseLine('user', 'jarvis_brain', 'fast');
-      emitMissionLog('🧠', 'Gemini', '사용자 명령 분석 중...', 'thinking');
+      emitMissionLog('🧠', 'GPT', '사용자 명령 분석 중...', 'thinking');
       const action = await askGPT(text).catch(() => parseCommand(text));
       await jarvisRespond(action.response, action);
     } catch (err) {
