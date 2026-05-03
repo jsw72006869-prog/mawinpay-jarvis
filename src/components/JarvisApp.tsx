@@ -402,7 +402,7 @@ export default function JarvisApp() {
         // ── 구독자 수 파싱 헬퍼 ──
         const parseSubscriberCount = (followers: string): number => {
           if (!followers || followers === '-') return 0;
-          const m = followers.match(/([d.]+)(만|K|k|M|m)?/);
+          const m = followers.match(/([\d.]+)(만|K|k|M|m)?/);
           if (!m) return 0;
           const num = parseFloat(m[1]);
           const unit = m[2];
@@ -2792,7 +2792,7 @@ export default function JarvisApp() {
       const platform = String(action.params?.platform || 'YouTube');
       const count = Number(action.params?.count) || 10;
       const keyword = String(action.params?.keyword || '');
-      const minSubscribers = Number(action.params?.min_subscribers) || 10000;
+      const minSubscribers = Number(action.params?.min_subscribers) || 0;  // 기본값 0 = 필터 비활성화 (사용자가 명시적으로 지정하지 않으면 모두 표시)
       setState('working');
       addMessage('jarvis', action.response);
       startSpeakingLevel();
@@ -2811,7 +2811,9 @@ export default function JarvisApp() {
             id: ch.channelId || `yt-${Date.now()}-${Math.random()}`,
             name: ch.name || ch.customUrl || '',
             platform: 'YouTube',
-            followers: ch.subscribers ? `${(ch.subscribers / 10000).toFixed(1)}만` : '-',
+            followers: ch.subscribers ? (ch.subscribers >= 10000 ? `${(ch.subscribers / 10000).toFixed(1)}만` : ch.subscribers >= 1000 ? `${(ch.subscribers / 1000).toFixed(1)}K` : `${ch.subscribers}`) : '-',
+            subscriberCount: ch.subscribers || 0,
+            viewCount: ch.viewCount ? (ch.viewCount >= 10000 ? `${(ch.viewCount / 10000).toFixed(0)}만` : `${ch.viewCount}`) : '-',
             email: ch.email || '',
             profileUrl: ch.profileUrl || '',
             category: keyword || '전체',

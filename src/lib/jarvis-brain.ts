@@ -525,7 +525,7 @@ function buildActionFromFunction(fnName: string, args: any): JarvisAction {
         params: {
           platform: String(args.platform || 'YouTube'),
           count: Number(args.count || 10),
-          min_subscribers: Number(args.min_subscribers || 10000),
+          min_subscribers: Number(args.min_subscribers || 0),
         },
         workingMessage: `${args.platform} 인플루언서 지능형 분석 중...`,
         response: String(args.response || '인플루언서를 분석하겠습니다, 선생님.'),
@@ -535,7 +535,7 @@ function buildActionFromFunction(fnName: string, args: any): JarvisAction {
     case 'search_youtube':
       return {
         type: 'collect',
-        params: { keyword: String(args.keyword || '') },
+        params: { keyword: String(args.keyword || ''), platform: 'YouTube' },
         workingMessage: `YouTube 검색 중: ${args.keyword}`,
         response: String(args.response || 'YouTube를 검색하겠습니다, 선생님.'),
         followUp,
@@ -708,9 +708,24 @@ export async function searchYouTubeAPI(
     throw new Error((err as any).message || `YouTube API 오류: ${res.status}`);
   }
   const data = await res.json();
-  // 클라우드 서버 응답을 YouTubeChannel 형식으로 변환
+  // 클라우드 서버 응답을 YouTubeChannel 형식으로 변환 (필드명 매핑)
   if (data.result && Array.isArray(data.result)) {
-    return { total: data.result.length, keyword, items: data.result };
+    const mapped: YouTubeChannel[] = data.result.map((ch: any) => ({
+      channelId: ch.channelId || ch.id || '',
+      name: ch.title || ch.name || ch.customUrl || '',
+      description: ch.description || '',
+      thumbnailUrl: ch.thumbnailUrl || ch.thumbnail || '',
+      subscribers: ch.subscriberCount ?? ch.subscribers ?? 0,
+      videoCount: ch.videoCount ?? 0,
+      viewCount: ch.viewCount ?? 0,
+      profileUrl: ch.channelUrl || ch.profileUrl || (ch.channelId ? `https://www.youtube.com/channel/${ch.channelId}` : ''),
+      email: ch.email || '',
+      instagram: ch.instagram || '',
+      country: ch.country || '',
+      customUrl: ch.customUrl || '',
+    }));
+    console.log('[JARVIS] YouTube 검색 (Cloud Proxy): 인플루언서', mapped.length, '- 첫 번째:', mapped[0]?.name, '구독자:', mapped[0]?.subscribers);
+    return { total: mapped.length, keyword, items: mapped };
   }
   return data;
 }
