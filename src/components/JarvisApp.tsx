@@ -1,10 +1,10 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { QRCodeSVG } from 'qrcode.react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { askGPT, parseCommand, generateBannerImage, saveSchedule, saveMemory, searchNaverAPI, searchYouTubeAPI, searchInstagramAPI, invalidateSheetCache, executeManusTask, getManusTaskStatus, sendManusMsg as sendManusMessage, type JarvisState, type JarvisAction, type NaverSearchItem, type YouTubeChannel, type InstagramAccount, initializeGemini, getGeminiClient } from '../lib/jarvis-brain';
+import { askGPT, parseCommand, generateBannerImage, saveSchedule, saveMemory, searchNaverAPI, searchYouTubeAPI, searchInstagramAPI, invalidateSheetCache, executeManusTask, getManusTaskStatus, sendManusMsg as sendManusMessage, setActiveUIContext, type JarvisState, type JarvisAction, type NaverSearchItem, type YouTubeChannel, type InstagramAccount, initializeGemini, getGeminiClient } from '../lib/jarvis-brain';
 import { useSpeechRecognition, useTextToSpeech, useBargein, useWakeWord, setCurrentVoiceId, getCurrentVoiceId, ELEVENLABS_VOICES, stopGlobalAudio } from './SpeechEngine';
 import { useMicrophoneFrequency } from '../lib/audio-analyzer';
-import { saveLearnedKnowledge, getLearnedKnowledge, getMemoryStats, clearAllMemory, type LearnedKnowledge } from '../lib/jarvis-memory';
+import { saveLearnedKnowledge, getLearnedKnowledge, getMemoryStats, clearAllMemory, restoreMemoryFromServer, syncMemoryToServer, saveConversationWithSync, buildUIContextForGPT, type LearnedKnowledge } from '../lib/jarvis-memory';
 import { appendInfluencersToSheet, appendEmailLogToSheet, appendNaverResultsToSheet, appendInstagramToSheet, appendLocalBusinessToSheet, generateMockInfluencers, generateEmailLogs, sendEmailsViaResend, buildInfluencerEmailHtml, type NaverCollectedData } from '../lib/google-sheets';
 import ConversationStream, { type Message } from './ConversationStream';
 import SparkleParticles from './SparkleParticles';
@@ -24,6 +24,7 @@ import HologramWorkPanel from './HologramWorkPanel';
 import MarketIntelCard from './MarketIntelCard';
 import MarketIntelChart from './MarketIntelChart';
 import BookingPanel from './BookingPanel';
+import OrderDashboard from './OrderDashboard';
 import CloudStatusOverlay from './CloudStatusOverlay';
 import LiveBrowserViewer from './LiveBrowserViewer';
 
@@ -206,6 +207,18 @@ export default function JarvisApp() {
   const [marketChartVisible, setMarketChartVisible] = useState(false);
   const [marketChartData, setMarketChartData] = useState<any>(null);
   const [bookingPanelData, setBookingPanelData] = useState<{ businessName?: string; date?: string; time?: string; currentStep?: number; availableSlots?: string[]; captchaImage?: string; screenshot?: string } | null>(null);
+  // ── 주문 대시보드 상태 ──
+  const [orderDashboardVisible, setOrderDashboardVisible] = useState(false);
+  const [orderDashboardData, setOrderDashboardData] = useState<any[]>([]);
+
+  // ── UI 컨텍스트 동기화 (GPT에게 현재 화면 정보 전달) ──
+  useEffect(() => {
+    if (orderDashboardVisible && orderDashboardData.length > 0) {
+      setActiveUIContext('orders', { orders: orderDashboardData });
+    } else if (!orderDashboardVisible) {
+      setActiveUIContext(null, null);
+    }
+  }, [orderDashboardVisible, orderDashboardData]);
 
   const triggerGoldenFlare = useCallback(() => {
     setShowGoldenFlare(true);
@@ -241,6 +254,17 @@ export default function JarvisApp() {
       console.warn('[JARVIS] WARNING: OpenAI API 키를 찾을 수 없습니다.');
     }
   }, [settingsForm.geminiKey]);
+
+  // ── 서버 메모리 복원 (앱 시작 시) ──
+  useEffect(() => {
+    restoreMemoryFromServer().then(restored => {
+      if (restored) console.log('[JARVIS] 서버에서 대화 기억 복원 완료');
+    });
+    // 페이지 닫을 때 서버에 동기화
+    const handleBeforeUnload = () => { syncMemoryToServer(); };
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+  }, []);
 
   const [naverForm, setNaverForm] = useState(() => {
     const stored = JSON.parse(localStorage.getItem('jarvis_naver_creds') || '{}');
@@ -2658,6 +2682,11 @@ export default function JarvisApp() {
 
           if (ssAction.startsWith('query_orders') || ssAction === 'morning_report') {
             const count = Array.isArray(data.data) ? data.data.length : (data.newOrders || 0);
+            // ── 주문 대시보드 UI 자동 표시 ──
+            if (Array.isArray(data.data) && data.data.length > 0) {
+              setOrderDashboardData(data.data);
+              setOrderDashboardVisible(true);
+            }
             resultMsg = `[PKG] **${getActionLabel(ssAction)}**\n\n`;
             if (ssAction === 'morning_report') {
               resultMsg += `신규 주문: ${data.newOrders}건\n취소 요청: ${data.cancelOrders}건\n발송 대기: ${data.pendingShipping}건`;
@@ -5403,7 +5432,17 @@ export default function JarvisApp() {
         }}
         onClose={() => setBookingPanelData(null)}
       />
-
+      {/* ── 주문 대시보드 (v5.1) ── */}
+      <OrderDashboard
+        visible={orderDashboardVisible}
+        data={orderDashboardData.length > 0 ? { orders: orderDashboardData } : null}
+        onClose={() => setOrderDashboardVisible(false)}
+        onAction={(actionType, orderId) => {
+          // 주문 대시보드에서 발주확인/발송처리 등 액션 실행
+          const msg = actionType === 'confirm' ? `발주확인 처리해줘` : `발송처리 진행해줘`;
+          handleSTTResult(msg);
+        }}
+      />
       {/* ── 에이전트 콘솔 패널 (v4.2) - 실시간 작업 로그 ── */}
       <AgentConsolePanel
         visible={agentConsoleVisible}

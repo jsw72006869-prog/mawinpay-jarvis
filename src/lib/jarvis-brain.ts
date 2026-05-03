@@ -10,10 +10,12 @@
 import OpenAI from 'openai';
 import {
   saveConversationEntry,
+  saveConversationWithSync,
   getRecentConversationsForGPT,
   getPreviousSessionSummary,
   getLearnedKnowledgeContext,
   autoExtractAndSave,
+  buildUIContextForGPT,
 } from './jarvis-memory';
 import {
   createManusTask,
@@ -373,6 +375,14 @@ export function getGeminiClient() {
   return openaiClient;
 }
 
+// ── 현재 활성 UI 패널 정보 (JarvisApp에서 설정) ──
+let _activeUIPanel: string | null = null;
+let _activePanelData: any = null;
+export function setActiveUIContext(panel: string | null, data: any) {
+  _activeUIPanel = panel;
+  _activePanelData = data;
+}
+
 // ── 메인 askGPT (OpenAI GPT 기반) ──
 export async function askGPT(userMessage: string): Promise<JarvisAction> {
   if (!openaiClient) {
@@ -381,7 +391,7 @@ export async function askGPT(userMessage: string): Promise<JarvisAction> {
   }
 
   sessionTurnCount++;
-  saveConversationEntry('user', userMessage);
+  saveConversationWithSync('user', userMessage);
   conversationHistory.push({ role: 'user', content: userMessage });
   if (conversationHistory.length > 40) conversationHistory.splice(0, 2);
 
@@ -394,7 +404,8 @@ export async function askGPT(userMessage: string): Promise<JarvisAction> {
   const sheetContext = await getSheetDataContext();
   const sheetContextBlock = sheetContext ? `\n\n[구글 시트 데이터]\n${sheetContext}` : '';
 
-  const contextAddition = [memoryContext, prevSessionContext, learnedContext, sessionContext, sheetContextBlock]
+  const uiContext = buildUIContextForGPT(_activeUIPanel, _activePanelData);
+  const contextAddition = [memoryContext, prevSessionContext, learnedContext, sessionContext, sheetContextBlock, uiContext]
     .filter(Boolean).join('');
 
   // OpenAI Chat Completions 메시지 구성
@@ -428,7 +439,7 @@ export async function askGPT(userMessage: string): Promise<JarvisAction> {
       console.log('[JARVIS] Function call:', fnName, fnArgs);
       const responseText = String(fnArgs.response || '');
       conversationHistory.push({ role: 'assistant', content: responseText });
-      saveConversationEntry('assistant', responseText);
+      saveConversationWithSync('assistant', responseText);
       autoExtractAndSave(userMessage, responseText);
       const action = buildActionFromFunction(fnName, fnArgs);
       lastActionType = action.type;
@@ -438,7 +449,7 @@ export async function askGPT(userMessage: string): Promise<JarvisAction> {
     // 일반 텍스트 응답
     const reply = message?.content ?? '죄송합니다, 잠시 연결이 불안정합니다.';
     conversationHistory.push({ role: 'assistant', content: reply });
-    saveConversationEntry('assistant', reply);
+    saveConversationWithSync('assistant', reply);
     autoExtractAndSave(userMessage, reply);
     lastActionType = 'chat';
     return { type: 'chat', response: reply };

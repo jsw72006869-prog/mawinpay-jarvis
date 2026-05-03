@@ -234,3 +234,175 @@ export function saveApiKeys(keys: Partial<ApiKeys>): void {
   }
   console.log('[JARVIS Settings] API 키 저장됨');
 }
+
+// ═══════════════════════════════════════════════════════
+// 서버 동기화 — localStorage + 서버 이중 저장
+// ═══════════════════════════════════════════════════════
+
+let syncTimer: ReturnType<typeof setTimeout> | null = null;
+let pendingEntries: ConversationEntry[] = [];
+
+/**
+ * 서버에 대화 항목 하나 추가 (비동기, 실패해도 무시)
+ */
+async function appendToServer(entry: ConversationEntry): Promise<void> {
+  try {
+    await fetch('/api/memory-sync', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'append', entry }),
+    });
+  } catch {
+    // 서버 저장 실패 시 pending에 추가
+    pendingEntries.push(entry);
+  }
+}
+
+/**
+ * 서버에 학습 지식 저장
+ */
+async function learnToServer(knowledgeItem: LearnedKnowledge): Promise<void> {
+  try {
+    await fetch('/api/memory-sync', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'learn', knowledgeItem }),
+    });
+  } catch {
+    // 무시
+  }
+}
+
+/**
+ * 전체 메모리를 서버에 동기화 (배치)
+ */
+export async function syncMemoryToServer(): Promise<{ success: boolean; totalTurns?: number }> {
+  try {
+    const conversations = getConversationLog();
+    const knowledge = getLearnedKnowledge();
+    const res = await fetch('/api/memory-sync', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'sync', conversations, knowledge }),
+    });
+    const data = await res.json();
+    if (data.success) {
+      pendingEntries = []; // pending 클리어
+      console.log(`[JARVIS Memory] 서버 동기화 완료: ${data.totalTurns}턴`);
+    }
+    return data;
+  } catch (e) {
+    console.warn('[JARVIS Memory] 서버 동기화 실패:', e);
+    return { success: false };
+  }
+}
+
+/**
+ * 서버에서 메모리 복원 (앱 시작 시 호출)
+ */
+export async function restoreMemoryFromServer(): Promise<boolean> {
+  try {
+    const res = await fetch('/api/memory-sync?action=load');
+    const data = await res.json();
+    if (data.success && data.data) {
+      const serverConvos = data.data.conversations || [];
+      const serverKnowledge = data.data.knowledge || [];
+      const localConvos = getConversationLog();
+      const localKnowledge = getLearnedKnowledge();
+
+      // 서버 데이터가 로컬보다 많으면 서버 데이터로 복원
+      if (serverConvos.length > localConvos.length) {
+        localStorage.setItem(STORAGE_KEYS.CONVERSATION_LOG, JSON.stringify(serverConvos));
+        console.log(`[JARVIS Memory] 서버에서 대화 복원: ${serverConvos.length}건`);
+      }
+      if (serverKnowledge.length > localKnowledge.length) {
+        localStorage.setItem(STORAGE_KEYS.LEARNED_KNOWLEDGE, JSON.stringify(serverKnowledge));
+        console.log(`[JARVIS Memory] 서버에서 학습 지식 복원: ${serverKnowledge.length}건`);
+      }
+      return true;
+    }
+    return false;
+  } catch {
+    console.warn('[JARVIS Memory] 서버 복원 실패 — 로컬 데이터 사용');
+    return false;
+  }
+}
+
+/**
+ * 대화 저장 + 서버 동기화 (기존 saveConversationEntry 확장)
+ */
+export function saveConversationWithSync(role: 'user' | 'assistant', content: string): void {
+  // 1. 로컬 저장 (기존 로직)
+  saveConversationEntry(role, content);
+
+  // 2. 서버에 비동기 전송
+  const entry: ConversationEntry = {
+    id: `${Date.now()}_${Math.random().toString(36).slice(2, 5)}`,
+    timestamp: new Date().toISOString(),
+    role,
+    content,
+    sessionId: getCurrentSessionId(),
+  };
+  appendToServer(entry);
+
+  // 3. 디바운스 전체 동기화 (30초마다)
+  if (syncTimer) clearTimeout(syncTimer);
+  syncTimer = setTimeout(() => {
+    syncMemoryToServer();
+  }, 30000);
+}
+
+/**
+ * 학습 지식 저장 + 서버 동기화
+ */
+export function saveLearnedKnowledgeWithSync(title: string, content: string, source: 'auto' | 'manual' = 'manual'): LearnedKnowledge {
+  const entry = saveLearnedKnowledge(title, content, source);
+  learnToServer(entry);
+  return entry;
+}
+
+/**
+ * 현재 UI 데이터를 GPT 컨텍스트로 변환
+ */
+export function buildUIContextForGPT(activePanel: string | null, panelData: any): string {
+  if (!activePanel || !panelData) return '';
+
+  let context = '\n\n[현재 화면에 표시된 데이터]\n';
+
+  if (activePanel === 'orders' && panelData.orders) {
+    const orders = panelData.orders;
+    const newOrders = orders.filter((o: any) => o.status === 'new').length;
+    const shipping = orders.filter((o: any) => o.status === 'shipping').length;
+    const totalRevenue = orders.reduce((s: number, o: any) => s + (o.price * o.quantity), 0);
+    context += `주문 대시보드가 열려있습니다.\n`;
+    context += `- 총 주문: ${orders.length}건\n`;
+    context += `- 신규주문: ${newOrders}건\n`;
+    context += `- 배송중: ${shipping}건\n`;
+    context += `- 총 매출: ${totalRevenue.toLocaleString()}원\n`;
+    // 최근 5건 상세
+    const recent = orders.slice(0, 5);
+    context += `최근 주문:\n`;
+    recent.forEach((o: any) => {
+      context += `  ${o.productName} ${o.quantity}개 ${o.price.toLocaleString()}원 (${o.buyerName}, ${o.status})\n`;
+    });
+  }
+
+  if (activePanel === 'influencers' && panelData.influencers) {
+    const inf = panelData.influencers;
+    context += `인플루언서 카드가 열려있습니다.\n`;
+    context += `- 총 수집: ${inf.length || 0}명\n`;
+    if (Array.isArray(inf)) {
+      inf.slice(0, 5).forEach((i: any) => {
+        context += `  ${i.name || i.channelName} (${i.platform}, 팔로워: ${i.followers?.toLocaleString() || '?'})\n`;
+      });
+    }
+  }
+
+  if (activePanel === 'booking' && panelData.booking) {
+    context += `예약 패널이 열려있습니다.\n`;
+    context += `- 날짜: ${panelData.booking.date || '미선택'}\n`;
+    context += `- 시간: ${panelData.booking.time || '미선택'}\n`;
+  }
+
+  return context;
+}
