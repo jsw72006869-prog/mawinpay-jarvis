@@ -2862,8 +2862,8 @@ export default function JarvisApp() {
           });
         }
         collected = collected.slice(0, count);
-        setInfluencerResults(prev => [...prev, ...collected]);
-        setShowInfluencerCards(true);
+        setCollectedInfluencers(prev => [...prev, ...collected]);
+        setInfluencerCardsVisible(true);
         emitNodeState('influencer', 'done');
         const doneText = `${platform} 인플루언서 ${collected.length}명을 분석 완료했습니다, 선생님. 화면에 결과를 표시합니다.`;
         setState('speaking');
