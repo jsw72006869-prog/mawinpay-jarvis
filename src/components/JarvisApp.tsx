@@ -2916,26 +2916,29 @@ export default function JarvisApp() {
           }).catch(err => console.warn('[JARVIS] 시트 저장 실패:', err));
 
           // TiDB 데이터베이스 영구 저장
-          fetch('/api/jarvis-db', {
+          fetch('/api/cloud-proxy', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-              action: 'save_influencers',
-              keyword,
-              influencers: collected.map(c => ({
-                channelId: c.id,
-                platform: c.platform,
-                name: c.name,
-                email: c.email || '',
-                subscribers: (c as any).subscriberCount || 0,
-                subscriberText: c.followers || '',
-                views: 0,
-                description: '',
-                profileUrl: c.profileUrl || '',
-                thumbnail: '',
-                category: c.category || keyword || '',
-                instagram: '',
-              })),
+              taskType: 'db',
+              params: {
+                action: 'save_influencers',
+                keyword,
+                influencers: collected.map(c => ({
+                  channelId: c.id,
+                  platform: c.platform,
+                  name: c.name,
+                  email: c.email || '',
+                  subscribers: (c as any).subscriberCount || 0,
+                  subscriberText: c.followers || '',
+                  views: 0,
+                  description: '',
+                  profileUrl: c.profileUrl || '',
+                  thumbnail: '',
+                  category: c.category || keyword || '',
+                  instagram: '',
+                })),
+              },
             }),
           }).then(r => r.json()).then(r => {
             console.log(`[JARVIS] DB 저장: ${r.saved}명 저장, ${r.duplicates}명 중복 스킵`);
@@ -3001,10 +3004,10 @@ export default function JarvisApp() {
             apiAction = 'query_influencers';
             body = { keyword: qKeyword, limit };
         }
-        const dbRes = await fetch('/api/jarvis-db', {
+        const dbRes = await fetch('/api/cloud-proxy', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ action: apiAction, ...body }),
+          body: JSON.stringify({ taskType: 'db', params: { action: apiAction, ...body } }),
         });
         const dbData = await dbRes.json();
         console.log('[JARVIS] DB 조회 결과:', dbData);

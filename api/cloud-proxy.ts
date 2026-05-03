@@ -1,6 +1,19 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
+import mysql from 'mysql2/promise';
 
 const CLOUD_SERVER = process.env.CLOUD_SERVER_URL || 'http://35.243.215.119:3001';
+
+// ── TiDB 연결 설정 ──
+function getDbConnection() {
+  return mysql.createConnection({
+    host: process.env.TIDB_HOST || 'gateway01.us-east-1.prod.aws.tidbcloud.com',
+    port: Number(process.env.TIDB_PORT) || 4000,
+    user: process.env.TIDB_USER || '2HL5NgXKAWnTBJR.root',
+    password: process.env.TIDB_PASSWORD || '8szdX6Ien1aGl2Yq',
+    database: process.env.TIDB_DATABASE || 'jarvis',
+    ssl: { minVersion: 'TLSv1.2', rejectUnauthorized: true },
+  });
+}
 const YOUTUBE_API_KEY = process.env.YOUTUBE_API_KEY || '';
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY || '';
 
@@ -296,6 +309,147 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           params?.maxResults || 10
         );
         return res.status(200).json(result);
+      }
+
+      // ── DB 액션 (POST) ──
+      if (taskType === 'db') {
+        const dbAction = params?.action || rest?.action;
+        let conn;
+        try {
+          conn = await getDbConnection();
+          
+          switch (dbAction) {
+            case 'save_influencers': {
+              const { influencers, keyword: sKeyword } = params || rest;
+              if (!influencers || !Array.isArray(influencers)) {
+                return res.status(400).json({ error: 'influencers array required' });
+              }
+              let saved = 0, duplicates = 0;
+              for (const inf of influencers) {
+                try {
+                  await conn.execute(
+                    `INSERT INTO influencers (channel_id, platform, name, email, subscribers, subscriber_text, views, description, profile_url, thumbnail, category, keyword, instagram)
+                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                     ON DUPLICATE KEY UPDATE name=VALUES(name), email=VALUES(email), subscribers=VALUES(subscribers),
+                       subscriber_text=VALUES(subscriber_text), views=VALUES(views), description=VALUES(description),
+                       profile_url=VALUES(profile_url), thumbnail=VALUES(thumbnail), category=VALUES(category),
+                       instagram=VALUES(instagram), updated_at=CURRENT_TIMESTAMP`,
+                    [
+                      inf.channelId || inf.channel_id || '', inf.platform || 'YouTube',
+                      inf.name || '', inf.email || '', Number(inf.subscribers) || 0,
+                      inf.subscriberText || inf.subscriber_text || '', Number(inf.views) || 0,
+                      (inf.description || '').substring(0, 2000), inf.profileUrl || inf.profile_url || '',
+                      inf.thumbnail || '', inf.category || sKeyword || '', sKeyword || '', inf.instagram || '',
+                    ]
+                  );
+                  saved++;
+                } catch (e: any) {
+                  if (e.code === 'ER_DUP_ENTRY') duplicates++;
+                  else console.error('Save error:', e.message);
+                }
+              }
+              await conn.execute(
+                `INSERT INTO collection_history (keyword, platform, total_found, with_email, new_collected, duplicates_skipped) VALUES (?, ?, ?, ?, ?, ?)`,
+                [sKeyword || '', 'YouTube', influencers.length, influencers.filter((i: any) => i.email).length, saved, duplicates]
+              );
+              return res.json({ success: true, saved, duplicates, total: influencers.length });
+            }
+
+            case 'query_influencers': {
+              const { keyword: qk, platform: qp, min_subscribers, has_email, limit: ql, category: qc } = params || rest;
+              let sql = 'SELECT * FROM influencers WHERE 1=1';
+              const qParams: any[] = [];
+              if (qk) { sql += ' AND (keyword LIKE ? OR name LIKE ? OR category LIKE ?)'; qParams.push(`%${qk}%`, `%${qk}%`, `%${qk}%`); }
+              if (qp) { sql += ' AND platform = ?'; qParams.push(qp); }
+              if (min_subscribers) { sql += ' AND subscribers >= ?'; qParams.push(Number(min_subscribers)); }
+              if (has_email === 'true' || has_email === true) { sql += " AND email != ''"; }
+              if (qc) { sql += ' AND category LIKE ?'; qParams.push(`%${qc}%`); }
+              sql += ' ORDER BY subscribers DESC LIMIT ?';
+              qParams.push(Number(ql) || 50);
+              const [rows] = await conn.execute(sql, qParams);
+              return res.json({ success: true, total: (rows as any[]).length, influencers: rows });
+            }
+
+            case 'get_collected_ids': {
+              const [rows] = await conn.execute('SELECT channel_id FROM influencers');
+              const ids = (rows as any[]).map((r: any) => r.channel_id);
+              return res.json({ success: true, ids });
+            }
+
+            case 'collection_history': {
+              const [rows] = await conn.execute('SELECT * FROM collection_history ORDER BY collected_at DESC LIMIT 50');
+              return res.json({ success: true, history: rows });
+            }
+
+            case 'save_viral_videos': {
+              const { videos, keyword: vk } = params || rest;
+              if (!videos || !Array.isArray(videos)) return res.status(400).json({ error: 'videos array required' });
+              let vSaved = 0;
+              for (const v of videos) {
+                try {
+                  await conn.execute(
+                    `INSERT INTO viral_videos (video_id, channel_id, title, view_count, like_count, comment_count, published_at, thumbnail, viral_reason, keyword)
+                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                     ON DUPLICATE KEY UPDATE view_count=VALUES(view_count), like_count=VALUES(like_count), comment_count=VALUES(comment_count), viral_reason=VALUES(viral_reason)`,
+                    [v.videoId||'', v.channelId||'', v.title||'', Number(v.viewCount)||0, Number(v.likeCount)||0, Number(v.commentCount)||0, v.publishedAt||'', v.thumbnail||'', v.viralReason||'', vk||'']
+                  );
+                  vSaved++;
+                } catch (e: any) { console.error('Save viral error:', e.message); }
+              }
+              return res.json({ success: true, saved: vSaved });
+            }
+
+            case 'query_viral_videos': {
+              const { keyword: vqk, limit: vql } = params || rest;
+              let sql = 'SELECT * FROM viral_videos WHERE 1=1';
+              const vqParams: any[] = [];
+              if (vqk) { sql += ' AND (keyword LIKE ? OR title LIKE ?)'; vqParams.push(`%${vqk}%`, `%${vqk}%`); }
+              sql += ' ORDER BY view_count DESC LIMIT ?';
+              vqParams.push(Number(vql) || 20);
+              const [rows] = await conn.execute(sql, vqParams);
+              return res.json({ success: true, total: (rows as any[]).length, videos: rows });
+            }
+
+            case 'save_memory': {
+              const { memory_type, memory_key, memory_value, metadata } = params || rest;
+              await conn.execute(
+                `INSERT INTO ai_memory (memory_type, memory_key, memory_value, metadata) VALUES (?, ?, ?, ?)
+                 ON DUPLICATE KEY UPDATE memory_value=VALUES(memory_value), metadata=VALUES(metadata)`,
+                [memory_type, memory_key, memory_value, JSON.stringify(metadata || {})]
+              );
+              return res.json({ success: true });
+            }
+
+            case 'query_memory': {
+              const { memory_type: mt, memory_key: mk } = params || rest;
+              let sql = 'SELECT * FROM ai_memory WHERE 1=1';
+              const mParams: any[] = [];
+              if (mt) { sql += ' AND memory_type = ?'; mParams.push(mt); }
+              if (mk) { sql += ' AND memory_key LIKE ?'; mParams.push(`%${mk}%`); }
+              sql += ' ORDER BY updated_at DESC LIMIT 50';
+              const [rows] = await conn.execute(sql, mParams);
+              return res.json({ success: true, memories: rows });
+            }
+
+            case 'stats': {
+              const [[totalInf]] = await conn.execute('SELECT COUNT(*) as cnt FROM influencers') as any;
+              const [[withEmail]] = await conn.execute("SELECT COUNT(*) as cnt FROM influencers WHERE email != ''") as any;
+              const [[totalVideos]] = await conn.execute('SELECT COUNT(*) as cnt FROM viral_videos') as any;
+              const [[totalCollections]] = await conn.execute('SELECT COUNT(*) as cnt FROM collection_history') as any;
+              const [topKeywords] = await conn.execute('SELECT keyword, COUNT(*) as cnt FROM influencers GROUP BY keyword ORDER BY cnt DESC LIMIT 10');
+              const [recentCollections] = await conn.execute('SELECT * FROM collection_history ORDER BY collected_at DESC LIMIT 5');
+              return res.json({ success: true, stats: { total_influencers: totalInf.cnt, with_email: withEmail.cnt, total_viral_videos: totalVideos.cnt, total_collections: totalCollections.cnt, top_keywords: topKeywords, recent_collections: recentCollections } });
+            }
+
+            default:
+              return res.status(400).json({ error: `Unknown db action: ${dbAction}` });
+          }
+        } catch (error: any) {
+          console.error('DB Error:', error);
+          return res.status(500).json({ error: error.message });
+        } finally {
+          if (conn) await conn.end();
+        }
       }
 
       // ── YouTube 인기 영상 분석 (POST) ──
