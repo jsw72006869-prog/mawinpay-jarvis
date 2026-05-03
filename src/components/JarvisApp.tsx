@@ -2914,6 +2914,32 @@ export default function JarvisApp() {
             saveMemory('마지막 수집', `${keyword} ${collected.length}명 수집 (${new Date().toLocaleDateString('ko-KR')})`);
             invalidateSheetCache();
           }).catch(err => console.warn('[JARVIS] 시트 저장 실패:', err));
+
+          // TiDB 데이터베이스 영구 저장
+          fetch('/api/jarvis-db', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              action: 'save_influencers',
+              keyword,
+              influencers: collected.map(c => ({
+                channelId: c.id,
+                platform: c.platform,
+                name: c.name,
+                email: c.email || '',
+                subscribers: (c as any).subscriberCount || 0,
+                subscriberText: c.followers || '',
+                views: 0,
+                description: '',
+                profileUrl: c.profileUrl || '',
+                thumbnail: '',
+                category: c.category || keyword || '',
+                instagram: '',
+              })),
+            }),
+          }).then(r => r.json()).then(r => {
+            console.log(`[JARVIS] DB 저장: ${r.saved}명 저장, ${r.duplicates}명 중복 스킵`);
+          }).catch(err => console.warn('[JARVIS] DB 저장 실패:', err));
         }
 
         const emailCount = collected.filter(i => i.email).length;
@@ -2931,6 +2957,105 @@ export default function JarvisApp() {
         const errMsg = `인플루언서 분석 중 오류가 발생했습니다: ${err.message}`;
         setState('speaking');
         addMessage('jarvis', errMsg);
+        startSpeakingLevel();
+        await new Promise<void>(resolve => { speak(errMsg, undefined, () => { stopSpeakingLevel(); resolve(); }); });
+      }
+      await new Promise(r => setTimeout(r, 400));
+      setState('listening');
+      setIsListening(true);
+      return;
+    }
+
+    // ── 데이터베이스 조회 액션 ──
+    if (action?.type === 'query_database') {
+      const queryType = String(action.params?.query_type || 'influencers');
+      const qKeyword = String(action.params?.keyword || '');
+      const minSub = Number(action.params?.min_subscribers) || 0;
+      const hasEmail = action.params?.has_email === 'true';
+      const limit = Number(action.params?.limit) || 20;
+      setState('working');
+      addMessage('jarvis', action.response);
+      startSpeakingLevel();
+      await new Promise<void>(resolve => {
+        speak(action.response, undefined, () => { stopSpeakingLevel(); resolve(); });
+      });
+      try {
+        let apiAction = '';
+        let body: any = {};
+        switch (queryType) {
+          case 'influencers':
+            apiAction = 'query_influencers';
+            body = { keyword: qKeyword, min_subscribers: minSub, has_email: hasEmail, limit };
+            break;
+          case 'viral_videos':
+            apiAction = 'query_viral_videos';
+            body = { keyword: qKeyword, limit };
+            break;
+          case 'collection_history':
+            apiAction = 'collection_history';
+            break;
+          case 'stats':
+            apiAction = 'stats';
+            break;
+          default:
+            apiAction = 'query_influencers';
+            body = { keyword: qKeyword, limit };
+        }
+        const dbRes = await fetch('/api/jarvis-db', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: apiAction, ...body }),
+        });
+        const dbData = await dbRes.json();
+        console.log('[JARVIS] DB 조회 결과:', dbData);
+
+        if (queryType === 'influencers' && dbData.influencers?.length > 0) {
+          const dbInfluencers: InfluencerData[] = dbData.influencers.map((inf: any) => ({
+            id: inf.channel_id || `db-${inf.id}`,
+            name: inf.name || '',
+            platform: inf.platform || 'YouTube',
+            followers: inf.subscriber_text || (inf.subscribers >= 10000 ? `${(inf.subscribers / 10000).toFixed(1)}만` : `${inf.subscribers}`),
+            subscriberCount: inf.subscribers || 0,
+            email: inf.email || '',
+            profileUrl: inf.profile_url || '',
+            category: inf.category || '',
+            collectedAt: inf.collected_at || '',
+            status: 'new' as const,
+          }));
+          setCollectedInfluencers(dbInfluencers);
+          setInfluencerCardsVisible(true);
+          const cardList = dbInfluencers.slice(0, 5).map((c: any, i: number) => `${i + 1}. ${c.name} (${c.followers}) ${c.email ? '[E] ' + c.email : ''}`).join('\n');
+          addMessage('jarvis', `**DB 조회 결과** - ${dbData.total}명 발견${qKeyword ? ` (키워드: ${qKeyword})` : ''}\n\n${cardList}${dbData.total > 5 ? '\n... 외 ' + (dbData.total - 5) + '명' : ''}`, true);
+          const resultText = `데이터베이스에서 ${dbData.total}명의 인플루언서를 찾았습니다, 선생님.`;
+          setState('speaking');
+          startSpeakingLevel();
+          await new Promise<void>(resolve => { speak(resultText, undefined, () => { stopSpeakingLevel(); resolve(); }); });
+        } else if (queryType === 'stats' && dbData.stats) {
+          const s = dbData.stats;
+          const statsText = `현재 DB 통계: 인플루언서 ${s.total_influencers}명, 이메일 보유 ${s.with_email}명, 바이럴 영상 ${s.total_viral_videos}건, 수집 횟수 ${s.total_collections}회`;
+          addMessage('jarvis', `**데이터베이스 통계**\n\n| 항목 | 수치 |\n|------|------|\n| 총 인플루언서 | ${s.total_influencers}명 |\n| 이메일 보유 | ${s.with_email}명 |\n| 바이럴 영상 | ${s.total_viral_videos}건 |\n| 수집 횟수 | ${s.total_collections}회 |`, true);
+          setState('speaking');
+          startSpeakingLevel();
+          await new Promise<void>(resolve => { speak(statsText, undefined, () => { stopSpeakingLevel(); resolve(); }); });
+        } else if (queryType === 'collection_history' && dbData.history?.length > 0) {
+          const histList = dbData.history.slice(0, 5).map((h: any, i: number) => `${i + 1}. ${h.keyword} - ${h.new_collected}명 수집 (${h.collected_at})`).join('\n');
+          addMessage('jarvis', `**수집 이력**\n\n${histList}`, true);
+          const histText = `최근 수집 이력 ${dbData.history.length}건을 찾았습니다.`;
+          setState('speaking');
+          startSpeakingLevel();
+          await new Promise<void>(resolve => { speak(histText, undefined, () => { stopSpeakingLevel(); resolve(); }); });
+        } else {
+          const noDataText = '데이터베이스에 저장된 데이터가 없습니다. 먼저 인플루언서를 수집해주세요.';
+          addMessage('jarvis', noDataText);
+          setState('speaking');
+          startSpeakingLevel();
+          await new Promise<void>(resolve => { speak(noDataText, undefined, () => { stopSpeakingLevel(); resolve(); }); });
+        }
+      } catch (err: any) {
+        console.error('[JARVIS] DB 조회 오류:', err);
+        const errMsg = `데이터베이스 조회 중 오류가 발생했습니다: ${err.message}`;
+        addMessage('jarvis', errMsg);
+        setState('speaking');
         startSpeakingLevel();
         await new Promise<void>(resolve => { speak(errMsg, undefined, () => { stopSpeakingLevel(); resolve(); }); });
       }

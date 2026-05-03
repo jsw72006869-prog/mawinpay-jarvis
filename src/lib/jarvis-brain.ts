@@ -46,7 +46,7 @@ export type JarvisActionType =
   | 'smartstore_orders' | 'smartstore_shipping' | 'smartstore_products'
   | 'smartstore_confirm' | 'smartstore_sheet' | 'smartstore_settlement'
   | 'smartstore_purchase_email' | 'smartstore_report'
-  | 'manus_task' | 'manus_status' | 'morning_briefing' | 'analyze_influencers_smart' | 'unknown';
+  | 'manus_task' | 'manus_status' | 'morning_briefing' | 'analyze_influencers_smart' | 'query_database' | 'youtube_trending' | 'unknown';
 
 export type JarvisAction = {
   type: JarvisActionType;
@@ -392,6 +392,25 @@ const OPENAI_TOOLS: OpenAI.Chat.Completions.ChatCompletionTool[] = [
       },
     },
   },
+  {
+    type: 'function',
+    function: {
+      name: 'query_database',
+      description: '저장된 인플루언서 데이터베이스를 검색/조회합니다. "이전에 수집한 뷰티 인플루언서 보여줘", "구독자 50만 이상 인플루언서", "이메일 있는 채널 목록", "수집 이력", "DB에 저장된 데이터" 등.',
+      parameters: {
+        type: 'object',
+        properties: {
+          query_type: { type: 'string', enum: ['influencers', 'viral_videos', 'collection_history', 'stats'], description: 'influencers=인플루언서 조회, viral_videos=바이럴 영상 조회, collection_history=수집 이력, stats=통계' },
+          keyword: { type: 'string', description: '검색 키워드 (뷰티, 농산물, 먹방 등)' },
+          min_subscribers: { type: 'number', description: '최소 구독자 수 필터' },
+          has_email: { type: 'boolean', description: '이메일 보유 채널만 필터' },
+          limit: { type: 'number', description: '조회 개수 (기본 20)' },
+          response: { type: 'string', description: 'JARVIS 응답 (한국어)' },
+        },
+        required: ['query_type', 'response'],
+      },
+    },
+  },
 ];
 
 // ── OpenAI 클라이언트 ──
@@ -660,6 +679,21 @@ function buildActionFromFunction(fnName: string, args: any): JarvisAction {
         params: { mission: String(args.mission || '') },
         workingMessage: '마누스 에이전트 작업 위임 중...',
         response: String(args.response || '마누스 에이전트를 활성화하겠습니다, 선생님.'),
+        followUp,
+      };
+
+    case 'query_database':
+      return {
+        type: 'query_database',
+        params: {
+          query_type: String(args.query_type || 'influencers'),
+          keyword: String(args.keyword || ''),
+          min_subscribers: String(args.min_subscribers || '0'),
+          has_email: String(args.has_email || 'false'),
+          limit: String(args.limit || '20'),
+        },
+        workingMessage: '데이터베이스 조회 중...',
+        response: String(args.response || 'DB에서 데이터를 조회하겠습니다, 선생님.'),
         followUp,
       };
 
