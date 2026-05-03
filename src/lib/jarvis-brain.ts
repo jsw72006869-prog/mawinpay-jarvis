@@ -360,6 +360,26 @@ const OPENAI_TOOLS: OpenAI.Chat.Completions.ChatCompletionTool[] = [
   {
     type: 'function',
     function: {
+      name: 'youtube_trending',
+      description: '유튜브 인기/바이럴 영상 분석. "뷰티 인기 영상 찾아줘", "농산물 바이럴 영상 분석", "지금 뜨는 영상", "조회수 높은 영상", "트렌딩 영상" 등.',
+      parameters: {
+        type: 'object',
+        properties: {
+          action: { type: 'string', enum: ['trending', 'keyword', 'channel'], description: 'trending=한국 트렌딩, keyword=키워드별 인기영상, channel=특정 채널' },
+          keyword: { type: 'string', description: '검색 키워드 (뷰티, 농산물, 먹방 등)' },
+          category: { type: 'string', description: '카테고리 (trending 시)' },
+          channel_name: { type: 'string', description: '채널명 (channel 시)' },
+          count: { type: 'number', description: '조회할 영상 수 (기본 5)' },
+          period: { type: 'string', enum: ['', 'day', 'week', 'month', 'year'], description: '기간 필터' },
+          response: { type: 'string', description: 'JARVIS 응답 (한국어)' },
+        },
+        required: ['action', 'response'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
       name: 'manus_task',
       description: '마누스 에이전트 작업 위임. 복잡한 자율 미션, 심층 리서치, 경쟁사 분석 등.',
       parameters: {
@@ -525,6 +545,7 @@ function buildActionFromFunction(fnName: string, args: any): JarvisAction {
         params: {
           platform: String(args.platform || 'YouTube'),
           count: Number(args.count || 10),
+          keyword: String(args.keyword || ''),
           min_subscribers: Number(args.min_subscribers || 0),
         },
         workingMessage: `${args.platform} 인플루언서 지능형 분석 중...`,
@@ -606,6 +627,32 @@ function buildActionFromFunction(fnName: string, args: any): JarvisAction {
         response: String(args.response || '웹 작업을 시작하겠습니다, 선생님.'),
         followUp,
       };
+
+    case 'youtube_trending': {
+      const ytAction = String(args.action || 'trending');
+      const ytKeyword = String(args.keyword || '');
+      const ytCategory = String(args.category || '전체');
+      const ytChannelName = String(args.channel_name || '');
+      const ytCount = Number(args.count) || 5;
+      const ytPeriod = String(args.period || '');
+      let ytWorkingMsg = '유튜브 트렌딩 영상 조회 중...';
+      if (ytAction === 'keyword') ytWorkingMsg = `"${ytKeyword}" 유튜브 인기 영상 검색 + 바이럴 분석 중...`;
+      if (ytAction === 'channel') ytWorkingMsg = `${ytChannelName} 채널 인기 영상 조회 중...`;
+      return {
+        type: 'youtube_trending',
+        params: {
+          action: ytAction,
+          keyword: ytKeyword,
+          category: ytCategory,
+          channel_name: ytChannelName,
+          count: ytCount,
+          period: ytPeriod,
+        },
+        workingMessage: ytWorkingMsg,
+        response: String(args.response || '유튜브 인기 영상을 분석하겠습니다, 선생님.'),
+        followUp,
+      };
+    }
 
     case 'manus_task':
       return {

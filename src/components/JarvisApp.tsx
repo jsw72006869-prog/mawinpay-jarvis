@@ -152,7 +152,12 @@ export default function JarvisApp() {
   const [naverResults, setNaverResults] = useState<NaverSearchItem[]>([]);
   const [naverPanelVisible, setNaverPanelVisible] = useState(false);
   const [naverKeyword, setNaverKeyword] = useState('');
-  const [collectedInfluencers, setCollectedInfluencers] = useState<InfluencerData[]>([]);
+  const [collectedInfluencers, setCollectedInfluencers] = useState<InfluencerData[]>(() => {
+    try {
+      const saved = localStorage.getItem('jarvis-collected-influencers');
+      return saved ? JSON.parse(saved) : [];
+    } catch { return []; }
+  });
   const [influencerCardsVisible, setInfluencerCardsVisible] = useState(false);
   const [collectedBusinesses, setCollectedBusinesses] = useState<LocalBusinessData[]>([]);
   const [businessCardsVisible, setBusinessCardsVisible] = useState(false);
@@ -342,6 +347,13 @@ export default function JarvisApp() {
     return () => clearTimeout(t);
   }, []);
 
+  // ── 수집된 인플루언서 localStorage 자동 저장 (중복방지 학습) ──
+  useEffect(() => {
+    try {
+      localStorage.setItem('jarvis-collected-influencers', JSON.stringify(collectedInfluencers));
+    } catch (e) { console.warn('[JARVIS] localStorage 저장 실패:', e); }
+  }, [collectedInfluencers]);
+
   // ── 커스텀 커서 ──
   useEffect(() => {
     // 모바일(터치 기기)에서는 커스텀 커서 비활성화
@@ -452,11 +464,20 @@ export default function JarvisApp() {
                 status: '활성',
                 collectedAt,
               }));
-              const filtered = filterBySubscribers(items);
-              telemetryFunctionSuccess('search_youtube', `YouTube ${filtered.slice(0, cnt).length}명 수집 완료`, { count: filtered.slice(0, cnt).length, keyword: keyword });
-              emitNodeData('influencer', { scannedVideos: result.items.length, selectedInfluencers: filtered.slice(0, cnt).length, emailsFound: filtered.slice(0, cnt).filter((i: any) => i.email).length, keyword, lastUpdated: new Date().toISOString() });
+              // 이메일 있는 인플루언서만 필터링
+              const emailFiltered = items.filter(i => i.email && i.email.includes('@'));
+              console.log(`[JARVIS] YouTube 이메일 필터: ${items.length}명 → ${emailFiltered.length}명`);
+              const filtered = filterBySubscribers(emailFiltered);
+              // 기존 수집 데이터와 중복 제거
+              const existingIds = new Set(collectedInfluencers.map(i => (i as any).channelId || i.name.toLowerCase().trim()));
+              const deduped = filtered.filter(i => {
+                const key = (i as any).channelId || i.name.toLowerCase().trim();
+                return !existingIds.has(key);
+              });
+              telemetryFunctionSuccess('search_youtube', `YouTube ${deduped.slice(0, cnt).length}명 수집 완료 (이메일 보유)`, { count: deduped.slice(0, cnt).length, keyword: keyword });
+              emitNodeData('influencer', { scannedVideos: result.items.length, selectedInfluencers: deduped.slice(0, cnt).length, emailsFound: deduped.slice(0, cnt).length, keyword, lastUpdated: new Date().toISOString() });
               emitNodeState('influencer', 'success');
-              return filtered.slice(0, cnt);
+              return deduped.slice(0, cnt);
             } catch (err) {
               console.error('[JARVIS] YouTube 수집 실패:', err);
               telemetryFunctionError('search_youtube', `YouTube 수집 실패: ${err}`);
@@ -2848,6 +2869,14 @@ export default function JarvisApp() {
             status: 'new' as const,
           }));
         }
+        // 이메일 있는 인플루언서만 필터링 (핵심 요구사항)
+        const isYouTubeCollect = isYT;
+        if (isYouTubeCollect) {
+          const beforeFilter = collected.length;
+          collected = collected.filter(i => i.email && i.email.includes('@'));
+          console.log(`[JARVIS] 이메일 필터: ${beforeFilter}명 → ${collected.length}명 (이메일 있는 채널만)`);
+        }
+
         // 구독자 수 필터
         if (minSubscribers > 0) {
           collected = collected.filter(i => {
@@ -2863,13 +2892,37 @@ export default function JarvisApp() {
             return actual >= minSubscribers;
           });
         }
+
+        // 기존 수집 데이터와 중복 제거 (channelId 또는 name 기준)
+        const existingIds = new Set(collectedInfluencers.map(i => (i as any).channelId || i.name.toLowerCase().trim()));
+        collected = collected.filter(i => {
+          const key = (i as any).channelId || i.name.toLowerCase().trim();
+          return !existingIds.has(key);
+        });
+
         collected = collected.slice(0, count);
+
+        // 새 수집 데이터를 기존에 추가 (누적 저장 + localStorage 자동 저장)
         setCollectedInfluencers(prev => [...prev, ...collected]);
         setInfluencerCardsVisible(true);
         emitNodeState('influencer', 'done');
-        const doneText = `${platform} 인플루언서 ${collected.length}명을 분석 완료했습니다, 선생님. 화면에 결과를 표시합니다.`;
+
+        // 시트에도 저장
+        if (collected.length > 0) {
+          appendInfluencersToSheet(collected as any).then(r => {
+            console.log('[JARVIS] 시트 저장:', r.success ? `완료 (${r.count}건)` : r.message);
+            saveMemory('마지막 수집', `${keyword} ${collected.length}명 수집 (${new Date().toLocaleDateString('ko-KR')})`);
+            invalidateSheetCache();
+          }).catch(err => console.warn('[JARVIS] 시트 저장 실패:', err));
+        }
+
+        const emailCount = collected.filter(i => i.email).length;
+        const doneText = collected.length > 0
+          ? `${platform} 인플루언서 ${collected.length}명을 수집 완료했습니다. 모두 이메일이 있는 채널입니다, 선생님.`
+          : `이메일이 있는 ${platform} 인플루언서를 찾지 못했습니다. 다른 키워드로 시도해보시겠습니까?`;
         setState('speaking');
-        addMessage('jarvis', `**${platform} 인플루언서 분석 완료** - ${collected.length}명 수집\n\n${collected.slice(0, 5).map((c, i) => `${i + 1}. ${c.name} (${c.followers})`).join('\n')}${collected.length > 5 ? `\n... 외 ${collected.length - 5}명` : ''}`, true);
+        const cardList = collected.slice(0, 5).map((c, i) => `${i + 1}. ${c.name} (${c.followers}) ${c.email ? `✉ ${c.email}` : ''}`).join('\n');
+        addMessage('jarvis', `**${platform} 인플루언서 분석 완료** - ${collected.length}명 수집 (이메일 보유)\n\n${cardList}${collected.length > 5 ? `\n... 외 ${collected.length - 5}명` : ''}`, true);
         startSpeakingLevel();
         await new Promise<void>(resolve => { speak(doneText, undefined, () => { stopSpeakingLevel(); resolve(); }); });
       } catch (err: any) {
