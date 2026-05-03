@@ -373,6 +373,8 @@ export default function JarvisApp() {
     const isWorkingType = action?.type === 'collect' || action?.type === 'send_email' || action?.type === 'create_banner' || action?.type === 'report';
     if (action && isWorkingType && action.workingMessage) {
       setState('working');
+      // 모든 작업 타입에서 AgentConsolePanel 자동 활성화 (v4.3)
+      setAgentConsoleVisible(true);
       setDataPanel({ visible: true, type: action.type as 'collect' | 'send_email' | 'create_banner' | 'report', progress: 0, message: action.workingMessage });
       for (let p = 0; p <= 100; p += 2) {
         await new Promise(r => setTimeout(r, 45));
@@ -730,6 +732,8 @@ export default function JarvisApp() {
       const sort = (action.params?.sort as 'sim' | 'date') || 'sim';
 
       setState('working');
+      setAgentConsoleVisible(true);
+      telemetryFunctionStart('search_naver', `네이버 ${source} 검색: "${keyword}" ${display}건`);
       addMessage('jarvis', action.response);
       startSpeakingLevel();
       await new Promise<void>(resolve => {
@@ -804,6 +808,7 @@ export default function JarvisApp() {
       const display = Number(action.params?.display) || 30;
 
       setState('working');
+      setAgentConsoleVisible(true);
       addMessage('jarvis', action.response);
       startSpeakingLevel();
       await new Promise<void>(resolve => {

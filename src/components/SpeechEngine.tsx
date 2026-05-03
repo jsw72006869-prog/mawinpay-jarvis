@@ -105,13 +105,8 @@ export function useSpeechRecognition({ onResult, onStart, onEnd, isListening }: 
 
   // Whisper API로 오디오 전송
   const transcribeAudio = useCallback(async (audioBlob: Blob): Promise<string | null> => {
-    const apiKey = import.meta.env.VITE_OPENAI_API_KEY;
-    if (!apiKey) {
-      console.error('[STT] OpenAI API 키 없음 — Whisper 사용 불가');
-      return null;
-    }
-
-    console.log(`[STT] 📤 Whisper API 전송 (${(audioBlob.size / 1024).toFixed(1)}KB)`);
+    // 서버 측 프록시가 OPENAI_API_KEY를 사용하므로 프론트엔드 키 불필요
+    console.log(`[STT] 📤 Whisper 프록시 전송 (${(audioBlob.size / 1024).toFixed(1)}KB)`);
 
     try {
       const formData = new FormData();
@@ -121,14 +116,11 @@ export function useSpeechRecognition({ onResult, onStart, onEnd, isListening }: 
       formData.append('response_format', 'json');
       formData.append('temperature', '0');
       // 자주 쓰는 명령어/단어 힌트 → Whisper 인식 정확도 향상
-      formData.append('prompt', '자비스, 대기해, 수집해, 검색해, 보내줘, 찾아줘, 저장해, 시작해, 중단해, 확인해, 유튜버, 블로거, 인플루언서, 인스타그램, 네이버, 이메일, 팔로워, 맛집, 뷰티, 패션, 여행, 협업, 마케팅, 수집, 발송, 목록, 시트, 자동화');
+      formData.append('prompt', '자비스, 대기해, 수집해, 검색해, 보내줘, 찾아줘, 저장해, 시작해, 중단해, 확인해, 유튜버, 블로거, 인플루언서, 인스타그램, 네이버, 이메일, 팔로워, 맛집, 뷰티, 패션, 여행, 협업, 마케팅, 수집, 발송, 목록, 시트, 자동화, 날씨, 대구, 서울, 부산');
 
-      // Vercel 프록시를 통해 CORS 우회
+      // Vercel 서버리스 프록시 호출 (서버 측에서 OPENAI_API_KEY 사용)
       const res = await fetch('/api/whisper-proxy', {
         method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${apiKey}`,
-        },
         body: formData,
       });
 

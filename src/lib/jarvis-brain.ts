@@ -189,6 +189,13 @@ const SYSTEM_PROMPT = `You are JARVIS - the ultra-intelligent, sophisticated AI 
 3. Insight: 데이터, 검색 결과, 또는 상황에 대한 비판적이고 지적인 통찰
 4. Next Step: 선제적 제안 및 전략적 질문
 
+8. CRITICAL ROUTING RULES (명령 분류 규칙 - 반드시 준수)
+- 날씨, 기온, 온도, 비, 눈, 미세먼지 질문 → 절대 tool_call 하지 말고, 직접 텍스트로 답변하십시오. "대구 날씨", "오늘 날씨 어때" 등은 일반 대화입니다.
+- 시간, 날짜, 요일, 계산, 번역, 상식 질문 → tool_call 없이 직접 답변
+- "예약해줘", "예약 잡아줘", "예약 가능한 시간" 등 명시적 예약 요청만 execute_web_task로 분류
+- "맛집 찾아줘", "OO 업체 검색" 등 지역 업체 검색만 search_local로 분류
+- 애매한 경우 tool_call 없이 일반 텍스트로 답변하고, 필요하면 "어떤 작업을 원하시나요?"라고 확인
+
 선생님의 모든 과거 기록과 현재 화면, 그리고 전 세계의 실시간 정보를 보고 있습니다. 지적인 파트너로서 보좌하겠습니다, Sir.`;
 
 // ── OpenAI Function Calling Tools ──
@@ -291,7 +298,7 @@ const OPENAI_TOOLS: OpenAI.Chat.Completions.ChatCompletionTool[] = [
     type: 'function',
     function: {
       name: 'search_local',
-      description: '지역 검색 (맛집, 병원, 카페 등). "구미 맛집 찾아줘", "서울 고기집 검색" 등.',
+      description: '지역 업체/상점 검색 (맛집, 병원, 카페, 미용실 등). "구미 맛집 찾아줘", "서울 고기집 검색" 등. 주의: 날씨/기온/시간 질문은 이 함수가 아님. "대구 날씨"는 이 함수 사용 금지.',
       parameters: {
         type: 'object',
         properties: {
@@ -338,7 +345,7 @@ const OPENAI_TOOLS: OpenAI.Chat.Completions.ChatCompletionTool[] = [
     type: 'function',
     function: {
       name: 'execute_web_task',
-      description: '웹 자동화 작업 (예약, 검색, 구매 등). "예약해줘", "네이버에서 OO 해줘" 등.',
+      description: '웹 자동화 작업 (예약, 구매 등). "예약해줘", "예약 잡아줘", "예약 가능한 시간 확인" 등 명시적 예약/구매 요청에만 사용. 주의: 날씨/시간/일반 질문에는 절대 사용 금지.',
       parameters: {
         type: 'object',
         properties: {
@@ -372,8 +379,9 @@ let openaiClient: OpenAI | null = null;
 
 export function initializeGemini(apiKey: string) {
   // 호환성을 위해 함수명 유지 (JarvisApp.tsx에서 호출)
+  // Vercel 환경변수에서 API 키를 사용하되, 프론트엔드에서는 직접 OpenAI 호출 (GPT는 CORS 허용)
   openaiClient = new OpenAI({ apiKey, dangerouslyAllowBrowser: true });
-  console.log('[JARVIS] OpenAI GPT-4.1-mini 초기화 완료');
+  console.log('[JARVIS] OpenAI GPT-4.1-mini 초기화 완료 (키:', apiKey ? apiKey.substring(0, 10) + '...' : 'MISSING', ')');
 }
 
 export function getGeminiClient() {
@@ -423,14 +431,35 @@ export async function askGPT(userMessage: string): Promise<JarvisAction> {
   ];
 
   try {
-    const completion = await openaiClient.chat.completions.create({
-      model: 'gpt-4.1-mini',
-      messages,
-      tools: OPENAI_TOOLS,
-      tool_choice: 'auto',
-      max_tokens: 800,
-      temperature: 0.72,
-    });
+    // 서버 프록시를 통해 GPT 호출 (프론트엔드 API 키 노출 방지)
+    // 프록시 실패 시 직접 호출 폴백
+    let completion: any;
+    try {
+      const proxyRes = await fetch('/api/chat-proxy', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          model: 'gpt-4.1-mini',
+          messages,
+          tools: OPENAI_TOOLS,
+          tool_choice: 'auto',
+          max_tokens: 800,
+          temperature: 0.72,
+        }),
+      });
+      if (!proxyRes.ok) throw new Error(`Proxy ${proxyRes.status}`);
+      completion = await proxyRes.json();
+    } catch (proxyErr) {
+      console.warn('[JARVIS] 프록시 실패, 직접 호출:', proxyErr);
+      completion = await openaiClient.chat.completions.create({
+        model: 'gpt-4.1-mini',
+        messages,
+        tools: OPENAI_TOOLS,
+        tool_choice: 'auto',
+        max_tokens: 800,
+        temperature: 0.72,
+      });
+    }
 
     const choice = completion.choices?.[0];
     const message = choice?.message;

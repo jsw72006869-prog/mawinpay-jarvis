@@ -20,6 +20,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
+  // 서버 측 환경변수에서 API 키 가져오기 (VITE_ 프론트엔드 키에 의존하지 않음)
+  const apiKey = process.env.OPENAI_API_KEY;
+  if (!apiKey) {
+    console.error('[whisper-proxy] OPENAI_API_KEY 환경변수 없음');
+    return res.status(500).json({ error: 'Server configuration error: OPENAI_API_KEY not set' });
+  }
+
   try {
     // raw body 수집
     const chunks: Buffer[] = [];
@@ -31,11 +38,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // Content-Type 헤더 그대로 전달 (boundary 포함)
     const contentType = req.headers['content-type'] || '';
 
-    // OpenAI API로 프록시
+    // OpenAI Whisper API로 프록시 (서버 측 API 키만 사용)
     const openaiRes = await fetch('https://api.openai.com/v1/audio/transcriptions', {
       method: 'POST',
       headers: {
-        'Authorization': `Bearer ${process.env.OPENAI_API_KEY || req.headers['authorization']?.replace('Bearer ', '') || ''}`,
+        'Authorization': `Bearer ${apiKey}`,
         'Content-Type': contentType,
       },
       body: body,
@@ -44,6 +51,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const data = await openaiRes.json();
 
     if (!openaiRes.ok) {
+      console.error('[whisper-proxy] OpenAI error:', openaiRes.status, JSON.stringify(data));
       return res.status(openaiRes.status).json(data);
     }
 
