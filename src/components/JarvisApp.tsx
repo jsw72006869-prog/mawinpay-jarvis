@@ -24,6 +24,7 @@ import HologramWorkPanel from './HologramWorkPanel';
 import MarketIntelCard from './MarketIntelCard';
 import MarketIntelChart from './MarketIntelChart';
 import BookingPanel from './BookingPanel';
+import EmailHistoryCards, { type EmailRecord } from './EmailHistoryCards';
 import OrderDashboard from './OrderDashboard';
 import CloudStatusOverlay from './CloudStatusOverlay';
 import LiveBrowserViewer from './LiveBrowserViewer';
@@ -155,6 +156,8 @@ export default function JarvisApp() {
   const [influencerCardsVisible, setInfluencerCardsVisible] = useState(false);
   const [collectedBusinesses, setCollectedBusinesses] = useState<LocalBusinessData[]>([]);
   const [businessCardsVisible, setBusinessCardsVisible] = useState(false);
+  const [emailHistory, setEmailHistory] = useState<EmailRecord[]>([]);
+  const [emailHistoryVisible, setEmailHistoryVisible] = useState(false);
 
   // ── 발주서 파일 처리 상태 ──
   const [orderFileUploadVisible, setOrderFileUploadVisible] = useState(false);
@@ -593,6 +596,18 @@ export default function JarvisApp() {
             setStats(prev => ({ ...prev, emailsSent: prev.emailsSent + result.sent }));
             saveMemory('마지막 이메일 발송',
               `${result.sent}명 발송 성공 / ${result.failed}명 실패 (${new Date().toLocaleDateString('ko-KR')})`);
+            // 이메일 히스토리 카드에 기록 추가
+            const newRecords: EmailRecord[] = emailTargets.map((inf, i) => ({
+              id: `email-${Date.now()}-${i}`,
+              subject: `${template} 제안`,
+              to: inf.email || '',
+              toName: inf.name,
+              preview: `안녕하세요, ${inf.name}님. 저희 MAWINPAY에서 ${target || '제품'} 협업을 제안드립니다...`,
+              status: (i < result.sent ? 'sent' : 'failed') as 'sent' | 'failed',
+              sentAt: new Date().toISOString(),
+            }));
+            setEmailHistory(prev => [...newRecords, ...prev]);
+            setEmailHistoryVisible(true);
             // 로그 저장
             const logs = generateEmailLogs(emailTargets as any, template);
             appendEmailLogToSheet(logs);
@@ -3944,6 +3959,17 @@ export default function JarvisApp() {
           </motion.div>
         )}
       </AnimatePresence>
+
+      {/* ── 이메일 히스토리 카드 UI ── */}
+      <EmailHistoryCards
+        emails={emailHistory}
+        visible={emailHistoryVisible}
+        onClose={() => setEmailHistoryVisible(false)}
+        onResend={(email) => {
+          console.log('[JARVIS] 이메일 재발송:', email.to);
+          setEmailHistory(prev => prev.map(e => e.id === email.id ? { ...e, status: 'sent' as const, sentAt: new Date().toISOString() } : e));
+        }}
+      />
 
       {/* ── DALL-E 배너 이미지 팝업 ── */}
       <AnimatePresence>
