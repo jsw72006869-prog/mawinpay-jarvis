@@ -2225,11 +2225,15 @@ export default function JarvisApp() {
     // ══════════════════════════════════════════════════════
     if (action?.type === 'morning_briefing') {
       setState('working');
-      addMessage('jarvis', action.response);
-      startSpeakingLevel();
-      await new Promise<void>(resolve => {
-        speak(action.response, undefined, () => { stopSpeakingLevel(); resolve(); });
-      });
+
+      // Fast-path: __SKIP_TTS__ 마커가 있으면 초기 TTS 건너뛰기
+      if (action.response !== '__SKIP_TTS__') {
+        addMessage('jarvis', action.response);
+        startSpeakingLevel();
+        await new Promise<void>(resolve => {
+          speak(action.response, undefined, () => { stopSpeakingLevel(); resolve(); });
+        });
+      }
 
       // 텔레메트리: 모닝 브리핑 시퀀스 시작
       emitBriefingSequence('start', undefined, '모닝 브리핑 프로토콜 가동');
@@ -2292,10 +2296,10 @@ export default function JarvisApp() {
           smartstoreData = { smartstore: { newOrders: 0, pendingShipping: 0, totalAmount: 0, revenueChangePercent: 0, error: String(ssErr) }, influencers: { total: 0, newYesterday: 0, byPlatform: {} } };
         }
 
-        // ── Step 2: 농산물 시장 분석 (MarketIntelligence) ──
+        // ── Step 2: 농산물 시장 분석 (MarketIntelligence) - 비동기 처리 (브리핑 응답 차단 안 함) ──
         emitBriefingSequence('node_focus', 'market_intel', '농산물 시장 데이터 수집 중...');
         emitNodeState('market_intel', 'active', '농산물 가격 데이터 수집 중');
-        setMarketIntelVisible(true); // MarketIntelCard 활성화 (v4.2)
+        setMarketIntelVisible(true);
         setDataPanel(prev => ({
           ...prev,
           progress: 45,
@@ -2304,6 +2308,8 @@ export default function JarvisApp() {
         }));
 
         let marketData: any = null;
+        // 농산물 시장 분석을 비동기로 실행 (fire-and-forget, 브리핑 응답 차단 안 함)
+        (async () => {
         try {
           const marketRes = await fetch('/api/market-intelligence?itemCode=225&period=week');
           const marketJson = await marketRes.json();
@@ -2339,32 +2345,15 @@ export default function JarvisApp() {
           }
         } catch (marketErr) {
           emitNodeState('market_intel', 'error', `시장 데이터 수집 실패: ${marketErr}`);
-          setDataPanel(prev => ({
-            ...prev,
-            progress: 50,
-            actionLogs: [...(prev.actionLogs || []), { step: 'MARKET_INTEL', status: 'fail', detail: `농산물 시장 데이터 수집 실패: ${marketErr}`, timestamp: new Date().toISOString() }],
-          }));
         }
+        })(); // fire-and-forget 끝
 
-        // ── Step 3: Gmail 스캔 (MCP) ──
-        emitBriefingSequence('node_focus', 'email', 'Gmail 메일함 스캔 중...');
-        setDataPanel(prev => ({
-          ...prev,
-          progress: 70,
-          message: 'Gmail 메일함 스캔 중...',
-          actionLogs: [...(prev.actionLogs || []), { step: 'GMAIL', status: 'start', detail: 'Gmail 협업/공구/제안 메일 스캔 중...', timestamp: new Date().toISOString() }],
-        }));
-
-        let gmailSummary = '이메일 데이터를 가져올 수 없습니다.';
-        // Gmail MCP는 프론트엔드에서 직접 호출 불가 → 브리핑 텍스트에 안내만 포함
-
-        // ── Step 3: Gemini 통합 브리핑 생성 ──
-        emitBriefingSequence('node_focus', 'jarvis_brain', 'Gemini 종합 브리핑 보고서 생성 중...');
+        // ── Step 3: 브리핑 보고서 생성 (GPT 우회, deterministic template) ──
         setDataPanel(prev => ({
           ...prev,
           progress: 85,
-          message: 'Gemini가 종합 브리핑 보고서를 작성 중...',
-          actionLogs: [...(prev.actionLogs || []), { step: 'GEMINI_BRIEFING', status: 'start', detail: '제미나이 뇌로 종합 분석 및 전략 보고서 생성 중...', timestamp: new Date().toISOString() }],
+          message: '브리핑 보고서 생성 중...',
+          actionLogs: [...(prev.actionLogs || []), { step: 'BRIEFING_TEMPLATE', status: 'start', detail: '스마트스토어 데이터 기반 브리핑 생성 중...', timestamp: new Date().toISOString() }],
         }));
 
         const ss = smartstoreData?.smartstore || {};
@@ -2372,12 +2361,14 @@ export default function JarvisApp() {
         const revenueSign = (ss.revenueChangePercent || 0) >= 0 ? '+' : '';
 
         // 화면에 표시할 구조화된 보고서
+        const totalPreShipping = (ss.newOrders || 0) + (ss.pendingShipping || 0);
         let briefingDisplay = `[LIST] **모닝 브리핑 보고서**\n\n`;
         briefingDisplay += `**[스마트스토어 현황]**\n`;
-        briefingDisplay += `- 오늘 신규 주문: **${ss.newOrders || 0}건** (옥수수 ${ss.cornCount || 0}건, 밤 ${ss.chestnutCount || 0}건)\n`;
-        briefingDisplay += `- 배송 준비 중: **${ss.pendingShipping || 0}건**\n`;
+        briefingDisplay += `- 오늘 신규 주문: **${ss.todayNewOrders ?? ss.newOrders ?? 0}건**\n`;
         briefingDisplay += `- 오늘 매출: **${(ss.totalAmount || 0).toLocaleString('ko-KR')}원**\n`;
-        briefingDisplay += `- 어제 대비: **${revenueSign}${ss.revenueChangePercent || 0}%**\n\n`;
+        briefingDisplay += `- 현재 신규주문: **${ss.newOrders || 0}건**\n`;
+        briefingDisplay += `- 배송준비: **${ss.pendingShipping || 0}건**\n`;
+        briefingDisplay += `- 배송 전 처리 대상 전체: **${totalPreShipping}건**\n\n`;
         briefingDisplay += `**[인플루언서 현황]**\n`;
         briefingDisplay += `- 총 누적: **${inf.total || 0}명**\n`;
         briefingDisplay += `- 어제 신규: **${inf.newYesterday || 0}명**\n`;
@@ -2388,17 +2379,16 @@ export default function JarvisApp() {
           briefingDisplay += `- 어제 추가: ${inf.recentNames.join(', ')}\n`;
         }
 
-        // 음성 브리핑 텍스트 (Gemini 스타일)
+        // 음성 브리핑 텍스트 (스마트스토어 중심)
         let voiceBriefing = `선생님, 좋은 아침입니다. 오늘의 업무 브리핑을 시작하겠습니다. `;
-        voiceBriefing += `스마트스토어에 오늘 신규 주문 ${ss.newOrders || 0}건이 들어왔으며, `;
-        voiceBriefing += `배송 준비 중인 건이 ${ss.pendingShipping || 0}건입니다. `;
+        voiceBriefing += `현재 신규주문 ${ss.newOrders || 0}건, 배송준비 ${ss.pendingShipping || 0}건, `;
+        voiceBriefing += `배송 전 처리 대상 전체 ${totalPreShipping}건입니다. `;
         if ((ss.totalAmount || 0) > 0) {
-          voiceBriefing += `오늘 매출은 ${(ss.totalAmount || 0).toLocaleString('ko-KR')}원으로, 어제 대비 ${revenueSign}${ss.revenueChangePercent || 0}퍼센트 변동이 있습니다. `;
+          voiceBriefing += `오늘 매출은 ${(ss.totalAmount || 0).toLocaleString('ko-KR')}원입니다. `;
         }
-        voiceBriefing += `인플루언서는 현재 총 ${inf.total || 0}명이 누적되었으며, 어제 ${inf.newYesterday || 0}명이 새로 추가되었습니다. `;
 
         // 전략적 제안 추가
-        if ((ss.newOrders || 0) > 0 && (ss.pendingShipping || 0) > 3) {
+        if ((ss.pendingShipping || 0) > 3) {
           voiceBriefing += `오늘의 제안입니다. 배송 대기 건이 ${ss.pendingShipping}건으로 다소 밀려있으니, 우선 발주 확인 후 배송 처리를 진행하시는 것을 권장드립니다. `;
           briefingDisplay += `\n**[오늘의 전략 제안]**\n`;
           briefingDisplay += `- 배송 대기 ${ss.pendingShipping}건 우선 처리 권장\n`;
@@ -2439,15 +2429,16 @@ export default function JarvisApp() {
           '어제신규': inf.newYesterday || 0,
         });
 
-        // 화면에 보고서 표시 + 음성 브리핑
+        // 화면에 보고서 표시 + 음성 브리핑 (비동기)
         setState('speaking');
         addMessage('jarvis', briefingDisplay, true);
         triggerGoldenFlare();
         setClapBurst(true); setTimeout(() => setClapBurst(false), 120);
+        // TTS 비동기화: 텍스트 먼저 표시, TTS는 후속 처리
         startSpeakingLevel();
-        await new Promise<void>(resolve => {
-          speak(voiceBriefing, undefined, () => { stopSpeakingLevel(); resolve(); });
-        });
+        speak(voiceBriefing, undefined, () => { stopSpeakingLevel(); });
+        // 패널 완전 종료
+        resetAllNodes();
 
       } catch (err) {
         telemetryFunctionError('morning_briefing', `모닝 브리핑 실패: ${err}`);
@@ -2505,11 +2496,15 @@ export default function JarvisApp() {
       if (ssAction === 'ship_order') ssAction = 'process_shipping';
 
       setState('working');
-      addMessage('jarvis', action.response);
-      startSpeakingLevel();
-      await new Promise<void>(resolve => {
-        speak(action.response, undefined, () => { stopSpeakingLevel(); resolve(); });
-      });
+
+      // Fast-path: __SKIP_TTS__ 마커가 있으면 초기 TTS 건너뛰기 (속도 우선)
+      if (action.response !== '__SKIP_TTS__') {
+        addMessage('jarvis', action.response);
+        startSpeakingLevel();
+        await new Promise<void>(resolve => {
+          speak(action.response, undefined, () => { stopSpeakingLevel(); resolve(); });
+        });
+      }
 
       telemetryFunctionStart('smartstore_action', `스마트스토어: ${ssAction}`);
 
@@ -2797,8 +2792,11 @@ export default function JarvisApp() {
 
           setState('speaking');
           addMessage('jarvis', resultMsg, true);
+          // TTS 비동기화: 텍스트 먼저 표시, TTS는 후속 처리
           startSpeakingLevel();
-          await new Promise<void>(resolve => { speak(doneText, undefined, () => { stopSpeakingLevel(); resolve(); }); });
+          speak(doneText, undefined, () => { stopSpeakingLevel(); });
+          // 패널 완전 종료
+          resetAllNodes();
         }
 
       } catch (err) {

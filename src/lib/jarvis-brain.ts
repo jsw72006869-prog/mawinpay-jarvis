@@ -383,8 +383,76 @@ export function getGeminiClient() {
   return openaiClient;
 }
 
+// ── Deterministic Fast-Path (GPT 우회) ──
+// 단순 조회 명령은 GPT를 거치지 않고 즉시 action 반환 → 속도 + 일관성 보장
+function deterministicMatch(text: string): JarvisAction | null {
+  const lower = text.toLowerCase().trim();
+
+  // 브리핑
+  if (/브리핑|모닝.?보고|현황.?보고|오늘.?보고/.test(lower)) {
+    return {
+      type: 'morning_briefing',
+      workingMessage: '브리핑 데이터 수집 중...',
+      response: '__SKIP_TTS__',  // TTS 건너뛰기 마커 (결과에서 TTS)
+    };
+  }
+
+  // 배송 전 처리 대상 전체 (배송준비보다 먼저 매칭해야 함)
+  if (/배송.?전.?처리|처리.?대상.?전체|전체.?몇.?개/.test(lower) && /배송|처리|전체/.test(lower)) {
+    return {
+      type: 'smartstore_orders',
+      params: { action: 'query_pre_shipping_total', userMessage: text },
+      workingMessage: '배송 전 처리 대상 전체 조회 중...',
+      response: '__SKIP_TTS__',
+    };
+  }
+
+  // 배송준비
+  if (/배송.?준비/.test(lower) && /몇|개|조회|확인|알려/.test(lower)) {
+    return {
+      type: 'smartstore_orders',
+      params: { action: 'query_pending_shipping', userMessage: text },
+      workingMessage: '배송준비 조회 중...',
+      response: '__SKIP_TTS__',
+    };
+  }
+
+  // 오늘 신규주문 ("오늘"이 포함된 경우)
+  if (/오늘/.test(lower) && /신규.?주문|주문/.test(lower)) {
+    return {
+      type: 'smartstore_orders',
+      params: { action: 'query_orders_today', userMessage: text },
+      workingMessage: '오늘 신규주문 조회 중...',
+      response: '__SKIP_TTS__',
+    };
+  }
+
+  // 현재 신규주문 ("오늘"이 없는 신규주문 질문)
+  if (/신규.?주문|현재.?주문/.test(lower) && /몇|개|조회|확인|알려/.test(lower)) {
+    return {
+      type: 'smartstore_orders',
+      params: { action: 'current_new_orders', userMessage: text },
+      workingMessage: '현재 신규주문 조회 중...',
+      response: '__SKIP_TTS__',
+    };
+  }
+
+  return null; // 매칭 안 되면 GPT로 넘김
+}
+
 // ── 메인 askGPT (OpenAI GPT 기반) ──
 export async function askGPT(userMessage: string): Promise<JarvisAction> {
+  // Fast-path: 단순 조회 명령은 GPT 우회
+  const fastAction = deterministicMatch(userMessage);
+  if (fastAction) {
+    console.log('[JARVIS] Fast-path 매칭:', fastAction.type, fastAction.params);
+    sessionTurnCount++;
+    saveConversationEntry('user', userMessage);
+    conversationHistory.push({ role: 'user', content: userMessage });
+    if (conversationHistory.length > 40) conversationHistory.splice(0, 2);
+    return fastAction;
+  }
+
   if (!openaiClient) {
     console.error('[JARVIS] OpenAI API 키가 설정되지 않았습니다.');
     return parseCommand(userMessage);
