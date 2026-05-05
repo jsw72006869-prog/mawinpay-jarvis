@@ -10,10 +10,12 @@
 import OpenAI from 'openai';
 import {
   saveConversationEntry,
+  saveConversationWithSync,
   getRecentConversationsForGPT,
   getPreviousSessionSummary,
   getLearnedKnowledgeContext,
   autoExtractAndSave,
+  buildUIContextForGPT,
 } from './jarvis-memory';
 import {
   createManusTask,
@@ -57,6 +59,14 @@ export type JarvisAction = {
 
 // ── 대화 히스토리 ──
 const conversationHistory: { role: 'user' | 'assistant'; content: string }[] = [];
+
+// ── UI Context ──
+let _activeUIPanel: string | null = null;
+let _activePanelData: any = null;
+export function setActiveUIContext(panel: string | null, data: any) {
+  _activeUIPanel = panel;
+  _activePanelData = data;
+}
 
 // ── 장기 메모리 ──
 const MEMORY_KEY = 'jarvis_memory';
