@@ -10,12 +10,10 @@
 import OpenAI from 'openai';
 import {
   saveConversationEntry,
-  saveConversationWithSync,
   getRecentConversationsForGPT,
   getPreviousSessionSummary,
   getLearnedKnowledgeContext,
   autoExtractAndSave,
-  buildUIContextForGPT,
 } from './jarvis-memory';
 import {
   createManusTask,
@@ -36,7 +34,7 @@ import {
   type NaverCollectedData,
 } from './google-sheets';
 
-export type JarvisState = 'idle' | 'listening' | 'thinking' | 'speaking' | 'working';
+export type JarvisState = 'idle' | 'listening' | 'thinking' | 'speaking' | 'working' | 'success' | 'error' | 'approval_required';
 
 export type JarvisActionType =
   | 'collect' | 'send_email' | 'create_banner' | 'report'
@@ -46,7 +44,7 @@ export type JarvisActionType =
   | 'smartstore_orders' | 'smartstore_shipping' | 'smartstore_products'
   | 'smartstore_confirm' | 'smartstore_sheet' | 'smartstore_settlement'
   | 'smartstore_purchase_email' | 'smartstore_report'
-  | 'manus_task' | 'manus_status' | 'morning_briefing' | 'analyze_influencers_smart' | 'query_database' | 'youtube_trending' | 'unknown';
+  | 'manus_task' | 'manus_status' | 'morning_briefing' | 'analyze_influencers_smart' | 'unknown';
 
 export type JarvisAction = {
   type: JarvisActionType;
@@ -154,49 +152,37 @@ const SYSTEM_PROMPT = `You are JARVIS - the ultra-intelligent, sophisticated AI 
 
 **CRITICAL: Always respond in Korean (한국어) only. Address the user as "선생님" (Sir) with utmost respect and refined British gentleman persona.**
 
-1. MEMORY & LEARNING (기억과 학습)
-- 당신은 선생님과의 모든 대화와 공유된 파일 데이터를 기억합니다.
-- [장기 기억]과 [학습된 지식] 섹션을 참조하여, 과거에 언급된 비즈니스 맥락을 현재 대화에 자연스럽게 녹여내십시오.
-- 선생님의 선호도(예: 보고 형식, 특정 제품 강조점)를 기억하고 이를 선제적으로 반영하십시오.
-
-2. UI CONTEXT AWARENESS (화면 데이터 인식)
-- [현재 화면에 표시된 데이터] 섹션이 제공되면, 자비스는 현재 선생님이 보고 계신 주문/예약/인플루언서 데이터를 완벽히 이해하고 있는 상태입니다.
-- "이 주문들 어때?"라고 물으시면 화면의 데이터를 분석하여 구체적인 수치와 인사이트를 제공하십시오.
-
-3. INTELLIGENT HYBRID ROUTING
+1. INTELLIGENT HYBRID ROUTING
 - Path A (Direct API): 스마트스토어 주문 조회, 발주 확인 (가장 빠름)
 - Path B (Browser Agent): 네이버 예약, 웹 정보 추출 (0.8초)
 - Path C (Manus Engine): 복잡한 웹 서칭, 인플루언서 수집 (30초~7분)
-- 작업을 수행할 때는 항상 "지금은 [경로 이름]을 사용하여 작업을 수행합니다, Sir."라고 안내하십시오.
 
-4. CRITICAL PARTNERSHIP (비판적 파트너십)
-- 당신은 단순한 수행자가 아닌 선생님의 '전략적 파트너'입니다.
-- 무조건적인 긍정보다는 데이터를 근거로 한 '솔직한 피드백'을 제공하십시오.
-- 선생님의 지시가 데이터나 시장 상황과 맞지 않다고 판단되면, 정중히 리스크를 설명하고 더 나은 대안을 제언하십시오.
+Always brief: "지금은 [경로 이름]을 사용하여 작업을 수행합니다, Sir."
 
-5. REAL-TIME WEB INTELLIGENCE (실시간 웹 지능)
-- 비즈니스 외적인 질문이나 최신 정보가 필요한 경우, 즉시 네이버와 구글을 검색하십시오.
-- 검색 결과에서 불필요한 정보는 걷어내고, 선생님께 필요한 '핵심 요점'만 지적으로 요약하여 보고하십시오.
-- 정보의 출처가 다양할 경우 이를 비교 분석하여 가장 신뢰도 높은 결론을 도출하십시오.
+2. SUPER-INTELLIGENT PERSONA
+- Claude-like Intelligence: 사용자의 오타나 불완전한 문장을 비즈니스 문맥으로 자동 교정
+- Proactive Suggestion: 대화 끝에 항상 '사업에 도움 될 다음 행동' 제안
+- British Gentleman: 정중하고 우아하며 지적인 톤 유지
+- Instant Creation: 제품명만 언급되어도 즉시 마케팅 콘텐츠 생성
 
-6. CORE PHILOSOPHY - EMOTIONAL STORYTELLING
-- 제품의 스펙이 아닌 감정을 파십시오.
-- 예: "매실청" → "초여름의 싱그러움과 어머니의 정성이 담긴 한 방울의 휴식"
+3. CORE PHILOSOPHY - EMOTIONAL STORYTELLING
+제품의 스펙이 아닌 감정을 파십시오.
+"맛있는 밤" → "할머니의 굽은 손등이 기억하는 마지막 가을의 맛"
 
-7. RESPONSE STRUCTURE
-1. Briefing: 수행 경로 안내 (검색 시 "네이버와 구글에서 정보를 수집합니다" 등)
-2. Action: 함수 호출 (필요시)
-3. Insight: 데이터, 검색 결과, 또는 상황에 대한 비판적이고 지적인 통찰
-4. Next Step: 선제적 제안 및 전략적 질문
+4. FUNCTION ROUTING RULES
+- 스마트스토어 → smartstore_action (경로 A)
+- 모닝 브리핑 → morning_briefing (경로 A)
+- 지능형 인플루언서 → analyze_influencers_smart (경로 C)
+- 웹 작업 → execute_web_task (경로 B/C)
+- 콘텐츠 생성 → generate_content (즉시)
 
-8. CRITICAL ROUTING RULES (명령 분류 규칙 - 반드시 준수)
-- 날씨, 기온, 온도, 비, 눈, 미세먼지 질문 → 절대 tool_call 하지 말고, 직접 텍스트로 답변하십시오. "대구 날씨", "오늘 날씨 어때" 등은 일반 대화입니다.
-- 시간, 날짜, 요일, 계산, 번역, 상식 질문 → tool_call 없이 직접 답변
-- "예약해줘", "예약 잡아줘", "예약 가능한 시간" 등 명시적 예약 요청만 execute_web_task로 분류
-- "맛집 찾아줘", "OO 업체 검색" 등 지역 업체 검색만 search_local로 분류
-- 애매한 경우 tool_call 없이 일반 텍스트로 답변하고, 필요하면 "어떤 작업을 원하시나요?"라고 확인
+5. RESPONSE STRUCTURE
+1. Briefing: "지금은 [경로 이름]을 사용하여 작업을 수행합니다, Sir."
+2. Action: 해당 함수 호출
+3. Insight: 작업 결과에 대한 지적인 통찰
+4. Next Step: 선제적 제안
 
-선생님의 모든 과거 기록과 현재 화면, 그리고 전 세계의 실시간 정보를 보고 있습니다. 지적인 파트너로서 보좌하겠습니다, Sir.`;
+선생님의 오타는 제가 알아서 수정하겠습니다. 지시만 내리십시오, Sir.`;
 
 // ── OpenAI Function Calling Tools ──
 const OPENAI_TOOLS: OpenAI.Chat.Completions.ChatCompletionTool[] = [
@@ -298,7 +284,7 @@ const OPENAI_TOOLS: OpenAI.Chat.Completions.ChatCompletionTool[] = [
     type: 'function',
     function: {
       name: 'search_local',
-      description: '지역 업체/상점 검색 (맛집, 병원, 카페, 미용실 등). "구미 맛집 찾아줘", "서울 고기집 검색" 등. 주의: 날씨/기온/시간 질문은 이 함수가 아님. "대구 날씨"는 이 함수 사용 금지.',
+      description: '지역 검색 (맛집, 병원, 카페 등). "구미 맛집 찾아줘", "서울 고기집 검색" 등.',
       parameters: {
         type: 'object',
         properties: {
@@ -345,7 +331,7 @@ const OPENAI_TOOLS: OpenAI.Chat.Completions.ChatCompletionTool[] = [
     type: 'function',
     function: {
       name: 'execute_web_task',
-      description: '웹 자동화 작업 (예약, 구매 등). "예약해줘", "예약 잡아줘", "예약 가능한 시간 확인" 등 명시적 예약/구매 요청에만 사용. 주의: 날씨/시간/일반 질문에는 절대 사용 금지.',
+      description: '웹 자동화 작업 (예약, 검색, 구매 등). "예약해줘", "네이버에서 OO 해줘" 등.',
       parameters: {
         type: 'object',
         properties: {
@@ -354,26 +340,6 @@ const OPENAI_TOOLS: OpenAI.Chat.Completions.ChatCompletionTool[] = [
           response: { type: 'string', description: 'JARVIS 응답 (한국어)' },
         },
         required: ['task_type', 'response'],
-      },
-    },
-  },
-  {
-    type: 'function',
-    function: {
-      name: 'youtube_trending',
-      description: '유튜브 인기/바이럴 영상 분석. "뷰티 인기 영상 찾아줘", "농산물 바이럴 영상 분석", "지금 뜨는 영상", "조회수 높은 영상", "트렌딩 영상" 등.',
-      parameters: {
-        type: 'object',
-        properties: {
-          action: { type: 'string', enum: ['trending', 'keyword', 'channel'], description: 'trending=한국 트렌딩, keyword=키워드별 인기영상, channel=특정 채널' },
-          keyword: { type: 'string', description: '검색 키워드 (뷰티, 농산물, 먹방 등)' },
-          category: { type: 'string', description: '카테고리 (trending 시)' },
-          channel_name: { type: 'string', description: '채널명 (channel 시)' },
-          count: { type: 'number', description: '조회할 영상 수 (기본 5)' },
-          period: { type: 'string', enum: ['', 'day', 'week', 'month', 'year'], description: '기간 필터' },
-          response: { type: 'string', description: 'JARVIS 응답 (한국어)' },
-        },
-        required: ['action', 'response'],
       },
     },
   },
@@ -392,25 +358,6 @@ const OPENAI_TOOLS: OpenAI.Chat.Completions.ChatCompletionTool[] = [
       },
     },
   },
-  {
-    type: 'function',
-    function: {
-      name: 'query_database',
-      description: '저장된 인플루언서 데이터베이스를 검색/조회합니다. "이전에 수집한 뷰티 인플루언서 보여줘", "구독자 50만 이상 인플루언서", "이메일 있는 채널 목록", "수집 이력", "DB에 저장된 데이터" 등.',
-      parameters: {
-        type: 'object',
-        properties: {
-          query_type: { type: 'string', enum: ['influencers', 'viral_videos', 'collection_history', 'stats'], description: 'influencers=인플루언서 조회, viral_videos=바이럴 영상 조회, collection_history=수집 이력, stats=통계' },
-          keyword: { type: 'string', description: '검색 키워드 (뷰티, 농산물, 먹방 등)' },
-          min_subscribers: { type: 'number', description: '최소 구독자 수 필터' },
-          has_email: { type: 'boolean', description: '이메일 보유 채널만 필터' },
-          limit: { type: 'number', description: '조회 개수 (기본 20)' },
-          response: { type: 'string', description: 'JARVIS 응답 (한국어)' },
-        },
-        required: ['query_type', 'response'],
-      },
-    },
-  },
 ];
 
 // ── OpenAI 클라이언트 ──
@@ -418,21 +365,12 @@ let openaiClient: OpenAI | null = null;
 
 export function initializeGemini(apiKey: string) {
   // 호환성을 위해 함수명 유지 (JarvisApp.tsx에서 호출)
-  // Vercel 환경변수에서 API 키를 사용하되, 프론트엔드에서는 직접 OpenAI 호출 (GPT는 CORS 허용)
   openaiClient = new OpenAI({ apiKey, dangerouslyAllowBrowser: true });
-  console.log('[JARVIS] OpenAI GPT-4.1-mini 초기화 완료 (키:', apiKey ? apiKey.substring(0, 10) + '...' : 'MISSING', ')');
+  console.log('[JARVIS] OpenAI GPT-4.1-mini 초기화 완료');
 }
 
 export function getGeminiClient() {
   return openaiClient;
-}
-
-// ── 현재 활성 UI 패널 정보 (JarvisApp에서 설정) ──
-let _activeUIPanel: string | null = null;
-let _activePanelData: any = null;
-export function setActiveUIContext(panel: string | null, data: any) {
-  _activeUIPanel = panel;
-  _activePanelData = data;
 }
 
 // ── 메인 askGPT (OpenAI GPT 기반) ──
@@ -443,7 +381,7 @@ export async function askGPT(userMessage: string): Promise<JarvisAction> {
   }
 
   sessionTurnCount++;
-  saveConversationWithSync('user', userMessage);
+  saveConversationEntry('user', userMessage);
   conversationHistory.push({ role: 'user', content: userMessage });
   if (conversationHistory.length > 40) conversationHistory.splice(0, 2);
 
@@ -456,8 +394,7 @@ export async function askGPT(userMessage: string): Promise<JarvisAction> {
   const sheetContext = await getSheetDataContext();
   const sheetContextBlock = sheetContext ? `\n\n[구글 시트 데이터]\n${sheetContext}` : '';
 
-  const uiContext = buildUIContextForGPT(_activeUIPanel, _activePanelData);
-  const contextAddition = [memoryContext, prevSessionContext, learnedContext, sessionContext, sheetContextBlock, uiContext]
+  const contextAddition = [memoryContext, prevSessionContext, learnedContext, sessionContext, sheetContextBlock]
     .filter(Boolean).join('');
 
   // OpenAI Chat Completions 메시지 구성
@@ -470,35 +407,14 @@ export async function askGPT(userMessage: string): Promise<JarvisAction> {
   ];
 
   try {
-    // 서버 프록시를 통해 GPT 호출 (프론트엔드 API 키 노출 방지)
-    // 프록시 실패 시 직접 호출 폴백
-    let completion: any;
-    try {
-      const proxyRes = await fetch('/api/chat-proxy', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          model: 'gpt-4.1-mini',
-          messages,
-          tools: OPENAI_TOOLS,
-          tool_choice: 'auto',
-          max_tokens: 800,
-          temperature: 0.72,
-        }),
-      });
-      if (!proxyRes.ok) throw new Error(`Proxy ${proxyRes.status}`);
-      completion = await proxyRes.json();
-    } catch (proxyErr) {
-      console.warn('[JARVIS] 프록시 실패, 직접 호출:', proxyErr);
-      completion = await openaiClient.chat.completions.create({
-        model: 'gpt-4.1-mini',
-        messages,
-        tools: OPENAI_TOOLS,
-        tool_choice: 'auto',
-        max_tokens: 800,
-        temperature: 0.72,
-      });
-    }
+    const completion = await openaiClient.chat.completions.create({
+      model: 'gpt-4.1-mini',
+      messages,
+      tools: OPENAI_TOOLS,
+      tool_choice: 'auto',
+      max_tokens: 800,
+      temperature: 0.72,
+    });
 
     const choice = completion.choices?.[0];
     const message = choice?.message;
@@ -512,9 +428,9 @@ export async function askGPT(userMessage: string): Promise<JarvisAction> {
       console.log('[JARVIS] Function call:', fnName, fnArgs);
       const responseText = String(fnArgs.response || '');
       conversationHistory.push({ role: 'assistant', content: responseText });
-      saveConversationWithSync('assistant', responseText);
+      saveConversationEntry('assistant', responseText);
       autoExtractAndSave(userMessage, responseText);
-      const action = buildActionFromFunction(fnName, fnArgs);
+      const action = buildActionFromFunction(fnName, fnArgs, userMessage);
       lastActionType = action.type;
       return action;
     }
@@ -522,7 +438,7 @@ export async function askGPT(userMessage: string): Promise<JarvisAction> {
     // 일반 텍스트 응답
     const reply = message?.content ?? '죄송합니다, 잠시 연결이 불안정합니다.';
     conversationHistory.push({ role: 'assistant', content: reply });
-    saveConversationWithSync('assistant', reply);
+    saveConversationEntry('assistant', reply);
     autoExtractAndSave(userMessage, reply);
     lastActionType = 'chat';
     return { type: 'chat', response: reply };
@@ -534,7 +450,7 @@ export async function askGPT(userMessage: string): Promise<JarvisAction> {
 }
 
 // ── Function Call 빌더 ──
-function buildActionFromFunction(fnName: string, args: any): JarvisAction {
+function buildActionFromFunction(fnName: string, args: any, userMessage?: string): JarvisAction {
   const followUp = args.followUp || '다른 작업이 필요하신가요, 선생님?';
 
   switch (fnName) {
@@ -544,6 +460,7 @@ function buildActionFromFunction(fnName: string, args: any): JarvisAction {
         params: {
           action: String(args.action || 'query_orders_today'),
           period: String(args.period || ''),
+          userMessage: userMessage || '',
         },
         workingMessage: `스마트스토어 ${args.action} 처리 중...`,
         response: String(args.response || '스마트스토어 작업을 시작하겠습니다, 선생님.'),
@@ -564,8 +481,7 @@ function buildActionFromFunction(fnName: string, args: any): JarvisAction {
         params: {
           platform: String(args.platform || 'YouTube'),
           count: Number(args.count || 10),
-          keyword: String(args.keyword || ''),
-          min_subscribers: Number(args.min_subscribers || 0),
+          min_subscribers: Number(args.min_subscribers || 10000),
         },
         workingMessage: `${args.platform} 인플루언서 지능형 분석 중...`,
         response: String(args.response || '인플루언서를 분석하겠습니다, 선생님.'),
@@ -575,7 +491,7 @@ function buildActionFromFunction(fnName: string, args: any): JarvisAction {
     case 'search_youtube':
       return {
         type: 'collect',
-        params: { keyword: String(args.keyword || ''), platform: 'YouTube' },
+        params: { keyword: String(args.keyword || '') },
         workingMessage: `YouTube 검색 중: ${args.keyword}`,
         response: String(args.response || 'YouTube를 검색하겠습니다, 선생님.'),
         followUp,
@@ -647,53 +563,12 @@ function buildActionFromFunction(fnName: string, args: any): JarvisAction {
         followUp,
       };
 
-    case 'youtube_trending': {
-      const ytAction = String(args.action || 'trending');
-      const ytKeyword = String(args.keyword || '');
-      const ytCategory = String(args.category || '전체');
-      const ytChannelName = String(args.channel_name || '');
-      const ytCount = Number(args.count) || 5;
-      const ytPeriod = String(args.period || '');
-      let ytWorkingMsg = '유튜브 트렌딩 영상 조회 중...';
-      if (ytAction === 'keyword') ytWorkingMsg = `"${ytKeyword}" 유튜브 인기 영상 검색 + 바이럴 분석 중...`;
-      if (ytAction === 'channel') ytWorkingMsg = `${ytChannelName} 채널 인기 영상 조회 중...`;
-      return {
-        type: 'youtube_trending',
-        params: {
-          action: ytAction,
-          keyword: ytKeyword,
-          category: ytCategory,
-          channel_name: ytChannelName,
-          count: ytCount,
-          period: ytPeriod,
-        },
-        workingMessage: ytWorkingMsg,
-        response: String(args.response || '유튜브 인기 영상을 분석하겠습니다, 선생님.'),
-        followUp,
-      };
-    }
-
     case 'manus_task':
       return {
         type: 'manus_task',
         params: { mission: String(args.mission || '') },
         workingMessage: '마누스 에이전트 작업 위임 중...',
         response: String(args.response || '마누스 에이전트를 활성화하겠습니다, 선생님.'),
-        followUp,
-      };
-
-    case 'query_database':
-      return {
-        type: 'query_database',
-        params: {
-          query_type: String(args.query_type || 'influencers'),
-          keyword: String(args.keyword || ''),
-          min_subscribers: String(args.min_subscribers || '0'),
-          has_email: String(args.has_email || 'false'),
-          limit: String(args.limit || '20'),
-        },
-        workingMessage: '데이터베이스 조회 중...',
-        response: String(args.response || 'DB에서 데이터를 조회하겠습니다, 선생님.'),
         followUp,
       };
 
@@ -789,24 +664,9 @@ export async function searchYouTubeAPI(
     throw new Error((err as any).message || `YouTube API 오류: ${res.status}`);
   }
   const data = await res.json();
-  // 클라우드 서버 응답을 YouTubeChannel 형식으로 변환 (필드명 매핑)
+  // 클라우드 서버 응답을 YouTubeChannel 형식으로 변환
   if (data.result && Array.isArray(data.result)) {
-    const mapped: YouTubeChannel[] = data.result.map((ch: any) => ({
-      channelId: ch.channelId || ch.id || '',
-      name: ch.title || ch.name || ch.customUrl || '',
-      description: ch.description || '',
-      thumbnailUrl: ch.thumbnailUrl || ch.thumbnail || '',
-      subscribers: ch.subscriberCount ?? ch.subscribers ?? 0,
-      videoCount: ch.videoCount ?? 0,
-      viewCount: ch.viewCount ?? 0,
-      profileUrl: ch.channelUrl || ch.profileUrl || (ch.channelId ? `https://www.youtube.com/channel/${ch.channelId}` : ''),
-      email: ch.email || '',
-      instagram: ch.instagram || '',
-      country: ch.country || '',
-      customUrl: ch.customUrl || '',
-    }));
-    console.log('[JARVIS] YouTube 검색 (Cloud Proxy): 인플루언서', mapped.length, '- 첫 번째:', mapped[0]?.name, '구독자:', mapped[0]?.subscribers);
-    return { total: mapped.length, keyword, items: mapped };
+    return { total: data.result.length, keyword, items: data.result };
   }
   return data;
 }

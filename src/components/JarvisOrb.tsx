@@ -35,11 +35,14 @@ export default function JarvisOrb({ state, audioLevel = 0 }: JarvisOrbProps) {
     window.addEventListener('resize', updateSize);
 
     const stateColors: Record<JarvisState, { core: string; mid: string; outer: string; glow: string }> = {
-      idle:      { core: '#0066FF', mid: '#0044CC', outer: '#001A66', glow: 'rgba(0,102,255,0.6)' },
-      listening: { core: '#FF8C42', mid: '#FF6B35', outer: '#662200', glow: 'rgba(255,107,53,0.8)' },
-      thinking:  { core: '#A855F7', mid: '#7C3AED', outer: '#3B0764', glow: 'rgba(124,58,237,0.8)' },
-      speaking:  { core: '#00F5FF', mid: '#00BFCC', outer: '#003344', glow: 'rgba(0,245,255,0.9)' },
-      working:   { core: '#4ADE80', mid: '#22C55E', outer: '#052E16', glow: 'rgba(34,197,94,0.8)' },
+      idle:              { core: '#0066FF', mid: '#0044CC', outer: '#001A66', glow: 'rgba(0,102,255,0.6)' },
+      listening:         { core: '#FF8C42', mid: '#FF6B35', outer: '#662200', glow: 'rgba(255,107,53,0.8)' },
+      thinking:          { core: '#A855F7', mid: '#7C3AED', outer: '#3B0764', glow: 'rgba(124,58,237,0.8)' },
+      speaking:          { core: '#00F5FF', mid: '#00BFCC', outer: '#003344', glow: 'rgba(0,245,255,0.9)' },
+      working:           { core: '#4ADE80', mid: '#22C55E', outer: '#052E16', glow: 'rgba(34,197,94,0.8)' },
+      success:           { core: '#FFD700', mid: '#DAA520', outer: '#3D2B00', glow: 'rgba(255,215,0,0.9)' },
+      error:             { core: '#FF4444', mid: '#CC0000', outer: '#330000', glow: 'rgba(255,68,68,0.9)' },
+      approval_required: { core: '#FF9500', mid: '#E68A00', outer: '#4D2E00', glow: 'rgba(255,149,0,0.9)' },
     };
 
     // 스파클 파티클 배열
@@ -297,6 +300,80 @@ export default function JarvisOrb({ state, audioLevel = 0 }: JarvisOrbProps) {
         }
       }
 
+      // ── 성공 상태: 확산하는 괈빛 링 + 체크마크 효과 ──
+      if (s === 'success') {
+        const pulseR = baseR * (1.3 + Math.sin(t * 4) * 0.15);
+        ctx.beginPath();
+        ctx.arc(cx, cy, pulseR, 0, Math.PI * 2);
+        ctx.strokeStyle = `${colors.core}${Math.floor((0.5 + Math.sin(t * 4) * 0.3) * 255).toString(16).padStart(2, '0')}`;
+        ctx.lineWidth = 3;
+        ctx.stroke();
+        // 체크마크 심볼
+        ctx.save();
+        ctx.strokeStyle = colors.core;
+        ctx.lineWidth = 4;
+        ctx.lineCap = 'round';
+        ctx.shadowBlur = 10;
+        ctx.shadowColor = colors.glow;
+        ctx.beginPath();
+        ctx.moveTo(cx - baseR * 0.2, cy);
+        ctx.lineTo(cx - baseR * 0.05, cy + baseR * 0.15);
+        ctx.lineTo(cx + baseR * 0.2, cy - baseR * 0.15);
+        ctx.stroke();
+        ctx.restore();
+      }
+
+      // ── 에러 상태: 빠르게 깜빡이는 적색 링 + X 마크 ──
+      if (s === 'error') {
+        const blinkAlpha = Math.sin(t * 8) > 0 ? 0.8 : 0.2;
+        ctx.beginPath();
+        ctx.arc(cx, cy, baseR * 1.25, 0, Math.PI * 2);
+        ctx.strokeStyle = `${colors.core}${Math.floor(blinkAlpha * 255).toString(16).padStart(2, '0')}`;
+        ctx.lineWidth = 3;
+        ctx.stroke();
+        // X 마크
+        ctx.save();
+        ctx.strokeStyle = colors.core;
+        ctx.lineWidth = 3;
+        ctx.lineCap = 'round';
+        ctx.shadowBlur = 8;
+        ctx.shadowColor = colors.glow;
+        const xSize = baseR * 0.15;
+        ctx.beginPath();
+        ctx.moveTo(cx - xSize, cy - xSize);
+        ctx.lineTo(cx + xSize, cy + xSize);
+        ctx.moveTo(cx + xSize, cy - xSize);
+        ctx.lineTo(cx - xSize, cy + xSize);
+        ctx.stroke();
+        ctx.restore();
+      }
+
+      // ── 승인 대기 상태: 느리게 회전하는 주황색 링 + 느낌표 ──
+      if (s === 'approval_required') {
+        ctx.save();
+        ctx.translate(cx, cy);
+        ctx.rotate(t * 0.8);
+        for (let i = 0; i < 3; i++) {
+          const segAngle = (i / 3) * Math.PI * 2;
+          ctx.beginPath();
+          ctx.arc(0, 0, baseR * 1.3, segAngle, segAngle + Math.PI * 0.4);
+          ctx.strokeStyle = `${colors.core}${Math.floor((0.6 - i * 0.15) * 255).toString(16).padStart(2, '0')}`;
+          ctx.lineWidth = 2.5;
+          ctx.stroke();
+        }
+        ctx.restore();
+        // 느낌표 (!)
+        ctx.save();
+        ctx.fillStyle = colors.core;
+        ctx.shadowBlur = 8;
+        ctx.shadowColor = colors.glow;
+        ctx.font = `bold ${baseR * 0.4}px monospace`;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText('!', cx, cy);
+        ctx.restore();
+      }
+
       animRef.current = requestAnimationFrame(animate);
     };
 
@@ -322,6 +399,9 @@ export default function JarvisOrb({ state, audioLevel = 0 }: JarvisOrbProps) {
             state === 'speaking' ? 'rgba(0,245,255,0.4)' :
             state === 'working' ? 'rgba(34,197,94,0.3)' :
             state === 'thinking' ? 'rgba(124,58,237,0.3)' :
+            state === 'success' ? 'rgba(255,215,0,0.4)' :
+            state === 'error' ? 'rgba(255,68,68,0.4)' :
+            state === 'approval_required' ? 'rgba(255,149,0,0.4)' :
             'rgba(0,102,255,0.2)'
           }`,
           boxShadow: `0 0 40px ${
@@ -329,6 +409,9 @@ export default function JarvisOrb({ state, audioLevel = 0 }: JarvisOrbProps) {
             state === 'speaking' ? 'rgba(0,245,255,0.3)' :
             state === 'working' ? 'rgba(34,197,94,0.2)' :
             state === 'thinking' ? 'rgba(124,58,237,0.2)' :
+            state === 'success' ? 'rgba(255,215,0,0.3)' :
+            state === 'error' ? 'rgba(255,68,68,0.3)' :
+            state === 'approval_required' ? 'rgba(255,149,0,0.3)' :
             'rgba(0,102,255,0.15)'
           }`,
         }}
@@ -357,6 +440,9 @@ export default function JarvisOrb({ state, audioLevel = 0 }: JarvisOrbProps) {
             state === 'speaking' ? 'rgba(0,245,255,0.7)' :
             state === 'working' ? 'rgba(34,197,94,0.6)' :
             state === 'thinking' ? 'rgba(124,58,237,0.6)' :
+            state === 'success' ? 'rgba(255,215,0,0.7)' :
+            state === 'error' ? 'rgba(255,68,68,0.7)' :
+            state === 'approval_required' ? 'rgba(255,149,0,0.7)' :
             'rgba(0,102,255,0.5)'
           })`,
         }}
