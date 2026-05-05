@@ -2224,6 +2224,111 @@ export default function JarvisApp() {
     }
 
     // ══════════════════════════════════════════════════════
+    // ── Creative Director 프로토콜 (Creative Content Generation) ──
+    // ══════════════════════════════════════════════════════
+    if (action?.type === 'creative_content') {
+      setState('working');
+      const params = action.params || {} as Record<string, any>;
+      const product = String(params.product || '');
+      const contentType = String(params.content_type || 'full_package');
+      const userMessage = String(params.userMessage || text);
+
+      // TASK EXECUTION 패널 표시
+      emitNodeState('jarvis_brain', 'active', 'Creative Director 작업 중...');
+      telemetryFunctionStart('creative_director', `${product} ${contentType} 생성`);
+
+      try {
+        // GPT에게 Creative Director 전용 프롬프트로 콘텐츠 생성 요청
+        const creativePrompt = `당신은 바이럴 마케팅 전문가입니다. 아래 요청에 맞는 실전 마케팅 콘텐츠를 생성하세요.
+
+요청: "${userMessage}"
+제품: ${product || '지정되지 않음'}
+콘텐츠 타입: ${contentType}
+
+스타일 규칙:
+- 친근하고 말하듯 툴 던지는 문장
+- 첫 문장 후킹 강하게
+- 직접 판매보다 스토리와 이유 중심
+- 농산물의 계절감, 식감, 수확 타이밍 강조
+- "먹어본 사람만 안다" 식의 호기심
+- 댓글, DM, 공유 유도
+- 마지막에 여운 있는 문장
+- 카카오톡/스레드/릴스에 바로 쓸 수 있는 실전 문장
+
+금지: 과장 광고, 허위 효능, 매출 보장, 성공 보장
+
+응답은 한국어로, 실제 바이럴에 바로 쓸 수 있는 콘텐츠만 작성하세요.`;
+
+        const response = await fetch('/api/cloud-proxy', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ endpoint: 'task', taskType: 'creative-content', params: { prompt: creativePrompt, product, contentType } }),
+        });
+
+        let creativeResult = '';
+        if (response.ok) {
+          const data = await response.json();
+          creativeResult = data.result?.content || data.result || data.content || '';
+        }
+
+        // Cloud server에 creative endpoint가 없으면 GPT 직접 호출
+        if (!creativeResult) {
+          const { askGPT } = await import('../lib/jarvis-brain');
+          const creativeAction = await askGPT(creativePrompt).catch(() => null);
+          creativeResult = creativeAction?.response || '';
+        }
+
+        // 결과 표시
+        if (creativeResult && creativeResult !== '__SKIP_TTS__') {
+          emitNodeState('jarvis_brain', 'success', 'Creative Director 완료');
+          setTimeout(() => emitNodeState('jarvis_brain', 'idle'), 2000);
+          telemetryFunctionSuccess('creative_director', `${product} ${contentType} 생성 완료`);
+
+          // 메시지 표시
+          addMessage('jarvis', creativeResult, true);
+          setState('speaking');
+          startSpeakingLevel();
+          // TTS 비동기 (긴 콘텐츠는 요약만 읍음)
+          const ttsText = creativeResult.length > 200 
+            ? `${product || '제품'} ${contentType === 'script' ? '릴스 대본' : contentType === 'headcopy' ? '후킹 문구' : contentType === 'storytelling' ? '스토리텔링 콘텐츠' : '마케팅 콘텐츠'}를 생성했습니다, 선생님. 화면에서 확인해 주십시오.`
+            : creativeResult;
+          await new Promise<void>(resolve => {
+            speak(ttsText, undefined, () => { stopSpeakingLevel(); resolve(); });
+          });
+        } else {
+          // 실패 시 기본 응답
+          emitNodeState('jarvis_brain', 'error', 'Creative Director 실패');
+          setTimeout(() => emitNodeState('jarvis_brain', 'idle'), 2000);
+          const fallbackMsg = `죄송합니다 선생님, ${product || '콘텐츠'} 생성 중 오류가 발생했습니다. 다시 시도해 주십시오.`;
+          addMessage('jarvis', fallbackMsg);
+          setState('speaking');
+          startSpeakingLevel();
+          await new Promise<void>(resolve => {
+            speak(fallbackMsg, undefined, () => { stopSpeakingLevel(); resolve(); });
+          });
+        }
+      } catch (err) {
+        console.error('[JARVIS] Creative Director 오류:', err);
+        emitNodeState('jarvis_brain', 'error', 'Creative Director 오류');
+        setTimeout(() => emitNodeState('jarvis_brain', 'idle'), 2000);
+        const errMsg = `죄송합니다 선생님, 콘텐츠 생성 중 오류가 발생했습니다.`;
+        addMessage('jarvis', errMsg);
+        setState('speaking');
+        startSpeakingLevel();
+        await new Promise<void>(resolve => {
+          speak(errMsg, undefined, () => { stopSpeakingLevel(); resolve(); });
+        });
+      }
+
+      // 완료 후 listening 복귀
+      resetAllNodes();
+      await new Promise(r => setTimeout(r, 400));
+      setState('listening');
+      setIsListening(true);
+      return;
+    }
+
+    // ══════════════════════════════════════════════════════
     // ── 모닝 브리핑 프로토콜 (Morning Briefing Protocol) ──
     // ══════════════════════════════════════════════════════
     if (action?.type === 'morning_briefing') {
