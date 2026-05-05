@@ -7,6 +7,7 @@ import { useMicrophoneFrequency } from '../lib/audio-analyzer';
 import { saveLearnedKnowledge, getLearnedKnowledge, getMemoryStats, clearAllMemory, restoreMemoryFromServer, syncMemoryToServer, saveConversationWithSync, buildUIContextForGPT, type LearnedKnowledge } from '../lib/jarvis-memory';
 import { appendInfluencersToSheet, appendEmailLogToSheet, appendNaverResultsToSheet, appendInstagramToSheet, appendLocalBusinessToSheet, generateMockInfluencers, generateEmailLogs, sendEmailsViaResend, buildInfluencerEmailHtml, type NaverCollectedData } from '../lib/google-sheets';
 import ConversationStream, { type Message } from './ConversationStream';
+import ConversationPanel, { type STTStatus } from './ConversationPanel';
 import SparkleParticles from './SparkleParticles';
 import ClapDetector from './ClapDetector';
 // import HoloDataPanel from './HoloDataPanel'; // 제거됨
@@ -120,6 +121,8 @@ export default function JarvisApp() {
   // 마이크 주파수 배열 (파티클 파형용, listening 상태에서만 활성화)
   const micFreqData = useMicrophoneFrequency(state === 'listening');
   const [isTyping, setIsTyping] = useState(false);
+  const [sttStatus, setSttStatus] = useState<STTStatus>('idle');
+  const [conversationExpanded, setConversationExpanded] = useState(false);
   const [dataPanel, setDataPanel] = useState<{
     visible: boolean;
     type: 'collect' | 'send_email' | 'create_banner' | 'report' | 'booking' | 'smartstore' | 'youtube' | null;
@@ -3315,15 +3318,20 @@ export default function JarvisApp() {
   }, [addMessage, jarvisRespond, stopSpeakingLevel]);
 
   useSpeechRecognition({
-    onResult: handleSpeechResult,
+    onResult: (text: string) => {
+      setSttStatus('done');
+      handleSpeechResult(text);
+    },
     onStart: () => {
       console.log('[JARVIS] STT onStart → listening');
       setState('listening');
+      setSttStatus('listening');
     },
     onEnd: () => {
       console.log('[JARVIS] STT onEnd, state:', stateRef.current);
       // STT가 종료되어도 SpeechEngine이 자동 재시작하므로
       // 여기서는 idle로 전환하지 않음 (listening 상태 유지)
+      if (sttStatus === 'listening') setSttStatus('idle');
     },
     isListening,
   });
@@ -3780,56 +3788,53 @@ export default function JarvisApp() {
         </div>
       </motion.aside>
 
-      {/* ── 대화 스트림 (하단 자막 형태 - 화면 가리지 않음) ── */}
-      <div style={{
-        position: 'fixed',
-        bottom: textInputMode ? 140 : 12,
-        left: '50%', transform: 'translateX(-50%)',
-        width: '100%', maxWidth: '560px',
-        padding: '0 20px',
-        zIndex: 25, pointerEvents: 'none',
-        transition: 'bottom 0.25s ease',
-        maxHeight: '80px',
-        overflow: 'hidden',
-      }}>
-        <AnimatePresence>
-          {messages.length > 0 && (
-            <motion.div
-              initial={{ opacity: 0, y: 16 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0 }}
-            >
-              <ConversationStream messages={messages} isTyping={isTyping} />
-            </motion.div>
-          )}
-        </AnimatePresence>
+      {/* ── 대화 패널 (Phase Prod-B) ── */}
+      <AnimatePresence>
+        {messages.length > 0 && (
+          <ConversationPanel
+            messages={messages}
+            isTyping={isTyping}
+            sttStatus={sttStatus}
+            isExpanded={conversationExpanded}
+            onToggleExpand={() => setConversationExpanded(prev => !prev)}
+          />
+        )}
+      </AnimatePresence>
 
-        <AnimatePresence>
-          {showHint && messages.length === 0 && (
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              style={{ textAlign: 'center', marginTop: 12 }}
+      {/* ── TOUCH TO ACTIVATE 힌트 ── */}
+      <AnimatePresence>
+        {showHint && messages.length === 0 && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            style={{
+              position: 'fixed',
+              bottom: 40,
+              left: '50%',
+              transform: 'translateX(-50%)',
+              textAlign: 'center',
+              zIndex: 25,
+              pointerEvents: 'none',
+            }}
+          >
+            <motion.p
+              animate={{ opacity: [0.25, 0.6, 0.25] }}
+              transition={{ duration: 3, repeat: Infinity }}
+              style={{
+                fontFamily: 'Orbitron, monospace',
+                color: THEME.gold,
+                fontSize: 'clamp(0.48rem, 1vw, 0.62rem)',
+                letterSpacing: '0.3em',
+                margin: 0,
+                opacity: 0.5,
+              }}
             >
-              <motion.p
-                animate={{ opacity: [0.25, 0.6, 0.25] }}
-                transition={{ duration: 3, repeat: Infinity }}
-                style={{
-                  fontFamily: 'Orbitron, monospace',
-                  color: THEME.gold,
-                  fontSize: 'clamp(0.48rem, 1vw, 0.62rem)',
-                  letterSpacing: '0.3em',
-                  margin: 0,
-                  opacity: 0.5,
-                }}
-              >
-                \u25C8  TOUCH TO ACTIVATE  \u25C8
-              </motion.p>
-            </motion.div>
-          )}
-        </AnimatePresence>
-      </div>
+              \u25C8  TOUCH TO ACTIVATE  \u25C8
+            </motion.p>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* ── 타이핑 입력창 ── */}
       <AnimatePresence>
