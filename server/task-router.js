@@ -13,6 +13,42 @@
 const crypto = require('crypto');
 
 // ============================================
+// 결과 캐시 (60초 TTL) - 연속 요청 시 동일 결과 보장
+// ============================================
+let _orderCache = null;
+let _orderCacheTime = 0;
+const CACHE_TTL = 60000; // 60초
+
+function getCachedOrders() {
+  if (_orderCache && (Date.now() - _orderCacheTime) < CACHE_TTL) {
+    return _orderCache;
+  }
+  return null;
+}
+
+function setCachedOrders(data) {
+  _orderCache = data;
+  _orderCacheTime = Date.now();
+}
+
+// ============================================
+// Concurrency Limiter (동시 요청 수 제한)
+// ============================================
+async function parallelLimit(tasks, limit) {
+  const results = [];
+  let index = 0;
+  async function worker() {
+    while (index < tasks.length) {
+      const i = index++;
+      results[i] = await tasks[i]();
+    }
+  }
+  const workers = Array(Math.min(limit, tasks.length)).fill(null).map(() => worker());
+  await Promise.all(workers);
+  return results;
+}
+
+// ============================================
 // 환경변수 (alias 지원)
 // ============================================
 const CLIENT_ID = process.env.SMARTSTORE_CLIENT_ID || process.env.NAVER_CLIENT_ID;
@@ -144,45 +180,61 @@ async function fetchOrderIds(token, days, statuses = ['PAYED']) {
 
   const now = new Date();
 
-  // 병렬 조회 (Promise.all)
-  const promises = [];
+  // 동시 요청 수 제한 (concurrency=2) + 재시도 1회
+  const tasks = [];
   for (let i = 0; i < days; i++) {
     const dayStart = new Date(now.getTime() - (i + 1) * 24 * 60 * 60 * 1000);
     const dayEnd = new Date(now.getTime() - i * 24 * 60 * 60 * 1000);
 
-    const params = new URLSearchParams();
-    params.append('from', formatNaverDate(dayStart));
-    params.append('to', formatNaverDate(dayEnd));
-    params.append('rangeType', 'PAYED_DATETIME');
-    params.append('pageSize', '300');
-    params.append('page', '1');
-    statuses.forEach(s => params.append('productOrderStatuses', s));
+    const queryParams = new URLSearchParams();
+    queryParams.append('from', formatNaverDate(dayStart));
+    queryParams.append('to', formatNaverDate(dayEnd));
+    queryParams.append('rangeType', 'PAYED_DATETIME');
+    queryParams.append('pageSize', '300');
+    queryParams.append('page', '1');
+    statuses.forEach(s => queryParams.append('productOrderStatuses', s));
 
-    const opts = { method: 'GET', headers };
-    if (agent) opts.agent = agent;
+    const url = `${API_BASE}/v1/pay-order/seller/product-orders?${queryParams.toString()}`;
 
-    promises.push(
-      nodeFetch(`${API_BASE}/v1/pay-order/seller/product-orders?${params.toString()}`, opts)
-        .then(res => res.status === 200 ? res.json() : null)
-        .then(data => {
-          if (!data) return [];
-          const responseData = data.data || data;
-          const contents = responseData.contents || responseData || [];
-          if (Array.isArray(contents)) {
-            return contents.map(item => (item.productOrder || item).productOrderId).filter(Boolean);
-          }
-          return [];
-        })
-        .catch(err => {
-          console.warn(`[task-router] fetchOrderIds day-${i+1} error:`, err.message);
-          return [];
-        })
-    );
+    tasks.push(() => fetchOneDayWithRetry(nodeFetch, url, headers, agent, i));
   }
 
-  const results = await Promise.all(promises);
+  const results = await parallelLimit(tasks, 2);
   const allProductOrderIds = results.flat();
   return [...new Set(allProductOrderIds)];
+}
+
+// 1일 조회 + 1회 재시도
+async function fetchOneDayWithRetry(nodeFetch, url, headers, agent, dayIndex) {
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      const opts = { method: 'GET', headers };
+      if (agent) opts.agent = agent;
+      const res = await nodeFetch(url, opts);
+      if (res.status === 200) {
+        const data = await res.json();
+        const responseData = data.data || data;
+        const contents = responseData.contents || responseData || [];
+        if (Array.isArray(contents)) {
+          return contents.map(item => (item.productOrder || item).productOrderId).filter(Boolean);
+        }
+        return [];
+      } else if (attempt === 0) {
+        // 첫 시도 실패 → 500ms 대기 후 재시도
+        await new Promise(r => setTimeout(r, 500));
+        continue;
+      }
+      return [];
+    } catch (err) {
+      if (attempt === 0) {
+        await new Promise(r => setTimeout(r, 500));
+        continue;
+      }
+      console.warn(`[task-router] fetchOrderIds day-${dayIndex+1} error:`, err.message);
+      return [];
+    }
+  }
+  return [];
 }
 
 // ============================================
@@ -232,6 +284,13 @@ async function fetchOrderDetails(token, productOrderIds) {
 // taskType: smartstore-orders (v3 - GET API + 상세조회)
 // ============================================
 async function handleSmartstoreOrders(params = {}) {
+  // 60초 캐시 확인 - 연속 요청 시 동일 결과 보장
+  const cached = getCachedOrders();
+  if (cached) {
+    console.log("[task-router] Using cached order data (TTL 60s)");
+    return cached;
+  }
+
   const actionLogs = [];
   const log = (step, status, detail) => {
     actionLogs.push({ step, status, detail, timestamp: new Date().toISOString() });
@@ -284,25 +343,23 @@ async function handleSmartstoreOrders(params = {}) {
     log('QUERY', 'success', `현재 신규주문: ${newOrders}건, 배송준비: ${pendingShipping}건`);
     log('QUERY', 'success', `오늘 신규주문: ${todayOrders}건, 오늘 매출: ${todaySales.toLocaleString()}원`);
 
-    // ===== 2. 배송중/배송완료/구매확정/취소 (최근 7일, 병렬) =====
-    log('QUERY', 'processing', '배송중/배송완료/구매확정/취소 병렬 조회 중...');
-    const [deliveringIds, deliveredIds, purchaseDecidedIds, cancelIds] = await Promise.all([
-      fetchOrderIds(token, 7, ['DELIVERING']),
-      fetchOrderIds(token, 7, ['DELIVERED']),
-      fetchOrderIds(token, 7, ['PURCHASE_DECIDED']),
-      fetchOrderIds(token, 7, ['CANCEL_REQUESTED']),
-    ]);
+    // ===== 2. 배송중/배송완료/구매확정/취소 (최근 7일, 순차) =====
+    log('QUERY', 'processing', '배송중/배송완료/구매확정/취소 순차 조회 중...');
+    const deliveringIds = await fetchOrderIds(token, 7, ['DELIVERING']);
+    const deliveredIds = await fetchOrderIds(token, 7, ['DELIVERED']);
+    const purchaseDecidedIds = await fetchOrderIds(token, 7, ['PURCHASE_DECIDED']);
+    const cancelIds = await fetchOrderIds(token, 7, ['CANCEL_REQUESTED']);
     const delivering = deliveringIds.length;
     const delivered = deliveredIds.length;
     const purchaseDecided = purchaseDecidedIds.length;
     const cancelRequests = cancelIds.length;
-
     log('COMPLETE', 'success', '전체 조회 완료');
 
     // 배송 전 처리 대상 전체 = 현재 신규주문 + 배송준비
     const totalPreShipping = newOrders + pendingShipping;
 
-    return {
+    // 결과 캐싱 (60초 TTL) - 연속 요청 시 동일 결과 보장
+    const resultData = {
       success: true,
       result: {
         smartstore: {
@@ -324,6 +381,8 @@ async function handleSmartstoreOrders(params = {}) {
         actionLogs,
       },
     };
+    setCachedOrders(resultData);
+    return resultData;
   } catch (error) {
     log('ERROR', 'fail', error.message);
     return { success: false, error: error.message, actionLogs };
