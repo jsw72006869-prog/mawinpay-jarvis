@@ -16,7 +16,7 @@ import { ParticleTextCanvas } from './ParticleTextCanvas';
 import NeuralMissionMap from './NeuralMissionMap';
 import PlatformDataCardsEnhanced from './PlatformDataCards_Enhanced';
 import ManusStrategyDashboard from './ManusStrategyDashboard';
-import { telemetryFunctionStart, telemetryFunctionSuccess, telemetryFunctionError, emitMissionLog, emitBriefingSequence, emitNodeState, emitNodeData, emitPulseLine } from '../lib/jarvis-telemetry';
+import { telemetryFunctionStart, telemetryFunctionSuccess, telemetryFunctionError, emitMissionLog, emitBriefingSequence, emitNodeState, emitNodeData, emitPulseLine, resetAllNodes } from '../lib/jarvis-telemetry';
 import VoiceParticleAura from './VoiceParticleAura';
 import GoldenFlare from './GoldenFlare';
 import AgentConsolePanel from './AgentConsolePanel';
@@ -69,7 +69,10 @@ const STATE_LABEL: Record<JarvisState, string> = {
 // 스마트스토어 액션 한국어 라벨
 function getActionLabel(action: string): string {
   const labels: Record<string, string> = {
-    query_orders_today: '오늘 주문 조회',
+    current_new_orders: '현재 신규주문 조회',
+    query_orders_today: '오늘 신규주문 조회',
+    query_pending_shipping: '배송준비 조회',
+    query_pre_shipping_total: '배송 전 처리 대상 전체 조회',
     query_orders_week: '이번 주 주문 조회',
     query_orders_month: '이번 달 주문 조회',
     query_orders_unpaid: '미결제 주문 조회',
@@ -2474,7 +2477,8 @@ export default function JarvisApp() {
 
     // ── 스마트스토어 전체 자동화 액션 ──
     const SS_ACTIONS = [
-      'query_orders_today', 'query_orders_week', 'query_orders_month',
+      'current_new_orders', 'query_orders_today', 'query_pending_shipping', 'query_pre_shipping_total',
+      'query_orders_week', 'query_orders_month',
       'query_orders_unpaid', 'query_orders_cancel', 'query_orders_return',
       'query_orders_by_product', 'query_order_detail', 'query_orders_pending_ship', 'morning_report',
       'confirm_all_today', 'confirm_all', 'confirm_by_product', 'confirm_by_id', 'query_unconfirmed',
@@ -2495,9 +2499,9 @@ export default function JarvisApp() {
       action?.type === 'smartstore_purchase_email' || action?.type === 'smartstore_report' ||
       (action?.params?.action && SS_ACTIONS.includes(String(action.params.action)))
     ) {
-      // 구버전 액션 매핑
+      // 액션 매핑 (신규 인텐트 지원)
       let ssAction = String(action.params?.action || '');
-      if (!ssAction || ssAction === 'get_orders') ssAction = 'query_orders_today';
+      if (!ssAction || ssAction === 'get_orders') ssAction = 'current_new_orders';
       if (ssAction === 'ship_order') ssAction = 'process_shipping';
 
       setState('working');
@@ -2721,7 +2725,17 @@ export default function JarvisApp() {
           let resultMsg = '';
           let doneText = '';
 
-          if (ssAction.startsWith('query_orders') || ssAction === 'morning_report') {
+          if (ssAction === 'current_new_orders') {
+            resultMsg = `[PKG] **현재 신규주문**\n\n현재 신규주문: ${data.newOrders}건\n배송준비: ${data.pendingShipping}건\n배송 전 처리 대상 전체: ${data.newOrders + data.pendingShipping}건`;
+            doneText = `현재 신규주문 ${data.newOrders}건입니다, 선생님.`;
+          } else if (ssAction === 'query_pending_shipping') {
+            resultMsg = `[PKG] **배송준비**\n\n배송준비: ${data.pendingShipping}건`;
+            doneText = `배송준비 ${data.pendingShipping}건입니다, 선생님.`;
+          } else if (ssAction === 'query_pre_shipping_total') {
+            const total = data.newOrders + data.pendingShipping;
+            resultMsg = `[PKG] **배송 전 처리 대상 전체**\n\n현재 신규주문: ${data.newOrders}건\n배송준비: ${data.pendingShipping}건\n배송 전 처리 대상 전체: ${total}건`;
+            doneText = `배송 전 처리 대상 전체 ${total}건입니다, 선생님.`;
+          } else if (ssAction.startsWith('query_orders') || ssAction === 'morning_report') {
             const count = Array.isArray(data.data) ? data.data.length : (data.newOrders || 0);
             // ── 주문 대시보드 UI 자동 표시 ──
             if (Array.isArray(data.data) && data.data.length > 0) {
@@ -3232,12 +3246,14 @@ export default function JarvisApp() {
     }
     // 1. 즉시 STT 중단
     setIsListening(false);
-    // 2. thinking 상태 전환
+    // 2. 이전 task 상태 초기화 (패널 잔류 방지)
+    resetAllNodes();
+    // 3. thinking 상태 전환
     setState('thinking');
-    // 3. 사용자 메시지 표시
+    // 4. 사용자 메시지 표시
     addMessage('user', transcript);
     try {
-      // 4. GPT-4o API 호출 (폴백: 로컬 파서)
+      // 5. GPT-4o API 호출 (폴백: 로컬 파서)
       emitNodeState('jarvis_brain', 'active', 'GPT 뇌 사고 중...');
       emitPulseLine('user', 'jarvis_brain', 'fast');
       emitMissionLog('🧠', 'GPT', '사용자 명령 분석 중...', 'thinking');
@@ -3281,6 +3297,9 @@ export default function JarvisApp() {
     if (stateRef.current === 'idle') {
       setIsInitialized(true);
     }
+
+    // 이전 task 상태 초기화 (패널 잔류 방지)
+    resetAllNodes();
 
     setState('thinking');
     addMessage('user', text);

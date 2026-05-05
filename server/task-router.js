@@ -129,7 +129,7 @@ function formatNaverDate(d) {
 }
 
 // ============================================
-// 주문 목록 조회 (GET API, 24시간 단위 반복)
+// 주문 목록 조회 (GET API, 24시간 단위 병렬)
 // ============================================
 async function fetchOrderIds(token, days, statuses = ['PAYED']) {
   const nodeFetch = require('node-fetch');
@@ -143,8 +143,9 @@ async function fetchOrderIds(token, days, statuses = ['PAYED']) {
   }
 
   const now = new Date();
-  let allProductOrderIds = [];
 
+  // 병렬 조회 (Promise.all)
+  const promises = [];
   for (let i = 0; i < days; i++) {
     const dayStart = new Date(now.getTime() - (i + 1) * 24 * 60 * 60 * 1000);
     const dayEnd = new Date(now.getTime() - i * 24 * 60 * 60 * 1000);
@@ -157,26 +158,30 @@ async function fetchOrderIds(token, days, statuses = ['PAYED']) {
     params.append('page', '1');
     statuses.forEach(s => params.append('productOrderStatuses', s));
 
-    try {
-      const opts = { method: 'GET', headers };
-      if (agent) opts.agent = agent;
-      const res = await nodeFetch(`${API_BASE}/v1/pay-order/seller/product-orders?${params.toString()}`, opts);
-      if (res.status === 200) {
-        const data = await res.json();
-        const responseData = data.data || data;
-        const contents = responseData.contents || responseData || [];
-        if (Array.isArray(contents)) {
-          contents.forEach(item => {
-            const po = item.productOrder || item;
-            if (po.productOrderId) allProductOrderIds.push(po.productOrderId);
-          });
-        }
-      }
-    } catch (err) {
-      console.warn(`[task-router] fetchOrderIds day-${i+1} error:`, err.message);
-    }
+    const opts = { method: 'GET', headers };
+    if (agent) opts.agent = agent;
+
+    promises.push(
+      nodeFetch(`${API_BASE}/v1/pay-order/seller/product-orders?${params.toString()}`, opts)
+        .then(res => res.status === 200 ? res.json() : null)
+        .then(data => {
+          if (!data) return [];
+          const responseData = data.data || data;
+          const contents = responseData.contents || responseData || [];
+          if (Array.isArray(contents)) {
+            return contents.map(item => (item.productOrder || item).productOrderId).filter(Boolean);
+          }
+          return [];
+        })
+        .catch(err => {
+          console.warn(`[task-router] fetchOrderIds day-${i+1} error:`, err.message);
+          return [];
+        })
+    );
   }
 
+  const results = await Promise.all(promises);
+  const allProductOrderIds = results.flat();
   return [...new Set(allProductOrderIds)];
 }
 
@@ -244,9 +249,9 @@ async function handleSmartstoreOrders(params = {}) {
     todayStart.setUTCHours(0, 0, 0, 0);
     const todayStartUTC = new Date(todayStart.getTime() - kstOffset);
 
-    // ===== 1. 배송 전 처리 대상 전체 (PAYED 상태, 최근 14일) =====
-    log('QUERY', 'processing', '배송 전 처리 대상 조회 중 (PAYED, 14일)...');
-    const payedIds = await fetchOrderIds(token, 14, ['PAYED']);
+    // ===== 1. 배송 전 처리 대상 전체 (PAYED 상태, 최근 7일) =====
+    log('QUERY', 'processing', '배송 전 처리 대상 조회 중 (PAYED, 7일, 병렬)...');
+    const payedIds = await fetchOrderIds(token, 7, ['PAYED']);
     log('QUERY', 'success', `PAYED 주문 ID ${payedIds.length}건 수집`);
 
     // 상세 조회로 placeOrderStatus 구분
@@ -279,19 +284,17 @@ async function handleSmartstoreOrders(params = {}) {
     log('QUERY', 'success', `현재 신규주문: ${newOrders}건, 배송준비: ${pendingShipping}건`);
     log('QUERY', 'success', `오늘 신규주문: ${todayOrders}건, 오늘 매출: ${todaySales.toLocaleString()}원`);
 
-    // ===== 2. 배송중/배송완료/구매확정 (최근 7일) =====
-    log('QUERY', 'processing', '배송중/배송완료/구매확정 조회 중...');
-    const deliveringIds = await fetchOrderIds(token, 7, ['DELIVERING']);
+    // ===== 2. 배송중/배송완료/구매확정/취소 (최근 7일, 병렬) =====
+    log('QUERY', 'processing', '배송중/배송완료/구매확정/취소 병렬 조회 중...');
+    const [deliveringIds, deliveredIds, purchaseDecidedIds, cancelIds] = await Promise.all([
+      fetchOrderIds(token, 7, ['DELIVERING']),
+      fetchOrderIds(token, 7, ['DELIVERED']),
+      fetchOrderIds(token, 7, ['PURCHASE_DECIDED']),
+      fetchOrderIds(token, 7, ['CANCEL_REQUESTED']),
+    ]);
     const delivering = deliveringIds.length;
-
-    const deliveredIds = await fetchOrderIds(token, 7, ['DELIVERED']);
     const delivered = deliveredIds.length;
-
-    const purchaseDecidedIds = await fetchOrderIds(token, 7, ['PURCHASE_DECIDED']);
     const purchaseDecided = purchaseDecidedIds.length;
-
-    // ===== 3. 취소요청 (최근 7일) =====
-    const cancelIds = await fetchOrderIds(token, 7, ['CANCEL_REQUESTED']);
     const cancelRequests = cancelIds.length;
 
     log('COMPLETE', 'success', '전체 조회 완료');

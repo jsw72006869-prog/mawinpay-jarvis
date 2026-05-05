@@ -495,6 +495,17 @@ app.post('/api/marketing', async (req, res) => {
 });
 
 // ============================================
+// 7.5 Task Router 등록 (스마트스토어 주문 조회 등)
+// ============================================
+try {
+  const { registerTaskRouter } = require('./task-router');
+  registerTaskRouter(app);
+  console.log('[JARVIS] Task Router 등록 완료');
+} catch (err) {
+  console.warn('[JARVIS] Task Router 등록 실패:', err.message);
+}
+
+// ============================================
 // 8. 서버 시작
 // ============================================
 

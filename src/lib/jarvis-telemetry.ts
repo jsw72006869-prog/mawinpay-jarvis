@@ -248,6 +248,14 @@ export function onTelemetryEvent(callback: (event: TelemetryEvent) => void): () 
 }
 
 /** 채널 정리 */
+/** 새 명령 시작 시 모든 active 노드 초기화 */
+export function resetAllNodes() {
+  const knownNodes = ['jarvis_brain', 'smartstore', 'naver_api', 'tts_engine', 'stt_engine', 'cloud_server', 'gpt_api'];
+  knownNodes.forEach(nodeId => {
+    emitNodeState(nodeId, 'idle');
+  });
+}
+
 export function closeTelemetry() {
   if (_channel) {
     _channel.close();

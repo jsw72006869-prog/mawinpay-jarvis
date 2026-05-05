@@ -200,11 +200,11 @@ const OPENAI_TOOLS: OpenAI.Chat.Completions.ChatCompletionTool[] = [
     type: 'function',
     function: {
       name: 'smartstore_action',
-      description: '스마트스토어 주문 조회, 배송, 정산 등 모든 작업. "오늘 주문", "이번 주 주문", "발송 대기", "정산", "발주 확인" 등.',
+      description: '스마트스토어 주문 조회, 배송, 정산 등 모든 작업. action 구분 기준: "신규주문 몇 개"/"현재 신규주문" = current_new_orders (대시보드 기준), "오늘 신규주문"/"오늘 들어온 주문" = query_orders_today (KST 오늘 기준), "배송준비 몇 개" = query_pending_shipping, "배송 전 처리 대상 전체" = query_pre_shipping_total.',
       parameters: {
         type: 'object',
         properties: {
-          action: { type: 'string', description: '작업 종류 (query_orders_today, query_orders_week, process_shipping, morning_report 등)' },
+          action: { type: 'string', description: '작업 종류: current_new_orders(현재 신규주문, 대시보드 기준), query_orders_today(오늘 신규주문, KST 오늘), query_pending_shipping(배송준비), query_pre_shipping_total(배송 전 처리 대상 전체), query_orders_week, process_shipping, morning_report 등' },
           period: { type: 'string', description: '조회 기간' },
           response: { type: 'string', description: 'JARVIS 응답 (한국어)' },
         },
