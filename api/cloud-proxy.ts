@@ -1,6 +1,10 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import mysql from 'mysql2/promise';
 
+export const config = {
+  maxDuration: 60,
+};
+
 const CLOUD_SERVER = process.env.CLOUD_SERVER_URL || 'http://35.243.215.119:3001';
 
 // ── TiDB 연결 설정 ──
@@ -473,7 +477,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body,
-        signal: AbortSignal.timeout(55000)
+        signal: AbortSignal.timeout(58000)
       });
       
       if (!response.ok) {
