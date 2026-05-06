@@ -2521,7 +2521,7 @@ export default function JarvisApp() {
           const ssRes = await fetch('/api/cloud-proxy', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ endpoint: 'task', taskType: 'smartstore-orders', params: {} })
+            body: JSON.stringify({ endpoint: 'task', taskType: 'smartstore-orders', params: { action: 'query_order_status' } })
           });
           const ssJson = await ssRes.json();
           if (ssJson.success || ssJson.result) {
@@ -2634,7 +2634,7 @@ export default function JarvisApp() {
         }));
 
         const ss = smartstoreData?.smartstore || {};
-        const counts = ss.counts || {};
+        const counts = ss.counts || ss || {};
         const market = smartstoreData?.marketIntel || {};
         const outreach = smartstoreData?.outreach || {};
         const workspace = smartstoreData?.workspace || {};
