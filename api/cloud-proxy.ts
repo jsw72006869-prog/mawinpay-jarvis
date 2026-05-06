@@ -205,9 +205,9 @@ async function handleSmartstoreOrders(params: any) {
   // 네이버 대시보드는 결제일 무관 현재 상태 전체를 표시하므로 충분한 기간 조회 필요
   async function getExtraCounts() {
     const [delivering, delivered, decided] = await Promise.all([
-      fetchOrders(['DELIVERING'], 60),   // 배송중: 60일 내 결제 주문 중 현재 배송중
-      fetchOrders(['DELIVERED'], 30),     // 배송완료: 30일 내 결제 주문 중 현재 배송완료
-      fetchOrders(['PURCHASE_DECIDED'], 30), // 구매확정: 30일 내 결제 주문 중 현재 구매확정
+      fetchOrders(['DELIVERING'], 180),   // 배송중: 180일 (API 최대) 내 결제 주문 중 현재 배송중
+      fetchOrders(['DELIVERED'], 90),     // 배송완료: 90일 내 결제 주문 중 현재 배송완료
+      fetchOrders(['PURCHASE_DECIDED'], 90), // 구매확정: 90일 내 결제 주문 중 현재 구매확정
     ]);
     return {
       shipping: delivering.length,
