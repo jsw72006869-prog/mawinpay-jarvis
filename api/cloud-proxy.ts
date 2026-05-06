@@ -204,9 +204,10 @@ async function handleSmartstoreOrders(params: any) {
   // 배송중/배송완료/구매확정 건수 조회 (순차 실행 - QuotaGuard 동시연결 제한 대응)
   // 네이버 대시보드는 결제일 무관 현재 상태 전체를 표시하므로 충분한 기간 조회 필요
   async function getExtraCounts() {
-    // 순차 실행으로 QuotaGuard 동시연결 초과 방지
-    const delivering = await fetchOrders(['DELIVERING'], 60);
-    const delivered = await fetchOrders(['DELIVERED'], 30);
+    // 순차 실행으로 QuotaGuard 동시연결 초과 방지 (Vercel 60초 타임아웃 내 완료 필요)
+    // 14일(PAYED) + 30일(DELIVERING) + 14일(DELIVERED) + 30일(DECIDED) = 총 88일/5배치 = ~18배치 x 2초 = ~36초
+    const delivering = await fetchOrders(['DELIVERING'], 30);
+    const delivered = await fetchOrders(['DELIVERED'], 14);
     const decided = await fetchOrders(['PURCHASE_DECIDED'], 30);
     return {
       shipping: delivering.length,
@@ -217,7 +218,7 @@ async function handleSmartstoreOrders(params: any) {
 
   // ── current_new_orders / query_pending_shipping / query_pre_shipping_total ──
   if (action === 'current_new_orders' || action === 'query_pending_shipping' || action === 'query_pre_shipping_total') {
-    const { payedResult, newOrders, pendingShipping } = await getPayedCounts(30);
+    const { payedResult, newOrders, pendingShipping } = await getPayedCounts(14);
     let extra = { shipping: 0, delivered: 0, purchaseConfirmed: 0 };
     try { extra = await getExtraCounts(); } catch (e) { /* non-critical */ }
 
@@ -277,7 +278,7 @@ async function handleSmartstoreOrders(params: any) {
 
   // ── query_order_status: 전체 주문 현황 (대시보드용) ──
   if (action === 'query_order_status') {
-    const { payedResult, newOrders, pendingShipping } = await getPayedCounts(30);
+    const { payedResult, newOrders, pendingShipping } = await getPayedCounts(14);
     let extra = { shipping: 0, delivered: 0, purchaseConfirmed: 0 };
     try { extra = await getExtraCounts(); } catch (e) { /* non-critical */ }
 
