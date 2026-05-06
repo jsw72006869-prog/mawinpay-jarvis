@@ -619,23 +619,17 @@ async function fetchOrders(statuses: string[], days: number): Promise<any[]> {
 
 // ── Daily Briefing 핸들러 (통일 구조 v3) ──
 async function handleDailyBriefing() {
-  // 1. 스마트스토어 데이터 (5개 상태값)
-  let ordersResult;
+  // 1. 스마트스토어 데이터 (5개 상태값) - getAllCounts 직접 호출로 정확도 확보
+  let counts;
   try {
-    ordersResult = await handleSmartstoreOrders({ action: 'query_order_status' });
+    counts = await getAllCounts();
   } catch (e: any) {
-    ordersResult = { success: false, error: e.message };
+    return { success: false, error: `스마트스토어 데이터 수집 실패: ${e.message}` };
   }
 
-  if (!ordersResult.success || !ordersResult.counts) {
-    return {
-      success: false,
-      error: '주문현황 최신 데이터를 불러오지 못했습니다.',
-      detail: ordersResult.error || 'Unknown error',
-      missionLog: '스마트스토어 API 호출 실패로 브리핑 중단'
-    };
+  if (!counts || counts.payed === undefined) {
+    return { success: false, error: '스마트스토어 데이터를 가져오지 못했습니다.' };
   }
-  const counts = ordersResult.counts;
 
   // 2. KAMIS 데이터 (배추 기본)
   const kamisResult = await handleKamisMini({ item: '배추' });
@@ -686,7 +680,12 @@ async function handleDailyBriefing() {
     jarvisSummary,
     smartstore: {
       counts: {
-        ...counts,
+        newOrders: counts.newOrders.length,
+        pendingShipping: counts.pendingShipping.length,
+        preShipTotal: counts.payed.length,
+        shipping: counts.shipping,
+        delivered: counts.delivered,
+        purchaseConfirmed: counts.purchaseConfirmed,
         settlementExpectationAmount: counts.settlementExpectationAmount || 0
       },
       lastChecked: new Date().toLocaleString('ko-KR', { timeZone: 'Asia/Seoul' }),
