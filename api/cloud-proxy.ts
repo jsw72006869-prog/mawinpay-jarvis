@@ -268,8 +268,8 @@ async function getSmartstoreStatusCounts(queryDays: number = 30) {
     else if (status === 'DELIVERED') deliveredCount++;
   }
 
-  // 3) 구매확정: PURCHASE_DECIDED 7일 조회 (관리자 화면 기준 일치)
-  const decidedItems = await getLastChangedItems('PURCHASE_DECIDED', 7);
+  // 3) 구매확정: PURCHASE_DECIDED 오늘(KST) 조회 (네이버 관리자 화면 기준 일치)
+  const decidedItems = await getLastChangedItems('PURCHASE_DECIDED', 1);
   const uniqueDecided = new Map<string, any>();
   for (const item of decidedItems) {
     uniqueDecided.set(item.productOrderId, item);
