@@ -586,6 +586,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             ...diag,
             tokenReceived: false,
             error: isIpError ? 'GW.IP_NOT_ALLOWED' : 'token_failed',
+            errorDetail: e.message || 'unknown',
             ipNotAllowed: isIpError,
           });
         }
