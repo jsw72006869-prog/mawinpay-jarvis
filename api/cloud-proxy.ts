@@ -1754,10 +1754,9 @@ async function handleKamisMini(params: any) {
         success: true,
         item: itemName,
         date: today,
-        message: `${itemName} 데이터를 찾을 수 없습니다.`,
+        message: `${itemName}은 KAMIS 일별 가격 조회 대상 품목이 아닙니다. 데이터 부족.`,
         prices: null,
-        rawItemCount: items.length,
-        _debug_codes: items.slice(0, 15).map((i: any) => ({ code: i.item_code, name: i.item_name })),
+        note: 'KAMIS API에서 해당 품목의 일별 가격 데이터를 제공하지 않습니다.',
       };
     }
 
