@@ -35,6 +35,8 @@ const QUOTAGUARD_URL = process.env.QUOTAGUARD_URL || process.env.QUOTAGUARDSTATI
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY || '';
 const YOUTUBE_API_KEY = process.env.YOUTUBE_API_KEY || '';
 const NAVER_API_BASE = 'https://api.commerce.naver.com/external';
+const KAMIS_API_KEY = process.env.KAMIS_API_KEY || '';
+const KAMIS_CERT_ID = process.env.KAMIS_CERT_ID || '';
 
 // ── 허용된 QuotaGuard IP 목록 (네이버 API 센터에 등록된 IP) ──
 const ALLOWED_IPS = ['52.5.238.209', '52.6.13.167', '72.252.132.247'];
@@ -1666,6 +1668,150 @@ async function handleMarketPriceList(params: any) {
   }
 }
 
+// ── KAMIS Mini API 핸들러 (농산물 도소매 가격 조회) ──
+const KAMIS_ITEMS: Record<string, { code: string; category: string; unit: string; kindCode?: string }> = {
+  '배추': { code: '211', category: '200', unit: '1포기' },
+  '절임배추': { code: '211', category: '200', unit: '1포기' }, // 절임배추는 배추 원물가 참고
+  '옥수수': { code: '225', category: '200', unit: '10개' },
+  '양파': { code: '226', category: '200', unit: '1kg' },
+  '대파': { code: '246', category: '200', unit: '1kg' },
+  '감자': { code: '222', category: '200', unit: '100g' },
+  '고구마': { code: '223', category: '200', unit: '100g' },
+  '당근': { code: '232', category: '200', unit: '1kg' },
+  '시금치': { code: '247', category: '200', unit: '100g' },
+  '사과': { code: '411', category: '400', unit: '10개' },
+  '배': { code: '412', category: '400', unit: '10개' },
+  '쌀': { code: '111', category: '100', unit: '20kg' },
+};
+
+function getKamisDateStr(d: Date): string {
+  const kst = new Date(d.getTime() + 9 * 60 * 60 * 1000);
+  const yyyy = kst.getUTCFullYear();
+  const mm = String(kst.getUTCMonth() + 1).padStart(2, '0');
+  const dd = String(kst.getUTCDate()).padStart(2, '0');
+  return `${yyyy}-${mm}-${dd}`;
+}
+
+async function handleKamisMini(params: any) {
+  if (!KAMIS_API_KEY || !KAMIS_CERT_ID) {
+    return { success: false, error: 'KAMIS API not configured' };
+  }
+
+  const itemName = params?.item || params?.productName || '배추';
+  const clsCode = params?.cls || '01'; // 01=소매, 02=도매
+  const countryCode = params?.country || '1101'; // 서울
+
+  // 품목 정보 찾기
+  const itemInfo = KAMIS_ITEMS[itemName];
+  if (!itemInfo) {
+    return {
+      success: false,
+      error: `지원하지 않는 품목: ${itemName}`,
+      supportedItems: Object.keys(KAMIS_ITEMS),
+    };
+  }
+
+  const today = getKamisDateStr(new Date());
+
+  const url = `http://www.kamis.or.kr/service/price/xml.do?action=dailyPriceByCategoryList` +
+    `&p_cert_key=${KAMIS_API_KEY}` +
+    `&p_cert_id=${KAMIS_CERT_ID}` +
+    `&p_returntype=json` +
+    `&p_product_cls_code=${clsCode}` +
+    `&p_item_category_code=${itemInfo.category}` +
+    `&p_country_code=${countryCode}` +
+    `&p_regday=${today}` +
+    `&p_convert_kg_yn=N`;
+
+  try {
+    const response = await fetch(url);
+    const data = await response.json() as any;
+
+    if (!data || data.error_code === '001') {
+      return {
+        success: true,
+        item: itemName,
+        date: today,
+        message: '해당 날짜에 데이터가 없습니다. (주말/공휴일 가능)',
+        prices: null,
+      };
+    }
+
+    if (data.error_code === '900') {
+      return { success: false, error: 'KAMIS 인증 실패 (API Key 확인 필요)' };
+    }
+
+    // 응답에서 해당 품목 찾기
+    const items = data?.data?.item || [];
+    const matched = items.filter((i: any) =>
+      i.item_code === itemInfo.code || i.item_name === itemName
+    );
+
+    if (matched.length === 0) {
+      return {
+        success: true,
+        item: itemName,
+        date: today,
+        message: `${itemName} 데이터를 찾을 수 없습니다.`,
+        prices: null,
+        rawItemCount: items.length,
+      };
+    }
+
+    // 상품(상) 등급 우선
+    const best = matched.find((i: any) => i.rank === '상품') || matched[0];
+
+    const result = {
+      success: true,
+      item: itemName,
+      isProxy: itemName === '절임배추' ? true : undefined,
+      proxyNote: itemName === '절임배추' ? '절임배추는 KAMIS 독립 품목 없음. 배추 원물가 참고' : undefined,
+      date: today,
+      cls: clsCode === '01' ? '소매' : '도매',
+      country: countryCode === '1101' ? '서울' : countryCode,
+      unit: best.unit || itemInfo.unit,
+      kind: best.kind_name || '',
+      rank: best.rank || '',
+      prices: {
+        today: best.dpr1 || '-',
+        dayBefore: best.dpr2 || '-',
+        weekBefore: best.dpr3 || '-',
+        twoWeeksBefore: best.dpr4 || '-',
+        monthBefore: best.dpr5 || '-',
+        yearBefore: best.dpr6 || '-',
+        average: best.dpr7 || '-',
+      },
+      direction: (() => {
+        const t = parseInt((best.dpr1 || '0').replace(/,/g, ''));
+        const m = parseInt((best.dpr5 || '0').replace(/,/g, ''));
+        if (!t || !m) return 'N/A';
+        const diff = ((t - m) / m * 100).toFixed(1);
+        return Number(diff) > 0 ? `+${diff}%` : `${diff}%`;
+      })(),
+    };
+
+    // Google Sheets 저장
+    if (WORKSPACE_SHEET_ID && GOOGLE_SHEETS_CREDENTIALS) {
+      try {
+        await ensureHeaders('kamis_price_log');
+        const recordId = generateRecordId('kamis');
+        await sheetsAppend('kamis_price_log', [[
+          recordId, today, itemName, result.cls,
+          result.prices.today, result.prices.monthBefore,
+          result.prices.yearBefore, result.direction,
+          result.unit, result.kind, result.rank
+        ]]);
+      } catch (e) {
+        // 저장 실패해도 결과 반환
+      }
+    }
+
+    return result;
+  } catch (e: any) {
+    return { success: false, error: `KAMIS API 호출 실패: ${e.message}` };
+  }
+}
+
 // ══════════════════════════════════════════════════════════════
 // ── MAIN HANDLER ──
 // ══════════════════════════════════════════════════════════════
@@ -1932,6 +2078,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       }
       if (resolvedTask === 'market-price-list') {
         const result = await handleMarketPriceList(params || rest);
+        return res.status(200).json(result);
+      }
+      if (resolvedTask === 'kamis-mini') {
+        const result = await handleKamisMini(params || rest);
         return res.status(200).json(result);
       }
 

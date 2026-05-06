@@ -2581,40 +2581,44 @@ export default function JarvisApp() {
         }));
 
         let marketData: any = null;
-        // 농산물 시장 분석을 비동기로 실행 (fire-and-forget, 브리핑 응답 차단 안 함)
+        // 농산물 시장 분석을 비동기로 실행 (KAMIS Mini API, fire-and-forget)
         (async () => {
         try {
-          const marketRes = await fetch('/api/market-intelligence?itemCode=225&period=week');
+          const marketRes = await fetch('/api/cloud-proxy', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ task: 'kamis-mini', params: { item: '배추', cls: '01' } }),
+          });
           const marketJson = await marketRes.json();
-          if (marketJson.success) {
+          if (marketJson.success && marketJson.prices) {
             marketData = marketJson;
+            const todayPrice = parseInt((marketJson.prices.today || '0').replace(/,/g, ''));
+            const monthPrice = parseInt((marketJson.prices.monthBefore || '0').replace(/,/g, ''));
+            const yearPrice = parseInt((marketJson.prices.yearBefore || '0').replace(/,/g, ''));
+            const changePercent = monthPrice ? ((todayPrice - monthPrice) / monthPrice * 100) : 0;
+            const trend = changePercent > 2 ? 'up' : changePercent < -2 ? 'down' : 'stable';
+            const recommendation = trend === 'down' ? 'buy' : trend === 'up' ? 'sell' : 'hold';
             emitNodeData('market_intel', {
-              item: '옥수수',
-              maxPrice: marketJson.analysis?.maxPrice || 0,
-              minPrice: marketJson.analysis?.minPrice || 0,
-              avgPrice: marketJson.analysis?.avgPrice || 0,
-              trend: marketJson.analysis?.trend || 'stable',
-              changePercent: marketJson.analysis?.changePercent || 0,
-              recommendation: marketJson.analysis?.recommendation || 'hold',
+              item: marketJson.item || '배추',
+              maxPrice: todayPrice,
+              minPrice: yearPrice || todayPrice,
+              avgPrice: parseInt((marketJson.prices.average || '0').replace(/,/g, '')) || todayPrice,
+              trend,
+              changePercent: parseFloat(changePercent.toFixed(1)),
+              recommendation,
               lastUpdated: new Date().toLocaleTimeString('ko-KR'),
-              totalRecords: marketJson.analysis?.totalRecords || 0,
-              movingAvg5: marketJson.analysis?.movingAvg5 || 0,
-              movingAvg20: marketJson.analysis?.movingAvg20 || 0,
+              totalRecords: 1,
+              movingAvg5: monthPrice || 0,
+              movingAvg20: yearPrice || 0,
             });
-            emitNodeState('market_intel', 'success', '농산물 가격 분석 완료');
-            // HUD 차트 활성화 (v4.2.1)
-            if (marketJson.data?.hudChartData) {
-              setMarketChartData(marketJson.data.hudChartData);
-              setMarketChartVisible(true);
-              setTimeout(() => setMarketChartVisible(false), 15000); // 15초 후 자동 닫기
-            }
+            emitNodeState('market_intel', 'success', `${marketJson.item} 가격 분석 완료 (KAMIS)`);
             setDataPanel(prev => ({
               ...prev,
               progress: 55,
-              actionLogs: [...(prev.actionLogs || []), { step: 'MARKET_INTEL', status: 'success', detail: `옥수수 평균가 ${(marketJson.analysis?.avgPrice || 0).toLocaleString()}원, 추천: ${marketJson.analysis?.recommendation || 'hold'}`, timestamp: new Date().toISOString() }],
+              actionLogs: [...(prev.actionLogs || []), { step: 'MARKET_INTEL', status: 'success', detail: `${marketJson.item} 당일 ${marketJson.prices.today}, 전월대비 ${marketJson.direction}`, timestamp: new Date().toISOString() }],
             }));
           } else {
-            throw new Error(marketJson.error || 'KAMIS API 실패');
+            throw new Error(marketJson.error || marketJson.message || 'KAMIS API 데이터 없음');
           }
         } catch (marketErr) {
           emitNodeState('market_intel', 'error', `시장 데이터 수집 실패: ${marketErr}`);
@@ -2766,9 +2770,71 @@ export default function JarvisApp() {
       return;
     }
 
+    // ── KAMIS 시장가격 조회 ──
+    if (action?.type === 'kamis_price') {
+      setState('working');
+      emitMissionLog('🌾', 'KAMIS', `${action.params?.item || '배추'} 시장가격 조회 시작`, 'info');
+      setDataPanel({
+        visible: true,
+        type: 'smartstore',
+        progress: 10,
+        message: `${action.params?.item || '배추'} KAMIS 가격 조회 중...`,
+        actionLogs: [],
+      });
+
+      try {
+        const kamisRes = await fetch('/api/cloud-proxy', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ task: 'kamis-mini', params: action.params }),
+        });
+        const kamisData = await kamisRes.json();
+
+        setDataPanel(prev => prev ? { ...prev, progress: 100, message: 'KAMIS 조회 완료' } : prev);
+
+        let responseText = '';
+        if (kamisData.success && kamisData.prices) {
+          const p = kamisData.prices;
+          responseText = `🌾 ${kamisData.item} 시장가격 (${kamisData.cls}, ${kamisData.date})\n` +
+            `• 당일: ${p.today}\n` +
+            `• 1일전: ${p.dayBefore}\n` +
+            `• 1주전: ${p.weekBefore}\n` +
+            `• 1개월전: ${p.monthBefore}\n` +
+            `• 1년전: ${p.yearBefore}\n` +
+            `• 평년: ${p.average}\n` +
+            `• 전월대비: ${kamisData.direction}\n` +
+            (kamisData.isProxy ? `ℹ️ ${kamisData.proxyNote}` : '') +
+            `\n단위: ${kamisData.unit} | 등급: ${kamisData.rank} | 품종: ${kamisData.kind}`;
+        } else if (kamisData.success && kamisData.message) {
+          responseText = `🌾 ${kamisData.item}: ${kamisData.message}`;
+        } else {
+          responseText = `KAMIS 조회 실패: ${kamisData.error || '알 수 없는 오류'}`;
+        }
+
+        addMessage('jarvis', responseText);
+        emitMissionLog('✅', 'KAMIS', `${action.params?.item || '배추'} 가격 조회 완료`, 'success');
+
+        // Workspace 저장
+        saveToWorkspace('kamis_price', {
+          title: `${kamisData.item} 시장가격`,
+          ...kamisData,
+        }, String(action.params?.userMessage || ''));
+
+        setState('listening');
+        setIsListening(true);
+      } catch (err: any) {
+        const errText = `KAMIS 조회 오류: ${err.message}`;
+        addMessage('jarvis', errText);
+        emitMissionLog('❌', 'KAMIS', errText, 'error');
+        setState('listening');
+        setIsListening(true);
+      }
+      return;
+    }
+
     // ── 스마트스토어 전체 자동화 액션 ──
     const SS_ACTIONS = [
-      'current_new_orders', 'query_orders_today', 'query_pending_shipping', 'query_pre_shipping_total',
+      'current_new_orders', 'query_orders_today', 'query_pending_shipping', 'query_pre_shipping_total', 'query_order_status',
       'query_orders_week', 'query_orders_month',
       'query_orders_unpaid', 'query_orders_cancel', 'query_orders_return',
       'query_orders_by_product', 'query_order_detail', 'query_orders_pending_ship', 'morning_report',

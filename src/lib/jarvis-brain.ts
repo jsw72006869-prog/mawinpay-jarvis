@@ -46,7 +46,8 @@ export type JarvisActionType =
   | 'smartstore_orders' | 'smartstore_shipping' | 'smartstore_products'
   | 'smartstore_confirm' | 'smartstore_sheet' | 'smartstore_settlement'
   | 'smartstore_purchase_email' | 'smartstore_report'
-  | 'manus_task' | 'manus_status' | 'morning_briefing' | 'analyze_influencers_smart' | 'unknown';
+  | 'manus_task' | 'manus_status' | 'morning_briefing' | 'analyze_influencers_smart'
+  | 'kamis_price' | 'unknown';
 
 export type JarvisAction = {
   type: JarvisActionType;
@@ -471,6 +472,29 @@ function deterministicMatch(text: string): JarvisAction | null {
       type: 'smartstore_orders',
       params: { action: 'current_new_orders', userMessage: text },
       workingMessage: '현재 신규주문 조회 중...',
+      response: '__SKIP_TTS__',
+    };
+  }
+
+  // KAMIS 시장가격 조회 (배추/절임배추/옥수수/양파/대파/감자/고구마 등)
+  const kamisItems = ['배추', '절임배추', '옥수수', '양파', '대파', '감자', '고구마', '당근', '시금치', '사과', '배', '쌀'];
+  const kamisMatch = kamisItems.find(item => lower.includes(item));
+  if (kamisMatch && /가격|시세|시장|얼마|도매|소매|kamis/.test(lower)) {
+    const cls = /도매/.test(lower) ? '02' : '01';
+    return {
+      type: 'kamis_price',
+      params: { item: kamisMatch, cls, userMessage: text },
+      workingMessage: `${kamisMatch} 시장가격 조회 중 (KAMIS)...`,
+      response: '__SKIP_TTS__',
+    };
+  }
+
+  // "시장가격" / "농산물 시세" 일반 질문 (품목 미지정 → 배추 기본)
+  if (/시장.?가격|농산물.?시세|kamis/.test(lower) && /알려|조회|확인|보여/.test(lower)) {
+    return {
+      type: 'kamis_price',
+      params: { item: '배추', cls: '01', userMessage: text },
+      workingMessage: '시장가격 조회 중 (KAMIS)...',
       response: '__SKIP_TTS__',
     };
   }
