@@ -1672,11 +1672,11 @@ async function handleMarketPriceList(params: any) {
 const KAMIS_ITEMS: Record<string, { code: string; category: string; unit: string; kindCode?: string }> = {
   '배추': { code: '211', category: '200', unit: '1포기' },
   '절임배추': { code: '211', category: '200', unit: '1포기' }, // 절임배추는 배추 원물가 참고
-  '옥수수': { code: '225', category: '200', unit: '10개' },
+  '옥수수': { code: '225', category: '100', unit: '10개' },  // 식량작물
   '양파': { code: '226', category: '200', unit: '1kg' },
   '대파': { code: '246', category: '200', unit: '1kg' },
-  '감자': { code: '222', category: '200', unit: '100g' },
-  '고구마': { code: '223', category: '200', unit: '100g' },
+  '감자': { code: '152', category: '100', unit: '100g' },  // 식량작물
+  '고구마': { code: '151', category: '100', unit: '100g' },  // 식량작물
   '당근': { code: '232', category: '200', unit: '1kg' },
   '시금치': { code: '247', category: '200', unit: '100g' },
   '사과': { code: '411', category: '400', unit: '10개' },
@@ -1741,11 +1741,13 @@ async function handleKamisMini(params: any) {
       return { success: false, error: 'KAMIS 인증 실패 (API Key 확인 필요)' };
     }
 
-    // 응답에서 해당 품목 찾기
+    // 응답에서 해당 품목 찾기 (item_code 우선, item_name 보조)
     const items = data?.data?.item || [];
-    const matched = items.filter((i: any) =>
-      i.item_code === itemInfo.code || i.item_name === itemName
-    );
+    let matched = items.filter((i: any) => i.item_code === itemInfo.code);
+    // item_code 매칭이 없으면 item_name으로 재시도
+    if (matched.length === 0) {
+      matched = items.filter((i: any) => i.item_name === itemName);
+    }
 
     if (matched.length === 0) {
       return {
