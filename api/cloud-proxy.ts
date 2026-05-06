@@ -72,8 +72,15 @@ async function proxyFetch(url: string, options: any = {}): Promise<any> {
   return nodeFetch(url, { ...options, agent } as any);
 }
 
-// ── 네이버 스마트스토어 토큰 발급 (QuotaGuard 프록시 경유) ──
+// ── 네이버 스마트스토어 토큰 발급 (QuotaGuard 프록시 경유, 캐시 적용) ──
+let _cachedToken: { token: string; expiresAt: number } | null = null;
+
 async function getSmartStoreToken(): Promise<string> {
+  // 토큰 캐시: 만료 30초 전까지 재사용 (네이버 토큰 유효기간 약 30분)
+  if (_cachedToken && Date.now() < _cachedToken.expiresAt) {
+    return _cachedToken.token;
+  }
+
   if (!SMARTSTORE_CLIENT_ID || !SMARTSTORE_CLIENT_SECRET) {
     throw new Error('SMARTSTORE credentials not configured');
   }
@@ -102,6 +109,12 @@ async function getSmartStoreToken(): Promise<string> {
     const errorCode = data.code || data.error || '';
     throw new Error(`Token failed: ${errorCode}`);
   }
+
+  // 토큰 캐시 (25분간 유효)
+  _cachedToken = {
+    token: data.access_token,
+    expiresAt: Date.now() + 25 * 60 * 1000,
+  };
   return data.access_token;
 }
 
@@ -205,7 +218,7 @@ async function handleSmartstoreOrders(params: any) {
 
   // ── current_new_orders / query_pending_shipping / query_pre_shipping_total ──
   if (action === 'current_new_orders' || action === 'query_pending_shipping' || action === 'query_pre_shipping_total') {
-    const { payedResult, newOrders, pendingShipping } = await getPayedCounts(7);
+    const { payedResult, newOrders, pendingShipping } = await getPayedCounts(30);
     let extra = { shipping: 0, delivered: 0, purchaseConfirmed: 0 };
     try { extra = await getExtraCounts(); } catch (e) { /* non-critical */ }
 
@@ -265,7 +278,7 @@ async function handleSmartstoreOrders(params: any) {
 
   // ── query_order_status: 전체 주문 현황 (대시보드용) ──
   if (action === 'query_order_status') {
-    const { payedResult, newOrders, pendingShipping } = await getPayedCounts(7);
+    const { payedResult, newOrders, pendingShipping } = await getPayedCounts(30);
     let extra = { shipping: 0, delivered: 0, purchaseConfirmed: 0 };
     try { extra = await getExtraCounts(); } catch (e) { /* non-critical */ }
 
@@ -344,9 +357,9 @@ async function fetchOrders(statuses: string[], days: number): Promise<any[]> {
     dayRequests.push({ from: currentFrom, to: currentTo });
   }
 
-  // 병렬 배치 처리 (7개씩 동시 호출하여 Vercel 60초 타임아웃 내 완료)
+  // 병렬 배치 처리 (15개씩 동시 호출 - 토큰 캐시로 속도 대폭 개선)
   let allProductOrderIds: string[] = [];
-  const BATCH_SIZE = 7;
+  const BATCH_SIZE = 15;
 
   for (let batchStart = 0; batchStart < dayRequests.length; batchStart += BATCH_SIZE) {
     const batch = dayRequests.slice(batchStart, batchStart + BATCH_SIZE);
