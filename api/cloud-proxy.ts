@@ -1757,6 +1757,7 @@ async function handleKamisMini(params: any) {
         message: `${itemName} 데이터를 찾을 수 없습니다.`,
         prices: null,
         rawItemCount: items.length,
+        _debug_codes: items.slice(0, 15).map((i: any) => ({ code: i.item_code, name: i.item_name })),
       };
     }
 
