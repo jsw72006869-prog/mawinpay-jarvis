@@ -30,6 +30,7 @@ import EmailHistoryCards, { type EmailRecord } from './EmailHistoryCards';
 import OrderDashboard from './OrderDashboard';
 import FileWorkspacePanel, { type WorkspaceRecord } from './FileWorkspacePanel';
 import InfluencerOutreachPanel, { type InfluencerCandidate } from './InfluencerOutreachPanel';
+import MarketPricePanel, { type MarketPriceResult, type MarketPriceInputData } from './MarketPricePanel';
 import CloudStatusOverlay from './CloudStatusOverlay';
 import LiveBrowserViewer from './LiveBrowserViewer';
 
@@ -135,6 +136,10 @@ export default function JarvisApp() {
   const [outreachVisible, setOutreachVisible] = useState(false);
   const [outreachCandidates, setOutreachCandidates] = useState<InfluencerCandidate[]>([]);
   const [outreachLoading, setOutreachLoading] = useState(false);
+  const [marketPriceVisible, setMarketPriceVisible] = useState(false);
+  const [marketPriceResult, setMarketPriceResult] = useState<MarketPriceResult | null>(null);
+  const [marketPriceInputMode, setMarketPriceInputMode] = useState(false);
+  const [marketPriceLoading, setMarketPriceLoading] = useState(false);
   const [dataPanel, setDataPanel] = useState<{
     visible: boolean;
     type: 'collect' | 'send_email' | 'create_banner' | 'report' | 'booking' | 'smartstore' | 'youtube' | null;
@@ -408,6 +413,64 @@ export default function JarvisApp() {
       return { success: false, error: e.message };
     }
   }, [fetchWorkspaceRecords]);
+
+  // ── Market Price Submit Handler ──
+  const handleMarketPriceSubmit = useCallback(async (inputData: MarketPriceInputData) => {
+    setMarketPriceInputMode(false);
+    setMarketPriceLoading(true);
+    emitNodeState('jarvis_brain', 'active', '마진 계산 중...');
+    emitMissionLog('📊', 'Market', `${inputData.productName} 가격 판단 분석 중...`, 'thinking');
+
+    try {
+      const res = await fetch('/api/cloud-proxy', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ taskType: 'market-price-check', params: inputData }),
+      });
+      const data = await res.json();
+      setMarketPriceLoading(false);
+
+      if (data.success) {
+        setMarketPriceResult(data.result);
+        emitNodeState('jarvis_brain', 'idle');
+        emitMissionLog('📊', 'Market', `${inputData.productName}: ${data.result.jarvisDecision}`, 'success');
+
+        // ActionCard context 설정
+        setActionContext({
+          type: 'market_price_result',
+          label: `${inputData.productName} 가격 판단 완료`,
+          detail: `마진율 ${data.result.calculation.estimatedMarginRate}% | ${data.result.jarvisDecision}`,
+          sourceCommand: `${inputData.productName} 가격 판단`,
+        });
+
+        // 자동 저장
+        saveToWorkspace('market_price_check', {
+          productName: inputData.productName,
+          rawMaterialCost: inputData.rawMaterialCost,
+          currentPrice: inputData.currentPrice,
+          shippingCost: inputData.shippingCost,
+          packagingCost: inputData.packagingCost,
+          platformFeeRate: inputData.platformFeeRate,
+          otherCosts: inputData.otherCosts,
+          competitorPrices: inputData.competitorPrices,
+          marginRate: data.result.calculation.estimatedMarginRate,
+          margin: data.result.calculation.estimatedMargin,
+          decision: data.result.jarvisDecision,
+          recommendedAction: data.result.recommendedAction,
+        }, `${inputData.productName} 가격 판단`);
+
+        addMessage('jarvis', data.result.jarvisMessage, true);
+      } else {
+        setMarketPriceLoading(false);
+        addMessage('jarvis', '가격 판단 중 오류가 발생했습니다. 다시 시도해주세요.', true);
+        emitMissionLog('📊', 'Market', '가격 판단 실패', 'error');
+      }
+    } catch (e: any) {
+      setMarketPriceLoading(false);
+      addMessage('jarvis', '가격 판단 API 호출 중 오류가 발생했습니다.', true);
+      emitMissionLog('📊', 'Market', `오류: ${e.message}`, 'error');
+    }
+  }, [saveToWorkspace]);
 
   // ── 커스텀 커서 ──
   useEffect(() => {
@@ -3704,6 +3767,59 @@ export default function JarvisApp() {
       return;
     }
 
+    // ── Market Price 명령 처리 ("가격 괜찮아?", "얼마에 팔면", "마진 남아?", "시장 리포트") ──
+    const marketPriceMatch = text.match(/(가격|얼마|마진|시세|원가|판매가|경쟁가|시장).*(괜찮|남아|팔면|좋아|분석|판단|체크|확인|리포트|저장)/);
+    const marketInputMatch = text.match(/(가격|마진|시세).*(입력|등록|추가|계산)/);
+    const marketListMatch = text.match(/(시장|가격|마진).*(리포트|기록|목록|조회|보여|저장).*(저장|보여|조회|해줘)?/);
+
+    if (marketPriceMatch || marketInputMatch) {
+      emitNodeState('jarvis_brain', 'active', '가격 판단 분석 중...');
+      emitMissionLog('📊', 'Market', '가격 판단 요청 수신', 'thinking');
+
+      // 품목명 추출 시도
+      const productMatch = text.match(/(옥수수|복숭아|사과|배|감|포도|딸기|수박|참외|토마토|고구마|감자|절임배추|배추|무|양파|마늘|대파|고추|당근|브로콜리|아보카도|블루베리|체리|망고|바나나|키위|레몬|오렌지|귤|한라봉|천혜향|레드향|샤인머스캣|거봉|캠벨|[가-힣]{2,6})/);
+      const productName = productMatch ? productMatch[1] : '';
+
+      if (productName && !marketInputMatch) {
+        // 품목명이 있으면 바로 패널 열기 (입력 모드)
+        setMarketPriceResult(null);
+        setMarketPriceInputMode(true);
+        setMarketPriceVisible(true);
+        addMessage('jarvis', `${productName} 가격 판단을 해드리겠습니다. 원물가, 판매가, 경쟁가 등을 입력해주세요.`, true);
+      } else {
+        // 품목명 없으면 입력 모드로 패널 열기
+        setMarketPriceResult(null);
+        setMarketPriceInputMode(true);
+        setMarketPriceVisible(true);
+        addMessage('jarvis', '가격 판단 패널을 열었습니다. 품목과 비용 정보를 입력해주세요.', true);
+      }
+      setState('idle');
+      return;
+    }
+
+    if (marketListMatch) {
+      emitMissionLog('📊', 'Market', '가격 리포트 조회 중...', 'thinking');
+      try {
+        const res = await fetch('/api/cloud-proxy', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ taskType: 'market-price-list', params: { limit: 10 } }),
+        });
+        const data = await res.json();
+        if (data.success && data.records?.length > 0) {
+          const summary = data.records.map((r: any) => `• ${r.productName}: 마진율 ${r.marginRate}% (${r.decision})`).join('\n');
+          addMessage('jarvis', `📊 최근 가격 판단 기록:\n\n${summary}\n\n상세 내용은 Google Sheets에서 확인하세요.`, true);
+          emitMissionLog('📊', 'Market', `${data.records.length}건 조회 완료`, 'success');
+        } else {
+          addMessage('jarvis', '아직 저장된 가격 판단 기록이 없습니다. "옥수수 가격 괜찮아?" 명령으로 시작해보세요.', true);
+        }
+      } catch {
+        addMessage('jarvis', '가격 리포트 조회 중 오류가 발생했습니다.', true);
+      }
+      setState('idle');
+      return;
+    }
+
     try {
       emitNodeState('jarvis_brain', 'active', 'GPT 뇌 사고 중...');
       emitPulseLine('user', 'jarvis_brain', 'fast');
@@ -4156,6 +4272,21 @@ export default function JarvisApp() {
             >
               <span style={{ fontSize: '0.5rem' }}>◈</span>
               <span style={{ color: '#00ff88', fontSize: '0.42rem', letterSpacing: '0.15em' }}>OUTREACH</span>
+            </motion.button>
+            )}
+            {!isMobile && (
+            <motion.button
+              whileHover={{ scale: 1.08 }}
+              whileTap={{ scale: 0.95 }}
+              onClick={() => { setMarketPriceResult(null); setMarketPriceInputMode(true); setMarketPriceVisible(true); }}
+              style={{
+                background: 'rgba(255,170,0,0.12)', border: '1px solid rgba(255,170,0,0.3)',
+                borderRadius: '6px', padding: '4px 10px', cursor: 'pointer',
+                display: 'flex', alignItems: 'center', gap: '5px',
+              }}
+            >
+              <span style={{ fontSize: '0.5rem' }}>◈</span>
+              <span style={{ color: '#ffaa00', fontSize: '0.42rem', letterSpacing: '0.15em' }}>MARKET</span>
             </motion.button>
             )}
             {/* 상태 표시 */}
@@ -6193,6 +6324,15 @@ export default function JarvisApp() {
             emitMissionLog('❌', 'OUTREACH', `저장 실패: ${e.message}`, 'error');
           }
         }}
+      />
+      {/* ── Market Price Panel ── */}
+      <MarketPricePanel
+        visible={marketPriceVisible}
+        onClose={() => { setMarketPriceVisible(false); setMarketPriceResult(null); setMarketPriceInputMode(false); }}
+        result={marketPriceResult}
+        inputMode={marketPriceInputMode}
+        onSubmitInput={handleMarketPriceSubmit}
+        loading={marketPriceLoading}
       />
       {/* ── 뉴럴 미션 맵 (시스템 현황) ── */}
       <AnimatePresence>

@@ -721,6 +721,16 @@ export function buildWorkflowSteps(context: ActionContext, _currentStep?: string
       { id: 'waiting', label: 'Google Sheets 저장 대기 중', status: 'active' },
     ];
   }
+  if (context.type === 'market_price_result') {
+    return [
+      { id: 'voice', label: '명령 인식 완료', status: 'completed', timestamp: now },
+      { id: 'intent', label: '가격 판단 요청 확인', status: 'completed', timestamp: now },
+      { id: 'calc', label: '마진 계산 완료', status: 'completed', timestamp: now },
+      { id: 'compare', label: '경쟁가 비교 완료', status: 'completed', timestamp: now },
+      { id: 'decision', label: '자비스 판단 완료', status: 'completed', timestamp: now },
+      { id: 'save', label: 'Google Sheets 저장 완료', status: 'completed', timestamp: now },
+    ];
+  }
   return [
     { id: 'complete', label: '작업 완료', status: 'completed', timestamp: now },
     { id: 'waiting', label: '다음 명령 대기 중', status: 'active' },

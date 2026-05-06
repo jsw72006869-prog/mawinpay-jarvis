@@ -76,6 +76,8 @@ export const FUNCTION_NODE_MAP: Record<string, { nodes: string[]; speed: PulseLi
   'workspace_query':           { nodes: ['sheets'],                    speed: 'slow',    icon: '📂' },
   'outreach_collect':          { nodes: ['influencer', 'youtube'],     speed: 'intense', icon: '🔍' },
   'outreach_save':             { nodes: ['influencer', 'sheets'],      speed: 'normal',  icon: '📥' },
+  'market_price_check':        { nodes: ['market_intel', 'sheets'],    speed: 'normal',  icon: '📊' },
+  'market_price_list':         { nodes: ['market_intel'],              speed: 'normal',  icon: '📊' },
 };
 
 // ─── 채널 이름 ───

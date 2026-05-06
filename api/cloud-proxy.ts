@@ -630,6 +630,7 @@ const SHEET_HEADERS: Record<string, string[]> = {
   growth_campaigns: ['campaignId','createdAt','product','source','targetUrl','directUrl','couponCode','campaignMemo','status'],
   purchase_order_drafts: ['draftId','createdAt','supplier','productSummary','totalQuantity','totalAmountIfAvailable','status','safePreview'],
   influencer_candidates: ['candidateId','collectedAt','platform','keyword','name','channelOrBlogUrl','recentContentTitle','recentContentUrl','subscriberOrVisitor','viewCount','publicContactStatus','publicEmailMasked','productFitScore','productFitReason','suggestedProduct','suggestedOfferAngle','outreachStatus','firstEmailDraft','followUpDraft','lastContactedAt','responseStatus','notes'],
+  market_price_checks: ['checkId','createdAt','productName','rawMaterialCost','currentPrice','shippingCost','packagingCost','platformFeeRate','otherCosts','competitorPrices','competitorMinPrice','competitorAvgPrice','netSalesAmount','estimatedMargin','estimatedMarginRate','jarvisDecision','recommendedAction','sourceCommand'],
 };
 
 async function ensureTab(tab: string): Promise<void> {
@@ -695,7 +696,8 @@ async function handleWorkspaceSave(params: any) {
     const targetTab = type === 'briefing' ? 'briefings' :
       type === 'creative_script' ? 'creative_scripts' :
       type === 'growth_campaign' ? 'growth_campaigns' :
-      type === 'purchase_order_draft' ? 'purchase_order_drafts' : '';
+      type === 'purchase_order_draft' ? 'purchase_order_drafts' :
+      type === 'market_price_check' ? 'market_price_checks' : '';
     if (targetTab) await ensureHeaders(targetTab);
     await ensureHeaders('jarvis_records');
 
@@ -727,6 +729,18 @@ async function handleWorkspaceSave(params: any) {
         String(data.totalQuantity || 0), String(data.totalAmountIfAvailable || ''),
         'draft', data.safePreview || ''
       ]]);
+    } else if (type === 'market_price_check' && data) {
+      await ensureHeaders('market_price_checks');
+      await sheetsAppend('market_price_checks', [[
+        recordId, now, data.productName || '', String(data.rawMaterialCost || 0),
+        String(data.currentPrice || 0), String(data.shippingCost || 0),
+        String(data.packagingCost || 0), String(data.platformFeeRate || 0),
+        String(data.otherCosts || 0), data.competitorPrices || '',
+        String(data.competitorMinPrice || 0), String(data.competitorAvgPrice || 0),
+        String(data.netSalesAmount || 0), String(data.estimatedMargin || 0),
+        String(data.estimatedMarginRate || 0), data.jarvisDecision || '',
+        data.recommendedAction || '', sourceCommand || ''
+      ]]);
     } else if (type === 'influencer_candidate' && data) {
       await ensureHeaders('influencer_candidates');
       await sheetsAppend('influencer_candidates', [[
@@ -752,6 +766,7 @@ async function handleWorkspaceSave(params: any) {
       type === 'creative_script' ? 'creative_scripts' :
       type === 'growth_campaign' ? 'growth_campaigns' :
       type === 'purchase_order_draft' ? 'purchase_order_drafts' :
+      type === 'market_price_check' ? 'market_price_checks' :
       type === 'influencer_candidate' ? 'influencer_candidates' : 'jarvis_records',
       'jarvis', summary.slice(0, 100)
     ]]);
@@ -1117,6 +1132,201 @@ async function handleOutreachList(params: any) {
 }
 
 // ══════════════════════════════════════════════════════════════
+// ── MARKET PRICE CHECK: 농산물 가격 판단 Lite ──
+// ══════════════════════════════════════════════════════════════
+
+function calculateMargin(params: any) {
+  const currentPrice = Number(params.currentPrice) || 0;
+  const rawMaterialCost = Number(params.rawMaterialCost) || 0;
+  const shippingCost = Number(params.shippingCost) || 0;
+  const packagingCost = Number(params.packagingCost) || 0;
+  const platformFeeRate = Number(params.platformFeeRate) || 0;
+  const otherCosts = Number(params.otherCosts) || 0;
+
+  // 경쟁가 처리
+  let competitorPrices: number[] = [];
+  if (Array.isArray(params.competitorPrices)) {
+    competitorPrices = params.competitorPrices.map(Number).filter((n: number) => n > 0);
+  } else if (typeof params.competitorPrices === 'string' && params.competitorPrices) {
+    competitorPrices = params.competitorPrices.split(',').map(Number).filter((n: number) => n > 0);
+  }
+
+  const competitorMinPrice = competitorPrices.length > 0 ? Math.min(...competitorPrices) : 0;
+  const competitorAvgPrice = competitorPrices.length > 0 ? Math.round(competitorPrices.reduce((a: number, b: number) => a + b, 0) / competitorPrices.length) : 0;
+
+  // 수수료 제외 판매금액
+  const platformFee = Math.round(currentPrice * (platformFeeRate / 100));
+  const netSalesAmount = currentPrice - platformFee;
+
+  // 총 비용
+  const totalCost = rawMaterialCost + shippingCost + packagingCost + otherCosts;
+
+  // 예상 순마진
+  const estimatedMargin = netSalesAmount - totalCost;
+
+  // 예상 마진율 (%)
+  const estimatedMarginRate = currentPrice > 0 ? Math.round((estimatedMargin / currentPrice) * 100) : 0;
+
+  return {
+    currentPrice,
+    rawMaterialCost,
+    shippingCost,
+    packagingCost,
+    platformFeeRate,
+    platformFee,
+    otherCosts,
+    totalCost,
+    netSalesAmount,
+    estimatedMargin,
+    estimatedMarginRate,
+    competitorPrices: competitorPrices.join(','),
+    competitorMinPrice,
+    competitorAvgPrice,
+  };
+}
+
+function generateJarvisDecision(productName: string, calc: any): { decision: string; action: string; jarvisMessage: string } {
+  const { estimatedMargin, estimatedMarginRate, currentPrice, competitorMinPrice, competitorAvgPrice, rawMaterialCost } = calc;
+
+  let decision = '';
+  let action = '';
+  let jarvisMessage = '';
+
+  // 마진율 기준 판단
+  if (estimatedMarginRate >= 30) {
+    decision = '가격 방어 가능 (고마진)';
+    action = '현재 가격 유지 + 프리미엄 메시지 강화';
+    jarvisMessage = `대표님, 지금 ${productName}은 가격을 낮출 필요 없습니다.\n` +
+      `원물가 대비 마진율이 ${estimatedMarginRate}%로 충분합니다.\n` +
+      `최저가 경쟁보다 산지직송/한정수량/프리미엄 메시지로 가는 게 좋습니다.`;
+  } else if (estimatedMarginRate >= 15) {
+    decision = '가격 유지 권장';
+    action = '현재 가격 유지 + 묶음/세트 구성 검토';
+    jarvisMessage = `대표님, ${productName} 현재 가격은 유지해도 됩니다.\n` +
+      `마진율 ${estimatedMarginRate}%로 수수료와 배송비 제외해도 마진이 남습니다.\n` +
+      `다만 경쟁이 심해지면 묶음 할인이나 세트 구성으로 단가를 방어하는 게 좋습니다.`;
+  } else if (estimatedMarginRate >= 5) {
+    decision = '가격 인상 검토 필요';
+    action = '100~500원 인상 시뮬레이션 + 경쟁가 모니터링';
+    jarvisMessage = `대표님, ${productName}은 마진이 빠듯합니다.\n` +
+      `마진율 ${estimatedMarginRate}%면 배송 사고나 반품 한 건에 적자 전환될 수 있습니다.\n` +
+      `가격을 100~500원 올리거나, 용량/수량을 조정하는 게 안전합니다.`;
+  } else if (estimatedMargin > 0) {
+    decision = '가격 인상 필요';
+    action = '즉시 가격 인상 또는 판매 중단 검토';
+    jarvisMessage = `대표님, ${productName}은 지금 거의 마진이 없습니다.\n` +
+      `마진율 ${estimatedMarginRate}%면 팔수록 손해에 가깝습니다.\n` +
+      `가격 인상이 어려우면 판매 중단하고 다음 시즌을 기다리는 것도 방법입니다.`;
+  } else {
+    decision = '적자 상태 - 즉시 조치 필요';
+    action = '판매 중단 또는 대폭 가격 인상';
+    jarvisMessage = `대표님, ${productName}은 현재 팔면 팔수록 적자입니다.\n` +
+      `예상 마진이 ${estimatedMargin.toLocaleString()}원으로 마이너스입니다.\n` +
+      `즉시 가격을 올리거나 판매를 중단하는 게 맞습니다.`;
+  }
+
+  // 경쟁가 비교 추가 메시지
+  if (competitorMinPrice > 0) {
+    if (currentPrice < competitorMinPrice) {
+      jarvisMessage += `\n\n참고로 온라인 경쟁 최저가(${competitorMinPrice.toLocaleString()}원)보다 대표님 가격이 더 낮습니다. 가격 인상 여지가 있습니다.`;
+    } else if (currentPrice > competitorAvgPrice * 1.2) {
+      jarvisMessage += `\n\n다만 경쟁 평균가(${competitorAvgPrice.toLocaleString()}원) 대비 20% 이상 높으니, 품질/스토리 차별화 메시지가 중요합니다.`;
+    } else {
+      jarvisMessage += `\n\n경쟁가 평균(${competitorAvgPrice.toLocaleString()}원)과 비슷한 수준이라 가격 경쟁력은 괜찮습니다.`;
+    }
+  }
+
+  return { decision, action, jarvisMessage };
+}
+
+async function handleMarketPriceCheck(params: any) {
+  const { productName, rawMaterialCost, currentPrice, shippingCost, packagingCost, platformFeeRate, otherCosts, competitorPrices, sourceCommand } = params;
+
+  if (!productName || !currentPrice) {
+    return { success: false, error: '품목명과 현재 판매가는 필수입니다.' };
+  }
+
+  // 1. 마진 계산
+  const calc = calculateMargin(params);
+
+  // 2. 자비스 판단 생성
+  const { decision, action, jarvisMessage } = generateJarvisDecision(productName, calc);
+
+  // 3. Google Sheets 저장
+  let savedToSheets = false;
+  if (WORKSPACE_SHEET_ID && GOOGLE_SHEETS_CREDENTIALS) {
+    try {
+      const recordId = generateRecordId('market_price_check');
+      const now = new Date().toISOString();
+      await ensureHeaders('market_price_checks');
+      await sheetsAppend('market_price_checks', [[
+        recordId, now, productName, String(calc.rawMaterialCost),
+        String(calc.currentPrice), String(calc.shippingCost),
+        String(calc.packagingCost), String(calc.platformFeeRate),
+        String(calc.otherCosts), calc.competitorPrices,
+        String(calc.competitorMinPrice), String(calc.competitorAvgPrice),
+        String(calc.netSalesAmount), String(calc.estimatedMargin),
+        String(calc.estimatedMarginRate), decision,
+        action, sourceCommand || ''
+      ]]);
+      savedToSheets = true;
+    } catch (e) {
+      // 저장 실패해도 판단 결과는 반환
+    }
+  }
+
+  return {
+    success: true,
+    productName,
+    calculation: {
+      currentPrice: calc.currentPrice,
+      rawMaterialCost: calc.rawMaterialCost,
+      shippingCost: calc.shippingCost,
+      packagingCost: calc.packagingCost,
+      platformFeeRate: calc.platformFeeRate,
+      platformFee: calc.platformFee,
+      otherCosts: calc.otherCosts,
+      totalCost: calc.totalCost,
+      netSalesAmount: calc.netSalesAmount,
+      estimatedMargin: calc.estimatedMargin,
+      estimatedMarginRate: calc.estimatedMarginRate,
+      competitorMinPrice: calc.competitorMinPrice,
+      competitorAvgPrice: calc.competitorAvgPrice,
+    },
+    jarvisDecision: decision,
+    recommendedAction: action,
+    jarvisMessage,
+    savedToSheets,
+  };
+}
+
+async function handleMarketPriceList(params: any) {
+  if (!WORKSPACE_SHEET_ID || !GOOGLE_SHEETS_CREDENTIALS) {
+    return { success: false, error: 'Google Sheets not configured' };
+  }
+  try {
+    await ensureHeaders('market_price_checks');
+    const result = await sheetsRead('market_price_checks');
+    const rows = result.values || [];
+    if (rows.length < 2) return { success: true, checks: [], total: 0 };
+    const headers = rows[0];
+    let records = rows.slice(1).map((row: string[]) => {
+      const obj: any = {};
+      headers.forEach((h: string, i: number) => { obj[h] = row[i] || ''; });
+      return obj;
+    });
+    // 필터
+    const { productName: filterProduct } = params || {};
+    if (filterProduct) records = records.filter((r: any) => (r.productName || '').includes(filterProduct));
+    records.reverse(); // 최신순
+    const limit = params?.limit || 20;
+    return { success: true, checks: records.slice(0, limit), total: records.length };
+  } catch (e: any) {
+    return { success: false, error: e.message };
+  }
+}
+
+// ══════════════════════════════════════════════════════════════
 // ── MAIN HANDLER ──
 // ══════════════════════════════════════════════════════════════
 export default async function handler(req: VercelRequest, res: VercelResponse) {
@@ -1372,6 +1582,16 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       }
       if (resolvedTask === 'outreach-save-candidates' || resolvedTask === 'outreach-save') {
         const result = await handleOutreachSaveCandidates(params || rest);
+        return res.status(200).json(result);
+      }
+
+      // ── Market Price: 농산물 가격 판단 ──
+      if (resolvedTask === 'market-price-check') {
+        const result = await handleMarketPriceCheck(params || rest);
+        return res.status(200).json(result);
+      }
+      if (resolvedTask === 'market-price-list') {
+        const result = await handleMarketPriceList(params || rest);
         return res.status(200).json(result);
       }
 
