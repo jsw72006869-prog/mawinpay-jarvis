@@ -341,28 +341,29 @@ async function handleSmartstoreOrders(params: any) {
   };
 }
 
-// ── 주문 목록 + 상세 조회 (병렬 최적화) ──
+// ── 주문 목록 + 상세 조회 (QuotaGuard 동시연결 제한 대응) ──
 async function fetchOrders(statuses: string[], days: number): Promise<any[]> {
   const now = new Date();
   const startDate = new Date();
   startDate.setDate(startDate.getDate() - days);
 
-  // 일별 조회 요청을 생성 (네이버 API는 24시간 단위 조회 제한)
-  const dayRequests: Array<{ from: Date; to: Date }> = [];
-  for (let i = 0; i < days; i++) {
-    const currentFrom = new Date(startDate.getTime() + i * 24 * 60 * 60 * 1000);
-    const currentTo = new Date(currentFrom.getTime() + 24 * 60 * 60 * 1000);
-    if (currentFrom >= now) break;
-    if (currentTo > now) currentTo.setTime(now.getTime());
-    dayRequests.push({ from: currentFrom, to: currentTo });
+  // 7일 단위 구간으로 조회 (요청 수 최소화)
+  const CHUNK_DAYS = 7;
+  const chunkRequests: Array<{ from: Date; to: Date }> = [];
+  for (let i = 0; i < days; i += CHUNK_DAYS) {
+    const chunkFrom = new Date(startDate.getTime() + i * 24 * 60 * 60 * 1000);
+    const chunkTo = new Date(chunkFrom.getTime() + CHUNK_DAYS * 24 * 60 * 60 * 1000);
+    if (chunkFrom >= now) break;
+    if (chunkTo > now) chunkTo.setTime(now.getTime());
+    chunkRequests.push({ from: chunkFrom, to: chunkTo });
   }
 
-  // 병렬 배치 처리 (15개씩 동시 호출 - 토큰 캐시로 속도 대폭 개선)
+  // QuotaGuard 동시연결 제한 대응: 3개씩 순차 병렬
   let allProductOrderIds: string[] = [];
-  const BATCH_SIZE = 15;
+  const BATCH_SIZE = 3;
 
-  for (let batchStart = 0; batchStart < dayRequests.length; batchStart += BATCH_SIZE) {
-    const batch = dayRequests.slice(batchStart, batchStart + BATCH_SIZE);
+  for (let batchStart = 0; batchStart < chunkRequests.length; batchStart += BATCH_SIZE) {
+    const batch = chunkRequests.slice(batchStart, batchStart + BATCH_SIZE);
     const batchResults = await Promise.all(
       batch.map(async ({ from, to }) => {
         const params = new URLSearchParams();
@@ -400,14 +401,14 @@ async function fetchOrders(statuses: string[], days: number): Promise<any[]> {
   allProductOrderIds = [...new Set(allProductOrderIds)];
   if (allProductOrderIds.length === 0) return [];
 
-  // 상세 조회 (병렬)
+  // 상세 조회
   let allDetailOrders: any[] = [];
   for (let i = 0; i < allProductOrderIds.length; i += 300) {
-    const batch = allProductOrderIds.slice(i, i + 300);
+    const idBatch = allProductOrderIds.slice(i, i + 300);
     try {
       const detailResult = await smartStoreRequest(
         '/v1/pay-order/seller/product-orders/query',
-        { method: 'POST', body: JSON.stringify({ productOrderIds: batch }) }
+        { method: 'POST', body: JSON.stringify({ productOrderIds: idBatch }) }
       );
       if (detailResult.status === 200) {
         const detailData = detailResult.data.data || detailResult.data;
