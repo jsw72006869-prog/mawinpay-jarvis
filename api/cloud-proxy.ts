@@ -269,20 +269,13 @@ async function handleSmartstoreOrders(params: any) {
       return po.placeOrderStatus === 'OK';
     });
 
-    // 2) 배송중/배송완료: DISPATCHED 7일 조회 후 productOrderStatus로 분류
-    // 배송완료 건은 7일 이전에 발송처리되었을 수 있으므로 14일로 확대
-    const dispatchedItems = await getLastChangedItems('DISPATCHED', 14);
-    // 중복 제거 (productOrderId 기준)
-    const uniqueDispatched = new Map<string, any>();
-    for (const item of dispatchedItems) {
-      uniqueDispatched.set(item.productOrderId, item);
-    }
-    let shippingCount = 0;
-    let deliveredCount = 0;
-    for (const item of uniqueDispatched.values()) {
-      if (item.productOrderStatus === 'DELIVERING') shippingCount++;
-      else if (item.productOrderStatus === 'DELIVERED') deliveredCount++;
-    }
+    // 2) 배송중/배송완료: fetchOrders로 현재 상태 기준 조회 (결제일 30일 기준)
+    // 네이버 대시보드의 배송중/배송완료는 현재 상태 기준이므로
+    // DELIVERING + DELIVERED 상태를 직접 조회
+    const shippingOrders = await fetchOrders(['DELIVERING'], 60);
+    const deliveredOrders = await fetchOrders(['DELIVERED'], 60);
+    const shippingCount = shippingOrders.length;
+    const deliveredCount = deliveredOrders.length;
 
     // 3) 구매확정: PURCHASE_DECIDED 7일 조회
     const decidedItems = await getLastChangedItems('PURCHASE_DECIDED', 7);
