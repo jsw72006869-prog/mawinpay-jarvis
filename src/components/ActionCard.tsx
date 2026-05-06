@@ -29,6 +29,7 @@ export interface ActionContext {
   preShipTotal?: number;
   product?: string;
   contentType?: string;
+  sourceCommand?: string;
 }
 
 export interface WorkflowStep {

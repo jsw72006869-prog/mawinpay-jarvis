@@ -619,6 +619,30 @@ async function sheetsRead(tab: string, range?: string): Promise<any> {
   return res.json();
 }
 
+const SHEET_HEADERS: Record<string, string[]> = {
+  jarvis_records: ['recordId','createdAt','type','title','summary','sourceCommand','status','tags','linkedSheetTab','createdBy','safePreview'],
+  briefings: ['briefingId','createdAt','todayOrders','currentNewOrders','pendingShipping','preShipTotal','todaySales','recommendedActions','briefingText'],
+  creative_scripts: ['scriptId','createdAt','product','platform','hook','caption','threadPost','kakaoMessage','reelsScript','recommendedGrowthLink','status','sourceCommand'],
+  growth_campaigns: ['campaignId','createdAt','product','source','targetUrl','directUrl','couponCode','campaignMemo','status'],
+  purchase_order_drafts: ['draftId','createdAt','supplier','productSummary','totalQuantity','totalAmountIfAvailable','status','safePreview'],
+};
+
+async function ensureHeaders(tab: string): Promise<void> {
+  const headers = SHEET_HEADERS[tab];
+  if (!headers) return;
+  const result = await sheetsRead(tab, `${tab}!A1:A1`);
+  if (!result.values || result.values.length === 0) {
+    const token = await getGoogleSheetsToken();
+    const range = encodeURIComponent(`${tab}!A1`);
+    const url = `https://sheets.googleapis.com/v4/spreadsheets/${WORKSPACE_SHEET_ID}/values/${range}?valueInputOption=RAW`;
+    await fetch(url, {
+      method: 'PUT',
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ values: [headers] }),
+    });
+  }
+}
+
 function generateRecordId(type: string): string {
   const ts = Date.now().toString(36);
   const rand = Math.random().toString(36).slice(2, 6);
@@ -634,6 +658,14 @@ async function handleWorkspaceSave(params: any) {
   const recordId = generateRecordId(type);
 
   try {
+    // 0. 헤더 보장
+    const targetTab = type === 'briefing' ? 'briefings' :
+      type === 'creative_script' ? 'creative_scripts' :
+      type === 'growth_campaign' ? 'growth_campaigns' :
+      type === 'purchase_order_draft' ? 'purchase_order_drafts' : '';
+    if (targetTab) await ensureHeaders(targetTab);
+    await ensureHeaders('jarvis_records');
+
     // 1. 타입별 탭에 저장
     if (type === 'briefing' && data) {
       await sheetsAppend('briefings', [[
