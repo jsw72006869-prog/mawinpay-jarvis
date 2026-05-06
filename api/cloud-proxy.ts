@@ -269,13 +269,17 @@ async function handleSmartstoreOrders(params: any) {
       return po.placeOrderStatus === 'OK';
     });
 
-    // 2) 배송중/배송완료: fetchOrders로 현재 상태 기준 조회 (결제일 30일 기준)
-    // 네이버 대시보드의 배송중/배송완료는 현재 상태 기준이므로
-    // DELIVERING + DELIVERED 상태를 직접 조회
-    const shippingOrders = await fetchOrders(['DELIVERING'], 60);
-    const deliveredOrders = await fetchOrders(['DELIVERED'], 60);
-    const shippingCount = shippingOrders.length;
-    const deliveredCount = deliveredOrders.length;
+    // 2) 배송중/배송완료: PAYED와 함께 한 번에 조회하여 타임아웃 방지
+    // fetchOrders로 DELIVERING+DELIVERED 상태를 30일 기준 조회
+    const shippingDeliveredOrders = await fetchOrders(['DELIVERING', 'DELIVERED'], queryDays);
+    let shippingCount = 0;
+    let deliveredCount = 0;
+    for (const o of shippingDeliveredOrders) {
+      const po = o.productOrder || o;
+      const status = po.productOrderStatus || o.productOrderStatus;
+      if (status === 'DELIVERING') shippingCount++;
+      else if (status === 'DELIVERED') deliveredCount++;
+    }
 
     // 3) 구매확정: PURCHASE_DECIDED 7일 조회
     const decidedItems = await getLastChangedItems('PURCHASE_DECIDED', 7);
