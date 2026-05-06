@@ -631,19 +631,47 @@ const SHEET_HEADERS: Record<string, string[]> = {
   purchase_order_drafts: ['draftId','createdAt','supplier','productSummary','totalQuantity','totalAmountIfAvailable','status','safePreview'],
 };
 
+async function ensureTab(tab: string): Promise<void> {
+  const token = await getGoogleSheetsToken();
+  const url = `https://sheets.googleapis.com/v4/spreadsheets/${WORKSPACE_SHEET_ID}:batchUpdate`;
+  await fetch(url, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ requests: [{ addSheet: { properties: { title: tab } } }] }),
+  });
+  // Ignore error if tab already exists
+}
+
 async function ensureHeaders(tab: string): Promise<void> {
   const headers = SHEET_HEADERS[tab];
   if (!headers) return;
-  const result = await sheetsRead(tab, `${tab}!A1:A1`);
-  if (!result.values || result.values.length === 0) {
-    const token = await getGoogleSheetsToken();
-    const range = encodeURIComponent(`${tab}!A1`);
-    const url = `https://sheets.googleapis.com/v4/spreadsheets/${WORKSPACE_SHEET_ID}/values/${range}?valueInputOption=RAW`;
-    await fetch(url, {
-      method: 'PUT',
-      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ values: [headers] }),
-    });
+  try {
+    const result = await sheetsRead(tab, `${tab}!A1:A1`);
+    if (!result.values || result.values.length === 0) {
+      const token = await getGoogleSheetsToken();
+      const range = encodeURIComponent(`${tab}!A1`);
+      const url = `https://sheets.googleapis.com/v4/spreadsheets/${WORKSPACE_SHEET_ID}/values/${range}?valueInputOption=RAW`;
+      await fetch(url, {
+        method: 'PUT',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ values: [headers] }),
+      });
+    }
+  } catch (e: any) {
+    // Tab doesn't exist - create it first
+    if (e.message?.includes('Unable to parse range') || e.message?.includes('400') || e.message?.includes('404')) {
+      await ensureTab(tab);
+      const token = await getGoogleSheetsToken();
+      const range = encodeURIComponent(`${tab}!A1`);
+      const url = `https://sheets.googleapis.com/v4/spreadsheets/${WORKSPACE_SHEET_ID}/values/${range}?valueInputOption=RAW`;
+      await fetch(url, {
+        method: 'PUT',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ values: [headers] }),
+      });
+    } else {
+      throw e;
+    }
   }
 }
 
