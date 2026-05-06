@@ -169,7 +169,7 @@ export default function MarketIntelCard({ visible, onClose }: MarketIntelCardPro
               {trendIcon}
             </span>
             <span style={{ color: trendColor, fontSize: '12px', fontWeight: 600 }}>
-              {marketData.changePercent !== undefined ? `${marketData.changePercent > 0 ? '+' : ''}${marketData.changePercent.toFixed(1)}%` : 'N/A'}
+              {marketData.changePercent !== undefined && !isNaN(marketData.changePercent) ? `${marketData.changePercent > 0 ? '+' : ''}${marketData.changePercent.toFixed(1)}%` : 'N/A'}
             </span>
             <span style={{ color: '#5A6A7A', fontSize: '10px' }}>전일 대비</span>
           </div>

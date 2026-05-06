@@ -291,6 +291,12 @@ async function handleSmartstoreOrders(params: any) {
     }
     const decidedCount = uniqueDecided.size;
 
+    // 4) 정산예정 금액: PURCHASE_DECIDED 7일 데이터에서 settlementExpectationAmount 합산
+    let settlementExpectationAmount = 0;
+    for (const item of uniqueDecided.values()) {
+      settlementExpectationAmount += Number(item.settlementExpectationAmount || 0);
+    }
+
     return {
       allOrders: payedOrders,
       payed: payedOrders,
@@ -299,6 +305,7 @@ async function handleSmartstoreOrders(params: any) {
       shipping: shippingCount,
       delivered: deliveredCount,
       purchaseConfirmed: decidedCount,
+      settlementExpectationAmount,
     };
   }
 
@@ -397,8 +404,8 @@ async function handleSmartstoreOrders(params: any) {
     return { success: true, debug: results, from: fromUtc24, to: toUtc };
   }
 
-  // ── current_new_orders / query_pending_shipping / query_pre_shipping_total ──
-  if (action === 'current_new_orders' || action === 'query_pending_shipping' || action === 'query_pre_shipping_total') {
+  // ── current_new_orders / query_pending_shipping / query_pre_shipping_total / query_order_status ──
+  if (action === 'current_new_orders' || action === 'query_pending_shipping' || action === 'query_pre_shipping_total' || action === 'query_order_status') {
     const counts = await getAllCounts(30);
 
     const response: any = {
@@ -414,6 +421,7 @@ async function handleSmartstoreOrders(params: any) {
         shipping: counts.shipping,
         delivered: counts.delivered,
         purchaseConfirmed: counts.purchaseConfirmed,
+        settlementExpectationAmount: counts.settlementExpectationAmount || 0,
       },
       // 하위호환 필드 (프론트엔드 안전 매핑)
       newOrders: counts.newOrders.length,
@@ -473,6 +481,7 @@ async function handleSmartstoreOrders(params: any) {
         shipping: counts.shipping,
         delivered: counts.delivered,
         purchaseConfirmed: counts.purchaseConfirmed,
+        settlementExpectationAmount: counts.settlementExpectationAmount || 0,
       },
       newOrders: counts.newOrders.length,
       pendingShipping: counts.pendingShipping.length,
@@ -611,11 +620,22 @@ async function fetchOrders(statuses: string[], days: number): Promise<any[]> {
 // ── Daily Briefing 핸들러 (통일 구조 v3) ──
 async function handleDailyBriefing() {
   // 1. 스마트스토어 데이터 (5개 상태값)
-  const ordersResult = await handleSmartstoreOrders({ action: 'query_order_status' });
-  const counts = ordersResult.counts || {
-    newOrders: 0, pendingShipping: 0, preShipTotal: 0,
-    shipping: 0, delivered: 0, purchaseConfirmed: 0
-  };
+  let ordersResult;
+  try {
+    ordersResult = await handleSmartstoreOrders({ action: 'query_order_status' });
+  } catch (e: any) {
+    ordersResult = { success: false, error: e.message };
+  }
+
+  if (!ordersResult.success || !ordersResult.counts) {
+    return {
+      success: false,
+      error: '주문현황 최신 데이터를 불러오지 못했습니다.',
+      detail: ordersResult.error || 'Unknown error',
+      missionLog: '스마트스토어 API 호출 실패로 브리핑 중단'
+    };
+  }
+  const counts = ordersResult.counts;
 
   // 2. KAMIS 데이터 (배추 기본)
   const kamisResult = await handleKamisMini({ item: '배추' });
@@ -665,7 +685,10 @@ async function handleDailyBriefing() {
     fetchedAt: new Date().toISOString(),
     jarvisSummary,
     smartstore: {
-      counts,
+      counts: {
+        ...counts,
+        settlementExpectationAmount: counts.settlementExpectationAmount || 0
+      },
       lastChecked: new Date().toLocaleString('ko-KR', { timeZone: 'Asia/Seoul' }),
       source: 'Naver Commerce API'
     },
@@ -673,6 +696,8 @@ async function handleDailyBriefing() {
       item: kamisResult.item || '배추',
       prices: kamisResult.prices || null,
       direction: kamisResult.direction || 'N/A',
+      changePercent: kamisResult.changePercent,
+      trend: kamisResult.changePercent > 0 ? 'up' : kamisResult.changePercent < 0 ? 'down' : 'stable',
       message: kamisResult.message || '',
       isProxy: kamisResult.isProxy,
       proxyNote: kamisResult.proxyNote
@@ -1820,11 +1845,17 @@ async function handleKamisMini(params: any) {
         average: best.dpr7 || '-',
       },
       direction: (() => {
-        const t = parseInt((best.dpr1 || '0').replace(/,/g, ''));
-        const m = parseInt((best.dpr5 || '0').replace(/,/g, ''));
-        if (!t || !m) return 'N/A';
+        const t = parseFloat((best.dpr1 || '0').replace(/,/g, ''));
+        const m = parseFloat((best.dpr5 || '0').replace(/,/g, ''));
+        if (!t || !m || isNaN(t) || isNaN(m)) return 'N/A';
         const diff = ((t - m) / m * 100).toFixed(1);
         return Number(diff) > 0 ? `+${diff}%` : `${diff}%`;
+      })(),
+      changePercent: (() => {
+        const t = parseFloat((best.dpr1 || '0').replace(/,/g, ''));
+        const m = parseFloat((best.dpr5 || '0').replace(/,/g, ''));
+        if (!t || !m || isNaN(t) || isNaN(m)) return NaN;
+        return (t - m) / m * 100;
       })(),
     };
 
