@@ -4546,32 +4546,44 @@ export default function JarvisApp() {
         )}
       </AnimatePresence>
 
-      {/* ── ActionCard (Phase UI-C-Final) ── */}
-      <AnimatePresence>
-        {actionContext && (
-          <ActionCard
-            context={actionContext}
-            workflowSteps={workflowSteps}
-            approvalPreview={approvalPreview}
-            onApprovalDismiss={() => setApprovalPreview(null)}
-            onActionSelect={(cmd: string) => {
-              setActionContext(null);
-              setWorkflowSteps([]);
-              setApprovalPreview(null);
-              handleTextSubmit(cmd);
-            }}
-            onDismiss={() => {
-              setActionContext(null);
-              setWorkflowSteps([]);
-              setApprovalPreview(null);
-            }}
-            onSave={async (type: string, data: any) => {
-              const result = await saveToWorkspace(type, data, actionContext?.sourceCommand || '');
-              return result;
-            }}
-          />
-        )}
-      </AnimatePresence>
+      {/* ── ActionCard (Phase UI-D: 우측 중단 고정) ── */}
+      <div style={{
+        position: 'fixed',
+        top: 'calc(50% + 40px)',
+        right: 20,
+        width: 380,
+        maxHeight: '45vh',
+        overflowY: 'auto',
+        overflowX: 'hidden',
+        zIndex: 48,
+        pointerEvents: actionContext ? 'auto' : 'none',
+      }}>
+        <AnimatePresence>
+          {actionContext && (
+            <ActionCard
+              context={actionContext}
+              workflowSteps={workflowSteps}
+              approvalPreview={approvalPreview}
+              onApprovalDismiss={() => setApprovalPreview(null)}
+              onActionSelect={(cmd: string) => {
+                setActionContext(null);
+                setWorkflowSteps([]);
+                setApprovalPreview(null);
+                handleTextSubmit(cmd);
+              }}
+              onDismiss={() => {
+                setActionContext(null);
+                setWorkflowSteps([]);
+                setApprovalPreview(null);
+              }}
+              onSave={async (type: string, data: any) => {
+                const result = await saveToWorkspace(type, data, actionContext?.sourceCommand || '');
+                return result;
+              }}
+            />
+          )}
+        </AnimatePresence>
+      </div>
 
       {/* ── TOUCH TO ACTIVATE 힌트 ── */}
       <AnimatePresence>
