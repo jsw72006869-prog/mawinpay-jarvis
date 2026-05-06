@@ -187,29 +187,44 @@ async function handleSmartstoreOrders(params: any) {
     };
   }
 
-  // 공통: PAYED 주문 조회 + 분류
-  async function getPayedCounts(queryDays: number) {
-    const payedResult = await fetchOrders(['PAYED'], queryDays);
-    const newOrders = payedResult.filter((o: any) => {
+  // 공통: 모든 상태 주문을 한 번에 조회하고 상태별 분류 (Vercel 60초 타임아웃 대응)
+  async function getAllCounts(queryDays: number) {
+    // 모든 상태를 한 번에 조회 (30일 x 1회 = 30개 순차 요청, ~45초)
+    const allOrders = await fetchOrders(
+      ['PAYED', 'DELIVERING', 'DELIVERED', 'PURCHASE_DECIDED'],
+      queryDays
+    );
+
+    // 상태별 분류
+    const payed: any[] = [];
+    const delivering: any[] = [];
+    const delivered: any[] = [];
+    const decided: any[] = [];
+
+    for (const order of allOrders) {
+      const po = order.productOrder || order;
+      const status = po.productOrderStatus || '';
+      if (status === 'PAYED') payed.push(order);
+      else if (status === 'DELIVERING') delivering.push(order);
+      else if (status === 'DELIVERED') delivered.push(order);
+      else if (status === 'PURCHASE_DECIDED') decided.push(order);
+    }
+
+    // PAYED 내에서 신규주문 vs 배송준비 분류
+    const newOrders = payed.filter((o: any) => {
       const po = o.productOrder || o;
       return po.placeOrderStatus !== 'OK';
     });
-    const pendingShipping = payedResult.filter((o: any) => {
+    const pendingShipping = payed.filter((o: any) => {
       const po = o.productOrder || o;
       return po.placeOrderStatus === 'OK';
     });
-    return { payedResult, newOrders, pendingShipping };
-  }
 
-  // 배송중/배송완료/구매확정 건수 조회 (순차 실행 - QuotaGuard 동시연결 제한 대응)
-  // 네이버 대시보드는 결제일 무관 현재 상태 전체를 표시하므로 충분한 기간 조회 필요
-  async function getExtraCounts() {
-    // 순차 실행으로 QuotaGuard 동시연결 초과 방지 (Vercel 60초 타임아웃 내 완료 필요)
-    // 14일(PAYED) + 30일(DELIVERING) + 14일(DELIVERED) + 30일(DECIDED) = 총 88일/5배치 = ~18배치 x 2초 = ~36초
-    const delivering = await fetchOrders(['DELIVERING'], 30);
-    const delivered = await fetchOrders(['DELIVERED'], 14);
-    const decided = await fetchOrders(['PURCHASE_DECIDED'], 30);
     return {
+      allOrders,
+      payed,
+      newOrders,
+      pendingShipping,
       shipping: delivering.length,
       delivered: delivered.length,
       purchaseConfirmed: decided.length,
@@ -218,9 +233,7 @@ async function handleSmartstoreOrders(params: any) {
 
   // ── current_new_orders / query_pending_shipping / query_pre_shipping_total ──
   if (action === 'current_new_orders' || action === 'query_pending_shipping' || action === 'query_pre_shipping_total') {
-    const { payedResult, newOrders, pendingShipping } = await getPayedCounts(14);
-    let extra = { shipping: 0, delivered: 0, purchaseConfirmed: 0 };
-    try { extra = await getExtraCounts(); } catch (e) { /* non-critical */ }
+    const counts = await getAllCounts(30);
 
     const response: any = {
       success: true,
@@ -229,23 +242,23 @@ async function handleSmartstoreOrders(params: any) {
       cacheAgeMs: 0,
       isCached: false,
       counts: {
-        newOrders: newOrders.length,
-        pendingShipping: pendingShipping.length,
-        preShipTotal: payedResult.length,
-        shipping: extra.shipping,
-        delivered: extra.delivered,
-        purchaseConfirmed: extra.purchaseConfirmed,
+        newOrders: counts.newOrders.length,
+        pendingShipping: counts.pendingShipping.length,
+        preShipTotal: counts.payed.length,
+        shipping: counts.shipping,
+        delivered: counts.delivered,
+        purchaseConfirmed: counts.purchaseConfirmed,
       },
       // 하위호환 필드 (프론트엔드 안전 매핑)
-      newOrders: newOrders.length,
-      pendingShipping: pendingShipping.length,
-      preShipTotal: payedResult.length,
-      orders: payedResult.map(safeOrderMap),
+      newOrders: counts.newOrders.length,
+      pendingShipping: counts.pendingShipping.length,
+      preShipTotal: counts.payed.length,
+      orders: counts.payed.map(safeOrderMap),
     };
 
     // data 필드도 유지 (OrderDashboard 호환)
     if (action === 'current_new_orders') {
-      response.data = payedResult.map(safeOrderMap);
+      response.data = counts.payed.map(safeOrderMap);
     }
 
     return response;
@@ -253,7 +266,7 @@ async function handleSmartstoreOrders(params: any) {
 
   // ── query_orders_today: 오늘 신규주문 ──
   if (action === 'query_orders_today') {
-    const { payedResult, newOrders, pendingShipping } = await getPayedCounts(1);
+    const counts = await getAllCounts(1);
     return {
       success: true,
       source: 'naver-commerce-api',
@@ -261,29 +274,25 @@ async function handleSmartstoreOrders(params: any) {
       cacheAgeMs: 0,
       isCached: false,
       counts: {
-        newOrders: newOrders.length,
-        pendingShipping: pendingShipping.length,
-        preShipTotal: payedResult.length,
+        newOrders: counts.newOrders.length,
+        pendingShipping: counts.pendingShipping.length,
+        preShipTotal: counts.payed.length,
         shipping: 0,
         delivered: 0,
         purchaseConfirmed: 0,
       },
-      newOrders: newOrders.length,
-      pendingShipping: pendingShipping.length,
-      preShipTotal: payedResult.length,
-      data: payedResult.map(safeOrderMap),
-      orders: payedResult.map(safeOrderMap),
+      newOrders: counts.newOrders.length,
+      pendingShipping: counts.pendingShipping.length,
+      preShipTotal: counts.payed.length,
+      data: counts.payed.map(safeOrderMap),
+      orders: counts.payed.map(safeOrderMap),
     };
   }
 
   // ── query_order_status: 전체 주문 현황 (대시보드용) ──
   if (action === 'query_order_status') {
-    const { payedResult, newOrders, pendingShipping } = await getPayedCounts(14);
-    let extra = { shipping: 0, delivered: 0, purchaseConfirmed: 0 };
-    try { extra = await getExtraCounts(); } catch (e) { /* non-critical */ }
-
-    // 전체 주문 목록 (대시보드 표시용)
-    const allOrders = payedResult.map(safeOrderMap);
+    const counts = await getAllCounts(30);
+    const allOrders = counts.allOrders.map(safeOrderMap);
 
     return {
       success: true,
@@ -292,16 +301,16 @@ async function handleSmartstoreOrders(params: any) {
       cacheAgeMs: 0,
       isCached: false,
       counts: {
-        newOrders: newOrders.length,
-        pendingShipping: pendingShipping.length,
-        preShipTotal: payedResult.length,
-        shipping: extra.shipping,
-        delivered: extra.delivered,
-        purchaseConfirmed: extra.purchaseConfirmed,
+        newOrders: counts.newOrders.length,
+        pendingShipping: counts.pendingShipping.length,
+        preShipTotal: counts.payed.length,
+        shipping: counts.shipping,
+        delivered: counts.delivered,
+        purchaseConfirmed: counts.purchaseConfirmed,
       },
-      newOrders: newOrders.length,
-      pendingShipping: pendingShipping.length,
-      preShipTotal: payedResult.length,
+      newOrders: counts.newOrders.length,
+      pendingShipping: counts.pendingShipping.length,
+      preShipTotal: counts.payed.length,
       data: allOrders,
       orders: allOrders,
     };
@@ -357,44 +366,54 @@ async function fetchOrders(statuses: string[], days: number): Promise<any[]> {
     dayRequests.push({ from: dayFrom, to: dayTo });
   }
 
-  // QuotaGuard 동시연결 제한 대응: 5개씩 순차 병렬 (토큰 캐시 + 순차 getExtraCounts로 안정성 확보)
+  // QuotaGuard 동시연결 제한 대응: 순차 실행 + 재시도 (2회)
   let allProductOrderIds: string[] = [];
-  const BATCH_SIZE = 5;
 
-  for (let batchStart = 0; batchStart < dayRequests.length; batchStart += BATCH_SIZE) {
-    const batch = dayRequests.slice(batchStart, batchStart + BATCH_SIZE);
-    const batchResults = await Promise.all(
-      batch.map(async ({ from, to }) => {
-        const params = new URLSearchParams();
-        params.append('from', formatNaverDate(from));
-        params.append('to', formatNaverDate(to));
-        params.append('rangeType', 'PAYED_DATETIME');
-        params.append('pageSize', '300');
-        params.append('page', '1');
-        statuses.forEach(s => params.append('productOrderStatuses', s));
+  async function fetchDayWithRetry(from: Date, to: Date, maxRetries = 2): Promise<string[]> {
+    const params = new URLSearchParams();
+    params.append('from', formatNaverDate(from));
+    params.append('to', formatNaverDate(to));
+    params.append('rangeType', 'PAYED_DATETIME');
+    params.append('pageSize', '300');
+    params.append('page', '1');
+    statuses.forEach(s => params.append('productOrderStatuses', s));
 
-        try {
-          const result = await smartStoreRequest(
-            `/v1/pay-order/seller/product-orders?${params.toString()}`,
-            { method: 'GET' }
-          );
-          if (result.status === 200) {
-            const responseData = result.data.data || result.data;
-            const contents = responseData.contents || responseData || [];
-            if (Array.isArray(contents)) {
-              return contents.map((item: any) => {
-                const po = item.productOrder || item;
-                return po.productOrderId || null;
-              }).filter(Boolean);
-            }
+    for (let attempt = 0; attempt <= maxRetries; attempt++) {
+      try {
+        const result = await smartStoreRequest(
+          `/v1/pay-order/seller/product-orders?${params.toString()}`,
+          { method: 'GET' }
+        );
+        if (result.status === 200) {
+          const responseData = result.data.data || result.data;
+          const contents = responseData.contents || responseData || [];
+          if (Array.isArray(contents)) {
+            return contents.map((item: any) => {
+              const po = item.productOrder || item;
+              return po.productOrderId || null;
+            }).filter(Boolean);
           }
-        } catch (err: any) {
-          console.warn(`[cloud-proxy] 주문 목록 조회 실패:`, err.message);
+          return []; // 정상 응답이지만 내용 없음
         }
-        return [];
-      })
-    );
-    batchResults.forEach(ids => allProductOrderIds.push(...ids));
+        // 200이 아닌 경우 재시도
+        if (attempt < maxRetries) {
+          await new Promise(r => setTimeout(r, 500 * (attempt + 1)));
+        }
+      } catch (err: any) {
+        if (attempt < maxRetries) {
+          await new Promise(r => setTimeout(r, 500 * (attempt + 1)));
+        } else {
+          console.warn(`[cloud-proxy] 주문 목록 조회 실패 (${maxRetries+1}회 시도):`, err.message);
+        }
+      }
+    }
+    return [];
+  }
+
+  // 순차 실행 (한 번에 하나씩 - QuotaGuard 안정성 최대화)
+  for (const { from, to } of dayRequests) {
+    const ids = await fetchDayWithRetry(from, to);
+    allProductOrderIds.push(...ids);
   }
 
   allProductOrderIds = [...new Set(allProductOrderIds)];
