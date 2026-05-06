@@ -5,7 +5,7 @@ import crypto from 'crypto';
 // ── Runtime: Node.js (NOT Edge) ──
 export const config = {
   maxDuration: 60,
-  runtime: 'nodejs20.x',
+  runtime: 'nodejs',
 };
 
 // ── 환경변수 (원문 절대 출력 금지) ──
