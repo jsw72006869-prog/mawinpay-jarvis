@@ -431,15 +431,16 @@ export default function JarvisApp() {
       setMarketPriceLoading(false);
 
       if (data.success) {
-        setMarketPriceResult(data.result);
+        const result = { productName: data.productName, calculation: data.calculation, jarvisDecision: data.jarvisDecision, recommendedAction: data.recommendedAction, jarvisMessage: data.jarvisMessage, savedToSheets: data.savedToSheets };
+        setMarketPriceResult(result);
         emitNodeState('jarvis_brain', 'idle');
-        emitMissionLog('📊', 'Market', `${inputData.productName}: ${data.result.jarvisDecision}`, 'success');
+        emitMissionLog('📊', 'Market', `${inputData.productName}: ${data.jarvisDecision}`, 'success');
 
         // ActionCard context 설정
         setActionContext({
           type: 'market_price_result',
           label: `${inputData.productName} 가격 판단 완료`,
-          detail: `마진율 ${data.result.calculation.estimatedMarginRate}% | ${data.result.jarvisDecision}`,
+          detail: `마진율 ${data.calculation.estimatedMarginRate}% | ${data.jarvisDecision}`,
           sourceCommand: `${inputData.productName} 가격 판단`,
         });
 
@@ -453,13 +454,13 @@ export default function JarvisApp() {
           platformFeeRate: inputData.platformFeeRate,
           otherCosts: inputData.otherCosts,
           competitorPrices: inputData.competitorPrices,
-          marginRate: data.result.calculation.estimatedMarginRate,
-          margin: data.result.calculation.estimatedMargin,
-          decision: data.result.jarvisDecision,
-          recommendedAction: data.result.recommendedAction,
+          marginRate: data.calculation.estimatedMarginRate,
+          margin: data.calculation.estimatedMargin,
+          decision: data.jarvisDecision,
+          recommendedAction: data.recommendedAction,
         }, `${inputData.productName} 가격 판단`);
 
-        addMessage('jarvis', data.result.jarvisMessage, true);
+        addMessage('jarvis', data.jarvisMessage, true);
       } else {
         setMarketPriceLoading(false);
         addMessage('jarvis', '가격 판단 중 오류가 발생했습니다. 다시 시도해주세요.', true);
