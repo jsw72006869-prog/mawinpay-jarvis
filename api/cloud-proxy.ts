@@ -187,8 +187,8 @@ async function handleSmartstoreOrders(params: any) {
     };
   }
 
-  // last-changed-statuses API로 특정 상태의 건수를 조회 (네이버 대시보드와 동일한 기준)
-  async function getLastChangedCount(orderStatus: string, days: number): Promise<number> {
+  // product-orders/last-changed-statuses API로 특정 상태의 건수를 조회 (네이버 대시보드와 동일한 기준)
+  async function getLastChangedCount(lastChangedType: string, days: number): Promise<number> {
     const now = new Date();
     const from = new Date(now.getTime() - days * 24 * 60 * 60 * 1000);
     const fromStr = from.toISOString().replace(/\.\d{3}Z$/, '.000Z');
@@ -197,51 +197,82 @@ async function handleSmartstoreOrders(params: any) {
     const params = new URLSearchParams({
       lastChangedFrom: fromStr,
       lastChangedTo: toStr,
-      orderStatuses: orderStatus,
-      page: '1',
-      pageSize: '1',
+      lastChangedType: lastChangedType,
     });
 
     for (let attempt = 0; attempt < 3; attempt++) {
       try {
         const result = await smartStoreRequest(
-          `/v1/pay-order/seller/orders/last-changed-statuses?${params.toString()}`,
+          `/v1/pay-order/seller/product-orders/last-changed-statuses?${params.toString()}`,
           { method: 'GET' }
         );
         if (result.status === 200) {
           const data = result.data.data || result.data;
-          console.log(`[debug] last-changed-statuses(${orderStatus}) response keys:`, Object.keys(result.data), 'data keys:', Object.keys(data || {}), 'totalCount:', data?.totalCount, result.data?.totalCount, 'lastChangeStatuses length:', (data?.lastChangeStatuses || data?.lastChangedStatuses || []).length);
-          // totalCount 필드가 전체 건수를 반환
-          const count = data.totalCount || result.data.totalCount || (data.lastChangeStatuses || data.lastChangedStatuses || []).length || 0;
-          return count;
+          // lastChangeStatuses 배열의 길이가 건수 (limitCount 기본 300)
+          const items = data.lastChangeStatuses || data.lastChangedStatuses || result.data.lastChangeStatuses || result.data.lastChangedStatuses || [];
+          console.log(`[debug] product-orders/last-changed-statuses(${lastChangedType}) items:`, items.length, 'more:', data.more || result.data.more);
+          // more=true이면 300건 이상, 추가 조회 필요
+          if (data.more || result.data.more) {
+            // 추가 페이지 조회로 전체 건수 파악
+            let totalCount = items.length;
+            let lastToken = items[items.length - 1]?.lastChangedDate || '';
+            let hasMore = true;
+            while (hasMore && totalCount < 1000) {
+              const nextParams = new URLSearchParams({
+                lastChangedFrom: lastToken,
+                lastChangedTo: toStr,
+                lastChangedType: lastChangedType,
+              });
+              const nextResult = await smartStoreRequest(
+                `/v1/pay-order/seller/product-orders/last-changed-statuses?${nextParams.toString()}`,
+                { method: 'GET' }
+              );
+              if (nextResult.status === 200) {
+                const nd = nextResult.data.data || nextResult.data;
+                const nextItems = nd.lastChangeStatuses || nd.lastChangedStatuses || nextResult.data.lastChangeStatuses || nextResult.data.lastChangedStatuses || [];
+                totalCount += nextItems.length;
+                hasMore = nd.more || nextResult.data.more || false;
+                if (nextItems.length > 0) lastToken = nextItems[nextItems.length - 1]?.lastChangedDate || '';
+                else hasMore = false;
+              } else {
+                hasMore = false;
+              }
+            }
+            return totalCount;
+          }
+          return items.length;
         } else {
-          console.log(`[debug] last-changed-statuses(${orderStatus}) status:`, result.status, 'data:', JSON.stringify(result.data).slice(0, 300));
+          console.log(`[debug] product-orders/last-changed-statuses(${lastChangedType}) status:`, result.status, 'data:', JSON.stringify(result.data).slice(0, 300));
         }
       } catch (err: any) {
         if (attempt < 2) await new Promise(r => setTimeout(r, 500 * (attempt + 1)));
-        else console.warn(`[cloud-proxy] last-changed-statuses(${orderStatus}) 실패:`, err.message);
+        else console.warn(`[cloud-proxy] product-orders/last-changed-statuses(${lastChangedType}) 실패:`, err.message);
       }
     }
     return 0;
   }
 
-  // 공통: 하이브리드 조회 (PAYED+DELIVERING은 fetchOrders, DELIVERED/DECIDED는 last-changed-statuses)
+  // 공통: 하이브리드 조회
+  // - PAYED+DELIVERING+DELIVERED: fetchOrders로 결제일 기준 조회
+  // - PURCHASE_DECIDED: product-orders/last-changed-statuses API로 조회 (네이버 대시보드 기준)
   async function getAllCounts(queryDays: number) {
-    // 1) PAYED + DELIVERING: 결제일 기준 조회 (30일)
-    const payedAndShipping = await fetchOrders(
-      ['PAYED', 'DELIVERING'],
+    // 1) PAYED + DELIVERING + DELIVERED: 결제일 기준 조회
+    const allOrders = await fetchOrders(
+      ['PAYED', 'DELIVERING', 'DELIVERED'],
       queryDays
     );
 
     // 상태별 분류
     const payed: any[] = [];
     const delivering: any[] = [];
+    const delivered: any[] = [];
 
-    for (const order of payedAndShipping) {
+    for (const order of allOrders) {
       const po = order.productOrder || order;
       const status = po.productOrderStatus || '';
       if (status === 'PAYED') payed.push(order);
       else if (status === 'DELIVERING') delivering.push(order);
+      else if (status === 'DELIVERED') delivered.push(order);
     }
 
     // PAYED 내에서 신규주문 vs 배송준비 분류
@@ -254,25 +285,22 @@ async function handleSmartstoreOrders(params: any) {
       return po.placeOrderStatus === 'OK';
     });
 
-    // 2) DELIVERED + PURCHASE_DECIDED: last-changed-statuses API (네이버 대시보드와 동일 기준)
-    // 네이버 대시보드는 최근 7일 내 상태 변경된 건을 표시
-    const [deliveredCount, decidedCount] = await Promise.all([
-      getLastChangedCount('DELIVERED', 7),
-      getLastChangedCount('PURCHASE_DECIDED', 7),
-    ]);
+    // 2) PURCHASE_DECIDED: product-orders/last-changed-statuses API
+    // 네이버 대시보드는 최근 7일 내 구매확정된 건을 표시
+    const decidedCount = await getLastChangedCount('PURCHASE_DECIDED', 7);
 
     return {
-      allOrders: payedAndShipping,
+      allOrders,
       payed,
       newOrders,
       pendingShipping,
       shipping: delivering.length,
-      delivered: deliveredCount,
+      delivered: delivered.length,
       purchaseConfirmed: decidedCount,
     };
   }
 
-  // ── debug_last_changed: 디버그용 - last-changed-statuses API 원문 확인 ──
+  // ── debug_last_changed: 디버그용 - product-orders/last-changed-statuses API 원문 확인 ──
   if (action === 'debug_last_changed') {
     const now = new Date();
     const from = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
@@ -280,29 +308,29 @@ async function handleSmartstoreOrders(params: any) {
     const toStr = now.toISOString().replace(/\.\d{3}Z$/, '.000Z');
 
     const results: any = {};
-    for (const status of ['DELIVERED', 'PURCHASE_DECIDED', 'DELIVERING']) {
+    for (const changedType of ['PURCHASE_DECIDED', 'DISPATCHED', 'PAYED']) {
       const params = new URLSearchParams({
         lastChangedFrom: fromStr,
         lastChangedTo: toStr,
-        orderStatuses: status,
-        page: '1',
-        pageSize: '5',
+        lastChangedType: changedType,
       });
       try {
         const result = await smartStoreRequest(
-          `/v1/pay-order/seller/orders/last-changed-statuses?${params.toString()}`,
+          `/v1/pay-order/seller/product-orders/last-changed-statuses?${params.toString()}`,
           { method: 'GET' }
         );
-        results[status] = {
+        const data = result.data.data || result.data;
+        const items = data.lastChangeStatuses || data.lastChangedStatuses || result.data.lastChangeStatuses || result.data.lastChangedStatuses || [];
+        results[changedType] = {
           httpStatus: result.status,
           topLevelKeys: Object.keys(result.data),
-          totalCount: result.data?.totalCount || result.data?.data?.totalCount,
-          dataKeys: Object.keys(result.data?.data || {}),
-          itemCount: (result.data?.data?.lastChangeStatuses || result.data?.data?.lastChangedStatuses || result.data?.lastChangeStatuses || result.data?.lastChangedStatuses || []).length,
-          sampleKeys: Object.keys((result.data?.data?.lastChangeStatuses || result.data?.data?.lastChangedStatuses || result.data?.lastChangeStatuses || result.data?.lastChangedStatuses || [])[0] || {}),
+          dataKeys: Object.keys(data || {}),
+          itemCount: items.length,
+          more: data.more || result.data.more || false,
+          sampleKeys: Object.keys(items[0] || {}),
         };
       } catch (err: any) {
-        results[status] = { error: err.message };
+        results[changedType] = { error: err.message };
       }
     }
     return { success: true, debug: results, from: fromStr, to: toStr };
