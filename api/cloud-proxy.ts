@@ -189,11 +189,12 @@ async function handleSmartstoreOrders(params: any) {
   }
 
   // 배송중/배송완료/구매확정 건수 조회 (병렬)
+  // 네이버 대시보드는 결제일 무관 현재 상태 전체를 표시하므로 충분한 기간 조회 필요
   async function getExtraCounts() {
     const [delivering, delivered, decided] = await Promise.all([
-      fetchOrders(['DELIVERING'], 14),
-      fetchOrders(['DELIVERED'], 7),
-      fetchOrders(['PURCHASE_DECIDED'], 7),
+      fetchOrders(['DELIVERING'], 60),   // 배송중: 60일 내 결제 주문 중 현재 배송중
+      fetchOrders(['DELIVERED'], 30),     // 배송완료: 30일 내 결제 주문 중 현재 배송완료
+      fetchOrders(['PURCHASE_DECIDED'], 30), // 구매확정: 30일 내 결제 주문 중 현재 구매확정
     ]);
     return {
       shipping: delivering.length,
@@ -327,53 +328,66 @@ async function handleSmartstoreOrders(params: any) {
   };
 }
 
-// ── 주문 목록 + 상세 조회 (7일 병렬) ──
+// ── 주문 목록 + 상세 조회 (병렬 최적화) ──
 async function fetchOrders(statuses: string[], days: number): Promise<any[]> {
   const now = new Date();
   const startDate = new Date();
   startDate.setDate(startDate.getDate() - days);
 
-  let allProductOrderIds: string[] = [];
-  const maxIterations = Math.min(days, 7);
-
-  for (let i = 0; i < maxIterations; i++) {
+  // 일별 조회 요청을 생성 (네이버 API는 24시간 단위 조회 제한)
+  const dayRequests: Array<{ from: Date; to: Date }> = [];
+  for (let i = 0; i < days; i++) {
     const currentFrom = new Date(startDate.getTime() + i * 24 * 60 * 60 * 1000);
     const currentTo = new Date(currentFrom.getTime() + 24 * 60 * 60 * 1000);
-    if (currentTo > now) currentTo.setTime(now.getTime());
     if (currentFrom >= now) break;
+    if (currentTo > now) currentTo.setTime(now.getTime());
+    dayRequests.push({ from: currentFrom, to: currentTo });
+  }
 
-    const params = new URLSearchParams();
-    params.append('from', formatNaverDate(currentFrom));
-    params.append('to', formatNaverDate(currentTo));
-    params.append('rangeType', 'PAYED_DATETIME');
-    params.append('pageSize', '300');
-    params.append('page', '1');
-    statuses.forEach(s => params.append('productOrderStatuses', s));
+  // 병렬 배치 처리 (7개씩 동시 호출하여 Vercel 60초 타임아웃 내 완료)
+  let allProductOrderIds: string[] = [];
+  const BATCH_SIZE = 7;
 
-    try {
-      const result = await smartStoreRequest(
-        `/v1/pay-order/seller/product-orders?${params.toString()}`,
-        { method: 'GET' }
-      );
-      if (result.status === 200) {
-        const responseData = result.data.data || result.data;
-        const contents = responseData.contents || responseData || [];
-        if (Array.isArray(contents)) {
-          contents.forEach((item: any) => {
-            const po = item.productOrder || item;
-            if (po.productOrderId) allProductOrderIds.push(po.productOrderId);
-          });
+  for (let batchStart = 0; batchStart < dayRequests.length; batchStart += BATCH_SIZE) {
+    const batch = dayRequests.slice(batchStart, batchStart + BATCH_SIZE);
+    const batchResults = await Promise.all(
+      batch.map(async ({ from, to }) => {
+        const params = new URLSearchParams();
+        params.append('from', formatNaverDate(from));
+        params.append('to', formatNaverDate(to));
+        params.append('rangeType', 'PAYED_DATETIME');
+        params.append('pageSize', '300');
+        params.append('page', '1');
+        statuses.forEach(s => params.append('productOrderStatuses', s));
+
+        try {
+          const result = await smartStoreRequest(
+            `/v1/pay-order/seller/product-orders?${params.toString()}`,
+            { method: 'GET' }
+          );
+          if (result.status === 200) {
+            const responseData = result.data.data || result.data;
+            const contents = responseData.contents || responseData || [];
+            if (Array.isArray(contents)) {
+              return contents.map((item: any) => {
+                const po = item.productOrder || item;
+                return po.productOrderId || null;
+              }).filter(Boolean);
+            }
+          }
+        } catch (err: any) {
+          console.warn(`[cloud-proxy] 주문 목록 조회 실패:`, err.message);
         }
-      }
-    } catch (err: any) {
-      console.warn(`[cloud-proxy] 주문 목록 조회 실패:`, err.message);
-    }
+        return [];
+      })
+    );
+    batchResults.forEach(ids => allProductOrderIds.push(...ids));
   }
 
   allProductOrderIds = [...new Set(allProductOrderIds)];
   if (allProductOrderIds.length === 0) return [];
 
-  // 상세 조회
+  // 상세 조회 (병렬)
   let allDetailOrders: any[] = [];
   for (let i = 0; i < allProductOrderIds.length; i += 300) {
     const batch = allProductOrderIds.slice(i, i + 300);
