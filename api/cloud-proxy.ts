@@ -404,8 +404,8 @@ async function handleSmartstoreOrders(params: any) {
     return { success: true, debug: results, from: fromUtc24, to: toUtc };
   }
 
-  // ── current_new_orders / query_pending_shipping / query_pre_shipping_total / query_order_status ──
-  if (action === 'current_new_orders' || action === 'query_pending_shipping' || action === 'query_pre_shipping_total' || action === 'query_order_status') {
+  // ── current_new_orders / query_pending_shipping / query_pre_shipping_total ──
+  if (action === 'current_new_orders' || action === 'query_pending_shipping' || action === 'query_pre_shipping_total') {
     const counts = await getAllCounts(30);
 
     const response: any = {
@@ -619,17 +619,18 @@ async function fetchOrders(statuses: string[], days: number): Promise<any[]> {
 
 // ── Daily Briefing 핸들러 (통일 구조 v3) ──
 async function handleDailyBriefing() {
-  // 1. 스마트스토어 데이터 (5개 상태값) - getAllCounts 직접 호출로 정확도 확보
-  let counts;
+  // 1. 스마트스토어 데이터 (5개 상태값) - handleSmartstoreOrders를 통해 최신 데이터 조회
+  let ordersResult;
   try {
-    counts = await getAllCounts();
+    ordersResult = await handleSmartstoreOrders({ action: 'query_order_status' });
   } catch (e: any) {
     return { success: false, error: `스마트스토어 데이터 수집 실패: ${e.message}` };
   }
 
-  if (!counts || counts.payed === undefined) {
-    return { success: false, error: '스마트스토어 데이터를 가져오지 못했습니다.' };
+  if (!ordersResult || !ordersResult.success || !ordersResult.counts) {
+    return { success: false, error: '스마트스토어 데이터를 가져오지 못했습니다. ' + (ordersResult?.error || '') };
   }
+  const counts = ordersResult.counts;
 
   // 2. KAMIS 데이터 (배추 기본)
   const kamisResult = await handleKamisMini({ item: '배추' });
@@ -680,9 +681,9 @@ async function handleDailyBriefing() {
     jarvisSummary,
     smartstore: {
       counts: {
-        newOrders: counts.newOrders.length,
-        pendingShipping: counts.pendingShipping.length,
-        preShipTotal: counts.payed.length,
+        newOrders: counts.newOrders,
+        pendingShipping: counts.pendingShipping,
+        preShipTotal: counts.preShipTotal,
         shipping: counts.shipping,
         delivered: counts.delivered,
         purchaseConfirmed: counts.purchaseConfirmed,
