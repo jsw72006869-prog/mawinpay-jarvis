@@ -241,6 +241,7 @@ export default function JarvisApp() {
   // ── 주문 대시보드 상태 ──
   const [orderDashboardVisible, setOrderDashboardVisible] = useState(false);
   const [orderDashboardData, setOrderDashboardData] = useState<any[]>([]);
+  const [orderDashboardSummary, setOrderDashboardSummary] = useState<any>(null);
 
   // ── UI 컨텍스트 동기화 (GPT에게 현재 화면 정보 전달) ──
   useEffect(() => {
@@ -3144,6 +3145,14 @@ export default function JarvisApp() {
             // ── 주문 대시보드 UI 자동 표시 ──
             if (Array.isArray(data.data) && data.data.length > 0) {
               setOrderDashboardData(data.data);
+              setOrderDashboardSummary(data.counts ? {
+                newOrders: safeNum(data.counts.newOrders ?? data.newOrders),
+                pendingShipping: safeNum(data.counts.pendingShipping ?? data.pendingShipping),
+                shipping: safeNum(data.counts.shipping ?? data.shipping),
+                delivered: safeNum(data.counts.delivered ?? data.delivered),
+                totalRevenue: 0,
+                todayRevenue: 0,
+              } : null);
               setOrderDashboardVisible(true);
             }
             resultMsg = `[PKG] **${getActionLabel(ssAction)}**\n\n`;
@@ -6402,7 +6411,7 @@ export default function JarvisApp() {
       {/* ── 주문 대시보드 (v5.1) ── */}
       <OrderDashboard
         visible={orderDashboardVisible}
-        data={orderDashboardData.length > 0 ? { orders: orderDashboardData } : null}
+        data={orderDashboardData.length > 0 ? { orders: orderDashboardData, summary: orderDashboardSummary || undefined } : null}
         onClose={() => setOrderDashboardVisible(false)}
         onAction={(actionType, orderId) => {
           // 주문 대시보드에서 발주확인/발송처리 등 액션 실행
