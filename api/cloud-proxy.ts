@@ -182,14 +182,25 @@ function safeOrderMap(item: any) {
   };
 }
 
-// ── product-orders/last-changed-statuses API (24시간 단위 일별 조회, top-level) ──
-async function getLastChangedItems(lastChangedType: string, days: number): Promise<any[]> {
+// ── product-orders/last-changed-statuses API (KST 일별 조회, top-level) ──
+async function getLastChangedItems(lastChangedType: string, days: number, useKST: boolean = false): Promise<any[]> {
   const now = new Date();
   const allItems: any[] = [];
 
   for (let d = 0; d < days; d++) {
-    const to = new Date(now.getTime() - d * 24 * 60 * 60 * 1000);
-    const from = new Date(now.getTime() - (d + 1) * 24 * 60 * 60 * 1000);
+    let from: Date, to: Date;
+    if (useKST) {
+      // KST 기준 날짜 경계 (00:00:00 KST = 15:00:00 UTC 전날)
+      const kstNow = new Date(now.getTime() + 9 * 60 * 60 * 1000);
+      const kstToday = new Date(Date.UTC(kstNow.getUTCFullYear(), kstNow.getUTCMonth(), kstNow.getUTCDate()));
+      // KST 날짜 기준으로 from/to 계산 (UTC로 변환: -9시간)
+      to = new Date(kstToday.getTime() - d * 24 * 60 * 60 * 1000 - 9 * 60 * 60 * 1000 + 24 * 60 * 60 * 1000);
+      from = new Date(kstToday.getTime() - (d + 1) * 24 * 60 * 60 * 1000 - 9 * 60 * 60 * 1000 + 24 * 60 * 60 * 1000);
+      // d=0: from=오늘 KST 00:00(=어제 UTC 15:00), to=내일 KST 00:00(=오늘 UTC 15:00)
+    } else {
+      to = new Date(now.getTime() - d * 24 * 60 * 60 * 1000);
+      from = new Date(now.getTime() - (d + 1) * 24 * 60 * 60 * 1000);
+    }
     const fromStr = from.toISOString().replace(/\.\d{3}Z$/, '.000Z');
     const toStr = to.toISOString().replace(/\.\d{3}Z$/, '.000Z');
 
@@ -268,8 +279,8 @@ async function getSmartstoreStatusCounts(queryDays: number = 30) {
     else if (status === 'DELIVERED') deliveredCount++;
   }
 
-  // 3) 구매확정: PURCHASE_DECIDED 오늘(KST) 조회 (네이버 관리자 화면 기준 일치)
-  const decidedItems = await getLastChangedItems('PURCHASE_DECIDED', 1);
+  // 3) 구매확정: PURCHASE_DECIDED KST 기준 7일 조회 (네이버 관리자 화면 기준 일치)
+  const decidedItems = await getLastChangedItems('PURCHASE_DECIDED', 7, true);
   const uniqueDecided = new Map<string, any>();
   for (const item of decidedItems) {
     uniqueDecided.set(item.productOrderId, item);
