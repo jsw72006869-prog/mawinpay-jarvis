@@ -1370,7 +1370,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         const result = await handleOutreachList(params || rest);
         return res.status(200).json(result);
       }
-      if (resolvedTask === 'outreach-save-candidates') {
+      if (resolvedTask === 'outreach-save-candidates' || resolvedTask === 'outreach-save') {
         const result = await handleOutreachSaveCandidates(params || rest);
         return res.status(200).json(result);
       }
