@@ -269,9 +269,8 @@ async function handleSmartstoreOrders(params: any) {
       return po.placeOrderStatus === 'OK';
     });
 
-    // 2) 배송중/배송완료: PAYED와 함께 한 번에 조회하여 타임아웃 방지
-    // fetchOrders로 DELIVERING+DELIVERED 상태를 30일 기준 조회
-    const shippingDeliveredOrders = await fetchOrders(['DELIVERING', 'DELIVERED'], queryDays);
+    // 2) 배송중/배송완료: 배송완료 건이 30일 이전 결제일 수 있으므로 45일로 확대
+    const shippingDeliveredOrders = await fetchOrders(['DELIVERING', 'DELIVERED'], 45);
     let shippingCount = 0;
     let deliveredCount = 0;
     for (const o of shippingDeliveredOrders) {
