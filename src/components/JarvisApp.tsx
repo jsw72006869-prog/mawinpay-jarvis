@@ -2700,11 +2700,12 @@ export default function JarvisApp() {
           totalAmount: ss.totalAmount || 0,
           influencerTotal: outreach.total || 0,
         });
+        const ssRevenueSign = (ss.revenueChangePercent || 0) >= 0 ? '+' : '';
         emitNodeData('smartstore', {
           '신규주문': ss.newOrders || 0,
           '배송대기': ss.pendingShipping || 0,
           '오늘매출': `${(ss.totalAmount || 0).toLocaleString()}원`,
-          '전일대비': `${revenueSign}${ss.revenueChangePercent || 0}%`,
+          '전일대비': `${ssRevenueSign}${ss.revenueChangePercent || 0}%`,
         });
         emitNodeData('sheets', {
           '인플루언서총계': outreach.total || 0,

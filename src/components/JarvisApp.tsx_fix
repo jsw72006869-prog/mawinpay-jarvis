@@ -1,0 +1,30 @@
+        // 텔레메트리: 브리핑 완료 + 노드 데이터 업데이트
+        emitBriefingSequence('complete', undefined, '모닝 브리핑 완료');
+        telemetryFunctionSuccess('morning_briefing', '모닝 브리핑 완료', {
+          newOrders: ss.newOrders || 0,
+          pendingShipping: ss.pendingShipping || 0,
+          totalAmount: ss.totalAmount || 0,
+          influencerTotal: outreach.total || 0,
+        });
+        const ssRevenueSign = (ss.revenueChangePercent || 0) >= 0 ? '+' : '';
+        emitNodeData('smartstore', {
+          '신규주문': ss.newOrders || 0,
+          '배송대기': ss.pendingShipping || 0,
+          '오늘매출': `${(ss.totalAmount || 0).toLocaleString()}원`,
+          '전일대비': `${ssRevenueSign}${ss.revenueChangePercent || 0}%`,
+        });
+        emitNodeData('sheets', {
+          '인플루언서총계': outreach.total || 0,
+          '어제신규': outreach.newYesterday || 0,
+        });
+
+        // 화면에 보고서 표시 + 음성 브리핑 (비동기)
+        setState('speaking');
+        addMessage('jarvis', briefingDisplay, true);
+        triggerGoldenFlare();
+        setClapBurst(true); setTimeout(() => setClapBurst(false), 120);
+        // TTS 비동기화: 텍스트 먼저 표시, TTS는 후속 처리
+        startSpeakingLevel();
+        speak(voiceBriefing, undefined, () => { stopSpeakingLevel(); });
+        // 패널 완전 종료
+        resetAllNodes();
