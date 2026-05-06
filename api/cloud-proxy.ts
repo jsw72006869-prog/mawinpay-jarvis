@@ -270,7 +270,8 @@ async function handleSmartstoreOrders(params: any) {
     });
 
     // 2) 배송중/배송완료: DISPATCHED 7일 조회 후 productOrderStatus로 분류
-    const dispatchedItems = await getLastChangedItems('DISPATCHED', 7);
+    // 배송완료 건은 7일 이전에 발송처리되었을 수 있으므로 14일로 확대
+    const dispatchedItems = await getLastChangedItems('DISPATCHED', 14);
     // 중복 제거 (productOrderId 기준)
     const uniqueDispatched = new Map<string, any>();
     for (const item of dispatchedItems) {
