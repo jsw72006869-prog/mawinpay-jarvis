@@ -8,7 +8,7 @@ import { saveLearnedKnowledge, getLearnedKnowledge, getMemoryStats, clearAllMemo
 import { appendInfluencersToSheet, appendEmailLogToSheet, appendNaverResultsToSheet, appendInstagramToSheet, appendLocalBusinessToSheet, generateMockInfluencers, generateEmailLogs, sendEmailsViaResend, buildInfluencerEmailHtml, type NaverCollectedData } from '../lib/google-sheets';
 import ConversationStream, { type Message } from './ConversationStream';
 import ConversationPanel, { type STTStatus } from './ConversationPanel';
-import ActionCard, { type ActionContext, type WorkflowStep, buildWorkflowSteps, matchVoiceToAction } from './ActionCard';
+import ActionCard, { type ActionContext, type WorkflowStep, type ApprovalPreviewData, buildWorkflowSteps, matchVoiceToAction, buildApprovalPreview } from './ActionCard';
 import SparkleParticles from './SparkleParticles';
 import ClapDetector from './ClapDetector';
 // import HoloDataPanel from './HoloDataPanel'; // 제거됨
@@ -126,6 +126,7 @@ export default function JarvisApp() {
   const [conversationExpanded, setConversationExpanded] = useState(false);
   const [actionContext, setActionContext] = useState<ActionContext | null>(null);
   const [workflowSteps, setWorkflowSteps] = useState<WorkflowStep[]>([]);
+  const [approvalPreview, setApprovalPreview] = useState<ApprovalPreviewData | null>(null);
   const [dataPanel, setDataPanel] = useState<{
     visible: boolean;
     type: 'collect' | 'send_email' | 'create_banner' | 'report' | 'booking' | 'smartstore' | 'youtube' | null;
@@ -2236,6 +2237,10 @@ export default function JarvisApp() {
       const contentType = String(params.content_type || 'full_package');
       const userMessage = String(params.userMessage || text);
 
+      // Phase UI-C-Final: Mission Log 강화
+      emitMissionLog('🎤', 'COMMANDER', '음성 명령 인식 완료', 'info');
+      emitMissionLog('🧠', 'JARVIS', '의도 판단 완료: Creative Director', 'success');
+      emitMissionLog('✨', 'CREATIVE', `${product || '제품'} ${contentType} 콘텐츠 생성 시작`, 'info');
       // TASK EXECUTION 패널 표시
       emitNodeState('jarvis_brain', 'active', 'Creative Director 작업 중...');
       telemetryFunctionStart('creative_director', `${product} ${contentType} 생성`);
@@ -2286,6 +2291,8 @@ export default function JarvisApp() {
           emitNodeState('jarvis_brain', 'success', 'Creative Director 완료');
           setTimeout(() => emitNodeState('jarvis_brain', 'idle'), 2000);
           telemetryFunctionSuccess('creative_director', `${product} ${contentType} 생성 완료`);
+          emitMissionLog('✅', 'CREATIVE', `${product || '제품'} 콘텐츠 생성 완료`, 'success');
+          emitMissionLog('⏳', 'JARVIS', '대표님 선택 대기 중', 'thinking');
 
           // 메시지 표시
           addMessage('jarvis', creativeResult, true);
@@ -2357,6 +2364,10 @@ export default function JarvisApp() {
         });
       }
 
+      // Phase UI-C-Final: Mission Log 강화
+      emitMissionLog('🎤', 'COMMANDER', '음성 명령 인식 완료', 'info');
+      emitMissionLog('🧠', 'JARVIS', '의도 판단 완료: Morning Briefing', 'success');
+      emitMissionLog('📊', 'BRIEFING', '모닝 브리핑 데이터 수집 시작', 'info');
       // 텔레메트리: 모닝 브리핑 시퀀스 시작
       emitBriefingSequence('start', undefined, '모닝 브리핑 프로토콜 가동');
       telemetryFunctionStart('morning_briefing', '모닝 브리핑 데이터 수집 시작');
@@ -2582,7 +2593,9 @@ export default function JarvisApp() {
         setDataPanel({ visible: false, type: null, progress: 0, message: '' });
       }, 8000);
 
-      // ── Phase UI-C: Briefing ActionCard context 설정 ──
+      // ── Phase UI-C-Final: Briefing ActionCard context 설정 ──
+      emitMissionLog('✅', 'BRIEFING', '브리핑 보고 완료', 'success');
+      emitMissionLog('⏳', 'JARVIS', '대표님 선택 대기 중', 'thinking');
       const briefCtx: ActionContext = { type: 'briefing' };
       setActionContext(briefCtx);
       setWorkflowSteps(buildWorkflowSteps(briefCtx));
@@ -2634,9 +2647,12 @@ export default function JarvisApp() {
         });
       }
 
+      // ── Phase UI-C-Final: Mission Log 강화 ──
+      emitMissionLog('🎤', 'COMMANDER', '음성 명령 인식 완료', 'info');
+      emitMissionLog('🧠', 'JARVIS', '의도 판단 완료', 'success');
+      emitMissionLog('🛠️', 'SMARTSTORE', `스마트스토어 ${getActionLabel(ssAction)} 시작`, 'info');
       telemetryFunctionStart('smartstore_action', `스마트스토어: ${ssAction}`);
-
-      // ── 스마트스토어 행동 로그 패널 활성화 ──
+      // ── 스마트스토어 행동 로그 패널 활성화 ───
       setDataPanel({
         visible: true,
         type: 'smartstore',
@@ -2840,8 +2856,13 @@ export default function JarvisApp() {
           }
 
           if (!data.success) throw new Error(data.error || '스마트스토어 작업 실패');
-
-          // 텔레메트리: 스마트스토어 성공
+          // Phase UI-C-Final: Mission Log - API 응답 수신
+          emitMissionLog('📡', 'NAVER API', 'Naver API 응답 수신', 'success');
+          if (data.newOrders !== undefined) emitMissionLog('📦', 'SMARTSTORE', `신규주문 ${data.newOrders}건 확인`, 'info');
+          if (data.pendingShipping !== undefined) emitMissionLog('🚚', 'SMARTSTORE', `배송준비 ${data.pendingShipping}건 확인`, 'info');
+          emitMissionLog('✅', 'JARVIS', '추천 액션 생성 완료', 'success');
+          emitMissionLog('⏳', 'JARVIS', '대표님 선택 대기 중', 'thinking');
+          // 텔레메트리: 스마트스토어 성공공
           telemetryFunctionSuccess('smartstore_action', `스마트스토어 ${ssAction} 완료`, { action: ssAction });
 
           // 결과 메시지 생성
@@ -2926,14 +2947,16 @@ export default function JarvisApp() {
           // 패널 완전 종료
           resetAllNodes();
 
-          // ── Phase UI-C: ActionCard context 설정 ──
+          // ── Phase UI-C-Final: ActionCard context 설정 + Approval Preview ──
           const ssCtx: ActionContext = {
             type: 'smartstore',
             newOrders: data.newOrders || 0,
             pendingShipping: data.pendingShipping || 0,
+            preShipTotal: data.preShipTotal || ((data.newOrders || 0) + (data.pendingShipping || 0)),
           };
           setActionContext(ssCtx);
           setWorkflowSteps(buildWorkflowSteps(ssCtx));
+          setApprovalPreview(buildApprovalPreview(ssCtx));
           setConversationExpanded(true);
         }
 
@@ -3950,20 +3973,24 @@ export default function JarvisApp() {
         )}
       </AnimatePresence>
 
-      {/* ── ActionCard (Phase UI-C) ── */}
+      {/* ── ActionCard (Phase UI-C-Final) ── */}
       <AnimatePresence>
         {actionContext && (
           <ActionCard
             context={actionContext}
             workflowSteps={workflowSteps}
+            approvalPreview={approvalPreview}
+            onApprovalDismiss={() => setApprovalPreview(null)}
             onActionSelect={(cmd: string) => {
               setActionContext(null);
               setWorkflowSteps([]);
+              setApprovalPreview(null);
               handleTextSubmit(cmd);
             }}
             onDismiss={() => {
               setActionContext(null);
               setWorkflowSteps([]);
+              setApprovalPreview(null);
             }}
           />
         )}

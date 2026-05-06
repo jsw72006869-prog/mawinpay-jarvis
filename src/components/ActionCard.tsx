@@ -1,8 +1,8 @@
 /**
- * ActionCard.tsx — Phase UI-C
+ * ActionCard.tsx — Phase UI-C-Final
  * 
  * 상황별 액션 추천 카드 + 클릭 가능 버튼 + Approval Preview (disabled)
- * + Visual Workflow Timeline
+ * + Visual Workflow Timeline + Mission Log 연동
  * 
  * 버튼 클릭 시 safe action만 실행 (observe/draft)
  * execute 작업은 Approval Preview로만 표시 (disabled)
@@ -26,6 +26,7 @@ export interface ActionContext {
   type: 'smartstore' | 'creative' | 'growth_link' | 'briefing' | 'general';
   newOrders?: number;
   pendingShipping?: number;
+  preShipTotal?: number;
   product?: string;
   contentType?: string;
 }
@@ -37,11 +38,22 @@ export interface WorkflowStep {
   timestamp?: string;
 }
 
+export interface ApprovalPreviewData {
+  title: string;
+  description: string;
+  affectedCount: number;
+  changeFrom: string;
+  changeTo: string;
+  items?: string[];
+}
+
 interface ActionCardProps {
   context: ActionContext;
   onActionSelect: (command: string) => void;
   onDismiss: () => void;
   workflowSteps?: WorkflowStep[];
+  approvalPreview?: ApprovalPreviewData | null;
+  onApprovalDismiss?: () => void;
 }
 
 // ── Theme ──
@@ -55,6 +67,7 @@ const THEME = {
   green: '#22C55E',
   red: '#EF4444',
   purple: '#A855F7',
+  orange: '#FF8C00',
   btnBg: 'rgba(0,40,80,0.4)',
   btnBorder: 'rgba(0,245,255,0.25)',
   btnHover: 'rgba(0,245,255,0.12)',
@@ -71,8 +84,9 @@ function getRecommendedActions(context: ActionContext): ActionButton[] {
     if (newOrders === 0 && pendingShipping > 0) {
       return [
         { id: 'view_pending', label: '배송준비 목록 보기', icon: '📋', mode: 'observe', command: '배송준비 목록 보여줘' },
-        { id: 'prep_invoice', label: '송장 입력 준비', icon: '🏷️', mode: 'execute', command: '송장 입력 준비', disabled: true },
         { id: 'draft_po', label: '발주서 초안 만들기', icon: '📝', mode: 'draft', command: '발주서 초안 만들어줘' },
+        { id: 'prep_invoice', label: '송장 입력 준비', icon: '🏷️', mode: 'execute', command: '송장 입력 준비', disabled: true },
+        { id: 'save_briefing', label: '오늘 브리핑 저장', icon: '💾', mode: 'observe', command: '오늘 브리핑 저장해줘' },
         { id: 'later', label: '나중에 하기', icon: '⏸️', mode: 'observe', command: '' },
       ];
     }
@@ -99,7 +113,8 @@ function getRecommendedActions(context: ActionContext): ActionButton[] {
       { id: 'to_thread', label: '스레드 글로 변환', icon: '🧵', mode: 'draft', command: `${context.product || ''} 스레드 글로 변환해줘` },
       { id: 'to_kakao', label: '카카오톡 공지로 변환', icon: '💬', mode: 'draft', command: `${context.product || ''} 카카오톡 공지문 만들어줘` },
       { id: 'growth_link', label: 'Growth Link 만들기', icon: '🔗', mode: 'draft', command: `${context.product || ''} Growth Link 만들어줘` },
-      { id: 'save', label: '저장하기', icon: '💾', mode: 'observe', command: '콘텐츠 저장해줘' },
+      { id: 'save', label: '스크립트 저장하기', icon: '💾', mode: 'observe', command: '콘텐츠 저장해줘' },
+      { id: 'later', label: '나중에 하기', icon: '⏸️', mode: 'observe', command: '' },
     ];
   }
 
@@ -152,6 +167,165 @@ function ModeBadge({ mode }: { mode: ActionMode }) {
     }}>
       {c.label}
     </span>
+  );
+}
+
+// ── Approval Preview Card ──
+function ApprovalPreviewCard({ data, onDismiss }: { data: ApprovalPreviewData; onDismiss: () => void }) {
+  return (
+    <motion.div
+      initial={{ opacity: 0, scale: 0.95 }}
+      animate={{ opacity: 1, scale: 1 }}
+      exit={{ opacity: 0, scale: 0.95 }}
+      style={{
+        background: 'linear-gradient(135deg, rgba(30,10,10,0.95), rgba(20,5,5,0.9))',
+        border: `1px solid rgba(239,68,68,0.35)`,
+        borderRadius: 14,
+        padding: '14px 16px',
+        marginTop: 10,
+        backdropFilter: 'blur(12px)',
+      }}
+    >
+      {/* Header */}
+      <div style={{
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        marginBottom: 10,
+      }}>
+        <div style={{
+          fontFamily: 'Orbitron, monospace',
+          fontSize: '0.5rem',
+          color: THEME.orange,
+          letterSpacing: '0.12em',
+          display: 'flex',
+          alignItems: 'center',
+          gap: 6,
+        }}>
+          <span style={{ fontSize: '0.7rem' }}>🔒</span>
+          승인 필요
+        </div>
+        <button
+          onClick={onDismiss}
+          style={{
+            background: 'none',
+            border: 'none',
+            color: THEME.textDim,
+            fontSize: '0.7rem',
+            cursor: 'pointer',
+            padding: '2px 6px',
+            borderRadius: 4,
+          }}
+        >
+          ✕
+        </button>
+      </div>
+
+      {/* Title */}
+      <p style={{
+        fontSize: '0.8rem',
+        color: THEME.text,
+        margin: '0 0 6px 0',
+        fontWeight: 600,
+      }}>
+        {data.title}
+      </p>
+
+      {/* Description */}
+      <p style={{
+        fontSize: '0.7rem',
+        color: THEME.textDim,
+        margin: '0 0 10px 0',
+        lineHeight: 1.5,
+      }}>
+        {data.description}
+      </p>
+
+      {/* Change Preview */}
+      <div style={{
+        background: 'rgba(239,68,68,0.06)',
+        border: '1px solid rgba(239,68,68,0.15)',
+        borderRadius: 8,
+        padding: '8px 10px',
+        marginBottom: 10,
+      }}>
+        <div style={{ fontSize: '0.6rem', color: THEME.textDim, marginBottom: 4, fontFamily: 'Orbitron, monospace' }}>
+          변경 예정
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <span style={{ fontSize: '0.7rem', color: THEME.textDim }}>{data.changeFrom}</span>
+          <span style={{ fontSize: '0.6rem', color: THEME.orange }}>→</span>
+          <span style={{ fontSize: '0.7rem', color: THEME.orange, fontWeight: 600 }}>{data.changeTo}</span>
+        </div>
+        <div style={{ fontSize: '0.6rem', color: THEME.textDim, marginTop: 4 }}>
+          대상: {data.affectedCount}건
+        </div>
+      </div>
+
+      {/* Warning */}
+      <div style={{
+        fontSize: '0.62rem',
+        color: THEME.red,
+        lineHeight: 1.5,
+        marginBottom: 10,
+        padding: '6px 8px',
+        background: 'rgba(239,68,68,0.05)',
+        borderRadius: 6,
+      }}>
+        이 작업은 실제 주문 상태를 변경하므로 대표님 승인 전까지 실행할 수 없습니다.
+      </div>
+
+      {/* Buttons */}
+      <div style={{ display: 'flex', gap: 8 }}>
+        <button
+          style={{
+            flex: 1,
+            padding: '8px 12px',
+            background: 'rgba(239,68,68,0.08)',
+            border: '1px solid rgba(239,68,68,0.2)',
+            borderRadius: 8,
+            color: THEME.textDim,
+            fontSize: '0.68rem',
+            cursor: 'not-allowed',
+            opacity: 0.5,
+            fontFamily: 'Orbitron, monospace',
+          }}
+          disabled
+        >
+          🔒 LOCKED
+        </button>
+        <button
+          onClick={onDismiss}
+          style={{
+            flex: 1,
+            padding: '8px 12px',
+            background: THEME.btnBg,
+            border: `1px solid ${THEME.btnBorder}`,
+            borderRadius: 8,
+            color: THEME.text,
+            fontSize: '0.68rem',
+            cursor: 'pointer',
+          }}
+        >
+          보류
+        </button>
+        <button
+          onClick={onDismiss}
+          style={{
+            flex: 1,
+            padding: '8px 12px',
+            background: 'rgba(100,100,100,0.15)',
+            border: '1px solid rgba(100,100,100,0.2)',
+            borderRadius: 8,
+            color: THEME.textDim,
+            fontSize: '0.68rem',
+            cursor: 'pointer',
+          }}
+        >
+          취소
+        </button>
+      </div>
+    </motion.div>
   );
 }
 
@@ -231,7 +405,7 @@ function WorkflowTimeline({ steps }: { steps: WorkflowStep[] }) {
 }
 
 // ── Main ActionCard Component ──
-export default function ActionCard({ context, onActionSelect, onDismiss, workflowSteps = [] }: ActionCardProps) {
+export default function ActionCard({ context, onActionSelect, onDismiss, workflowSteps = [], approvalPreview, onApprovalDismiss }: ActionCardProps) {
   const actions = getRecommendedActions(context);
 
   // Context description
@@ -239,7 +413,7 @@ export default function ActionCard({ context, onActionSelect, onDismiss, workflo
     const { type, newOrders = 0, pendingShipping = 0 } = context;
     if (type === 'smartstore') {
       if (newOrders === 0 && pendingShipping > 0) {
-        return `현재 신규주문은 없고 배송준비 ${pendingShipping}건이 있습니다. 오늘은 송장/출고 상태 확인이 우선입니다.`;
+        return `대표님, 현재 신규주문은 ${newOrders}건이고 배송준비는 ${pendingShipping}건입니다. 오늘은 배송준비 건의 송장/출고 상태 확인이 우선입니다.`;
       }
       if (newOrders > 0) {
         return `발주확인 대상 신규주문 ${newOrders}건이 있습니다. 확인 후 발주서 초안을 만들 수 있습니다.`;
@@ -263,189 +437,240 @@ export default function ActionCard({ context, onActionSelect, onDismiss, workflo
 
   return (
     <AnimatePresence>
-      {
-        <motion.div
-          initial={{ opacity: 0, y: 12 }}
-          animate={{ opacity: 1, y: 0 }}
-          exit={{ opacity: 0, y: -8 }}
-          transition={{ duration: 0.3 }}
-          style={{
-            background: 'linear-gradient(135deg, rgba(6,15,30,0.9), rgba(0,10,25,0.85))',
-            border: `1px solid ${THEME.border}`,
-            borderRadius: 14,
-            padding: '14px 16px',
-            marginTop: 10,
-            backdropFilter: 'blur(12px)',
-          }}
-        >
-          {/* Header */}
+      {/* Approval Preview Card (위험 작업 미리보기) */}
+      {approvalPreview && (
+        <ApprovalPreviewCard
+          data={approvalPreview}
+          onDismiss={() => onApprovalDismiss?.()}
+        />
+      )}
+
+      {/* Main Action Card */}
+      <motion.div
+        initial={{ opacity: 0, y: 12 }}
+        animate={{ opacity: 1, y: 0 }}
+        exit={{ opacity: 0, y: -8 }}
+        transition={{ duration: 0.3 }}
+        style={{
+          background: 'linear-gradient(135deg, rgba(6,15,30,0.9), rgba(0,10,25,0.85))',
+          border: `1px solid ${THEME.border}`,
+          borderRadius: 14,
+          padding: '14px 16px',
+          marginTop: 10,
+          backdropFilter: 'blur(12px)',
+        }}
+      >
+        {/* Header */}
+        <div style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          marginBottom: 8,
+        }}>
           <div style={{
+            fontFamily: 'Orbitron, monospace',
+            fontSize: '0.5rem',
+            color: THEME.green,
+            letterSpacing: '0.12em',
             display: 'flex',
             alignItems: 'center',
-            justifyContent: 'space-between',
-            marginBottom: 8,
+            gap: 6,
           }}>
-            <div style={{
-              fontFamily: 'Orbitron, monospace',
-              fontSize: '0.5rem',
-              color: THEME.green,
-              letterSpacing: '0.12em',
-              display: 'flex',
-              alignItems: 'center',
-              gap: 6,
-            }}>
-              <span style={{ fontSize: '0.7rem' }}>◈</span>
-              NEXT ACTIONS
-            </div>
-            <button
-              onClick={() => onDismiss()}
+            NEXT ACTIONS
+          </div>
+          <button
+            onClick={() => onDismiss()}
+            style={{
+              background: 'none',
+              border: 'none',
+              color: THEME.textDim,
+              fontSize: '0.7rem',
+              cursor: 'pointer',
+              padding: '2px 6px',
+              borderRadius: 4,
+            }}
+          >
+            ✕
+          </button>
+        </div>
+
+        {/* Context Description */}
+        <p style={{
+          fontSize: '0.75rem',
+          color: THEME.textDim,
+          margin: '0 0 12px 0',
+          lineHeight: 1.5,
+        }}>
+          {contextDescription}
+        </p>
+
+        {/* Action Buttons Grid */}
+        <div style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(2, 1fr)',
+          gap: 8,
+        }}>
+          {actions.map((action) => (
+            <motion.button
+              key={action.id}
+              whileHover={action.disabled ? {} : { scale: 1.02 }}
+              whileTap={action.disabled ? {} : { scale: 0.97 }}
+              onClick={() => handleClick(action)}
               style={{
-                background: 'none',
-                border: 'none',
-                color: THEME.textDim,
-                fontSize: '0.7rem',
-                cursor: 'pointer',
-                padding: '2px 6px',
-                borderRadius: 4,
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'flex-start',
+                gap: 4,
+                padding: '10px 12px',
+                background: action.disabled ? THEME.disabledBg : THEME.btnBg,
+                border: `1px solid ${action.disabled ? THEME.disabledBorder : THEME.btnBorder}`,
+                borderRadius: 10,
+                cursor: action.disabled ? 'not-allowed' : 'pointer',
+                opacity: action.disabled ? 0.5 : 1,
+                textAlign: 'left',
+                transition: 'background 0.2s',
               }}
             >
-              ✕
-            </button>
-          </div>
-
-          {/* Context Description */}
-          <p style={{
-            fontSize: '0.75rem',
-            color: THEME.textDim,
-            margin: '0 0 12px 0',
-            lineHeight: 1.5,
-          }}>
-            {contextDescription}
-          </p>
-
-          {/* Action Buttons Grid */}
-          <div style={{
-            display: 'grid',
-            gridTemplateColumns: 'repeat(2, 1fr)',
-            gap: 8,
-          }}>
-            {actions.map((action) => (
-              <motion.button
-                key={action.id}
-                whileHover={action.disabled ? {} : { scale: 1.02 }}
-                whileTap={action.disabled ? {} : { scale: 0.97 }}
-                onClick={() => handleClick(action)}
-                style={{
-                  display: 'flex',
-                  flexDirection: 'column',
-                  alignItems: 'flex-start',
-                  gap: 4,
-                  padding: '10px 12px',
-                  background: action.disabled ? THEME.disabledBg : THEME.btnBg,
-                  border: `1px solid ${action.disabled ? THEME.disabledBorder : THEME.btnBorder}`,
-                  borderRadius: 10,
-                  cursor: action.disabled ? 'not-allowed' : 'pointer',
-                  opacity: action.disabled ? 0.5 : 1,
-                  textAlign: 'left',
-                  transition: 'background 0.2s',
-                }}
-              >
-                <div style={{ display: 'flex', alignItems: 'center', gap: 6, width: '100%' }}>
-                  <span style={{ fontSize: '0.9rem' }}>{action.icon}</span>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6, width: '100%' }}>
+                <span style={{ fontSize: '0.9rem' }}>{action.icon}</span>
+                <span style={{
+                  fontSize: '0.72rem',
+                  color: action.disabled ? THEME.textDim : THEME.text,
+                  fontWeight: 500,
+                  flex: 1,
+                }}>
+                  {action.label}
+                </span>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                <ModeBadge mode={action.mode} />
+                {action.disabled && (
                   <span style={{
-                    fontSize: '0.72rem',
-                    color: action.disabled ? THEME.textDim : THEME.text,
-                    fontWeight: 500,
-                    flex: 1,
+                    fontSize: '0.4rem',
+                    color: THEME.red,
+                    fontFamily: 'Orbitron, monospace',
                   }}>
-                    {action.label}
+                    LOCKED
                   </span>
-                </div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                  <ModeBadge mode={action.mode} />
-                  {action.disabled && (
-                    <span style={{
-                      fontSize: '0.4rem',
-                      color: THEME.red,
-                      fontFamily: 'Orbitron, monospace',
-                    }}>
-                      LOCKED
-                    </span>
-                  )}
-                </div>
-              </motion.button>
-            ))}
-          </div>
+                )}
+              </div>
+            </motion.button>
+          ))}
+        </div>
 
-          {/* Workflow Timeline */}
-          {workflowSteps.length > 0 && <WorkflowTimeline steps={workflowSteps} />}
+        {/* Workflow Timeline */}
+        {workflowSteps.length > 0 && <WorkflowTimeline steps={workflowSteps} />}
 
-          {/* Voice Hint */}
-          <div style={{
-            marginTop: 10,
-            padding: '6px 10px',
-            background: 'rgba(0,245,255,0.03)',
-            borderRadius: 6,
-            border: '1px solid rgba(0,245,255,0.06)',
+        {/* Voice Hint */}
+        <div style={{
+          marginTop: 10,
+          padding: '6px 10px',
+          background: 'rgba(0,245,255,0.03)',
+          borderRadius: 6,
+          border: '1px solid rgba(0,245,255,0.06)',
+        }}>
+          <span style={{
+            fontFamily: 'Orbitron, monospace',
+            fontSize: '0.42rem',
+            color: THEME.textDim,
+            letterSpacing: '0.08em',
           }}>
-            <span style={{
-              fontFamily: 'Orbitron, monospace',
-              fontSize: '0.42rem',
-              color: THEME.textDim,
-              letterSpacing: '0.08em',
-            }}>
-              💡 음성으로도 선택 가능: "{actions.find(a => !a.disabled && a.id !== 'later')?.label || '명령'}"
-            </span>
-          </div>
-        </motion.div>
-      }
+            💡 음성으로도 선택 가능: "{actions.find(a => !a.disabled && a.id !== 'later')?.label || '명령'}"
+          </span>
+        </div>
+      </motion.div>
     </AnimatePresence>
   );
 }
 
-// ── Export utility for voice matching ──
+// ── Export utility for voice matching (강화된 버전) ──
 export function matchVoiceToAction(voiceText: string, context: ActionContext): string | null {
   const actions = getRecommendedActions(context);
   const normalized = voiceText.toLowerCase().trim();
   
+  // 나중에 / 됐어 / 다음에 / 괜찮아 매칭
+  if (normalized.includes('나중에') || normalized.includes('다음에') || normalized.includes('됐어') || normalized.includes('괜찮아') || normalized.includes('닫아')) {
+    return '';
+  }
+
   for (const action of actions) {
     if (action.disabled) continue;
-    if (action.id === 'later' && (normalized.includes('나중에') || normalized.includes('다음에') || normalized.includes('됐어'))) {
-      return '';
-    }
-    // Label match
-    if (normalized.includes(action.label.replace(/\s/g, '').toLowerCase())) return action.command;
-    // Partial keyword match
-    const keywords = action.label.split(/\s+/);
+    if (action.id === 'later') continue;
+    
+    // 1. 정확한 label 매칭
+    const labelNorm = action.label.replace(/\s/g, '').toLowerCase();
+    if (normalized.replace(/\s/g, '').includes(labelNorm)) return action.command;
+    
+    // 2. command 키워드 매칭
+    const cmdKeywords = action.command.toLowerCase().split(/\s+/).filter(w => w.length > 1);
+    const cmdMatchCount = cmdKeywords.filter(k => normalized.includes(k)).length;
+    if (cmdMatchCount >= 2) return action.command;
+    
+    // 3. 핵심 키워드 매칭 (label에서 추출)
+    const keywords = action.label.split(/\s+/).filter(w => w.length > 1);
     const matchCount = keywords.filter(k => normalized.includes(k.toLowerCase())).length;
     if (matchCount >= 2 || (keywords.length <= 2 && matchCount >= 1 && normalized.length < 20)) {
       return action.command;
     }
+    
+    // 4. 특수 패턴 매칭
+    if (action.id === 'view_pending' && (normalized.includes('배송준비') || normalized.includes('배송 준비'))) return action.command;
+    if (action.id === 'view_new' && (normalized.includes('신규주문') || normalized.includes('신규 주문'))) return action.command;
+    if (action.id === 'draft_po' && (normalized.includes('발주서') || normalized.includes('발주'))) return action.command;
+    if (action.id === 'to_insta' && (normalized.includes('인스타') || normalized.includes('인스타그램'))) return action.command;
+    if (action.id === 'to_thread' && (normalized.includes('스레드') || normalized.includes('쓰레드'))) return action.command;
+    if (action.id === 'to_kakao' && (normalized.includes('카카오') || normalized.includes('카톡'))) return action.command;
+    if (action.id === 'growth_link' && (normalized.includes('그로스') || normalized.includes('growth') || normalized.includes('링크'))) return action.command;
+    if (action.id === 'copy_link' && (normalized.includes('복사') || normalized.includes('카피'))) return action.command;
+    if (action.id === 'save' && (normalized.includes('저장') || normalized.includes('세이브'))) return action.command;
+    if (action.id === 'save_campaign' && (normalized.includes('캠페인') || normalized.includes('저장'))) return action.command;
   }
   return null;
 }
 
 // ── Export helper to build workflow steps ──
-export function buildWorkflowSteps(context: ActionContext, currentStep?: string): WorkflowStep[] {
+export function buildWorkflowSteps(context: ActionContext, _currentStep?: string): WorkflowStep[] {
   const now = new Date().toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
   
   if (context.type === 'smartstore') {
-    return [
-      { id: 'query', label: '주문 현황 조회 완료', status: 'completed', timestamp: now },
-      { id: 'analyze', label: `배송준비 ${context.pendingShipping || 0}건 확인`, status: 'completed', timestamp: now },
-      { id: 'recommend', label: '추천 액션 생성 완료', status: 'completed', timestamp: now },
-      { id: 'waiting', label: '대표님 선택 대기 중', status: 'active' },
+    const steps: WorkflowStep[] = [
+      { id: 'voice', label: '음성 명령 인식 완료', status: 'completed', timestamp: now },
+      { id: 'intent', label: '의도 판단 완료', status: 'completed', timestamp: now },
+      { id: 'query', label: '스마트스토어 주문 현황 조회 중', status: 'completed', timestamp: now },
+      { id: 'api', label: 'Naver API 응답 수신', status: 'completed', timestamp: now },
     ];
+    if ((context.pendingShipping || 0) > 0) {
+      steps.push({ id: 'analyze', label: `배송준비 ${context.pendingShipping}건 확인`, status: 'completed', timestamp: now });
+    }
+    if ((context.newOrders || 0) > 0) {
+      steps.push({ id: 'new_orders', label: `신규주문 ${context.newOrders}건 확인`, status: 'completed', timestamp: now });
+    }
+    steps.push({ id: 'recommend', label: '추천 액션 생성 완료', status: 'completed', timestamp: now });
+    steps.push({ id: 'waiting', label: '대표님 선택 대기 중', status: 'active' });
+    return steps;
   }
   if (context.type === 'creative') {
     return [
-      { id: 'generate', label: '콘텐츠 생성 완료', status: 'completed', timestamp: now },
+      { id: 'voice', label: '음성 명령 인식 완료', status: 'completed', timestamp: now },
+      { id: 'intent', label: '의도 판단 완료', status: 'completed', timestamp: now },
+      { id: 'generate', label: 'Creative Director 콘텐츠 생성 완료', status: 'completed', timestamp: now },
       { id: 'review', label: '결과 표시 완료', status: 'completed', timestamp: now },
+      { id: 'waiting', label: '다음 작업 선택 대기 중', status: 'active' },
+    ];
+  }
+  if (context.type === 'growth_link') {
+    return [
+      { id: 'voice', label: '음성 명령 인식 완료', status: 'completed', timestamp: now },
+      { id: 'intent', label: '의도 판단 완료', status: 'completed', timestamp: now },
+      { id: 'generate', label: 'Growth Link 생성 완료', status: 'completed', timestamp: now },
+      { id: 'review', label: '전략 보고 완료', status: 'completed', timestamp: now },
       { id: 'waiting', label: '다음 작업 선택 대기 중', status: 'active' },
     ];
   }
   if (context.type === 'briefing') {
     return [
+      { id: 'voice', label: '음성 명령 인식 완료', status: 'completed', timestamp: now },
+      { id: 'intent', label: '의도 판단 완료', status: 'completed', timestamp: now },
       { id: 'collect', label: '데이터 수집 완료', status: 'completed', timestamp: now },
       { id: 'briefing', label: '브리핑 보고 완료', status: 'completed', timestamp: now },
       { id: 'recommend', label: '업무 추천 생성 완료', status: 'completed', timestamp: now },
@@ -456,4 +681,18 @@ export function buildWorkflowSteps(context: ActionContext, currentStep?: string)
     { id: 'complete', label: '작업 완료', status: 'completed', timestamp: now },
     { id: 'waiting', label: '다음 명령 대기 중', status: 'active' },
   ];
+}
+
+// ── Export: Build Approval Preview data ──
+export function buildApprovalPreview(context: ActionContext): ApprovalPreviewData | null {
+  if (context.type === 'smartstore' && (context.newOrders || 0) > 0) {
+    return {
+      title: `발주확인 대상 ${context.newOrders}건`,
+      description: '발주확인 대상 신규주문이 있습니다. 확인 후 발주서 초안을 만들 수 있습니다.',
+      affectedCount: context.newOrders || 0,
+      changeFrom: '발주확인 전',
+      changeTo: '발주확인 완료',
+    };
+  }
+  return null;
 }

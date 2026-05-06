@@ -65,6 +65,7 @@ export const FUNCTION_NODE_MAP: Record<string, { nodes: string[]; speed: PulseLi
   'read_google_sheet':        { nodes: ['sheets'],                    speed: 'slow',    icon: '📋' },
   'save_to_google_sheet':     { nodes: ['sheets'],                    speed: 'normal',  icon: '💾' },
   'generate_banner':          { nodes: ['jarvis_brain'],              speed: 'normal',  icon: '🎨' },
+  'creative_director':          { nodes: ['jarvis_brain'],              speed: 'normal',  icon: '✨' },
   // ─── 신규 모듈 노드 매핑 (v4.2) ───
   'market_intelligence':      { nodes: ['market_intel'],              speed: 'normal',  icon: '📈' },
   'influencer_agent':         { nodes: ['influencer', 'youtube', 'email'], speed: 'intense', icon: '🎯' },
