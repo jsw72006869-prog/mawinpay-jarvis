@@ -19,10 +19,10 @@ async function getSmartStoreTokenDirect(): Promise<string> {
   if (!SS_CLIENT_ID || !SS_CLIENT_SECRET) {
     throw new Error('SMARTSTORE credentials not configured');
   }
-  const crypto = await import('crypto');
+  const bcrypt = await import('bcryptjs');
   const timestamp = String(Date.now());
   const pwd = `${SS_CLIENT_ID}_${timestamp}`;
-  const hashed = crypto.createHmac('sha256', SS_CLIENT_SECRET).update(pwd).digest('hex');
+  const hashed = bcrypt.hashSync(pwd, SS_CLIENT_SECRET);
   const clientSecretSign = Buffer.from(hashed).toString('base64');
   const params = new URLSearchParams({
     client_id: SS_CLIENT_ID,
