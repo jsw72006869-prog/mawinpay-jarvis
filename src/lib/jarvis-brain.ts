@@ -417,12 +417,21 @@ function deterministicMatch(text: string): JarvisAction | null {
     };
   }
 
-  // 브리핑
-  if (/브리핑|모닝.?보고|오늘.?보고/.test(lower)) {
+  // 브리핑 (Morning Briefing 2.0)
+  if (/브리핑|모닝.?보고|오늘.?보고|일일.?보고|전체.?보고/.test(lower)) {
+    // "저장" 키워드가 있으면 저장 액션으로
+    if (/저장/.test(lower)) {
+      return {
+        type: 'workspace_save',
+        params: { type: 'morning_briefing_v2', userMessage: text },
+        workingMessage: '오늘 브리핑 저장 중...',
+      };
+    }
     return {
       type: 'morning_briefing',
-      workingMessage: '브리핑 데이터 수집 중...',
-      response: '__SKIP_TTS__',  // TTS 건너뛰기 마커 (결과에서 TTS)
+      params: { version: '2.0', userMessage: text },
+      workingMessage: '자비스 일일 커맨드 리포트 생성 중...',
+      response: '__SKIP_TTS__',
     };
   }
 

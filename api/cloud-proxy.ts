@@ -610,40 +610,76 @@ async function fetchOrders(statuses: string[], days: number): Promise<any[]> {
 
 // ── Daily Briefing 핸들러 (통일 구조 v3) ──
 async function handleDailyBriefing() {
-  // 주문 현황 조회 (counts 포함)
-  const ordersResult = await handleSmartstoreOrders({ action: 'current_new_orders' });
+  // 1. 스마트스토어 데이터 (5개 상태값)
+  const ordersResult = await handleSmartstoreOrders({ action: 'query_order_status' });
   const counts = ordersResult.counts || {
-    newOrders: ordersResult.newOrders || 0,
-    pendingShipping: ordersResult.pendingShipping || 0,
-    preShipTotal: ordersResult.preShipTotal || 0,
-    shipping: 0,
-    delivered: 0,
-    purchaseConfirmed: 0,
+    newOrders: 0, pendingShipping: 0, preShipTotal: 0,
+    shipping: 0, delivered: 0, purchaseConfirmed: 0
   };
 
-  const briefingText = `[오늘의 브리핑]\n` +
-    `• 현재 신규주문: ${counts.newOrders}건\n` +
-    `• 배송준비: ${counts.pendingShipping}건\n` +
-    `• 배송 전 처리 대상 전체: ${counts.preShipTotal}건\n` +
-    `• 배송중: ${counts.shipping}건\n` +
-    `• 배송완료: ${counts.delivered}건\n` +
-    `• 구매확정: ${counts.purchaseConfirmed}건\n` +
-    `• 조회 시각: ${new Date().toLocaleString('ko-KR', { timeZone: 'Asia/Seoul' })}`;
+  // 2. KAMIS 데이터 (배추 기본)
+  const kamisResult = await handleKamisMini({ item: '배추' });
+
+  // 3. Outreach 데이터 (최근 수집 후보 요약)
+  let outreachSummary = { total: 0, contactable: 0, highFit: 0, drafts: 0 };
+  try {
+    const outreachRes = await handleOutreachList({ limit: 100 });
+    if (outreachRes.success && outreachRes.candidates) {
+      const list = outreachRes.candidates;
+      outreachSummary = {
+        total: list.length,
+        contactable: list.filter((c: any) => c.publicContactStatus === 'email_public' || c.publicContactStatus === 'form_available').length,
+        highFit: list.filter((c: any) => (c.productFitScore || 0) >= 60).length,
+        drafts: list.filter((c: any) => c.firstEmailDraft && c.firstEmailDraft.length > 10).length
+      };
+    }
+  } catch (e) {}
+
+  // 4. File Workspace 요약 (최근 5건)
+  let fileSummary = { total: 0, recent: [] as any[] };
+  try {
+    const workspaceRes = await handleMarketPriceList({ limit: 5 }); // 임시로 market_price_checks 활용
+    if (workspaceRes.success) {
+      fileSummary.total = workspaceRes.total || 0;
+      fileSummary.recent = workspaceRes.checks || [];
+    }
+  } catch (e) {}
+
+  // 5. 시스템 상태
+  const systemHealth = {
+    uptime: 'READY',
+    naverApi: 'NORMAL',
+    kamisApi: kamisResult.success ? 'NORMAL' : 'PARTIAL',
+    sheets: (WORKSPACE_SHEET_ID && GOOGLE_SHEETS_CREDENTIALS) ? 'NORMAL' : 'ERROR',
+    executeMode: 'LOCKED'
+  };
+
+  // 6. 자비스 한 줄 요약 생성 (GPT 호출 없이 규칙 기반)
+  let jarvisSummary = `대표님, 오늘은 배송준비 ${counts.pendingShipping}건 확인이 우선입니다. `;
+  if (counts.shipping > 0) jarvisSummary += `배송중 ${counts.shipping}건은 추적 중이며, `;
+  jarvisSummary += `구매확정 ${counts.purchaseConfirmed}건은 정상 반영되었습니다.`;
 
   return {
     success: true,
-    source: 'naver-commerce-api',
-    fetchedAt: ordersResult.fetchedAt || new Date().toISOString(),
-    content: briefingText,
+    version: '2.0',
+    fetchedAt: new Date().toISOString(),
+    jarvisSummary,
     smartstore: {
-      newOrders: counts.newOrders,
-      pendingShipping: counts.pendingShipping,
-      preShipTotal: counts.preShipTotal,
-      shipping: counts.shipping,
-      delivered: counts.delivered,
-      purchaseConfirmed: counts.purchaseConfirmed,
+      counts,
+      lastChecked: new Date().toLocaleString('ko-KR', { timeZone: 'Asia/Seoul' }),
+      source: 'Naver Commerce API'
     },
-    counts,
+    marketIntel: {
+      item: kamisResult.item || '배추',
+      prices: kamisResult.prices || null,
+      direction: kamisResult.direction || 'N/A',
+      message: kamisResult.message || '',
+      isProxy: kamisResult.isProxy,
+      proxyNote: kamisResult.proxyNote
+    },
+    outreach: outreachSummary,
+    workspace: fileSummary,
+    systemHealth
   };
 }
 

@@ -2634,54 +2634,52 @@ export default function JarvisApp() {
         }));
 
         const ss = smartstoreData?.smartstore || {};
-        const inf = smartstoreData?.influencers || {};
-        const revenueSign = (ss.revenueChangePercent || 0) >= 0 ? '+' : '';
+        const counts = ss.counts || {};
+        const market = smartstoreData?.marketIntel || {};
+        const outreach = smartstoreData?.outreach || {};
+        const workspace = smartstoreData?.workspace || {};
+        const health = smartstoreData?.systemHealth || {};
 
-        // 화면에 표시할 구조화된 보고서
-        const totalPreShipping = (ss.newOrders || 0) + (ss.pendingShipping || 0);
-        const srcTag = ss.isCached ? '(캐시)' : '(실시간)';
-        const fetchTime = ss.fetchedAt ? new Date(ss.fetchedAt).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' }) : '';
-        let briefingDisplay = `[LIST] **모닝 브리핑 보고서** ${srcTag}\n\n`;
-        briefingDisplay += `**[스마트스토어 현황]**\n`;
-        briefingDisplay += `- 오늘 신규 주문: **${ss.todayNewOrders ?? ss.newOrders ?? 0}건**\n`;
-        briefingDisplay += `- 오늘 매출: **${(ss.totalAmount || 0).toLocaleString('ko-KR')}원**\n`;
-        briefingDisplay += `- 현재 신규주문: **${ss.newOrders || 0}건**\n`;
-        briefingDisplay += `- 배송준비: **${ss.pendingShipping || 0}건**\n`;
-        briefingDisplay += `- 배송 전 처리 대상 전체: **${totalPreShipping}건**\n`;
-        briefingDisplay += `- 배송중: **${ss.shipping || 0}건**\n`;
-        briefingDisplay += `- 배송완료: **${ss.delivered || 0}건**\n`;
-        briefingDisplay += `- 구매확정: **${ss.purchaseConfirmed || 0}건**\n`;
-        if (fetchTime) briefingDisplay += `- 조회 시각: ${fetchTime}\n`;
+        // 화면에 표시할 구조화된 보고서 (Daily Command Report 2.0)
+        let briefingDisplay = `[LIST] **자비스 일일 커맨드 리포트 v2.0**\n\n`;
+        
+        briefingDisplay += `**[1. 스마트스토어 현황]**\n`;
+        briefingDisplay += `- 신규주문: **${counts.newOrders || 0}건**\n`;
+        briefingDisplay += `- 배송준비: **${counts.pendingShipping || 0}건**\n`;
+        briefingDisplay += `- 배송중: **${counts.shipping || 0}건**\n`;
+        briefingDisplay += `- 배송완료: **${counts.delivered || 0}건**\n`;
+        briefingDisplay += `- 구매확정: **${counts.purchaseConfirmed || 0}건**\n`;
         briefingDisplay += `\n`;
-        briefingDisplay += `**[인플루언서 현황]**\n`;
-        briefingDisplay += `- 총 누적: **${inf.total || 0}명**\n`;
-        briefingDisplay += `- 어제 신규: **${inf.newYesterday || 0}명**\n`;
-        if (inf.byPlatform && Object.keys(inf.byPlatform).length > 0) {
-          briefingDisplay += `- 플랫폼별: ${Object.entries(inf.byPlatform).map(([k, v]) => `${k} ${v}명`).join(', ')}\n`;
-        }
-        if (inf.recentNames && inf.recentNames.length > 0) {
-          briefingDisplay += `- 어제 추가: ${inf.recentNames.join(', ')}\n`;
-        }
 
-        // 음성 브리핑 텍스트 (스마트스토어 중심)
-        let voiceBriefing = `선생님, 좋은 아침입니다. 오늘의 업무 브리핑을 시작하겠습니다. `;
-        voiceBriefing += `현재 신규주문 ${ss.newOrders || 0}건, 배송준비 ${ss.pendingShipping || 0}건, `;
-        voiceBriefing += `배송 전 처리 대상 전체 ${totalPreShipping}건입니다. `;
-        if ((ss.totalAmount || 0) > 0) {
-          voiceBriefing += `오늘 매출은 ${(ss.totalAmount || 0).toLocaleString('ko-KR')}원입니다. `;
+        briefingDisplay += `**[2. 시장 가격 정보 (KAMIS)]**\n`;
+        briefingDisplay += `- 품목: **${market.item || '배추'}**\n`;
+        if (market.prices) {
+          briefingDisplay += `- 당일: **${market.prices.today || '-'}** | 1일전: **${market.prices.dayBefore || '-'}**\n`;
+          briefingDisplay += `- 전월대비: **${market.direction || 'N/A'}**\n`;
+        } else {
+          briefingDisplay += `- 정보: ${market.message || '데이터 수집 중'}\n`;
         }
+        briefingDisplay += `\n`;
 
-        // 전략적 제안 추가
-        if ((ss.pendingShipping || 0) > 3) {
-          voiceBriefing += `오늘의 제안입니다. 배송 대기 건이 ${ss.pendingShipping}건으로 다소 밀려있으니, 우선 발주 확인 후 배송 처리를 진행하시는 것을 권장드립니다. `;
-          briefingDisplay += `\n**[오늘의 전략 제안]**\n`;
-          briefingDisplay += `- 배송 대기 ${ss.pendingShipping}건 우선 처리 권장\n`;
+        briefingDisplay += `**[3. 바이럴 마케팅 (Outreach)]**\n`;
+        briefingDisplay += `- 총 후보: **${outreach.total || 0}명**\n`;
+        briefingDisplay += `- 연락가능: **${outreach.contactable || 0}명**\n`;
+        briefingDisplay += `- 고적합도: **${outreach.highFit || 0}명**\n`;
+        briefingDisplay += `\n`;
+
+        briefingDisplay += `**[4. 시스템 상태]**\n`;
+        briefingDisplay += `- UPTIME: **${health.uptime || 'READY'}**\n`;
+        briefingDisplay += `- EXECUTE: **${health.executeMode || 'LOCKED'}**\n`;
+        briefingDisplay += `- API: **${health.naverApi || 'NORMAL'}**\n`;
+
+        // 음성 브리핑 텍스트
+        let voiceBriefing = `선생님, 좋은 아침입니다. 자비스 일일 커맨드 리포트입니다. `;
+        voiceBriefing += `현재 스마트스토어 신규주문 ${counts.newOrders || 0}건, 배송준비 ${counts.pendingShipping || 0}건입니다. `;
+        if (market.prices && market.prices.today !== '-') {
+          voiceBriefing += `오늘 ${market.item} 가격은 ${market.prices.today}원입니다. `;
         }
-        if ((inf.newYesterday || 0) > 0) {
-          voiceBriefing += `어제 새로 발굴된 인플루언서에게 협업 제안 메일을 발송하시는 것도 좋겠습니다. `;
-          briefingDisplay += `- 신규 인플루언서 ${inf.newYesterday}명에게 협업 제안 메일 발송 권장\n`;
-        }
-        voiceBriefing += `이상 모닝 브리핑을 마치겠습니다, 선생님.`;
+        voiceBriefing += `바이럴 후보는 총 ${outreach.total || 0}명 확보되어 있습니다. `;
+        voiceBriefing += `시스템은 현재 락 상태로 대기 중입니다. 이상입니다.`;
 
         // 완료 로그
         setDataPanel(prev => ({
@@ -2752,17 +2750,16 @@ export default function JarvisApp() {
       setWorkflowSteps(buildWorkflowSteps(briefCtx));
       setConversationExpanded(true);
 
-      // Workspace 자동 저장 (브리핑)
-      saveToWorkspace('briefing', {
-        title: '일일 브리핑',
-        todayOrders: 0,
-        currentNewOrders: 0,
-        pendingShipping: 0,
-        preShipTotal: 0,
-        todaySales: 0,
-        briefingText: '브리핑 완료',
-        summary: '일일 브리핑 자동 저장',
-      }, '오늘 브리핑 해줘');
+      // Workspace 자동 저장 (Morning Briefing 2.0)
+      saveToWorkspace('morning_briefing_v2', {
+        title: `일일 커맨드 리포트 (${new Date().toLocaleDateString()})`,
+        smartstore: smartstoreData.smartstore,
+        marketIntel: smartstoreData.marketIntel,
+        outreach: smartstoreData.outreach,
+        systemHealth: smartstoreData.systemHealth,
+        briefingText: briefingDisplay,
+        summary: smartstoreData.jarvisSummary,
+      }, String(action.params?.userMessage || '오늘 브리핑 해줘'));
 
       await new Promise(r => setTimeout(r, 400));
       setState('listening');
