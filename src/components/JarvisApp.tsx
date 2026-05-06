@@ -2698,7 +2698,7 @@ export default function JarvisApp() {
           newOrders: ss.newOrders || 0,
           pendingShipping: ss.pendingShipping || 0,
           totalAmount: ss.totalAmount || 0,
-          influencerTotal: inf.total || 0,
+          influencerTotal: outreach.total || 0,
         });
         emitNodeData('smartstore', {
           '신규주문': ss.newOrders || 0,
