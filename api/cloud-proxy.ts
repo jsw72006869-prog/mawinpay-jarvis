@@ -210,8 +210,12 @@ async function handleSmartstoreOrders(params: any) {
         );
         if (result.status === 200) {
           const data = result.data.data || result.data;
+          console.log(`[debug] last-changed-statuses(${orderStatus}) response keys:`, Object.keys(result.data), 'data keys:', Object.keys(data || {}), 'totalCount:', data?.totalCount, result.data?.totalCount, 'lastChangeStatuses length:', (data?.lastChangeStatuses || data?.lastChangedStatuses || []).length);
           // totalCount 필드가 전체 건수를 반환
-          return data.totalCount || result.data.totalCount || (data.lastChangeStatuses || []).length || 0;
+          const count = data.totalCount || result.data.totalCount || (data.lastChangeStatuses || data.lastChangedStatuses || []).length || 0;
+          return count;
+        } else {
+          console.log(`[debug] last-changed-statuses(${orderStatus}) status:`, result.status, 'data:', JSON.stringify(result.data).slice(0, 300));
         }
       } catch (err: any) {
         if (attempt < 2) await new Promise(r => setTimeout(r, 500 * (attempt + 1)));
