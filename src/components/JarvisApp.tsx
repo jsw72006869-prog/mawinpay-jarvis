@@ -29,6 +29,7 @@ import BookingPanel from './BookingPanel';
 import EmailHistoryCards, { type EmailRecord } from './EmailHistoryCards';
 import OrderDashboard from './OrderDashboard';
 import FileWorkspacePanel, { type WorkspaceRecord } from './FileWorkspacePanel';
+import InfluencerOutreachPanel, { type InfluencerCandidate } from './InfluencerOutreachPanel';
 import CloudStatusOverlay from './CloudStatusOverlay';
 import LiveBrowserViewer from './LiveBrowserViewer';
 
@@ -131,6 +132,9 @@ export default function JarvisApp() {
   const [workspaceVisible, setWorkspaceVisible] = useState(false);
   const [workspaceRecords, setWorkspaceRecords] = useState<WorkspaceRecord[]>([]);
   const [workspaceLoading, setWorkspaceLoading] = useState(false);
+  const [outreachVisible, setOutreachVisible] = useState(false);
+  const [outreachCandidates, setOutreachCandidates] = useState<InfluencerCandidate[]>([]);
+  const [outreachLoading, setOutreachLoading] = useState(false);
   const [dataPanel, setDataPanel] = useState<{
     visible: boolean;
     type: 'collect' | 'send_email' | 'create_banner' | 'report' | 'booking' | 'smartstore' | 'youtube' | null;
@@ -3553,6 +3557,153 @@ export default function JarvisApp() {
       return;
     }
 
+    // ── Outreach 명령 처리 ──
+    const outreachCollectMatch = text.match(/(캠핑|옥수수|복숭아|제철|농산물|먹방|집밥|간식|요리|육아|가족|[가-힣]+)\s*(유튜버|블로거|인플루언서|유튜브|네이버)\s*(\d+)?\s*명?\s*(수집|찾아|검색|모아)/);
+    const outreachCollectMatch2 = text.match(/(유튜버|블로거|인플루언서|유튜브|네이버).*?(캠핑|옥수수|복숭아|제철|농산물|먹방|집밥|간식|요리|육아|가족|[가-힣]+).*?(\d+)?\s*명?\s*(수집|찾아|검색|모아)/);
+    const outreachCollectMatch3 = text.match(/(캠핑|옥수수|복숭아|제철|농산물|먹방|집밥|간식|요리|육아|가족|[가-힣]+).*?(관련|키워드)?\s*(유튜버|블로거|인플루언서)\s*(\d+)?\s*명?\s*(수집|찾아|검색|모아)/);
+    const outreachListMatch = text.match(/(수집한|오늘|저장된).*?(후보|인플루언서|유튜버|블로거).*?(보여|조회|목록|리스트)/);
+    const outreachHighMatch = text.match(/(적합도|점수).*?(높은|상위).*?(후보|보여|조회)/);
+    const outreachEmailMatch = text.match(/(메일|이메일).*?(초안|보여|확인)/);
+    const outreachFollowUpMatch = text.match(/(미응답|follow.?up|팔로우업|재발송).*?(초안|만들어|보여)/);
+
+    if (outreachCollectMatch || outreachCollectMatch2 || outreachCollectMatch3) {
+      const match = outreachCollectMatch || outreachCollectMatch2 || outreachCollectMatch3;
+      let keyword = '';
+      let platform = 'all';
+      let count = 5;
+      if (match) {
+        const fullText = text;
+        // 키워드 추출
+        const kwMatch = fullText.match(/(캠핑|옥수수|복숭아|제철|농산물|먹방|집밥|간식|요리|육아|가족)/);
+        keyword = kwMatch ? kwMatch[1] : match[1] || match[2] || '옥수수';
+        // 플랫폼 추출
+        if (fullText.includes('유튜버') || fullText.includes('유튜브') || fullText.includes('YouTube')) platform = 'youtube';
+        else if (fullText.includes('블로거') || fullText.includes('네이버') || fullText.includes('Naver')) platform = 'naver';
+        // 수량 추출
+        const numMatch = fullText.match(/(\d+)\s*명/);
+        if (numMatch) count = Math.min(parseInt(numMatch[1]), 10);
+      }
+
+      setOutreachVisible(true);
+      setOutreachLoading(true);
+      setState('processing');
+      emitNodeState('jarvis_brain', 'active', '인플루언서 후보 수집 중...');
+      emitMissionLog('🔍', 'OUTREACH', `${keyword} ${platform} 후보 수집 시작 (${count}명)`, 'thinking');
+      addMessage('jarvis', `${keyword} 관련 ${platform === 'youtube' ? 'YouTube' : platform === 'naver' ? 'Naver Blog' : 'YouTube + Naver Blog'} 후보를 수집합니다. 최대 ${count}명까지 분석합니다.`, true);
+
+      try {
+        const res = await fetch('/api/cloud-proxy', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ taskType: 'outreach-collect', params: { keyword, product: keyword, maxCandidates: count, platform } }),
+        });
+        const data = await res.json();
+        setOutreachLoading(false);
+
+        if (data.quotaExceeded) {
+          emitMissionLog('⚠️', 'OUTREACH', 'YouTube API 할당량 초과', 'warning');
+          addMessage('jarvis', '⚠️ YouTube API 할당량 초과로 오늘은 소량/수동 검증 모드로 진행합니다. Naver Blog 후보만 수집되었습니다.', true);
+        }
+
+        if (data.success && data.candidates && data.candidates.length > 0) {
+          setOutreachCandidates(data.candidates);
+          emitMissionLog('✅', 'OUTREACH', `${data.candidates.length}명 수집 완료`, 'success');
+          emitNodeState('jarvis_brain', 'completed', '후보 수집 완료');
+          const highFit = data.candidates.filter((c: any) => c.productFitScore >= 60).length;
+          const contactable = data.candidates.filter((c: any) => c.publicContactStatus === 'email_public').length;
+          addMessage('jarvis', `**공동구매 후보 ${data.candidates.length}명 수집 완료**\n\n` +
+            `| 항목 | 수치 |\n|------|------|\n` +
+            `| 적합도 60점↑ | ${highFit}명 |\n` +
+            `| 공개 연락 가능 | ${contactable}명 |\n` +
+            `| 메일 초안 생성 | ${contactable}명 |\n\n` +
+            `우측 패널에서 후보 카드를 확인하세요.`, true);
+          // ActionCard 연결
+          setActionContext({
+            type: 'outreach_result',
+            label: '후보 저장',
+            description: `${keyword} 후보 ${data.candidates.length}명 → Google Sheets 저장`,
+            locked: false,
+            sourceCommand: text,
+          });
+          setWorkflowSteps(buildWorkflowSteps({ type: 'outreach_collect', label: '후보 수집', description: '', locked: false }));
+        } else {
+          emitMissionLog('ℹ️', 'OUTREACH', '후보 없음', 'info');
+          addMessage('jarvis', `${keyword} 관련 후보를 찾지 못했습니다. 다른 키워드로 시도해보시겠습니까?`, true);
+        }
+      } catch (e: any) {
+        setOutreachLoading(false);
+        emitMissionLog('❌', 'OUTREACH', `수집 실패: ${e.message}`, 'error');
+        addMessage('jarvis', '후보 수집 중 오류가 발생했습니다. 잠시 후 다시 시도해주세요.', true);
+      }
+      setState('idle');
+      return;
+    }
+
+    if (outreachListMatch) {
+      setOutreachVisible(true);
+      if (outreachCandidates.length > 0) {
+        addMessage('jarvis', `현재 수집된 후보 ${outreachCandidates.length}명입니다. 우측 패널에서 확인하세요.`, true);
+      } else {
+        setOutreachLoading(true);
+        try {
+          const res = await fetch('/api/cloud-proxy', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ taskType: 'outreach-list', params: { limit: 20 } }),
+          });
+          const data = await res.json();
+          setOutreachLoading(false);
+          if (data.success && data.candidates?.length > 0) {
+            setOutreachCandidates(data.candidates);
+            addMessage('jarvis', `Google Sheets에서 ${data.candidates.length}명의 후보를 불러왔습니다.`, true);
+          } else {
+            addMessage('jarvis', '아직 저장된 후보가 없습니다. "캠핑 유튜버 5명 수집해줘" 명령을 시도해보세요.', true);
+          }
+        } catch {
+          setOutreachLoading(false);
+          addMessage('jarvis', '후보 목록 조회 중 오류가 발생했습니다.', true);
+        }
+      }
+      setState('idle');
+      return;
+    }
+
+    if (outreachHighMatch) {
+      setOutreachVisible(true);
+      const highCandidates = outreachCandidates.filter(c => c.productFitScore >= 60);
+      if (highCandidates.length > 0) {
+        addMessage('jarvis', `적합도 60점 이상 후보 ${highCandidates.length}명입니다. 패널에서 '적합도↑' 필터를 활성화했습니다.`, true);
+      } else {
+        addMessage('jarvis', '적합도 높은 후보가 없습니다. 먼저 후보를 수집해주세요.', true);
+      }
+      setState('idle');
+      return;
+    }
+
+    if (outreachEmailMatch) {
+      setOutreachVisible(true);
+      const withEmail = outreachCandidates.filter(c => c.firstEmailDraft);
+      if (withEmail.length > 0) {
+        addMessage('jarvis', `메일 초안이 있는 후보 ${withEmail.length}명입니다. 패널에서 후보를 클릭하면 메일 초안을 확인할 수 있습니다.`, true);
+      } else {
+        addMessage('jarvis', '메일 초안이 생성된 후보가 없습니다. 공개 연락처가 확인된 후보에게만 초안이 생성됩니다.', true);
+      }
+      setState('idle');
+      return;
+    }
+
+    if (outreachFollowUpMatch) {
+      setOutreachVisible(true);
+      const withFollowUp = outreachCandidates.filter(c => c.followUpDraft);
+      if (withFollowUp.length > 0) {
+        addMessage('jarvis', `Follow-up 초안이 있는 후보 ${withFollowUp.length}명입니다. 패널에서 후보를 클릭 → 'Follow-up 초안' 탭에서 확인하세요.\n\n⚠️ 실제 발송은 LOCKED 상태입니다.`, true);
+      } else {
+        addMessage('jarvis', 'Follow-up 초안이 생성된 후보가 없습니다. 먼저 후보를 수집해주세요.', true);
+      }
+      setState('idle');
+      return;
+    }
+
     try {
       emitNodeState('jarvis_brain', 'active', 'GPT 뇌 사고 중...');
       emitPulseLine('user', 'jarvis_brain', 'fast');
@@ -3987,6 +4138,24 @@ export default function JarvisApp() {
             >
               <span style={{ fontSize: '0.5rem' }}>◈</span>
               <span style={{ color: '#00c8ff', fontSize: '0.42rem', letterSpacing: '0.15em' }}>FILES</span>
+            </motion.button>
+            )}
+            {!isMobile && (
+            <motion.button
+              whileHover={{ scale: 1.08 }}
+              whileTap={{ scale: 0.95 }}
+              onClick={() => setOutreachVisible(!outreachVisible)}
+              style={{
+                background: outreachVisible ? 'rgba(0,255,136,0.15)' : 'rgba(0,255,136,0.05)',
+                border: `1px solid ${outreachVisible ? 'rgba(0,255,136,0.5)' : 'rgba(0,255,136,0.2)'}`,
+                borderRadius: '6px', padding: '4px 10px',
+                display: 'flex', alignItems: 'center', gap: '4px',
+                cursor: 'pointer',
+                fontFamily: 'Orbitron, monospace',
+              }}
+            >
+              <span style={{ fontSize: '0.5rem' }}>◈</span>
+              <span style={{ color: '#00ff88', fontSize: '0.42rem', letterSpacing: '0.15em' }}>OUTREACH</span>
             </motion.button>
             )}
             {/* 상태 표시 */}
@@ -5999,6 +6168,31 @@ export default function JarvisApp() {
         records={workspaceRecords}
         loading={workspaceLoading}
         onRefresh={fetchWorkspaceRecords}
+      />
+      <InfluencerOutreachPanel
+        visible={outreachVisible}
+        candidates={outreachCandidates}
+        loading={outreachLoading}
+        onClose={() => setOutreachVisible(false)}
+        onSave={async (candidates) => {
+          try {
+            const res = await fetch('/api/cloud-proxy', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ taskType: 'outreach-save', params: { candidates } }),
+            });
+            const data = await res.json();
+            if (data.success) {
+              emitMissionLog('📥', 'OUTREACH', `${candidates.length}명 Google Sheets 저장 완료`, 'success');
+              addMessage('jarvis', `✅ ${candidates.length}명의 후보를 Google Sheets에 저장했습니다.`, true);
+            } else {
+              emitMissionLog('❌', 'OUTREACH', '저장 실패', 'error');
+              addMessage('jarvis', '저장 중 오류가 발생했습니다.', true);
+            }
+          } catch (e: any) {
+            emitMissionLog('❌', 'OUTREACH', `저장 실패: ${e.message}`, 'error');
+          }
+        }}
       />
       {/* ── 뉴럴 미션 맵 (시스템 현황) ── */}
       <AnimatePresence>

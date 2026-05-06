@@ -74,6 +74,8 @@ export const FUNCTION_NODE_MAP: Record<string, { nodes: string[]; speed: PulseLi
   'real_action_agent':        { nodes: ['booking', 'manus_agent'],    speed: 'intense', icon: '⚡' },
   'workspace_save':            { nodes: ['sheets'],                    speed: 'normal',  icon: '💾' },
   'workspace_query':           { nodes: ['sheets'],                    speed: 'slow',    icon: '📂' },
+  'outreach_collect':          { nodes: ['influencer', 'youtube'],     speed: 'intense', icon: '🔍' },
+  'outreach_save':             { nodes: ['influencer', 'sheets'],      speed: 'normal',  icon: '📥' },
 };
 
 // ─── 채널 이름 ───

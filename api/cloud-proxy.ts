@@ -629,6 +629,7 @@ const SHEET_HEADERS: Record<string, string[]> = {
   creative_scripts: ['scriptId','createdAt','product','platform','hook','caption','threadPost','kakaoMessage','reelsScript','recommendedGrowthLink','status','sourceCommand'],
   growth_campaigns: ['campaignId','createdAt','product','source','targetUrl','directUrl','couponCode','campaignMemo','status'],
   purchase_order_drafts: ['draftId','createdAt','supplier','productSummary','totalQuantity','totalAmountIfAvailable','status','safePreview'],
+  influencer_candidates: ['candidateId','collectedAt','platform','keyword','name','channelOrBlogUrl','recentContentTitle','recentContentUrl','subscriberOrVisitor','viewCount','publicContactStatus','publicEmailMasked','productFitScore','productFitReason','suggestedProduct','suggestedOfferAngle','outreachStatus','firstEmailDraft','followUpDraft','lastContactedAt','responseStatus','notes'],
 };
 
 async function ensureTab(tab: string): Promise<void> {
@@ -726,6 +727,19 @@ async function handleWorkspaceSave(params: any) {
         String(data.totalQuantity || 0), String(data.totalAmountIfAvailable || ''),
         'draft', data.safePreview || ''
       ]]);
+    } else if (type === 'influencer_candidate' && data) {
+      await ensureHeaders('influencer_candidates');
+      await sheetsAppend('influencer_candidates', [[
+        recordId, now, data.platform || '', data.keyword || '',
+        data.name || '', data.channelOrBlogUrl || '',
+        data.recentContentTitle || '', data.recentContentUrl || '',
+        String(data.subscriberOrVisitor || ''), String(data.viewCount || ''),
+        data.publicContactStatus || 'unknown', data.publicEmailMasked || '',
+        String(data.productFitScore || 0), data.productFitReason || '',
+        data.suggestedProduct || '', data.suggestedOfferAngle || '',
+        data.outreachStatus || 'pending', data.firstEmailDraft || '',
+        data.followUpDraft || '', '', 'none', data.notes || ''
+      ]]);
     }
 
     // 2. jarvis_records 공통 기록
@@ -737,7 +751,8 @@ async function handleWorkspaceSave(params: any) {
       type === 'briefing' ? 'briefings' :
       type === 'creative_script' ? 'creative_scripts' :
       type === 'growth_campaign' ? 'growth_campaigns' :
-      type === 'purchase_order_draft' ? 'purchase_order_drafts' : 'jarvis_records',
+      type === 'purchase_order_draft' ? 'purchase_order_drafts' :
+      type === 'influencer_candidate' ? 'influencer_candidates' : 'jarvis_records',
       'jarvis', summary.slice(0, 100)
     ]]);
 
@@ -796,6 +811,306 @@ async function handleWorkspaceList(params: any) {
     const typeFilter = params?.type;
     if (typeFilter) records = records.filter((r: any) => r.type === typeFilter);
     return { success: true, records: records.slice(0, limit), total: records.length };
+  } catch (e: any) {
+    return { success: false, error: e.message };
+  }
+}
+
+// ══════════════════════════════════════════════════════════════
+// ── OUTREACH ENGINE LITE ──
+// ══════════════════════════════════════════════════════════════
+
+function maskEmail(email: string): string {
+  if (!email || !email.includes('@')) return '';
+  const [local, domain] = email.split('@');
+  if (local.length <= 2) return `${local[0]}***@${domain}`;
+  return `${local.slice(0, 2)}***@${domain}`;
+}
+
+function calculateProductFitScore(channel: any, keyword: string, product: string): { score: number; reason: string } {
+  let score = 0;
+  const reasons: string[] = [];
+  const desc = (channel.description || '').toLowerCase();
+  const title = (channel.title || channel.name || '').toLowerCase();
+  const contentTitle = (channel.recentContentTitle || '').toLowerCase();
+  const allText = `${desc} ${title} ${contentTitle}`;
+
+  // 1. 상품 관련성 (0~25)
+  const productKeywords = product ? product.toLowerCase().split(/[\s,]+/) : keyword.toLowerCase().split(/[\s,]+/);
+  const matchedKws = productKeywords.filter(kw => kw.length > 1 && allText.includes(kw));
+  if (matchedKws.length >= 2) { score += 25; reasons.push('상품 키워드 강한 매칭'); }
+  else if (matchedKws.length >= 1) { score += 15; reasons.push('상품 키워드 부분 매칭'); }
+  else { score += 5; }
+
+  // 2. 콘텐츠 활동성 (0~20)
+  const subs = channel.subscriberCount || channel.subscribers || 0;
+  const views = channel.viewCount || 0;
+  if (subs >= 10000 && subs <= 500000) { score += 20; reasons.push('마이크로 인플루언서 (공동구매 최적)'); }
+  else if (subs >= 1000 && subs < 10000) { score += 15; reasons.push('나노 인플루언서 (높은 참여율 기대)'); }
+  else if (subs > 500000) { score += 10; reasons.push('대형 채널 (단가 높을 수 있음)'); }
+  else { score += 5; }
+
+  // 3. 공동구매/먹방/캠핑/가족/제철 연결성 (0~25)
+  const lifestyleKws = ['공동구매','공구','먹방','캠핑','가족','집밥','육아','제철','농산물','간식','요리','레시피','리뷰','체험','협찬'];
+  const lifestyleMatches = lifestyleKws.filter(kw => allText.includes(kw));
+  if (lifestyleMatches.length >= 3) { score += 25; reasons.push(`라이프스타일 강한 연결 (${lifestyleMatches.slice(0,3).join(', ')})`); }
+  else if (lifestyleMatches.length >= 1) { score += 15; reasons.push(`라이프스타일 부분 연결 (${lifestyleMatches.join(', ')})`); }
+  else { score += 5; }
+
+  // 4. 조회수/반응 가능성 (0~15)
+  if (views > 10000000) { score += 15; reasons.push('높은 총 조회수'); }
+  else if (views > 1000000) { score += 10; reasons.push('양호한 조회수'); }
+  else { score += 5; }
+
+  // 5. 공개 연락 가능 여부 (0~15)
+  if (channel.email && channel.email.includes('@')) { score += 15; reasons.push('공개 이메일 확인됨'); }
+  else if (channel.publicContactStatus === 'form_available') { score += 10; reasons.push('협업 문의 폼 확인됨'); }
+  else { score += 3; }
+
+  return { score: Math.min(score, 100), reason: reasons.join('. ') + '.' };
+}
+
+function generateOfferAngle(channel: any, keyword: string, product: string): string {
+  const name = channel.title || channel.name || '채널';
+  const contentTitle = channel.recentContentTitle || '';
+  const angles = [
+    `${name}님의 최근 "${contentTitle.slice(0,30)}" 콘텐츠와 ${product || keyword} 공동구매가 자연스럽게 연결됩니다.`,
+    `구독자분들이 좋아할 제철 ${product || keyword}를 체험형 공동구매로 제안하면 좋겠습니다.`,
+    `"캠핑장에서 바로 먹는 간식" 또는 "집에서 간편하게 즐기는 제철 먹거리" 각도가 적합합니다.`,
+  ];
+  return angles[Math.floor(Math.random() * angles.length)];
+}
+
+function generateFirstEmailDraft(channel: any, keyword: string, product: string): string {
+  const name = channel.title || channel.name || '크리에이터';
+  const contentTitle = channel.recentContentTitle || '최근 콘텐츠';
+  return `안녕하세요 ${name}님,\n\n` +
+    `최근 올려주신 "${contentTitle.slice(0,40)}" 영상/글을 인상 깊게 봤습니다.\n` +
+    `저희는 ${product || keyword} 산지직송 농산물을 판매하고 있는 스마트스토어 셀러입니다.\n\n` +
+    `${name}님의 콘텐츠 분위기와 저희 상품이 잘 어울릴 것 같아 공동구매 또는 체험 협업을 제안드립니다.\n\n` +
+    `- 상품: ${product || keyword} (산지직송, 당일수확)\n` +
+    `- 제안: 체험 제공 + 공동구매 링크 (수수료 협의 가능)\n` +
+    `- 부담 없이 먼저 맛보시고 판단해주셔도 됩니다\n\n` +
+    `관심 있으시면 편하게 회신 부탁드립니다.\n감사합니다.`;
+}
+
+function generateFollowUpDraft(channel: any, keyword: string, product: string): string {
+  const name = channel.title || channel.name || '크리에이터';
+  return `안녕하세요 ${name}님,\n\n` +
+    `지난번 ${product || keyword} 공동구매 제안 메일 보내드렸었는데, 혹시 확인하셨을까요?\n\n` +
+    `요즘 ${product || keyword} 시즌이라 물량이 한정되어 있어서, ` +
+    `관심 있으시면 이번 주 내로 샘플을 보내드릴 수 있습니다.\n\n` +
+    `부담 없이 맛만 보시고 괜찮으시면 그때 협업 방식을 논의해도 됩니다.\n` +
+    `바쁘시면 간단히 "관심 있어요" 또는 "다음에요"만 회신 주셔도 감사하겠습니다.\n\n` +
+    `좋은 하루 되세요!`;
+}
+
+async function handleOutreachCollect(params: any) {
+  const { keyword, product, maxCandidates = 10, platform = 'all' } = params;
+  if (!keyword) return { success: false, error: 'keyword required' };
+
+  const candidates: any[] = [];
+  const now = new Date().toISOString();
+  const max = Math.min(maxCandidates, 10); // Lite: 최대 10명
+
+  // YouTube 수집
+  if (platform === 'all' || platform === 'youtube') {
+    try {
+      if (!YOUTUBE_API_KEY) throw new Error('YouTube API 할당량 초과 또는 미설정');
+      const searchUrl = `https://www.googleapis.com/youtube/v3/search?part=snippet&type=channel&q=${encodeURIComponent(keyword)}&maxResults=${max * 3}&regionCode=KR&hl=ko&key=${YOUTUBE_API_KEY}`;
+      const searchRes = await fetch(searchUrl);
+      if (!searchRes.ok) {
+        const errData = await searchRes.json() as any;
+        if (errData.error?.errors?.[0]?.reason === 'quotaExceeded') {
+          return { success: true, candidates: [], quotaExceeded: true, message: 'YouTube API 할당량 초과로 오늘은 소량/수동 검증 모드로 진행합니다.' };
+        }
+        throw new Error(`YouTube API error: ${searchRes.status}`);
+      }
+      const searchData = await searchRes.json() as any;
+      if (searchData.items && searchData.items.length > 0) {
+        const channelIds = searchData.items.map((item: any) => item.snippet.channelId || item.id.channelId).join(',');
+        const channelsUrl = `https://www.googleapis.com/youtube/v3/channels?part=snippet,statistics,brandingSettings&id=${channelIds}&key=${YOUTUBE_API_KEY}`;
+        const channelsRes = await fetch(channelsUrl);
+        if (channelsRes.ok) {
+          const channelsData = await channelsRes.json() as any;
+          for (const ch of (channelsData.items || []).slice(0, max)) {
+            const snippet = ch.snippet || {};
+            const stats = ch.statistics || {};
+            const branding = ch.brandingSettings?.channel || {};
+            const subs = parseInt(stats.subscriberCount || '0', 10);
+            const views = parseInt(stats.viewCount || '0', 10);
+            const contact = extractContactInfo(snippet.description || '', branding.description || '');
+            const channelData = {
+              name: snippet.title, title: snippet.title,
+              description: (snippet.description || '').substring(0, 300),
+              subscriberCount: subs, viewCount: views,
+              email: contact.email,
+              recentContentTitle: snippet.title,
+              publicContactStatus: contact.email ? 'email_public' : 'unknown',
+            };
+            const fit = calculateProductFitScore(channelData, keyword, product || keyword);
+            candidates.push({
+              candidateId: generateRecordId('inf'),
+              collectedAt: now,
+              platform: 'YouTube',
+              keyword,
+              name: snippet.title,
+              channelOrBlogUrl: `https://www.youtube.com/channel/${ch.id}`,
+              recentContentTitle: (snippet.description || '').substring(0, 60),
+              recentContentUrl: `https://www.youtube.com/channel/${ch.id}`,
+              subscriberOrVisitor: subs > 0 ? (subs >= 10000 ? `${(subs/10000).toFixed(1)}만` : `${subs.toLocaleString()}`) : '-',
+              viewCount: views > 0 ? (views >= 100000000 ? `${(views/100000000).toFixed(1)}억` : views >= 10000 ? `${(views/10000).toFixed(0)}만` : views.toLocaleString()) : '-',
+              publicContactStatus: channelData.publicContactStatus,
+              publicEmailMasked: contact.email ? maskEmail(contact.email) : '',
+              productFitScore: fit.score,
+              productFitReason: fit.reason,
+              suggestedProduct: product || keyword,
+              suggestedOfferAngle: generateOfferAngle(channelData, keyword, product || keyword),
+              outreachStatus: 'pending',
+              firstEmailDraft: contact.email ? generateFirstEmailDraft(channelData, keyword, product || keyword) : '',
+              followUpDraft: contact.email ? generateFollowUpDraft(channelData, keyword, product || keyword) : '',
+              responseStatus: 'none',
+              notes: '',
+            });
+          }
+        }
+      }
+    } catch (e: any) {
+      if (e.message?.includes('할당량')) {
+        return { success: true, candidates: [], quotaExceeded: true, message: e.message };
+      }
+      // YouTube 실패해도 Naver로 계속 진행
+    }
+  }
+
+  // Naver Blog 수집
+  if (platform === 'all' || platform === 'naver') {
+    try {
+      const NAVER_CLIENT_ID = process.env.NAVER_CLIENT_ID || '';
+      const NAVER_CLIENT_SECRET = process.env.NAVER_CLIENT_SECRET || '';
+      if (!NAVER_CLIENT_ID) throw new Error('Naver API 미설정');
+      const naverUrl = `https://openapi.naver.com/v1/search/blog.json?query=${encodeURIComponent(keyword)}&display=${max * 3}&sort=sim`;
+      const naverRes = await fetch(naverUrl, {
+        headers: { 'X-Naver-Client-Id': NAVER_CLIENT_ID, 'X-Naver-Client-Secret': NAVER_CLIENT_SECRET },
+      });
+      if (!naverRes.ok) throw new Error(`Naver API error: ${naverRes.status}`);
+      const naverData = await naverRes.json() as any;
+      const blogItems = (naverData.items || []).slice(0, max);
+      for (const item of blogItems) {
+        const bloggerlink = item.bloggerlink || '';
+        const blogIdMatch = bloggerlink.match(/blog\.naver\.com\/([a-zA-Z0-9_]+)/);
+        const blogId = blogIdMatch ? blogIdMatch[1] : '';
+        const blogUrl = blogId ? `https://blog.naver.com/${blogId}` : bloggerlink;
+        const cleanTitle = (item.title || '').replace(/<[^>]*>/g, '');
+        const cleanDesc = (item.description || '').replace(/<[^>]*>/g, '').substring(0, 100);
+        const channelData = {
+          name: item.bloggername || blogId,
+          title: item.bloggername || blogId,
+          description: cleanDesc,
+          recentContentTitle: cleanTitle,
+          publicContactStatus: 'unknown',
+          email: '',
+          subscriberCount: 0,
+          viewCount: 0,
+        };
+        const fit = calculateProductFitScore(channelData, keyword, product || keyword);
+        candidates.push({
+          candidateId: generateRecordId('inf'),
+          collectedAt: now,
+          platform: 'Naver Blog',
+          keyword,
+          name: item.bloggername || blogId || '블로거',
+          channelOrBlogUrl: blogUrl,
+          recentContentTitle: cleanTitle.substring(0, 60),
+          recentContentUrl: item.link || '',
+          subscriberOrVisitor: '-',
+          viewCount: '-',
+          publicContactStatus: 'unknown',
+          publicEmailMasked: '',
+          productFitScore: fit.score,
+          productFitReason: fit.reason,
+          suggestedProduct: product || keyword,
+          suggestedOfferAngle: generateOfferAngle(channelData, keyword, product || keyword),
+          outreachStatus: 'pending',
+          firstEmailDraft: '',
+          followUpDraft: '',
+          responseStatus: 'none',
+          notes: `최근 글: ${cleanTitle.substring(0, 40)}`,
+        });
+      }
+    } catch (e: any) {
+      // Naver 실패 시 무시
+    }
+  }
+
+  // 적합도 점수 내림차순 정렬
+  candidates.sort((a, b) => b.productFitScore - a.productFitScore);
+
+  return {
+    success: true,
+    candidates: candidates.slice(0, max),
+    total: candidates.length,
+    keyword,
+    product: product || keyword,
+    message: `${keyword} 관련 공동구매 후보 ${candidates.slice(0, max).length}명을 수집했습니다.`,
+  };
+}
+
+async function handleOutreachSaveCandidates(params: any) {
+  const { candidates } = params;
+  if (!candidates || !Array.isArray(candidates) || candidates.length === 0) {
+    return { success: false, error: 'candidates array required' };
+  }
+  if (!WORKSPACE_SHEET_ID || !GOOGLE_SHEETS_CREDENTIALS) {
+    return { success: false, error: 'Google Sheets not configured' };
+  }
+  try {
+    await ensureHeaders('influencer_candidates');
+    let saved = 0;
+    for (const c of candidates) {
+      await sheetsAppend('influencer_candidates', [[
+        c.candidateId || generateRecordId('inf'), c.collectedAt || new Date().toISOString(),
+        c.platform || '', c.keyword || '', c.name || '',
+        c.channelOrBlogUrl || '', c.recentContentTitle || '', c.recentContentUrl || '',
+        String(c.subscriberOrVisitor || ''), String(c.viewCount || ''),
+        c.publicContactStatus || 'unknown', c.publicEmailMasked || '',
+        String(c.productFitScore || 0), c.productFitReason || '',
+        c.suggestedProduct || '', c.suggestedOfferAngle || '',
+        c.outreachStatus || 'pending', c.firstEmailDraft || '',
+        c.followUpDraft || '', '', 'none', c.notes || ''
+      ]]);
+      saved++;
+    }
+    return { success: true, saved, total: candidates.length, message: `${saved}명의 후보를 Google Sheets에 저장했습니다.` };
+  } catch (e: any) {
+    return { success: false, error: e.message };
+  }
+}
+
+async function handleOutreachList(params: any) {
+  if (!WORKSPACE_SHEET_ID || !GOOGLE_SHEETS_CREDENTIALS) {
+    return { success: false, error: 'Google Sheets not configured' };
+  }
+  try {
+    await ensureHeaders('influencer_candidates');
+    const result = await sheetsRead('influencer_candidates');
+    const rows = result.values || [];
+    if (rows.length < 2) return { success: true, candidates: [], total: 0 };
+    const headers = rows[0];
+    let records = rows.slice(1).map((row: string[]) => {
+      const obj: any = {};
+      headers.forEach((h: string, i: number) => { obj[h] = row[i] || ''; });
+      obj.productFitScore = parseInt(obj.productFitScore || '0', 10);
+      return obj;
+    });
+    // 필터
+    const { minScore, keyword: filterKw, platform: filterPlatform } = params || {};
+    if (minScore) records = records.filter((r: any) => r.productFitScore >= minScore);
+    if (filterKw) records = records.filter((r: any) => (r.keyword || '').includes(filterKw));
+    if (filterPlatform) records = records.filter((r: any) => (r.platform || '').toLowerCase().includes(filterPlatform.toLowerCase()));
+    records.sort((a: any, b: any) => b.productFitScore - a.productFitScore);
+    const limit = params?.limit || 20;
+    return { success: true, candidates: records.slice(0, limit), total: records.length };
   } catch (e: any) {
     return { success: false, error: e.message };
   }
@@ -1043,6 +1358,20 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       }
       if (resolvedTask === 'workspace-list') {
         const result = await handleWorkspaceList(params || rest);
+        return res.status(200).json(result);
+      }
+
+      // ── Outreach: 인플루언서 후보 수집/저장/조회 ──
+      if (resolvedTask === 'outreach-collect') {
+        const result = await handleOutreachCollect(params || rest);
+        return res.status(200).json(result);
+      }
+      if (resolvedTask === 'outreach-list') {
+        const result = await handleOutreachList(params || rest);
+        return res.status(200).json(result);
+      }
+      if (resolvedTask === 'outreach-save-candidates') {
+        const result = await handleOutreachSaveCandidates(params || rest);
         return res.status(200).json(result);
       }
 

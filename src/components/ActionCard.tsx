@@ -711,6 +711,16 @@ export function buildWorkflowSteps(context: ActionContext, _currentStep?: string
       { id: 'waiting', label: '대표님 선택 대기 중', status: 'active' },
     ];
   }
+  if (context.type === 'outreach_result' || context.type === 'outreach_collect') {
+    return [
+      { id: 'voice', label: '명령 인식 완료', status: 'completed', timestamp: now },
+      { id: 'intent', label: '의도 판단 완료', status: 'completed', timestamp: now },
+      { id: 'search', label: 'YouTube/Naver 검색 완료', status: 'completed', timestamp: now },
+      { id: 'analyze', label: '적합도 분석 완료', status: 'completed', timestamp: now },
+      { id: 'email', label: '메일 초안 생성 완료', status: 'completed', timestamp: now },
+      { id: 'waiting', label: 'Google Sheets 저장 대기 중', status: 'active' },
+    ];
+  }
   return [
     { id: 'complete', label: '작업 완료', status: 'completed', timestamp: now },
     { id: 'waiting', label: '다음 명령 대기 중', status: 'active' },
