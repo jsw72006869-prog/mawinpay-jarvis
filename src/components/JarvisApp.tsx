@@ -242,6 +242,8 @@ export default function JarvisApp() {
   const [orderDashboardVisible, setOrderDashboardVisible] = useState(false);
   const [orderDashboardData, setOrderDashboardData] = useState<any[]>([]);
   const [orderDashboardSummary, setOrderDashboardSummary] = useState<any>(null);
+  // ── SSoT: 스마트스토어 데이터 캐시 (5분 유효) ──
+  const ssCountsCacheRef = useRef<{ data: any; fetchedAt: number } | null>(null);
 
   // ── UI 컨텍스트 동기화 (GPT에게 현재 화면 정보 전달) ──
   useEffect(() => {
@@ -2558,16 +2560,29 @@ export default function JarvisApp() {
               message: '스마트스토어 + 인플루언서 데이터 수집 완료',
               actionLogs: [...(prev.actionLogs || []), ...apiLogs],
             }));
+            // SSoT 캐시 저장 (5분 유효)
+            ssCountsCacheRef.current = { data: smartstoreData.smartstore, fetchedAt: Date.now() };
           } else {
             throw new Error(ssJson.error || '브리핑 API 실패');
           }
         } catch (ssErr) {
-          setDataPanel(prev => ({
-            ...prev,
-            progress: 30,
-            actionLogs: [...(prev.actionLogs || []), { step: 'SMARTSTORE', status: 'fail', detail: `스마트스토어 조회 실패: ${ssErr}`, timestamp: new Date().toISOString() }],
-          }));
-          smartstoreData = { smartstore: { newOrders: 0, pendingShipping: 0, totalAmount: 0, revenueChangePercent: 0, error: String(ssErr) }, influencers: { total: 0, newYesterday: 0, byPlatform: {} } };
+          // SSoT: 캐시가 5분 이내면 캐시 데이터 사용
+          const cache = ssCountsCacheRef.current;
+          if (cache && (Date.now() - cache.fetchedAt) < 5 * 60 * 1000) {
+            smartstoreData = { smartstore: { ...cache.data, isCached: true }, influencers: { total: 0, newYesterday: 0, byPlatform: {} } };
+            setDataPanel(prev => ({
+              ...prev,
+              progress: 60,
+              actionLogs: [...(prev.actionLogs || []), { step: 'SMARTSTORE', status: 'success', detail: `캐시 데이터 사용 (${Math.round((Date.now() - cache.fetchedAt) / 1000)}초 전)`, timestamp: new Date().toISOString() }],
+            }));
+          } else {
+            setDataPanel(prev => ({
+              ...prev,
+              progress: 30,
+              actionLogs: [...(prev.actionLogs || []), { step: 'SMARTSTORE', status: 'fail', detail: `스마트스토어 조회 실패: ${ssErr}`, timestamp: new Date().toISOString() }],
+            }));
+            smartstoreData = { smartstore: { _error: true, errorMessage: '최신 주문 데이터를 불러오지 못했습니다', newOrders: null, pendingShipping: null, preShipTotal: null, shipping: null, delivered: null, purchaseConfirmed: null, totalAmount: 0, revenueChangePercent: 0, error: String(ssErr) }, influencers: { total: 0, newYesterday: 0, byPlatform: {} } };
+          }
         }
 
         // ── Step 2: 농산물 시장 분석 (MarketIntelligence) - 비동기 처리 (브리핑 응답 차단 안 함) ──
@@ -2645,11 +2660,15 @@ export default function JarvisApp() {
         let briefingDisplay = `[LIST] **자비스 일일 커맨드 리포트 v2.0**\n\n`;
         
         briefingDisplay += `**[1. 스마트스토어 현황]**\n`;
-        briefingDisplay += `- 신규주문: **${counts.newOrders || 0}건**\n`;
-        briefingDisplay += `- 배송준비: **${counts.pendingShipping || 0}건**\n`;
-        briefingDisplay += `- 배송중: **${counts.shipping || 0}건**\n`;
-        briefingDisplay += `- 배송완료: **${counts.delivered || 0}건**\n`;
-        briefingDisplay += `- 구매확정: **${counts.purchaseConfirmed || 0}건**\n`;
+        if (ss._error) {
+          briefingDisplay += `- ⚠️ ${ss.errorMessage || '주문 데이터 조회 실패'}\n`;
+        } else {
+          briefingDisplay += `- 신규주문: **${counts.newOrders ?? '확인필요'}건**\n`;
+          briefingDisplay += `- 배송준비: **${counts.pendingShipping ?? '확인필요'}건**\n`;
+          briefingDisplay += `- 배송중: **${counts.shipping ?? '확인필요'}건**\n`;
+          briefingDisplay += `- 배송완료: **${counts.delivered ?? '확인필요'}건**\n`;
+          briefingDisplay += `- 구매확정: **${counts.purchaseConfirmed ?? '확인필요'}건** (최근 7일)\n`;
+        }
         briefingDisplay += `\n`;
 
         briefingDisplay += `**[2. 시장 가격 정보 (KAMIS)]**\n`;
@@ -3111,6 +3130,11 @@ export default function JarvisApp() {
           emitMissionLog('📡', 'NAVER API', `Naver API 응답 수신 ${data.isCached ? '(캐시)' : '(실시간)'}`, 'success');
           // 텔레메트리: 스마트스토어 성공
           telemetryFunctionSuccess('smartstore_action', `스마트스토어 ${ssAction} 완료`, { action: ssAction });
+          // SSoT 캐시 저장 (브리핑 fallback용)
+          ssCountsCacheRef.current = {
+            data: { newOrders: data.newOrders, pendingShipping: data.pendingShipping, preShipTotal: data.preShipTotal, shipping: data.shipping, delivered: data.delivered, purchaseConfirmed: data.purchaseConfirmed, source: data.source, fetchedAt: data.fetchedAt, isCached: false },
+            fetchedAt: Date.now(),
+          };
 
           // 결과 메시지 생성
           let resultMsg = '';
