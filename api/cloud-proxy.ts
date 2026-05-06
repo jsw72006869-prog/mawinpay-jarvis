@@ -1,6 +1,9 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import mysql from 'mysql2/promise';
 import crypto from 'crypto';
+import bcrypt from 'bcryptjs';
+import { HttpsProxyAgent } from 'https-proxy-agent';
+import nodeFetch from 'node-fetch';
 
 // ── Runtime: Node.js (NOT Edge) ──
 export const config = {
@@ -22,8 +25,6 @@ const ALLOWED_IPS = ['52.5.238.209', '52.6.13.167', '72.252.132.247'];
 // ── QuotaGuard Proxy Agent 생성 ──
 function getProxyAgent(): any {
   if (!QUOTAGUARD_URL) return null;
-  // https-proxy-agent는 CommonJS이므로 dynamic require
-  const HttpsProxyAgent = require('https-proxy-agent');
   return new HttpsProxyAgent(QUOTAGUARD_URL);
 }
 
@@ -44,13 +45,12 @@ function getAgentType(): string {
 }
 
 // ── 프록시 경유 fetch ──
-async function proxyFetch(url: string, options: any = {}): Promise<Response> {
+async function proxyFetch(url: string, options: any = {}): Promise<any> {
   const agent = getProxyAgent();
   if (!agent) {
     throw new Error('QUOTAGUARD_URL not configured - cannot call Naver API without proxy');
   }
-  const nodeFetch = require('node-fetch');
-  return nodeFetch(url, { ...options, agent });
+  return nodeFetch(url, { ...options, agent } as any);
 }
 
 // ── 네이버 스마트스토어 토큰 발급 (QuotaGuard 프록시 경유) ──
@@ -61,7 +61,6 @@ async function getSmartStoreToken(): Promise<string> {
   const timestamp = String(Date.now());
   const pwd = `${SMARTSTORE_CLIENT_ID}_${timestamp}`;
   
-  const bcrypt = require('bcryptjs');
   const hashed = bcrypt.hashSync(pwd, SMARTSTORE_CLIENT_SECRET);
   const clientSecretSign = Buffer.from(hashed).toString('base64');
 
@@ -298,7 +297,6 @@ async function handleCreativeContent(params: any) {
 
   if (OPENAI_API_KEY) {
     try {
-      const nodeFetch = require('node-fetch');
       const gptRes = await nodeFetch('https://api.openai.com/v1/chat/completions', {
         method: 'POST',
         headers: {
