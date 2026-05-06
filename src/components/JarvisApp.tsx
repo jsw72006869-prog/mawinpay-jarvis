@@ -2526,21 +2526,24 @@ export default function JarvisApp() {
           const ssJson = await ssRes.json();
           if (ssJson.success || ssJson.result) {
             const rawSS = ssJson.result || ssJson;
-            // smartstore 서브키가 없는 직접 응답 호환 처리
-            if (rawSS.smartstore) {
-              smartstoreData = rawSS;
-            } else {
-              smartstoreData = {
-                smartstore: {
-                  newOrders: rawSS.newOrders ?? 0,
-                  pendingShipping: rawSS.pendingShipping ?? 0,
-                  preShipTotal: rawSS.preShipTotal ?? ((rawSS.newOrders ?? 0) + (rawSS.pendingShipping ?? 0)),
-                  totalAmount: rawSS.totalAmount ?? 0,
-                  revenueChangePercent: rawSS.revenueChangePercent ?? 0,
-                },
-                influencers: rawSS.influencers || { total: 0, newYesterday: 0, byPlatform: {} },
-              };
-            }
+            // v3 통일 구조: counts 우선, 하위호환 유지
+            const c = rawSS.counts || {};
+            smartstoreData = {
+              smartstore: {
+                newOrders: c.newOrders ?? rawSS.newOrders ?? 0,
+                pendingShipping: c.pendingShipping ?? rawSS.pendingShipping ?? 0,
+                preShipTotal: c.preShipTotal ?? rawSS.preShipTotal ?? 0,
+                shipping: c.shipping ?? rawSS.shipping ?? 0,
+                delivered: c.delivered ?? rawSS.delivered ?? 0,
+                purchaseConfirmed: c.purchaseConfirmed ?? rawSS.purchaseConfirmed ?? 0,
+                totalAmount: rawSS.totalAmount ?? 0,
+                revenueChangePercent: rawSS.revenueChangePercent ?? 0,
+                source: rawSS.source || 'naver-commerce-api',
+                fetchedAt: rawSS.fetchedAt || null,
+                isCached: rawSS.isCached ?? false,
+              },
+              influencers: rawSS.influencers || { total: 0, newYesterday: 0, byPlatform: {} },
+            };
             // 행동 로그 업데이트 (API에서 받은 로그 포함)
             const apiLogs = (ssJson.actionLogs || []).map((l: any) => ({
               step: l.step,
@@ -2632,13 +2635,20 @@ export default function JarvisApp() {
 
         // 화면에 표시할 구조화된 보고서
         const totalPreShipping = (ss.newOrders || 0) + (ss.pendingShipping || 0);
-        let briefingDisplay = `[LIST] **모닝 브리핑 보고서**\n\n`;
+        const srcTag = ss.isCached ? '(캐시)' : '(실시간)';
+        const fetchTime = ss.fetchedAt ? new Date(ss.fetchedAt).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' }) : '';
+        let briefingDisplay = `[LIST] **모닝 브리핑 보고서** ${srcTag}\n\n`;
         briefingDisplay += `**[스마트스토어 현황]**\n`;
         briefingDisplay += `- 오늘 신규 주문: **${ss.todayNewOrders ?? ss.newOrders ?? 0}건**\n`;
         briefingDisplay += `- 오늘 매출: **${(ss.totalAmount || 0).toLocaleString('ko-KR')}원**\n`;
         briefingDisplay += `- 현재 신규주문: **${ss.newOrders || 0}건**\n`;
         briefingDisplay += `- 배송준비: **${ss.pendingShipping || 0}건**\n`;
-        briefingDisplay += `- 배송 전 처리 대상 전체: **${totalPreShipping}건**\n\n`;
+        briefingDisplay += `- 배송 전 처리 대상 전체: **${totalPreShipping}건**\n`;
+        briefingDisplay += `- 배송중: **${ss.shipping || 0}건**\n`;
+        briefingDisplay += `- 배송완료: **${ss.delivered || 0}건**\n`;
+        briefingDisplay += `- 구매확정: **${ss.purchaseConfirmed || 0}건**\n`;
+        if (fetchTime) briefingDisplay += `- 조회 시각: ${fetchTime}\n`;
+        briefingDisplay += `\n`;
         briefingDisplay += `**[인플루언서 현황]**\n`;
         briefingDisplay += `- 총 누적: **${inf.total || 0}명**\n`;
         briefingDisplay += `- 어제 신규: **${inf.newYesterday || 0}명**\n`;
@@ -2980,28 +2990,42 @@ export default function JarvisApp() {
             body: JSON.stringify({ endpoint: 'task', taskType: 'smartstore-orders', params: body }),
           });
           const rawData = await res.json();
-          // 클라우드 서버 응답 포맷 변환 (result 래핑 해제)
+          // 클라우드 서버 응답 포맷 변환 (통일 구조 v3)
           let data: any;
           if (rawData.result) {
             // 구버전 래핑 응답 호환
+            const ss = rawData.result.smartstore || {};
             data = {
               success: rawData.result.success ?? rawData.success,
-              ...rawData.result.smartstore,
               action_logs: rawData.result.actionLogs,
               data: rawData.result.smartstore,
-              newOrders: rawData.result.smartstore?.newOrders ?? 0,
-              pendingShipping: rawData.result.smartstore?.pendingShipping ?? 0,
-              cancelOrders: rawData.result.smartstore?.cancelRequests ?? 0,
-              summary: `신규주문 ${rawData.result.smartstore?.newOrders ?? 0}건, 배송준비 ${rawData.result.smartstore?.pendingShipping ?? 0}건, 배송완료 ${rawData.result.smartstore?.delivered ?? 0}건, 구매확정 ${rawData.result.smartstore?.purchaseDecided ?? 0}건\n정산예정: ${(rawData.result.smartstore?.settlementAmount ?? 0).toLocaleString()}원\n판매중 상품: ${rawData.result.smartstore?.sellingProducts ?? 0}개, 품절: ${rawData.result.smartstore?.soldOutProducts ?? 0}개`,
+              newOrders: ss.newOrders ?? 0,
+              pendingShipping: ss.pendingShipping ?? 0,
+              preShipTotal: ss.preShipTotal ?? ((ss.newOrders ?? 0) + (ss.pendingShipping ?? 0)),
+              cancelOrders: ss.cancelRequests ?? 0,
+              shipping: ss.shipping ?? 0,
+              delivered: ss.delivered ?? 0,
+              purchaseConfirmed: ss.purchaseConfirmed ?? 0,
+              source: 'naver-commerce-api',
+              fetchedAt: rawData.result.fetchedAt || null,
+              isCached: false,
             };
           } else {
-            // 직접 응답 (cloud-proxy v2): pendingShipping 등 필드 안전 매핑
+            // 직접 응답 (cloud-proxy v3): counts 구조 우선 참조
+            const c = rawData.counts || {};
             data = {
               ...rawData,
-              newOrders: rawData.newOrders ?? 0,
-              pendingShipping: rawData.pendingShipping ?? 0,
-              preShipTotal: rawData.preShipTotal ?? ((rawData.newOrders ?? 0) + (rawData.pendingShipping ?? 0)),
+              success: rawData.success ?? true,
+              newOrders: c.newOrders ?? rawData.newOrders ?? 0,
+              pendingShipping: c.pendingShipping ?? rawData.pendingShipping ?? 0,
+              preShipTotal: c.preShipTotal ?? rawData.preShipTotal ?? ((c.newOrders ?? rawData.newOrders ?? 0) + (c.pendingShipping ?? rawData.pendingShipping ?? 0)),
               cancelOrders: rawData.cancelOrders ?? rawData.cancelRequests ?? 0,
+              shipping: c.shipping ?? 0,
+              delivered: c.delivered ?? 0,
+              purchaseConfirmed: c.purchaseConfirmed ?? 0,
+              source: rawData.source || 'naver-commerce-api',
+              fetchedAt: rawData.fetchedAt || null,
+              isCached: rawData.isCached ?? false,
             };
           }
 
@@ -3019,28 +3043,38 @@ export default function JarvisApp() {
 
           if (!data.success) throw new Error(data.error || '스마트스토어 작업 실패');
           // Phase UI-C-Final: Mission Log - API 응답 수신
-          emitMissionLog('📡', 'NAVER API', 'Naver API 응답 수신', 'success');
-          if (data.newOrders !== undefined) emitMissionLog('📦', 'SMARTSTORE', `신규주문 ${data.newOrders}건 확인`, 'info');
-          if (data.pendingShipping !== undefined) emitMissionLog('🚚', 'SMARTSTORE', `배송준비 ${data.pendingShipping}건 확인`, 'info');
-          emitMissionLog('✅', 'JARVIS', '추천 액션 생성 완료', 'success');
-          emitMissionLog('⏳', 'JARVIS', '대표님 선택 대기 중', 'thinking');
-          // 텔레메트리: 스마트스토어 성공공
+          emitMissionLog('📡', 'NAVER API', `Naver API 응답 수신 ${data.isCached ? '(캐시)' : '(실시간)'}`, 'success');
+          // 텔레메트리: 스마트스토어 성공
           telemetryFunctionSuccess('smartstore_action', `스마트스토어 ${ssAction} 완료`, { action: ssAction });
 
           // 결과 메시지 생성
           let resultMsg = '';
           let doneText = '';
 
+          // NaN 방지 헬퍼
+          const safeNum = (v: any) => (typeof v === 'number' && !isNaN(v)) ? v : 0;
+          const nO = safeNum(data.newOrders);
+          const pS = safeNum(data.pendingShipping);
+          const preT = safeNum(data.preShipTotal) || (nO + pS);
+          const ship = safeNum(data.shipping);
+          const dlvd = safeNum(data.delivered);
+          const pConf = safeNum(data.purchaseConfirmed);
+          // 소스/시각 라벨
+          const srcLabel = data.isCached ? '(캐시)' : '(실시간)';
+          const timeLabel = data.fetchedAt ? new Date(data.fetchedAt).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' }) : '';
+
           if (ssAction === 'current_new_orders') {
-            resultMsg = `[PKG] **현재 신규주문**\n\n현재 신규주문: ${data.newOrders}건\n배송준비: ${data.pendingShipping}건\n배송 전 처리 대상 전체: ${data.newOrders + data.pendingShipping}건`;
-            doneText = `현재 신규주문 ${data.newOrders}건입니다, 선생님.`;
+            resultMsg = `[PKG] **현재 주문 현황** ${srcLabel}\n\n현재 신규주문: ${nO}건\n배송준비: ${pS}건\n배송 전 처리 대상 전체: ${preT}건\n배송중: ${ship}건\n배송완료: ${dlvd}건\n구매확정: ${pConf}건`;
+            if (timeLabel) resultMsg += `\n\n조회 시각: ${timeLabel}`;
+            doneText = `현재 신규주문 ${nO}건, 배송준비 ${pS}건입니다, 선생님.`;
           } else if (ssAction === 'query_pending_shipping') {
-            resultMsg = `[PKG] **배송준비**\n\n배송준비: ${data.pendingShipping}건`;
-            doneText = `배송준비 ${data.pendingShipping}건입니다, 선생님.`;
+            resultMsg = `[PKG] **배송준비** ${srcLabel}\n\n배송준비: ${pS}건\n(신규주문 ${nO}건 + 배송준비 ${pS}건 = 배송 전 전체 ${preT}건)`;
+            if (timeLabel) resultMsg += `\n\n조회 시각: ${timeLabel}`;
+            doneText = `배송준비 ${pS}건입니다, 선생님.`;
           } else if (ssAction === 'query_pre_shipping_total') {
-            const total = data.newOrders + data.pendingShipping;
-            resultMsg = `[PKG] **배송 전 처리 대상 전체**\n\n현재 신규주문: ${data.newOrders}건\n배송준비: ${data.pendingShipping}건\n배송 전 처리 대상 전체: ${total}건`;
-            doneText = `배송 전 처리 대상 전체 ${total}건입니다, 선생님.`;
+            resultMsg = `[PKG] **배송 전 처리 대상 전체** ${srcLabel}\n\n현재 신규주문: ${nO}건\n배송준비: ${pS}건\n배송 전 처리 대상 전체: ${preT}건`;
+            if (timeLabel) resultMsg += `\n\n조회 시각: ${timeLabel}`;
+            doneText = `배송 전 처리 대상 전체 ${preT}건입니다, 선생님.`;
           } else if (ssAction.startsWith('query_orders') || ssAction === 'morning_report') {
             const count = Array.isArray(data.data) ? data.data.length : (data.newOrders || 0);
             // ── 주문 대시보드 UI 자동 표시 ──
@@ -3050,8 +3084,8 @@ export default function JarvisApp() {
             }
             resultMsg = `[PKG] **${getActionLabel(ssAction)}**\n\n`;
             if (ssAction === 'morning_report') {
-              resultMsg += `신규 주문: ${data.newOrders}건\n취소 요청: ${data.cancelOrders}건\n발송 대기: ${data.pendingShipping}건`;
-              doneText = `아침 업무 보고 완료입니다, 선생님. 신규 주문 ${data.newOrders}건, 취소 요청 ${data.cancelOrders}건이 있습니다.`;
+              resultMsg += `신규 주문: ${nO}건\n취소 요청: ${safeNum(data.cancelOrders)}건\n발송 대기: ${pS}건\n배송중: ${ship}건\n배송완료: ${dlvd}건\n구매확정: ${pConf}건`;
+              doneText = `아침 업무 보고 완료입니다, 선생님. 신규 주문 ${nO}건, 배송준비 ${pS}건입니다.`;
             } else {
               resultMsg += data.summary || `총 ${count}건 조회되었습니다.`;
               doneText = `${getActionLabel(ssAction)} 완료입니다, 선생님. ${count}건이 확인되었습니다.`;
@@ -3109,12 +3143,17 @@ export default function JarvisApp() {
           // 패널 완전 종료
           resetAllNodes();
 
+          // Mission Log: 결과 요약
+          emitMissionLog('📦', 'SMARTSTORE', `신규 ${nO}건 / 배송준비 ${pS}건 / 배송중 ${ship}건`, 'info');
+          emitMissionLog('✅', 'JARVIS', '추천 액션 생성 완료', 'success');
+          emitMissionLog('⏳', 'JARVIS', '대표님 선택 대기 중', 'thinking');
+
           // ── Phase UI-C-Final: ActionCard context 설정 + Approval Preview ──
           const ssCtx: ActionContext = {
             type: 'smartstore',
-            newOrders: data.newOrders || 0,
-            pendingShipping: data.pendingShipping || 0,
-            preShipTotal: data.preShipTotal || ((data.newOrders || 0) + (data.pendingShipping || 0)),
+            newOrders: nO,
+            pendingShipping: pS,
+            preShipTotal: preT,
           };
           setActionContext(ssCtx);
           setWorkflowSteps(buildWorkflowSteps(ssCtx));

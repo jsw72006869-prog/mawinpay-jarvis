@@ -47,19 +47,60 @@ const STATUS_MAP: Record<string, { label: string; color: string; bg: string }> =
   return: { label: '반품/교환', color: '#ff6e40', bg: 'rgba(255,110,64,0.15)' },
 };
 
-// ── 금액 포맷 ──
+// ── 금액 포맷 (NaN 방지) ──
 function formatPrice(n: number): string {
+  if (n === null || n === undefined || isNaN(n)) return '0원';
   return n.toLocaleString('ko-KR') + '원';
 }
 
-// ── 날짜 포맷 ──
+// ── 날짜 포맷 (null/Invalid Date 방지) ──
 function formatDate(d: string): string {
+  if (!d) return '-';
   try {
     const date = new Date(d);
+    if (isNaN(date.getTime())) return '-';
     return `${date.getMonth() + 1}/${date.getDate()} ${date.getHours().toString().padStart(2, '0')}:${date.getMinutes().toString().padStart(2, '0')}`;
   } catch {
-    return d;
+    return '-';
   }
+}
+
+// ── safeOrderMap → OrderItem 변환 어댑터 ──
+const STATUS_CODE_MAP: Record<string, OrderItem['status']> = {
+  PAYED: 'new',
+  DELIVERING: 'shipping',
+  DELIVERED: 'delivered',
+  PURCHASE_DECIDED: 'completed',
+  CANCELED: 'cancelled',
+  RETURNED: 'return',
+  EXCHANGED: 'return',
+};
+
+function adaptOrderData(raw: any): OrderItem {
+  // cloud-proxy v3 safeOrderMap 형식 또는 기존 OrderItem 형식 모두 지원
+  if (raw.orderId && raw.price !== undefined) {
+    // 이미 OrderItem 형식
+    return raw as OrderItem;
+  }
+  // safeOrderMap 형식 변환
+  const statusCode = raw.statusCode || raw.status || 'PAYED';
+  const placeOrder = raw.placeOrderStatus || '';
+  let mappedStatus: OrderItem['status'] = STATUS_CODE_MAP[statusCode] || 'new';
+  // PAYED + placeOrderStatus=OK 이면 배송준비
+  if (statusCode === 'PAYED' && placeOrder === 'OK') mappedStatus = 'preparing';
+  
+  return {
+    orderId: raw.productOrderId || 'N/A',
+    orderDate: raw.orderDate || '',
+    productName: raw.productName || '상품명 없음',
+    option: raw.optionContent || raw.option || '',
+    quantity: Number(raw.quantity) || 1,
+    price: Number(raw.totalAmount) || Number(raw.price) || 0,
+    buyerName: '구매자', // 개인정보 보호
+    status: mappedStatus,
+    trackingNumber: raw.trackingNumber || undefined,
+    carrier: raw.carrier || undefined,
+  };
 }
 
 const OrderDashboard: React.FC<OrderDashboardProps> = ({ visible, data, onClose, onAction }) => {
@@ -80,7 +121,7 @@ const OrderDashboard: React.FC<OrderDashboardProps> = ({ visible, data, onClose,
 
   if (!visible || !data) return null;
 
-  const orders = data.orders || [];
+  const orders = (data.orders || []).map(adaptOrderData);
   const summary = data.summary || {
     newOrders: orders.filter(o => o.status === 'new').length,
     pendingShipping: orders.filter(o => ['confirmed', 'preparing'].includes(o.status)).length,

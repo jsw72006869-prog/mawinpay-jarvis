@@ -142,149 +142,187 @@ function getStatusKo(status: string): string {
   return map[status] || status;
 }
 
-// ── 스마트스토어 주문 조회 핸들러 ──
+// ── 스마트스토어 주문 조회 핸들러 (통일 응답 구조 v3) ──
 async function handleSmartstoreOrders(params: any) {
   const action = params?.action || 'current_new_orders';
   const days = parseInt(params?.days || '7');
   const status = params?.status || 'payed';
+  const fetchedAt = new Date().toISOString();
 
+  // 상태별 한글 라벨
+  const statusLabelMap: Record<string, string> = {
+    PAYED: '결제완료', DELIVERING: '배송중', DELIVERED: '배송완료',
+    PURCHASE_DECIDED: '구매확정', CANCELED: '취소', RETURNED: '반품',
+    EXCHANGED: '교환완료', PAYMENT_WAITING: '입금대기', CANCELED_BY_NOPAYMENT: '미결제취소',
+  };
+
+  // 안전한 주문 매핑 (개인정보 제외)
+  function safeOrderMap(item: any) {
+    const po = item.productOrder || item;
+    const rawDate = po.paymentDate || po.orderDate || null;
+    const rawAmount = po.totalPaymentAmount ?? po.unitPrice ?? null;
+    return {
+      productOrderId: po.productOrderId ? po.productOrderId.slice(0, 8) + '***' : 'N/A',
+      orderDate: rawDate || null,
+      productName: po.productName || '상품명 없음',
+      quantity: Number(po.quantity) || 1,
+      totalAmount: rawAmount !== null ? Number(rawAmount) : null,
+      statusCode: po.productOrderStatus || 'UNKNOWN',
+      statusLabel: statusLabelMap[po.productOrderStatus] || po.productOrderStatus || '확인 필요',
+      optionContent: po.optionContent || '',
+      placeOrderStatus: po.placeOrderStatus || '',
+    };
+  }
+
+  // 공통: PAYED 주문 조회 + 분류
+  async function getPayedCounts(queryDays: number) {
+    const payedResult = await fetchOrders(['PAYED'], queryDays);
+    const newOrders = payedResult.filter((o: any) => {
+      const po = o.productOrder || o;
+      return po.placeOrderStatus !== 'OK';
+    });
+    const pendingShipping = payedResult.filter((o: any) => {
+      const po = o.productOrder || o;
+      return po.placeOrderStatus === 'OK';
+    });
+    return { payedResult, newOrders, pendingShipping };
+  }
+
+  // 배송중/배송완료/구매확정 건수 조회 (병렬)
+  async function getExtraCounts() {
+    const [delivering, delivered, decided] = await Promise.all([
+      fetchOrders(['DELIVERING'], 14),
+      fetchOrders(['DELIVERED'], 7),
+      fetchOrders(['PURCHASE_DECIDED'], 7),
+    ]);
+    return {
+      shipping: delivering.length,
+      delivered: delivered.length,
+      purchaseConfirmed: decided.length,
+    };
+  }
+
+  // ── current_new_orders / query_pending_shipping / query_pre_shipping_total ──
+  if (action === 'current_new_orders' || action === 'query_pending_shipping' || action === 'query_pre_shipping_total') {
+    const { payedResult, newOrders, pendingShipping } = await getPayedCounts(7);
+    let extra = { shipping: 0, delivered: 0, purchaseConfirmed: 0 };
+    try { extra = await getExtraCounts(); } catch (e) { /* non-critical */ }
+
+    const response: any = {
+      success: true,
+      source: 'naver-commerce-api',
+      fetchedAt,
+      cacheAgeMs: 0,
+      isCached: false,
+      counts: {
+        newOrders: newOrders.length,
+        pendingShipping: pendingShipping.length,
+        preShipTotal: payedResult.length,
+        shipping: extra.shipping,
+        delivered: extra.delivered,
+        purchaseConfirmed: extra.purchaseConfirmed,
+      },
+      // 하위호환 필드 (프론트엔드 안전 매핑)
+      newOrders: newOrders.length,
+      pendingShipping: pendingShipping.length,
+      preShipTotal: payedResult.length,
+      orders: payedResult.map(safeOrderMap),
+    };
+
+    // data 필드도 유지 (OrderDashboard 호환)
+    if (action === 'current_new_orders') {
+      response.data = payedResult.map(safeOrderMap);
+    }
+
+    return response;
+  }
+
+  // ── query_orders_today: 오늘 신규주문 ──
+  if (action === 'query_orders_today') {
+    const { payedResult, newOrders, pendingShipping } = await getPayedCounts(1);
+    return {
+      success: true,
+      source: 'naver-commerce-api',
+      fetchedAt,
+      cacheAgeMs: 0,
+      isCached: false,
+      counts: {
+        newOrders: newOrders.length,
+        pendingShipping: pendingShipping.length,
+        preShipTotal: payedResult.length,
+        shipping: 0,
+        delivered: 0,
+        purchaseConfirmed: 0,
+      },
+      newOrders: newOrders.length,
+      pendingShipping: pendingShipping.length,
+      preShipTotal: payedResult.length,
+      data: payedResult.map(safeOrderMap),
+      orders: payedResult.map(safeOrderMap),
+    };
+  }
+
+  // ── query_order_status: 전체 주문 현황 (대시보드용) ──
+  if (action === 'query_order_status') {
+    const { payedResult, newOrders, pendingShipping } = await getPayedCounts(7);
+    let extra = { shipping: 0, delivered: 0, purchaseConfirmed: 0 };
+    try { extra = await getExtraCounts(); } catch (e) { /* non-critical */ }
+
+    // 전체 주문 목록 (대시보드 표시용)
+    const allOrders = payedResult.map(safeOrderMap);
+
+    return {
+      success: true,
+      source: 'naver-commerce-api',
+      fetchedAt,
+      cacheAgeMs: 0,
+      isCached: false,
+      counts: {
+        newOrders: newOrders.length,
+        pendingShipping: pendingShipping.length,
+        preShipTotal: payedResult.length,
+        shipping: extra.shipping,
+        delivered: extra.delivered,
+        purchaseConfirmed: extra.purchaseConfirmed,
+      },
+      newOrders: newOrders.length,
+      pendingShipping: pendingShipping.length,
+      preShipTotal: payedResult.length,
+      data: allOrders,
+      orders: allOrders,
+    };
+  }
+
+  // ── 일반 주문 조회 ──
   const statusMap: Record<string, string[]> = {
     'new': ['PAYED'], 'payed': ['PAYED'], 'delivering': ['DELIVERING'],
     'delivered': ['DELIVERED'], 'decided': ['PURCHASE_DECIDED'],
     'canceled': ['CANCELED'],
     'all': ['PAYMENT_WAITING', 'PAYED', 'DELIVERING', 'DELIVERED', 'PURCHASE_DECIDED'],
   };
-
-  // current_new_orders: PAYED 상태 조회 + 배송준비(DELIVERING 제외) 분리
-  if (action === 'current_new_orders') {
-    // 신규주문 (PAYED)
-    const payedResult = await fetchOrders(['PAYED'], 7);
-    // 배송준비 = 발주확인 완료 but 아직 배송중 아닌 것
-    // 네이버에서는 placeOrderStatus=OK + productOrderStatus=PAYED인 것이 배송준비
-    const newOrders = payedResult.filter((o: any) => {
-      const po = o.productOrder || o;
-      return po.placeOrderStatus !== 'OK';
-    });
-    const pendingShipping = payedResult.filter((o: any) => {
-      const po = o.productOrder || o;
-      return po.placeOrderStatus === 'OK';
-    });
-
-    return {
-      success: true,
-      newOrders: newOrders.length,
-      pendingShipping: pendingShipping.length,
-      preShipTotal: payedResult.length,
-      data: payedResult.map((item: any) => {
-        const po = item.productOrder || item;
-        return {
-          productOrderId: po.productOrderId,
-          productName: po.productName,
-          optionContent: po.optionContent || '',
-          quantity: po.quantity,
-          status: po.productOrderStatus,
-          statusKo: getStatusKo(po.productOrderStatus),
-          placeOrderStatus: po.placeOrderStatus,
-          orderDate: po.paymentDate,
-        };
-      }),
-    };
-  }
-
-  // query_pending_shipping: 배송준비 건수만 조회
-  if (action === 'query_pending_shipping') {
-    const payedResult = await fetchOrders(['PAYED'], 7);
-    const newOrders = payedResult.filter((o: any) => {
-      const po = o.productOrder || o;
-      return po.placeOrderStatus !== 'OK';
-    });
-    const pendingShipping = payedResult.filter((o: any) => {
-      const po = o.productOrder || o;
-      return po.placeOrderStatus === 'OK';
-    });
-
-    return {
-      success: true,
-      newOrders: newOrders.length,
-      pendingShipping: pendingShipping.length,
-      preShipTotal: payedResult.length,
-    };
-  }
-
-  // query_pre_shipping_total: 배송 전 처리 대상 전체
-  if (action === 'query_pre_shipping_total') {
-    const payedResult = await fetchOrders(['PAYED'], 7);
-    const newOrders = payedResult.filter((o: any) => {
-      const po = o.productOrder || o;
-      return po.placeOrderStatus !== 'OK';
-    });
-    const pendingShipping = payedResult.filter((o: any) => {
-      const po = o.productOrder || o;
-      return po.placeOrderStatus === 'OK';
-    });
-
-    return {
-      success: true,
-      newOrders: newOrders.length,
-      pendingShipping: pendingShipping.length,
-      preShipTotal: payedResult.length,
-    };
-  }
-
-  // query_orders_today: 오늘 신규주문
-  if (action === 'query_orders_today') {
-    const payedResult = await fetchOrders(['PAYED'], 1);
-    const newOrders = payedResult.filter((o: any) => {
-      const po = o.productOrder || o;
-      return po.placeOrderStatus !== 'OK';
-    });
-    const pendingShipping = payedResult.filter((o: any) => {
-      const po = o.productOrder || o;
-      return po.placeOrderStatus === 'OK';
-    });
-
-    return {
-      success: true,
-      newOrders: newOrders.length,
-      pendingShipping: pendingShipping.length,
-      preShipTotal: payedResult.length,
-      data: payedResult.map((item: any) => {
-        const po = item.productOrder || item;
-        return {
-          productOrderId: po.productOrderId,
-          productName: po.productName,
-          optionContent: po.optionContent || '',
-          quantity: po.quantity,
-          status: po.productOrderStatus,
-          statusKo: getStatusKo(po.productOrderStatus),
-          placeOrderStatus: po.placeOrderStatus,
-          orderDate: po.paymentDate,
-        };
-      }),
-    };
-  }
-
-  // 일반 주문 조회
   const productOrderStatuses = statusMap[status?.toLowerCase()] || ['PAYED'];
   const orders = await fetchOrders(productOrderStatuses, days);
 
   return {
     success: true,
+    source: 'naver-commerce-api',
+    fetchedAt,
+    cacheAgeMs: 0,
+    isCached: false,
+    counts: {
+      newOrders: 0,
+      pendingShipping: 0,
+      preShipTotal: 0,
+      shipping: 0,
+      delivered: 0,
+      purchaseConfirmed: 0,
+    },
     total: orders.length,
-    orders: orders.map((item: any) => {
-      const po = item.productOrder || item;
-      return {
-        productOrderId: po.productOrderId,
-        productName: po.productName,
-        optionContent: po.optionContent || '',
-        quantity: po.quantity,
-        status: po.productOrderStatus,
-        statusKo: getStatusKo(po.productOrderStatus),
-        placeOrderStatus: po.placeOrderStatus,
-        orderDate: po.paymentDate,
-        totalPaymentAmount: po.totalPaymentAmount,
-      };
-    }),
+    newOrders: 0,
+    pendingShipping: 0,
+    preShipTotal: 0,
+    orders: orders.map(safeOrderMap),
+    data: orders.map(safeOrderMap),
     queryInfo: { statuses: productOrderStatuses, days },
   };
 }
@@ -356,25 +394,42 @@ async function fetchOrders(statuses: string[], days: number): Promise<any[]> {
   return allDetailOrders;
 }
 
-// ── Daily Briefing 핸들러 ──
+// ── Daily Briefing 핸들러 (통일 구조 v3) ──
 async function handleDailyBriefing() {
-  // 주문 현황 조회
+  // 주문 현황 조회 (counts 포함)
   const ordersResult = await handleSmartstoreOrders({ action: 'current_new_orders' });
+  const counts = ordersResult.counts || {
+    newOrders: ordersResult.newOrders || 0,
+    pendingShipping: ordersResult.pendingShipping || 0,
+    preShipTotal: ordersResult.preShipTotal || 0,
+    shipping: 0,
+    delivered: 0,
+    purchaseConfirmed: 0,
+  };
 
   const briefingText = `[오늘의 브리핑]\n` +
-    `• 현재 신규주문: ${ordersResult.newOrders}건\n` +
-    `• 배송준비: ${ordersResult.pendingShipping}건\n` +
-    `• 배송 전 처리 대상 전체: ${ordersResult.preShipTotal}건\n` +
+    `• 현재 신규주문: ${counts.newOrders}건\n` +
+    `• 배송준비: ${counts.pendingShipping}건\n` +
+    `• 배송 전 처리 대상 전체: ${counts.preShipTotal}건\n` +
+    `• 배송중: ${counts.shipping}건\n` +
+    `• 배송완료: ${counts.delivered}건\n` +
+    `• 구매확정: ${counts.purchaseConfirmed}건\n` +
     `• 조회 시각: ${new Date().toLocaleString('ko-KR', { timeZone: 'Asia/Seoul' })}`;
 
   return {
     success: true,
+    source: 'naver-commerce-api',
+    fetchedAt: ordersResult.fetchedAt || new Date().toISOString(),
     content: briefingText,
     smartstore: {
-      newOrders: ordersResult.newOrders,
-      pendingShipping: ordersResult.pendingShipping,
-      preShipTotal: ordersResult.preShipTotal,
+      newOrders: counts.newOrders,
+      pendingShipping: counts.pendingShipping,
+      preShipTotal: counts.preShipTotal,
+      shipping: counts.shipping,
+      delivered: counts.delivered,
+      purchaseConfirmed: counts.purchaseConfirmed,
     },
+    counts,
   };
 }
 
