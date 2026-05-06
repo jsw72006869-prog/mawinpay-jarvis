@@ -4487,11 +4487,13 @@ export default function JarvisApp() {
         </div>
       </motion.header>
 
-      {/* ── 좌측 통계 패널 ── */}
+      {/* ── 좌측 통계 패널 (OUTREACH 활성화 시에만 표시) ── */}
+      {outreachVisible && (
       <motion.aside
         initial={{ opacity: 0, x: -20 }}
         animate={{ opacity: 1, x: 0 }}
-        transition={{ delay: 1.2, duration: 1 }}
+        exit={{ opacity: 0, x: -20 }}
+        transition={{ delay: 0.2, duration: 0.5 }}
         style={isMobile ? {
           position: 'fixed',
           bottom: 28, left: 0, right: 0,
@@ -4532,6 +4534,7 @@ export default function JarvisApp() {
           ))}
         </div>
       </motion.aside>
+      )}
 
       {/* ── 대화 패널 (Phase Prod-B) ── */}
       <AnimatePresence>
