@@ -570,10 +570,12 @@ async function fetchOrders(statuses: string[], days: number): Promise<any[]> {
     return [];
   }
 
-  // 순차 실행 (한 번에 하나씩 - QuotaGuard 안정성 최대화)
-  for (const { from, to } of dayRequests) {
-    const ids = await fetchDayWithRetry(from, to);
-    allProductOrderIds.push(...ids);
+  // 3개씩 병렬 배치 실행 (QuotaGuard 동시연결 3개 제한 대응)
+  const BATCH_SIZE = 3;
+  for (let b = 0; b < dayRequests.length; b += BATCH_SIZE) {
+    const batch = dayRequests.slice(b, b + BATCH_SIZE);
+    const results = await Promise.all(batch.map(({ from, to }) => fetchDayWithRetry(from, to)));
+    for (const ids of results) allProductOrderIds.push(...ids);
   }
 
   allProductOrderIds = [...new Set(allProductOrderIds)];
