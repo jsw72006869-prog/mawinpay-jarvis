@@ -2707,8 +2707,8 @@ export default function JarvisApp() {
           '전일대비': `${revenueSign}${ss.revenueChangePercent || 0}%`,
         });
         emitNodeData('sheets', {
-          '인플루언서총계': inf.total || 0,
-          '어제신규': inf.newYesterday || 0,
+          '인플루언서총계': outreach.total || 0,
+          '어제신규': outreach.newYesterday || 0,
         });
 
         // 화면에 보고서 표시 + 음성 브리핑 (비동기)
