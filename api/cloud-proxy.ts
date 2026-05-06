@@ -304,36 +304,111 @@ async function handleSmartstoreOrders(params: any) {
   if (action === 'debug_last_changed') {
     const now = new Date();
     const from = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
-    const fromStr = from.toISOString().replace(/\.\d{3}Z$/, '.000Z');
-    const toStr = now.toISOString().replace(/\.\d{3}Z$/, '.000Z');
+    // ISO UTC 형식
+    const fromUtc = from.toISOString().replace(/\.\d{3}Z$/, '.000Z');
+    const toUtc = now.toISOString().replace(/\.\d{3}Z$/, '.000Z');
+    // KST 형식 (yyyy-MM-dd'T'HH:mm:ss.SSS+09:00)
+    const toKST = (d: Date) => {
+      const kst = new Date(d.getTime() + 9 * 60 * 60 * 1000);
+      return kst.toISOString().replace('Z', '+09:00').replace(/\.\d{3}\+/, '.000+');
+    };
+    const fromKst = toKST(from);
+    const toKst = toKST(now);
 
     const results: any = {};
-    for (const changedType of ['PURCHASE_DECIDED', 'DISPATCHED', 'PAYED']) {
-      const params = new URLSearchParams({
-        lastChangedFrom: fromStr,
-        lastChangedTo: toStr,
-        lastChangedType: changedType,
-      });
-      try {
-        const result = await smartStoreRequest(
-          `/v1/pay-order/seller/product-orders/last-changed-statuses?${params.toString()}`,
-          { method: 'GET' }
-        );
-        const data = result.data.data || result.data;
-        const items = data.lastChangeStatuses || data.lastChangedStatuses || result.data.lastChangeStatuses || result.data.lastChangedStatuses || [];
-        results[changedType] = {
-          httpStatus: result.status,
-          topLevelKeys: Object.keys(result.data),
-          dataKeys: Object.keys(data || {}),
-          itemCount: items.length,
-          more: data.more || result.data.more || false,
-          sampleKeys: Object.keys(items[0] || {}),
-        };
-      } catch (err: any) {
-        results[changedType] = { error: err.message };
-      }
+    // 테스트 1: UTC 형식
+    const paramsUtc = new URLSearchParams({
+      lastChangedFrom: fromUtc,
+      lastChangedTo: toUtc,
+      lastChangedType: 'PURCHASE_DECIDED',
+    });
+    try {
+      const r = await smartStoreRequest(
+        `/v1/pay-order/seller/product-orders/last-changed-statuses?${paramsUtc.toString()}`,
+        { method: 'GET' }
+      );
+      results['UTC_PURCHASE_DECIDED'] = {
+        httpStatus: r.status,
+        errorCode: r.data?.code,
+        errorMessage: r.data?.message,
+        itemCount: (r.data?.data?.lastChangeStatuses || r.data?.lastChangeStatuses || []).length,
+      };
+    } catch (err: any) {
+      results['UTC_PURCHASE_DECIDED'] = { error: err.message };
     }
-    return { success: true, debug: results, from: fromStr, to: toStr };
+
+    // 테스트 2: KST 형식
+    const paramsKst = new URLSearchParams({
+      lastChangedFrom: fromKst,
+      lastChangedTo: toKst,
+      lastChangedType: 'PURCHASE_DECIDED',
+    });
+    try {
+      const r = await smartStoreRequest(
+        `/v1/pay-order/seller/product-orders/last-changed-statuses?${paramsKst.toString()}`,
+        { method: 'GET' }
+      );
+      results['KST_PURCHASE_DECIDED'] = {
+        httpStatus: r.status,
+        errorCode: r.data?.code,
+        errorMessage: r.data?.message,
+        itemCount: (r.data?.data?.lastChangeStatuses || r.data?.lastChangeStatuses || []).length,
+      };
+    } catch (err: any) {
+      results['KST_PURCHASE_DECIDED'] = { error: err.message };
+    }
+
+    // 테스트 3: POST /v1/pay-order/seller/product-orders/query (productOrderStatuses 필터)
+    try {
+      const r = await smartStoreRequest(
+        `/v1/pay-order/seller/product-orders/query`,
+        {
+          method: 'POST',
+          data: {
+            productOrderStatuses: ['PURCHASE_DECIDED'],
+            from: fromUtc,
+            to: toUtc,
+            rangeType: 'PAYED_DATETIME',
+          }
+        }
+      );
+      results['POST_QUERY_DECIDED'] = {
+        httpStatus: r.status,
+        errorCode: r.data?.code,
+        errorMessage: r.data?.message,
+        dataKeys: Object.keys(r.data?.data || r.data || {}),
+        totalCount: r.data?.data?.totalCount || r.data?.totalCount,
+        itemCount: (r.data?.data?.contents || r.data?.contents || []).length,
+      };
+    } catch (err: any) {
+      results['POST_QUERY_DECIDED'] = { error: err.message };
+    }
+
+    // 테스트 4: GET /v1/pay-order/seller/product-orders (productOrderStatuses=DELIVERING)
+    const paramsGet = new URLSearchParams({
+      productOrderStatuses: 'DELIVERING',
+      from: fromUtc,
+      to: toUtc,
+      rangeType: 'PAYED_DATETIME',
+    });
+    try {
+      const r = await smartStoreRequest(
+        `/v1/pay-order/seller/product-orders?${paramsGet.toString()}`,
+        { method: 'GET' }
+      );
+      results['GET_DELIVERING'] = {
+        httpStatus: r.status,
+        errorCode: r.data?.code,
+        errorMessage: r.data?.message,
+        dataKeys: Object.keys(r.data?.data || r.data || {}),
+        totalCount: r.data?.data?.totalCount || r.data?.totalCount,
+        itemCount: (r.data?.data?.contents || r.data?.contents || []).length,
+      };
+    } catch (err: any) {
+      results['GET_DELIVERING'] = { error: err.message };
+    }
+
+    return { success: true, debug: results, fromUtc, toUtc, fromKst, toKst };
   }
 
   // ── current_new_orders / query_pending_shipping / query_pre_shipping_total ──
