@@ -382,7 +382,7 @@ export default function ConversationPanel({
         position: 'fixed',
         top: 80,
         right: 20,
-        bottom: 80,
+        bottom: 'calc(50% + 20px)',
         width: 380,
         zIndex: 50,
         pointerEvents: 'auto',

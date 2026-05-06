@@ -4549,10 +4549,10 @@ export default function JarvisApp() {
       {/* ── ActionCard (Phase UI-D: 우측 중단 고정) ── */}
       <div style={{
         position: 'fixed',
-        top: 'calc(50% + 40px)',
+        top: 'calc(50% + 30px)',
         right: 20,
+        bottom: 20,
         width: 380,
-        maxHeight: '45vh',
         overflowY: 'auto',
         overflowX: 'hidden',
         zIndex: 48,
