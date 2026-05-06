@@ -3902,11 +3902,16 @@ export default function JarvisApp() {
     }
 
     // ── Market Price 명령 처리 ("가격 괜찮아?", "얼마에 팔면", "마진 남아?", "시장 리포트") ──
+    // KAMIS 품목이 포함된 경우 KAMIS 조회 우선 (market-price-check 대신)
+    const kamisItemsLocal = ['배추', '절임배추', '옥수수', '양파', '대파', '감자', '고구마', '당근', '시금치', '사과', '배', '쌀'];
+    const kamisItemInText = kamisItemsLocal.find(item => text.includes(item));
+    const isKamisPriceQuery = kamisItemInText && /가격|시세|시장|얼마|도매|소매/.test(text);
+
     const marketPriceMatch = text.match(/(가격|얼마|마진|시세|원가|판매가|경쟁가|시장).*(괜찮|남아|팔면|좋아|분석|판단|체크|확인|리포트|저장)/);
     const marketInputMatch = text.match(/(가격|마진|시세).*(입력|등록|추가|계산)/);
     const marketListMatch = text.match(/(시장|가격|마진).*(리포트|기록|목록|조회|보여|저장).*(저장|보여|조회|해줘)?/);
 
-    if (marketPriceMatch || marketInputMatch) {
+    if ((marketPriceMatch || marketInputMatch) && !isKamisPriceQuery) {
       emitNodeState('jarvis_brain', 'active', '가격 판단 분석 중...');
       emitMissionLog('📊', 'Market', '가격 판단 요청 수신', 'thinking');
 
