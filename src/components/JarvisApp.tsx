@@ -8,6 +8,7 @@ import { saveLearnedKnowledge, getLearnedKnowledge, getMemoryStats, clearAllMemo
 import { appendInfluencersToSheet, appendEmailLogToSheet, appendNaverResultsToSheet, appendInstagramToSheet, appendLocalBusinessToSheet, generateMockInfluencers, generateEmailLogs, sendEmailsViaResend, buildInfluencerEmailHtml, type NaverCollectedData } from '../lib/google-sheets';
 import ConversationStream, { type Message } from './ConversationStream';
 import ConversationPanel, { type STTStatus } from './ConversationPanel';
+import ActionCard, { type ActionContext, type WorkflowStep, buildWorkflowSteps, matchVoiceToAction } from './ActionCard';
 import SparkleParticles from './SparkleParticles';
 import ClapDetector from './ClapDetector';
 // import HoloDataPanel from './HoloDataPanel'; // 제거됨
@@ -123,6 +124,8 @@ export default function JarvisApp() {
   const [isTyping, setIsTyping] = useState(false);
   const [sttStatus, setSttStatus] = useState<STTStatus>('idle');
   const [conversationExpanded, setConversationExpanded] = useState(false);
+  const [actionContext, setActionContext] = useState<ActionContext | null>(null);
+  const [workflowSteps, setWorkflowSteps] = useState<WorkflowStep[]>([]);
   const [dataPanel, setDataPanel] = useState<{
     visible: boolean;
     type: 'collect' | 'send_email' | 'create_banner' | 'report' | 'booking' | 'smartstore' | 'youtube' | null;
@@ -2322,6 +2325,17 @@ export default function JarvisApp() {
 
       // 완료 후 listening 복귀
       resetAllNodes();
+
+      // ── Phase UI-C: Creative ActionCard context 설정 ──
+      const creativeCtx: ActionContext = {
+        type: 'creative',
+        product: product || '',
+        contentType: contentType || '',
+      };
+      setActionContext(creativeCtx);
+      setWorkflowSteps(buildWorkflowSteps(creativeCtx));
+      setConversationExpanded(true);
+
       await new Promise(r => setTimeout(r, 400));
       setState('listening');
       setIsListening(true);
@@ -2567,6 +2581,12 @@ export default function JarvisApp() {
       setTimeout(() => {
         setDataPanel({ visible: false, type: null, progress: 0, message: '' });
       }, 8000);
+
+      // ── Phase UI-C: Briefing ActionCard context 설정 ──
+      const briefCtx: ActionContext = { type: 'briefing' };
+      setActionContext(briefCtx);
+      setWorkflowSteps(buildWorkflowSteps(briefCtx));
+      setConversationExpanded(true);
 
       await new Promise(r => setTimeout(r, 400));
       setState('listening');
@@ -2905,6 +2925,16 @@ export default function JarvisApp() {
           speak(doneText, undefined, () => { stopSpeakingLevel(); });
           // 패널 완전 종료
           resetAllNodes();
+
+          // ── Phase UI-C: ActionCard context 설정 ──
+          const ssCtx: ActionContext = {
+            type: 'smartstore',
+            newOrders: data.newOrders || 0,
+            pendingShipping: data.pendingShipping || 0,
+          };
+          setActionContext(ssCtx);
+          setWorkflowSteps(buildWorkflowSteps(ssCtx));
+          setConversationExpanded(true);
         }
 
       } catch (err) {
@@ -3358,6 +3388,20 @@ export default function JarvisApp() {
     setState('thinking');
     // 4. 사용자 메시지 표시
     addMessage('user', transcript);
+
+    // ── Phase UI-C: 음성 선택 매칭 (ActionCard 버튼 선택) ──
+    if (actionContext) {
+      const matched = matchVoiceToAction(transcript, actionContext);
+      if (matched) {
+        console.log('[JARVIS] 음성 선택 매칭:', matched);
+        setActionContext(null);
+        setWorkflowSteps([]);
+        // safe action만 실행, 나머지는 handleTextSubmit으로 전달
+        handleTextSubmit(matched);
+        return;
+      }
+    }
+
     try {
       // 5. GPT-4o API 호출 (폴백: 로컬 파서)
       emitNodeState('jarvis_brain', 'active', 'GPT 뇌 사고 중...');
@@ -3902,6 +3946,25 @@ export default function JarvisApp() {
             sttStatus={sttStatus}
             isExpanded={conversationExpanded}
             onToggleExpand={() => setConversationExpanded(prev => !prev)}
+          />
+        )}
+      </AnimatePresence>
+
+      {/* ── ActionCard (Phase UI-C) ── */}
+      <AnimatePresence>
+        {actionContext && (
+          <ActionCard
+            context={actionContext}
+            workflowSteps={workflowSteps}
+            onActionSelect={(cmd: string) => {
+              setActionContext(null);
+              setWorkflowSteps([]);
+              handleTextSubmit(cmd);
+            }}
+            onDismiss={() => {
+              setActionContext(null);
+              setWorkflowSteps([]);
+            }}
           />
         )}
       </AnimatePresence>
