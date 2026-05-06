@@ -187,27 +187,57 @@ async function handleSmartstoreOrders(params: any) {
     };
   }
 
-  // 공통: 모든 상태 주문을 한 번에 조회하고 상태별 분류 (Vercel 60초 타임아웃 대응)
+  // last-changed-statuses API로 특정 상태의 건수를 조회 (네이버 대시보드와 동일한 기준)
+  async function getLastChangedCount(orderStatus: string, days: number): Promise<number> {
+    const now = new Date();
+    const from = new Date(now.getTime() - days * 24 * 60 * 60 * 1000);
+    const fromStr = from.toISOString().replace(/\.\d{3}Z$/, '.000Z');
+    const toStr = now.toISOString().replace(/\.\d{3}Z$/, '.000Z');
+
+    const params = new URLSearchParams({
+      lastChangedFrom: fromStr,
+      lastChangedTo: toStr,
+      orderStatuses: orderStatus,
+      page: '1',
+      pageSize: '1',
+    });
+
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try {
+        const result = await smartStoreRequest(
+          `/v1/pay-order/seller/orders/last-changed-statuses?${params.toString()}`,
+          { method: 'GET' }
+        );
+        if (result.status === 200) {
+          const data = result.data.data || result.data;
+          // totalCount 필드가 전체 건수를 반환
+          return data.totalCount || result.data.totalCount || (data.lastChangeStatuses || []).length || 0;
+        }
+      } catch (err: any) {
+        if (attempt < 2) await new Promise(r => setTimeout(r, 500 * (attempt + 1)));
+        else console.warn(`[cloud-proxy] last-changed-statuses(${orderStatus}) 실패:`, err.message);
+      }
+    }
+    return 0;
+  }
+
+  // 공통: 하이브리드 조회 (PAYED+DELIVERING은 fetchOrders, DELIVERED/DECIDED는 last-changed-statuses)
   async function getAllCounts(queryDays: number) {
-    // 모든 상태를 한 번에 조회 (30일 x 1회 = 30개 순차 요청, ~45초)
-    const allOrders = await fetchOrders(
-      ['PAYED', 'DELIVERING', 'DELIVERED', 'PURCHASE_DECIDED'],
+    // 1) PAYED + DELIVERING: 결제일 기준 조회 (30일)
+    const payedAndShipping = await fetchOrders(
+      ['PAYED', 'DELIVERING'],
       queryDays
     );
 
     // 상태별 분류
     const payed: any[] = [];
     const delivering: any[] = [];
-    const delivered: any[] = [];
-    const decided: any[] = [];
 
-    for (const order of allOrders) {
+    for (const order of payedAndShipping) {
       const po = order.productOrder || order;
       const status = po.productOrderStatus || '';
       if (status === 'PAYED') payed.push(order);
       else if (status === 'DELIVERING') delivering.push(order);
-      else if (status === 'DELIVERED') delivered.push(order);
-      else if (status === 'PURCHASE_DECIDED') decided.push(order);
     }
 
     // PAYED 내에서 신규주문 vs 배송준비 분류
@@ -220,14 +250,21 @@ async function handleSmartstoreOrders(params: any) {
       return po.placeOrderStatus === 'OK';
     });
 
+    // 2) DELIVERED + PURCHASE_DECIDED: last-changed-statuses API (네이버 대시보드와 동일 기준)
+    // 네이버 대시보드는 최근 7일 내 상태 변경된 건을 표시
+    const [deliveredCount, decidedCount] = await Promise.all([
+      getLastChangedCount('DELIVERED', 7),
+      getLastChangedCount('PURCHASE_DECIDED', 7),
+    ]);
+
     return {
-      allOrders,
+      allOrders: payedAndShipping,
       payed,
       newOrders,
       pendingShipping,
       shipping: delivering.length,
-      delivered: delivered.length,
-      purchaseConfirmed: decided.length,
+      delivered: deliveredCount,
+      purchaseConfirmed: decidedCount,
     };
   }
 
