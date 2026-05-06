@@ -201,14 +201,13 @@ async function handleSmartstoreOrders(params: any) {
     return { payedResult, newOrders, pendingShipping };
   }
 
-  // 배송중/배송완료/구매확정 건수 조회 (병렬)
+  // 배송중/배송완료/구매확정 건수 조회 (순차 실행 - QuotaGuard 동시연결 제한 대응)
   // 네이버 대시보드는 결제일 무관 현재 상태 전체를 표시하므로 충분한 기간 조회 필요
   async function getExtraCounts() {
-    const [delivering, delivered, decided] = await Promise.all([
-      fetchOrders(['DELIVERING'], 180),   // 배송중: 180일 (API 최대) 내 결제 주문 중 현재 배송중
-      fetchOrders(['DELIVERED'], 90),     // 배송완료: 90일 내 결제 주문 중 현재 배송완료
-      fetchOrders(['PURCHASE_DECIDED'], 90), // 구매확정: 90일 내 결제 주문 중 현재 구매확정
-    ]);
+    // 순차 실행으로 QuotaGuard 동시연결 초과 방지
+    const delivering = await fetchOrders(['DELIVERING'], 60);
+    const delivered = await fetchOrders(['DELIVERED'], 30);
+    const decided = await fetchOrders(['PURCHASE_DECIDED'], 30);
     return {
       shipping: delivering.length,
       delivered: delivered.length,
@@ -341,29 +340,28 @@ async function handleSmartstoreOrders(params: any) {
   };
 }
 
-// ── 주문 목록 + 상세 조회 (QuotaGuard 동시연결 제한 대응) ──
+// ── 주문 목록 + 상세 조회 (24시간 단위 + QuotaGuard 동시연결 제한 대응) ──
 async function fetchOrders(statuses: string[], days: number): Promise<any[]> {
   const now = new Date();
   const startDate = new Date();
   startDate.setDate(startDate.getDate() - days);
 
-  // 7일 단위 구간으로 조회 (요청 수 최소화)
-  const CHUNK_DAYS = 7;
-  const chunkRequests: Array<{ from: Date; to: Date }> = [];
-  for (let i = 0; i < days; i += CHUNK_DAYS) {
-    const chunkFrom = new Date(startDate.getTime() + i * 24 * 60 * 60 * 1000);
-    const chunkTo = new Date(chunkFrom.getTime() + CHUNK_DAYS * 24 * 60 * 60 * 1000);
-    if (chunkFrom >= now) break;
-    if (chunkTo > now) chunkTo.setTime(now.getTime());
-    chunkRequests.push({ from: chunkFrom, to: chunkTo });
+  // 일별 24시간 단위 조회 (네이버 API 제한: from~to 간격 최대 24시간)
+  const dayRequests: Array<{ from: Date; to: Date }> = [];
+  for (let i = 0; i < days; i++) {
+    const dayFrom = new Date(startDate.getTime() + i * 24 * 60 * 60 * 1000);
+    const dayTo = new Date(dayFrom.getTime() + 24 * 60 * 60 * 1000);
+    if (dayFrom >= now) break;
+    if (dayTo > now) dayTo.setTime(now.getTime());
+    dayRequests.push({ from: dayFrom, to: dayTo });
   }
 
-  // QuotaGuard 동시연결 제한 대응: 3개씩 순차 병렬
+  // QuotaGuard 동시연결 제한 대응: 5개씩 순차 병렬 (토큰 캐시 + 순차 getExtraCounts로 안정성 확보)
   let allProductOrderIds: string[] = [];
-  const BATCH_SIZE = 3;
+  const BATCH_SIZE = 5;
 
-  for (let batchStart = 0; batchStart < chunkRequests.length; batchStart += BATCH_SIZE) {
-    const batch = chunkRequests.slice(batchStart, batchStart + BATCH_SIZE);
+  for (let batchStart = 0; batchStart < dayRequests.length; batchStart += BATCH_SIZE) {
+    const batch = dayRequests.slice(batchStart, batchStart + BATCH_SIZE);
     const batchResults = await Promise.all(
       batch.map(async ({ from, to }) => {
         const params = new URLSearchParams();
