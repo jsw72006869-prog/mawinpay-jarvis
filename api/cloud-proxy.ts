@@ -419,6 +419,9 @@ async function handleSmartstoreOrders(params: any) {
       newOrders: counts.newOrders.length,
       pendingShipping: counts.pendingShipping.length,
       preShipTotal: counts.payed.length,
+      shipping: counts.shipping,
+      delivered: counts.delivered,
+      purchaseConfirmed: counts.purchaseConfirmed,
       orders: counts.payed.map(safeOrderMap),
     };
 
@@ -475,9 +478,13 @@ async function handleSmartstoreOrders(params: any) {
         purchaseConfirmed: counts.purchaseConfirmed,
         settlementExpectationAmount: counts.settlementExpectationAmount || 0,
       },
+      // 하위호환 top-level 필드 (프론트엔드 안전 매핑)
       newOrders: counts.newOrders.length,
       pendingShipping: counts.pendingShipping.length,
       preShipTotal: counts.payed.length,
+      shipping: counts.shipping,
+      delivered: counts.delivered,
+      purchaseConfirmed: counts.purchaseConfirmed,
       data: allOrders,
       orders: allOrders,
     };
