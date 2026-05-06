@@ -1,9 +1,26 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import mysql from 'mysql2/promise';
 import crypto from 'crypto';
-import bcrypt from 'bcryptjs';
-import { HttpsProxyAgent } from 'https-proxy-agent';
-import nodeFetch from 'node-fetch';
+
+// Dynamic imports for ESM-only packages (resolved at runtime)
+let _bcrypt: any = null;
+let _HttpsProxyAgent: any = null;
+
+async function getBcrypt() {
+  if (!_bcrypt) {
+    const mod = await import('bcryptjs');
+    _bcrypt = mod.default || mod;
+  }
+  return _bcrypt;
+}
+
+async function getHttpsProxyAgentClass() {
+  if (!_HttpsProxyAgent) {
+    const mod = await import('https-proxy-agent');
+    _HttpsProxyAgent = (mod as any).HttpsProxyAgent || (mod as any).default;
+  }
+  return _HttpsProxyAgent;
+}
 
 // ── Runtime: Node.js (NOT Edge) ──
 export const config = {
@@ -23,9 +40,10 @@ const NAVER_API_BASE = 'https://api.commerce.naver.com/external';
 const ALLOWED_IPS = ['52.5.238.209', '52.6.13.167', '72.252.132.247'];
 
 // ── QuotaGuard Proxy Agent 생성 ──
-function getProxyAgent(): any {
+async function getProxyAgent(): Promise<any> {
   if (!QUOTAGUARD_URL) return null;
-  return new HttpsProxyAgent(QUOTAGUARD_URL);
+  const AgentClass = await getHttpsProxyAgentClass();
+  return new AgentClass(QUOTAGUARD_URL);
 }
 
 function getProxyScheme(): string {
@@ -46,10 +64,11 @@ function getAgentType(): string {
 
 // ── 프록시 경유 fetch ──
 async function proxyFetch(url: string, options: any = {}): Promise<any> {
-  const agent = getProxyAgent();
+  const agent = await getProxyAgent();
   if (!agent) {
     throw new Error('QUOTAGUARD_URL not configured - cannot call Naver API without proxy');
   }
+  const { default: nodeFetch } = await import('node-fetch');
   return nodeFetch(url, { ...options, agent } as any);
 }
 
@@ -61,7 +80,8 @@ async function getSmartStoreToken(): Promise<string> {
   const timestamp = String(Date.now());
   const pwd = `${SMARTSTORE_CLIENT_ID}_${timestamp}`;
   
-  const hashed = bcrypt.hashSync(pwd, SMARTSTORE_CLIENT_SECRET);
+  const bcryptMod = await getBcrypt();
+  const hashed = bcryptMod.hashSync(pwd, SMARTSTORE_CLIENT_SECRET);
   const clientSecretSign = Buffer.from(hashed).toString('base64');
 
   const params = new URLSearchParams({
@@ -297,7 +317,8 @@ async function handleCreativeContent(params: any) {
 
   if (OPENAI_API_KEY) {
     try {
-      const gptRes = await nodeFetch('https://api.openai.com/v1/chat/completions', {
+      const { default: nodeFetchGpt } = await import('node-fetch');
+      const gptRes = await nodeFetchGpt('https://api.openai.com/v1/chat/completions', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
