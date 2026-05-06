@@ -272,6 +272,42 @@ async function handleSmartstoreOrders(params: any) {
     };
   }
 
+  // ── debug_last_changed: 디버그용 - last-changed-statuses API 원문 확인 ──
+  if (action === 'debug_last_changed') {
+    const now = new Date();
+    const from = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+    const fromStr = from.toISOString().replace(/\.\d{3}Z$/, '.000Z');
+    const toStr = now.toISOString().replace(/\.\d{3}Z$/, '.000Z');
+
+    const results: any = {};
+    for (const status of ['DELIVERED', 'PURCHASE_DECIDED', 'DELIVERING']) {
+      const params = new URLSearchParams({
+        lastChangedFrom: fromStr,
+        lastChangedTo: toStr,
+        orderStatuses: status,
+        page: '1',
+        pageSize: '5',
+      });
+      try {
+        const result = await smartStoreRequest(
+          `/v1/pay-order/seller/orders/last-changed-statuses?${params.toString()}`,
+          { method: 'GET' }
+        );
+        results[status] = {
+          httpStatus: result.status,
+          topLevelKeys: Object.keys(result.data),
+          totalCount: result.data?.totalCount || result.data?.data?.totalCount,
+          dataKeys: Object.keys(result.data?.data || {}),
+          itemCount: (result.data?.data?.lastChangeStatuses || result.data?.data?.lastChangedStatuses || result.data?.lastChangeStatuses || result.data?.lastChangedStatuses || []).length,
+          sampleKeys: Object.keys((result.data?.data?.lastChangeStatuses || result.data?.data?.lastChangedStatuses || result.data?.lastChangeStatuses || result.data?.lastChangedStatuses || [])[0] || {}),
+        };
+      } catch (err: any) {
+        results[status] = { error: err.message };
+      }
+    }
+    return { success: true, debug: results, from: fromStr, to: toStr };
+  }
+
   // ── current_new_orders / query_pending_shipping / query_pre_shipping_total ──
   if (action === 'current_new_orders' || action === 'query_pending_shipping' || action === 'query_pre_shipping_total') {
     const counts = await getAllCounts(30);
