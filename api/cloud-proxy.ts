@@ -608,7 +608,9 @@ async function sheetsAppend(tab: string, values: string[][]): Promise<any> {
     headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
     body: JSON.stringify({ values }),
   });
-  return res.json();
+  const data = await res.json();
+  if (!res.ok) throw new Error(`Sheets append error (${res.status}): ${JSON.stringify(data.error?.message || data)}`);
+  return data;
 }
 
 async function sheetsRead(tab: string, range?: string): Promise<any> {
@@ -616,7 +618,9 @@ async function sheetsRead(tab: string, range?: string): Promise<any> {
   const r = range || `${tab}!A1:Z1000`;
   const url = `https://sheets.googleapis.com/v4/spreadsheets/${WORKSPACE_SHEET_ID}/values/${encodeURIComponent(r)}`;
   const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
-  return res.json();
+  const data = await res.json();
+  if (!res.ok) throw new Error(`Sheets read error (${res.status}): ${JSON.stringify(data.error?.message || data)}`);
+  return data;
 }
 
 const SHEET_HEADERS: Record<string, string[]> = {
