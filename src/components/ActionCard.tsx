@@ -54,6 +54,7 @@ interface ActionCardProps {
   workflowSteps?: WorkflowStep[];
   approvalPreview?: ApprovalPreviewData | null;
   onApprovalDismiss?: () => void;
+  onSave?: (type: string, data: any) => Promise<any>;
 }
 
 // ── Theme ──
@@ -405,7 +406,7 @@ function WorkflowTimeline({ steps }: { steps: WorkflowStep[] }) {
 }
 
 // ── Main ActionCard Component ──
-export default function ActionCard({ context, onActionSelect, onDismiss, workflowSteps = [], approvalPreview, onApprovalDismiss }: ActionCardProps) {
+export default function ActionCard({ context, onActionSelect, onDismiss, workflowSteps = [], approvalPreview, onApprovalDismiss, onSave }: ActionCardProps) {
   const actions = getRecommendedActions(context);
 
   // Context description
@@ -560,6 +561,38 @@ export default function ActionCard({ context, onActionSelect, onDismiss, workflo
 
         {/* Workflow Timeline */}
         {workflowSteps.length > 0 && <WorkflowTimeline steps={workflowSteps} />}
+
+        {/* Save Button */}
+        {onSave && context.type !== 'general' && (
+          <motion.button
+            whileHover={{ scale: 1.02 }}
+            whileTap={{ scale: 0.97 }}
+            onClick={async () => {
+              const saveType = context.type === 'smartstore' ? 'briefing' :
+                               context.type === 'creative' ? 'creative_script' :
+                               context.type === 'growth_link' ? 'growth_campaign' : 'briefing';
+              await onSave(saveType, { ...context, title: contextDescription, summary: contextDescription });
+            }}
+            style={{
+              width: '100%',
+              marginTop: 10,
+              padding: '8px 12px',
+              background: 'rgba(0, 200, 255, 0.08)',
+              border: '1px solid rgba(0, 200, 255, 0.25)',
+              borderRadius: 8,
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: 6,
+            }}
+          >
+            <span style={{ fontSize: '0.75rem' }}>💾</span>
+            <span style={{ fontSize: '0.65rem', color: '#00c8ff', fontWeight: 500 }}>
+              Google Sheets에 저장
+            </span>
+          </motion.button>
+        )}
 
         {/* Voice Hint */}
         <div style={{

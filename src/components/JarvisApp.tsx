@@ -28,6 +28,7 @@ import MarketIntelChart from './MarketIntelChart';
 import BookingPanel from './BookingPanel';
 import EmailHistoryCards, { type EmailRecord } from './EmailHistoryCards';
 import OrderDashboard from './OrderDashboard';
+import FileWorkspacePanel, { type WorkspaceRecord } from './FileWorkspacePanel';
 import CloudStatusOverlay from './CloudStatusOverlay';
 import LiveBrowserViewer from './LiveBrowserViewer';
 
@@ -127,6 +128,9 @@ export default function JarvisApp() {
   const [actionContext, setActionContext] = useState<ActionContext | null>(null);
   const [workflowSteps, setWorkflowSteps] = useState<WorkflowStep[]>([]);
   const [approvalPreview, setApprovalPreview] = useState<ApprovalPreviewData | null>(null);
+  const [workspaceVisible, setWorkspaceVisible] = useState(false);
+  const [workspaceRecords, setWorkspaceRecords] = useState<WorkspaceRecord[]>([]);
+  const [workspaceLoading, setWorkspaceLoading] = useState(false);
   const [dataPanel, setDataPanel] = useState<{
     visible: boolean;
     type: 'collect' | 'send_email' | 'create_banner' | 'report' | 'booking' | 'smartstore' | 'youtube' | null;
@@ -363,6 +367,43 @@ export default function JarvisApp() {
       localStorage.setItem('jarvis-collected-influencers', JSON.stringify(collectedInfluencers));
     } catch (e) { console.warn('[JARVIS] localStorage 저장 실패:', e); }
   }, [collectedInfluencers]);
+
+  // ── Workspace: Google Sheets 저장/조회 ──
+  const fetchWorkspaceRecords = useCallback(async () => {
+    setWorkspaceLoading(true);
+    try {
+      const res = await fetch('/api/cloud-proxy', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ taskType: 'workspace-list', params: { limit: 50 } }),
+      });
+      const data = await res.json();
+      if (data.success && data.records) {
+        setWorkspaceRecords(data.records);
+      }
+    } catch (e) { console.warn('[JARVIS] Workspace fetch failed:', e); }
+    setWorkspaceLoading(false);
+  }, []);
+
+  const saveToWorkspace = useCallback(async (type: string, data: any, sourceCommand?: string) => {
+    try {
+      const res = await fetch('/api/cloud-proxy', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ taskType: 'workspace-save', params: { type, data, sourceCommand } }),
+      });
+      const result = await res.json();
+      if (result.success) {
+        emitMissionLog({ step: 'workspace_save', label: `${type} 저장 완료`, status: 'success', detail: result.recordId });
+        // 저장 후 목록 갱신
+        fetchWorkspaceRecords();
+      }
+      return result;
+    } catch (e: any) {
+      emitMissionLog({ step: 'workspace_save', label: `${type} 저장 실패`, status: 'error', detail: e.message });
+      return { success: false, error: e.message };
+    }
+  }, [fetchWorkspaceRecords]);
 
   // ── 커스텀 커서 ──
   useEffect(() => {
@@ -2343,13 +2384,26 @@ export default function JarvisApp() {
       setWorkflowSteps(buildWorkflowSteps(creativeCtx));
       setConversationExpanded(true);
 
+      // Workspace 자동 저장 (Creative Script)
+      saveToWorkspace('creative_script', {
+        product: product || '',
+        platform: 'full_package',
+        hook: '',
+        caption: '',
+        threadPost: '',
+        kakaoMessage: '',
+        reelsScript: '',
+        title: `${product || '제품'} 마케팅 스크립트`,
+        summary: `${product || '제품'} Creative Director 콘텐츠 생성 완료`,
+      }, action?.response?.slice(0, 30) || '마케팅 문구 만들어줘');
+
       await new Promise(r => setTimeout(r, 400));
       setState('listening');
       setIsListening(true);
       return;
     }
 
-    // ══════════════════════════════════════════════════════
+    // ═══════════════════════════════════════════════════════
     // ── 모닝 브리핑 프로토콜 (Morning Briefing Protocol) ──
     // ══════════════════════════════════════════════════════
     if (action?.type === 'morning_briefing') {
@@ -2600,6 +2654,18 @@ export default function JarvisApp() {
       setActionContext(briefCtx);
       setWorkflowSteps(buildWorkflowSteps(briefCtx));
       setConversationExpanded(true);
+
+      // Workspace 자동 저장 (브리핑)
+      saveToWorkspace('briefing', {
+        title: '일일 브리핑',
+        todayOrders: 0,
+        currentNewOrders: 0,
+        pendingShipping: 0,
+        preShipTotal: 0,
+        todaySales: 0,
+        briefingText: '브리핑 완료',
+        summary: '일일 브리핑 자동 저장',
+      }, '오늘 브리핑 해줘');
 
       await new Promise(r => setTimeout(r, 400));
       setState('listening');
@@ -3476,6 +3542,17 @@ export default function JarvisApp() {
 
     setState('thinking');
     addMessage('user', text);
+
+    // ── Workspace 명령 처리 ("저장된 작업", "워크스페이스", "작업 목록") ──
+    const wsKeywords = ['저장된 작업', '워크스페이스', '작업 목록', '저장 목록', 'workspace', '저장된 것'];
+    if (wsKeywords.some(kw => text.toLowerCase().includes(kw))) {
+      setWorkspaceVisible(true);
+      fetchWorkspaceRecords();
+      setState('idle');
+      addMessage('jarvis', '📂 File Workspace를 열었습니다. 저장된 작업 목록을 확인하세요.');
+      return;
+    }
+
     try {
       emitNodeState('jarvis_brain', 'active', 'GPT 뇌 사고 중...');
       emitPulseLine('user', 'jarvis_brain', 'fast');
@@ -3894,6 +3971,24 @@ export default function JarvisApp() {
               <span style={{ color: '#C8A96E', fontSize: '0.42rem', letterSpacing: '0.2em' }}>STRATEGY HQ</span>
             </motion.button>
             )}
+            {!isMobile && (
+            <motion.button
+              onClick={(e) => { e.stopPropagation(); setWorkspaceVisible(v => !v); if (!workspaceVisible) fetchWorkspaceRecords(); }}
+              whileHover={{ scale: 1.05 }}
+              whileTap={{ scale: 0.95 }}
+              style={{
+                display: 'flex', alignItems: 'center', gap: 5,
+                background: workspaceVisible ? 'rgba(0,200,255,0.15)' : 'rgba(0,200,255,0.05)',
+                border: `1px solid ${workspaceVisible ? 'rgba(0,200,255,0.5)' : 'rgba(0,200,255,0.2)'}`,
+                padding: '5px 10px',
+                cursor: 'pointer',
+                fontFamily: 'Orbitron, monospace',
+              }}
+            >
+              <span style={{ fontSize: '0.5rem' }}>◈</span>
+              <span style={{ color: '#00c8ff', fontSize: '0.42rem', letterSpacing: '0.15em' }}>FILES</span>
+            </motion.button>
+            )}
             {/* 상태 표시 */}
             <div style={{ display: 'flex', alignItems: 'center', gap: '7px' }}>
               <motion.div
@@ -3991,6 +4086,10 @@ export default function JarvisApp() {
               setActionContext(null);
               setWorkflowSteps([]);
               setApprovalPreview(null);
+            }}
+            onSave={async (type: string, data: any) => {
+              const result = await saveToWorkspace(type, data, actionContext?.sourceCommand || '');
+              return result;
             }}
           />
         )}
@@ -5888,6 +5987,18 @@ export default function JarvisApp() {
         captchaImage={captchaScreenshot}
         captchaMode={verificationMode}
         isWorking={state === 'working' || state === 'thinking'}
+      />
+      {/* ── File Workspace Panel ── */}
+      <FileWorkspacePanel
+        visible={workspaceVisible}
+        onClose={() => setWorkspaceVisible(false)}
+        onOpenRecord={(record) => {
+          // 레코드 선택 시 상세 조회
+          console.log('[JARVIS] Open record:', record.recordId);
+        }}
+        records={workspaceRecords}
+        loading={workspaceLoading}
+        onRefresh={fetchWorkspaceRecords}
       />
       {/* ── 뉴럴 미션 맵 (시스템 현황) ── */}
       <AnimatePresence>

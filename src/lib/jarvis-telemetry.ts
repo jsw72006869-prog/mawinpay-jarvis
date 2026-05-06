@@ -72,6 +72,8 @@ export const FUNCTION_NODE_MAP: Record<string, { nodes: string[]; speed: PulseLi
   'rank_tracker':             { nodes: ['rank_tracker', 'smartstore'], speed: 'normal', icon: '🏆' },
   'naver_booking':            { nodes: ['booking'],                   speed: 'intense', icon: '📅' },
   'real_action_agent':        { nodes: ['booking', 'manus_agent'],    speed: 'intense', icon: '⚡' },
+  'workspace_save':            { nodes: ['sheets'],                    speed: 'normal',  icon: '💾' },
+  'workspace_query':           { nodes: ['sheets'],                    speed: 'slow',    icon: '📂' },
 };
 
 // ─── 채널 이름 ───

@@ -568,6 +568,176 @@ async function searchPopularVideos(keyword: string, maxResults: number = 5, peri
 }
 
 // ══════════════════════════════════════════════════════════════
+// ── WORKSPACE: Google Sheets Storage Bridge ──
+// ══════════════════════════════════════════════════════════════
+const WORKSPACE_SHEET_ID = process.env.JARVIS_WORKSPACE_SHEET_ID || '';
+const GOOGLE_SHEETS_CREDENTIALS = process.env.GOOGLE_SHEETS_CREDENTIALS || '';
+
+async function getGoogleSheetsToken(): Promise<string> {
+  if (!GOOGLE_SHEETS_CREDENTIALS) throw new Error('GOOGLE_SHEETS_CREDENTIALS not configured');
+  const credentials = JSON.parse(GOOGLE_SHEETS_CREDENTIALS);
+  const now = Math.floor(Date.now() / 1000);
+  const header = Buffer.from(JSON.stringify({ alg: 'RS256', typ: 'JWT' })).toString('base64url');
+  const payload = Buffer.from(JSON.stringify({
+    iss: credentials.client_email,
+    scope: 'https://www.googleapis.com/auth/spreadsheets',
+    aud: 'https://oauth2.googleapis.com/token',
+    exp: now + 3600,
+    iat: now,
+  })).toString('base64url');
+  const sign = crypto.createSign('RSA-SHA256');
+  sign.update(`${header}.${payload}`);
+  const signature = sign.sign(credentials.private_key, 'base64url');
+  const jwt = `${header}.${payload}.${signature}`;
+  const tokenRes = await fetch('https://oauth2.googleapis.com/token', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: `grant_type=urn%3Aietf%3Aparams%3Aoauth%3Agrant-type%3Ajwt-bearer&assertion=${jwt}`,
+  });
+  const tokenData = await tokenRes.json() as any;
+  if (!tokenData.access_token) throw new Error('Google Sheets token failed');
+  return tokenData.access_token;
+}
+
+async function sheetsAppend(tab: string, values: string[][]): Promise<any> {
+  const token = await getGoogleSheetsToken();
+  const range = encodeURIComponent(`${tab}!A1`);
+  const url = `https://sheets.googleapis.com/v4/spreadsheets/${WORKSPACE_SHEET_ID}/values/${range}:append?valueInputOption=RAW&insertDataOption=INSERT_ROWS`;
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ values }),
+  });
+  return res.json();
+}
+
+async function sheetsRead(tab: string, range?: string): Promise<any> {
+  const token = await getGoogleSheetsToken();
+  const r = range || `${tab}!A1:Z1000`;
+  const url = `https://sheets.googleapis.com/v4/spreadsheets/${WORKSPACE_SHEET_ID}/values/${encodeURIComponent(r)}`;
+  const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
+  return res.json();
+}
+
+function generateRecordId(type: string): string {
+  const ts = Date.now().toString(36);
+  const rand = Math.random().toString(36).slice(2, 6);
+  return `${type}-${ts}-${rand}`;
+}
+
+async function handleWorkspaceSave(params: any) {
+  if (!WORKSPACE_SHEET_ID || !GOOGLE_SHEETS_CREDENTIALS) {
+    return { success: false, error: 'Google Sheets not configured' };
+  }
+  const { type, data, sourceCommand } = params;
+  const now = new Date().toISOString();
+  const recordId = generateRecordId(type);
+
+  try {
+    // 1. 타입별 탭에 저장
+    if (type === 'briefing' && data) {
+      await sheetsAppend('briefings', [[
+        recordId, now,
+        String(data.todayOrders || 0), String(data.currentNewOrders || 0),
+        String(data.pendingShipping || 0), String(data.preShipTotal || 0),
+        String(data.todaySales || 0), data.recommendedActions || '',
+        data.briefingText || ''
+      ]]);
+    } else if (type === 'creative_script' && data) {
+      await sheetsAppend('creative_scripts', [[
+        recordId, now, data.product || '', data.platform || 'full_package',
+        data.hook || '', data.caption || '', data.threadPost || '',
+        data.kakaoMessage || '', data.reelsScript || '',
+        data.recommendedGrowthLink || '', 'saved', sourceCommand || ''
+      ]]);
+    } else if (type === 'growth_campaign' && data) {
+      await sheetsAppend('growth_campaigns', [[
+        recordId, now, data.product || '', data.source || '',
+        data.targetUrl || '', data.directUrl || '',
+        data.couponCode || '', data.campaignMemo || '', 'saved'
+      ]]);
+    } else if (type === 'purchase_order_draft' && data) {
+      await sheetsAppend('purchase_order_drafts', [[
+        recordId, now, data.supplier || '', data.productSummary || '',
+        String(data.totalQuantity || 0), String(data.totalAmountIfAvailable || ''),
+        'draft', data.safePreview || ''
+      ]]);
+    }
+
+    // 2. jarvis_records 공통 기록
+    const title = data?.title || data?.product || type;
+    const summary = data?.summary || data?.safePreview || '';
+    await sheetsAppend('jarvis_records', [[
+      recordId, now, type, title, summary.slice(0, 200),
+      sourceCommand || '', 'saved', type,
+      type === 'briefing' ? 'briefings' :
+      type === 'creative_script' ? 'creative_scripts' :
+      type === 'growth_campaign' ? 'growth_campaigns' :
+      type === 'purchase_order_draft' ? 'purchase_order_drafts' : 'jarvis_records',
+      'jarvis', summary.slice(0, 100)
+    ]]);
+
+    return { success: true, recordId, type, savedAt: now, message: `${title} 저장 완료` };
+  } catch (e: any) {
+    return { success: false, error: e.message };
+  }
+}
+
+async function handleWorkspaceQuery(params: any) {
+  if (!WORKSPACE_SHEET_ID || !GOOGLE_SHEETS_CREDENTIALS) {
+    return { success: false, error: 'Google Sheets not configured' };
+  }
+  const { type, recordId, limit } = params;
+  try {
+    const tab = type === 'briefing' ? 'briefings' :
+                type === 'creative_script' ? 'creative_scripts' :
+                type === 'growth_campaign' ? 'growth_campaigns' :
+                type === 'purchase_order_draft' ? 'purchase_order_drafts' : 'jarvis_records';
+    const result = await sheetsRead(tab);
+    const rows = result.values || [];
+    if (rows.length < 2) return { success: true, records: [], total: 0 };
+    const headers = rows[0];
+    let records = rows.slice(1).map((row: string[]) => {
+      const obj: any = {};
+      headers.forEach((h: string, i: number) => { obj[h] = row[i] || ''; });
+      return obj;
+    });
+    // 필터링
+    if (recordId) records = records.filter((r: any) => r.recordId === recordId || r.briefingId === recordId || r.scriptId === recordId || r.campaignId === recordId || r.draftId === recordId);
+    // 최신순 정렬
+    records.sort((a: any, b: any) => (b.createdAt || '').localeCompare(a.createdAt || ''));
+    const maxRecords = limit || 20;
+    return { success: true, records: records.slice(0, maxRecords), total: records.length };
+  } catch (e: any) {
+    return { success: false, error: e.message };
+  }
+}
+
+async function handleWorkspaceList(params: any) {
+  if (!WORKSPACE_SHEET_ID || !GOOGLE_SHEETS_CREDENTIALS) {
+    return { success: false, error: 'Google Sheets not configured' };
+  }
+  try {
+    const result = await sheetsRead('jarvis_records');
+    const rows = result.values || [];
+    if (rows.length < 2) return { success: true, records: [], total: 0 };
+    const headers = rows[0];
+    let records = rows.slice(1).map((row: string[]) => {
+      const obj: any = {};
+      headers.forEach((h: string, i: number) => { obj[h] = row[i] || ''; });
+      return obj;
+    });
+    records.sort((a: any, b: any) => (b.createdAt || '').localeCompare(a.createdAt || ''));
+    const limit = params?.limit || 20;
+    const typeFilter = params?.type;
+    if (typeFilter) records = records.filter((r: any) => r.type === typeFilter);
+    return { success: true, records: records.slice(0, limit), total: records.length };
+  } catch (e: any) {
+    return { success: false, error: e.message };
+  }
+}
+
+// ══════════════════════════════════════════════════════════════
 // ── MAIN HANDLER ──
 // ══════════════════════════════════════════════════════════════
 export default async function handler(req: VercelRequest, res: VercelResponse) {
@@ -796,6 +966,20 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         } finally {
           if (conn) await conn.end();
         }
+      }
+
+      // ── Workspace: Google Sheets 저장/조회 ──
+      if (resolvedTask === 'workspace-save') {
+        const result = await handleWorkspaceSave(params || rest);
+        return res.status(200).json(result);
+      }
+      if (resolvedTask === 'workspace-query') {
+        const result = await handleWorkspaceQuery(params || rest);
+        return res.status(200).json(result);
+      }
+      if (resolvedTask === 'workspace-list') {
+        const result = await handleWorkspaceList(params || rest);
+        return res.status(200).json(result);
       }
 
       return res.status(400).json({ error: `Unknown task: ${resolvedTask}` });
