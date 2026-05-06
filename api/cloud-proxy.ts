@@ -302,6 +302,10 @@ async function handleSmartstoreOrders(params: any) {
 
   // ── debug_last_changed: 디버그용 - 다양한 API 엔드포인트/파라미터 테스트 ──
   if (action === 'debug_last_changed') {
+    // 프로덕션에서는 디버그 엔드포인트 차단
+    if (process.env.NODE_ENV === 'production' || process.env.VERCEL_ENV === 'production') {
+      return { success: false, error: 'Debug endpoint disabled in production' };
+    }
     const now = new Date();
     const from24h = new Date(now.getTime() - 24 * 60 * 60 * 1000);
     const fromUtc24 = from24h.toISOString().replace(/\.\d{3}Z$/, '.000Z');

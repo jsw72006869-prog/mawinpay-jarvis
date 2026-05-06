@@ -210,7 +210,7 @@ const OPENAI_TOOLS: OpenAI.Chat.Completions.ChatCompletionTool[] = [
       parameters: {
         type: 'object',
         properties: {
-          action: { type: 'string', description: '작업 종류: current_new_orders(현재 신규주문, 대시보드 기준), query_orders_today(오늘 신규주문, KST 오늘), query_pending_shipping(배송준비), query_pre_shipping_total(배송 전 처리 대상 전체), query_orders_week, process_shipping, morning_report 등' },
+          action: { type: 'string', description: '작업 종류: current_new_orders(현재 신규주문, 대시보드 기준), query_orders_today(오늘 신규주문, KST 오늘), query_pending_shipping(배송준비), query_pre_shipping_total(배송 전 처리 대상 전체), query_order_status(전체 주문 현황 5개 상태: 신규/배송준비/배송중/배송완료/구매확정), query_orders_week, process_shipping, morning_report 등' },
           period: { type: 'string', description: '조회 기간' },
           response: { type: 'string', description: 'JARVIS 응답 (한국어)' },
         },
@@ -417,11 +417,21 @@ function deterministicMatch(text: string): JarvisAction | null {
   }
 
   // 브리핑
-  if (/브리핑|모닝.?보고|현황.?보고|오늘.?보고/.test(lower)) {
+  if (/브리핑|모닝.?보고|오늘.?보고/.test(lower)) {
     return {
       type: 'morning_briefing',
       workingMessage: '브리핑 데이터 수집 중...',
       response: '__SKIP_TTS__',  // TTS 건너뛰기 마커 (결과에서 TTS)
+    };
+  }
+
+  // 주문현황 / 전체 주문현황 / 스마트스토어 현황 → 5개 상태 전체 조회
+  if (/주문.?현황|전체.?주문|스마트스토어.?현황|주문.?상태/.test(lower) && /알려|보여|조회|확인|어때/.test(lower)) {
+    return {
+      type: 'smartstore_orders',
+      params: { action: 'query_order_status', userMessage: text },
+      workingMessage: '전체 주문 현황 조회 중...',
+      response: '__SKIP_TTS__',
     };
   }
 
@@ -853,11 +863,21 @@ export function parseCommand(text: string): JarvisAction {
   }
 
   // [B] 모닝 브리핑
-  if (/브리핑|보고|현황|모닝/.test(lower)) {
+  if (/브리핑|모닝.?보고/.test(lower)) {
     return {
       type: 'morning_briefing',
       workingMessage: '모닝 브리핑 데이터 수집 중...',
       response: '선생님, 오늘의 업무 브리핑을 준비하겠습니다.',
+    };
+  }
+
+  // [B-2] 주문현황/전체현황 → 5개 상태 전체 조회 (GPT fallback에서도 매칭)
+  if (/주문.?현황|전체.?주문|스마트스토어.?현황|주문.?상태/.test(lower)) {
+    return {
+      type: 'smartstore_orders',
+      params: { action: 'query_order_status' },
+      workingMessage: '전체 주문 현황 조회 중...',
+      response: '스마트스토어 전체 주문 현황을 확인하겠습니다, 선생님.',
     };
   }
 
@@ -991,8 +1011,8 @@ export function parseCommand(text: string): JarvisAction {
     };
   }
 
-  // [L] 현황/리포트
-  if (/현황|통계|분석|성과|결과|리포트/.test(lower)) {
+  // [L] 통계/리포트 (현황은 [B-2]에서 주문현황으로 매칭)
+  if (/통계|분석|성과|결과|리포트/.test(lower)) {
     return {
       type: 'report',
       params: { period: '이번 주' },
