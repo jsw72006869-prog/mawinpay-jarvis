@@ -187,115 +187,118 @@ async function handleSmartstoreOrders(params: any) {
     };
   }
 
-  // product-orders/last-changed-statuses API로 특정 상태의 건수를 조회 (네이버 대시보드와 동일한 기준)
-  async function getLastChangedCount(lastChangedType: string, days: number): Promise<number> {
+  // product-orders/last-changed-statuses API로 특정 상태의 건수를 조회 (24시간 단위 일별 조회)
+  // 네이버 API 제한: from~to 최대 24시간
+  async function getLastChangedItems(lastChangedType: string, days: number): Promise<any[]> {
     const now = new Date();
-    const from = new Date(now.getTime() - days * 24 * 60 * 60 * 1000);
-    const fromStr = from.toISOString().replace(/\.\d{3}Z$/, '.000Z');
-    const toStr = now.toISOString().replace(/\.\d{3}Z$/, '.000Z');
+    const allItems: any[] = [];
 
-    const params = new URLSearchParams({
-      lastChangedFrom: fromStr,
-      lastChangedTo: toStr,
-      lastChangedType: lastChangedType,
-    });
+    // 24시간 단위로 순차 조회
+    for (let d = 0; d < days; d++) {
+      const to = new Date(now.getTime() - d * 24 * 60 * 60 * 1000);
+      const from = new Date(now.getTime() - (d + 1) * 24 * 60 * 60 * 1000);
+      const fromStr = from.toISOString().replace(/\.\d{3}Z$/, '.000Z');
+      const toStr = to.toISOString().replace(/\.\d{3}Z$/, '.000Z');
 
-    for (let attempt = 0; attempt < 3; attempt++) {
-      try {
-        const result = await smartStoreRequest(
-          `/v1/pay-order/seller/product-orders/last-changed-statuses?${params.toString()}`,
-          { method: 'GET' }
-        );
-        if (result.status === 200) {
-          const data = result.data.data || result.data;
-          // lastChangeStatuses 배열의 길이가 건수 (limitCount 기본 300)
-          const items = data.lastChangeStatuses || data.lastChangedStatuses || result.data.lastChangeStatuses || result.data.lastChangedStatuses || [];
-          console.log(`[debug] product-orders/last-changed-statuses(${lastChangedType}) items:`, items.length, 'more:', data.more || result.data.more);
-          // more=true이면 300건 이상, 추가 조회 필요
-          if (data.more || result.data.more) {
-            // 추가 페이지 조회로 전체 건수 파악
-            let totalCount = items.length;
-            let lastToken = items[items.length - 1]?.lastChangedDate || '';
-            let hasMore = true;
-            while (hasMore && totalCount < 1000) {
-              const nextParams = new URLSearchParams({
-                lastChangedFrom: lastToken,
-                lastChangedTo: toStr,
-                lastChangedType: lastChangedType,
-              });
-              const nextResult = await smartStoreRequest(
-                `/v1/pay-order/seller/product-orders/last-changed-statuses?${nextParams.toString()}`,
-                { method: 'GET' }
-              );
-              if (nextResult.status === 200) {
-                const nd = nextResult.data.data || nextResult.data;
-                const nextItems = nd.lastChangeStatuses || nd.lastChangedStatuses || nextResult.data.lastChangeStatuses || nextResult.data.lastChangedStatuses || [];
-                totalCount += nextItems.length;
-                hasMore = nd.more || nextResult.data.more || false;
-                if (nextItems.length > 0) lastToken = nextItems[nextItems.length - 1]?.lastChangedDate || '';
-                else hasMore = false;
-              } else {
-                hasMore = false;
+      const params = new URLSearchParams({
+        lastChangedFrom: fromStr,
+        lastChangedTo: toStr,
+        lastChangedType: lastChangedType,
+      });
+
+      for (let attempt = 0; attempt < 2; attempt++) {
+        try {
+          const result = await smartStoreRequest(
+            `/v1/pay-order/seller/product-orders/last-changed-statuses?${params.toString()}`,
+            { method: 'GET' }
+          );
+          if (result.status === 200) {
+            const data = result.data?.data || result.data;
+            const items = data?.lastChangeStatuses || data?.lastChangedStatuses || [];
+            allItems.push(...items);
+            // more=true인 경우 추가 조회 (300건 초과)
+            if (data?.more) {
+              let lastDate = items[items.length - 1]?.lastChangedDate || '';
+              let hasMore = true;
+              while (hasMore) {
+                const nextParams = new URLSearchParams({
+                  lastChangedFrom: lastDate,
+                  lastChangedTo: toStr,
+                  lastChangedType: lastChangedType,
+                });
+                const nr = await smartStoreRequest(
+                  `/v1/pay-order/seller/product-orders/last-changed-statuses?${nextParams.toString()}`,
+                  { method: 'GET' }
+                );
+                if (nr.status === 200) {
+                  const nd = nr.data?.data || nr.data;
+                  const ni = nd?.lastChangeStatuses || nd?.lastChangedStatuses || [];
+                  allItems.push(...ni);
+                  hasMore = nd?.more || false;
+                  if (ni.length > 0) lastDate = ni[ni.length - 1]?.lastChangedDate || '';
+                  else hasMore = false;
+                } else hasMore = false;
               }
             }
-            return totalCount;
+            break; // 성공시 다음 날로
           }
-          return items.length;
-        } else {
-          console.log(`[debug] product-orders/last-changed-statuses(${lastChangedType}) status:`, result.status, 'data:', JSON.stringify(result.data).slice(0, 300));
+        } catch (err: any) {
+          if (attempt < 1) await new Promise(r => setTimeout(r, 500));
         }
-      } catch (err: any) {
-        if (attempt < 2) await new Promise(r => setTimeout(r, 500 * (attempt + 1)));
-        else console.warn(`[cloud-proxy] product-orders/last-changed-statuses(${lastChangedType}) 실패:`, err.message);
       }
     }
-    return 0;
+    return allItems;
   }
 
-  // 공통: 하이브리드 조회
-  // - PAYED+DELIVERING+DELIVERED: fetchOrders로 결제일 기준 조회
-  // - PURCHASE_DECIDED: product-orders/last-changed-statuses API로 조회 (네이버 대시보드 기준)
+  // 공통: 네이버 대시보드 기준 전체 건수 조회
+  // 전략:
+  //   신규주문/배송준비: fetchOrders(['PAYED'], 30) + placeOrderStatus 분류
+  //   배송중: product-orders/last-changed-statuses DISPATCHED 7일 중 productOrderStatus=DELIVERING
+  //   배송완료: product-orders/last-changed-statuses DISPATCHED 7일 중 productOrderStatus=DELIVERED
+  //   구매확정: product-orders/last-changed-statuses PURCHASE_DECIDED 7일
   async function getAllCounts(queryDays: number) {
-    // 1) PAYED + DELIVERING + DELIVERED: 결제일 기준 조회
-    const allOrders = await fetchOrders(
-      ['PAYED', 'DELIVERING', 'DELIVERED'],
-      queryDays
-    );
+    // 1) PAYED: 결제일 기준 조회 (신규주문 + 배송준비)
+    const payedOrders = await fetchOrders(['PAYED'], queryDays);
 
-    // 상태별 분류
-    const payed: any[] = [];
-    const delivering: any[] = [];
-    const delivered: any[] = [];
-
-    for (const order of allOrders) {
-      const po = order.productOrder || order;
-      const status = po.productOrderStatus || '';
-      if (status === 'PAYED') payed.push(order);
-      else if (status === 'DELIVERING') delivering.push(order);
-      else if (status === 'DELIVERED') delivered.push(order);
-    }
-
-    // PAYED 내에서 신규주문 vs 배송준비 분류
-    const newOrders = payed.filter((o: any) => {
+    const newOrders = payedOrders.filter((o: any) => {
       const po = o.productOrder || o;
       return po.placeOrderStatus !== 'OK';
     });
-    const pendingShipping = payed.filter((o: any) => {
+    const pendingShipping = payedOrders.filter((o: any) => {
       const po = o.productOrder || o;
       return po.placeOrderStatus === 'OK';
     });
 
-    // 2) PURCHASE_DECIDED: product-orders/last-changed-statuses API
-    // 네이버 대시보드는 최근 7일 내 구매확정된 건을 표시
-    const decidedCount = await getLastChangedCount('PURCHASE_DECIDED', 7);
+    // 2) 배송중/배송완료: DISPATCHED 7일 조회 후 productOrderStatus로 분류
+    const dispatchedItems = await getLastChangedItems('DISPATCHED', 7);
+    // 중복 제거 (productOrderId 기준)
+    const uniqueDispatched = new Map<string, any>();
+    for (const item of dispatchedItems) {
+      uniqueDispatched.set(item.productOrderId, item);
+    }
+    let shippingCount = 0;
+    let deliveredCount = 0;
+    for (const item of uniqueDispatched.values()) {
+      if (item.productOrderStatus === 'DELIVERING') shippingCount++;
+      else if (item.productOrderStatus === 'DELIVERED') deliveredCount++;
+    }
+
+    // 3) 구매확정: PURCHASE_DECIDED 7일 조회
+    const decidedItems = await getLastChangedItems('PURCHASE_DECIDED', 7);
+    // 중복 제거
+    const uniqueDecided = new Map<string, any>();
+    for (const item of decidedItems) {
+      uniqueDecided.set(item.productOrderId, item);
+    }
+    const decidedCount = uniqueDecided.size;
 
     return {
-      allOrders,
-      payed,
+      allOrders: payedOrders,
+      payed: payedOrders,
       newOrders,
       pendingShipping,
-      shipping: delivering.length,
-      delivered: delivered.length,
+      shipping: shippingCount,
+      delivered: deliveredCount,
       purchaseConfirmed: decidedCount,
     };
   }
