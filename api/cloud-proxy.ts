@@ -313,7 +313,7 @@ async function handleSmartstoreOrders(params: any) {
     const results: any = {};
 
     // 테스트 1: product-orders/last-changed-statuses (24시간 범위) + lastChangedType
-    for (const changedType of ['PURCHASE_DECIDED', 'DISPATCHED', 'PAYED']) {
+    for (const changedType of ['PURCHASE_DECIDED', 'DISPATCHED', 'PAYED', 'DELIVERED', 'CLAIM_COMPLETED', 'SHIPPING']) {
       const params = new URLSearchParams({
         lastChangedFrom: fromUtc24,
         lastChangedTo: toUtc,
