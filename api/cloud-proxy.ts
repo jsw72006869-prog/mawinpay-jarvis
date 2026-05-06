@@ -144,7 +144,7 @@ function getStatusKo(status: string): string {
 
 // ── 스마트스토어 주문 조회 핸들러 ──
 async function handleSmartstoreOrders(params: any) {
-  const action = params?.action || '';
+  const action = params?.action || 'current_new_orders';
   const days = parseInt(params?.days || '7');
   const status = params?.status || 'payed';
 
@@ -161,6 +161,79 @@ async function handleSmartstoreOrders(params: any) {
     const payedResult = await fetchOrders(['PAYED'], 7);
     // 배송준비 = 발주확인 완료 but 아직 배송중 아닌 것
     // 네이버에서는 placeOrderStatus=OK + productOrderStatus=PAYED인 것이 배송준비
+    const newOrders = payedResult.filter((o: any) => {
+      const po = o.productOrder || o;
+      return po.placeOrderStatus !== 'OK';
+    });
+    const pendingShipping = payedResult.filter((o: any) => {
+      const po = o.productOrder || o;
+      return po.placeOrderStatus === 'OK';
+    });
+
+    return {
+      success: true,
+      newOrders: newOrders.length,
+      pendingShipping: pendingShipping.length,
+      preShipTotal: payedResult.length,
+      data: payedResult.map((item: any) => {
+        const po = item.productOrder || item;
+        return {
+          productOrderId: po.productOrderId,
+          productName: po.productName,
+          optionContent: po.optionContent || '',
+          quantity: po.quantity,
+          status: po.productOrderStatus,
+          statusKo: getStatusKo(po.productOrderStatus),
+          placeOrderStatus: po.placeOrderStatus,
+          orderDate: po.paymentDate,
+        };
+      }),
+    };
+  }
+
+  // query_pending_shipping: 배송준비 건수만 조회
+  if (action === 'query_pending_shipping') {
+    const payedResult = await fetchOrders(['PAYED'], 7);
+    const newOrders = payedResult.filter((o: any) => {
+      const po = o.productOrder || o;
+      return po.placeOrderStatus !== 'OK';
+    });
+    const pendingShipping = payedResult.filter((o: any) => {
+      const po = o.productOrder || o;
+      return po.placeOrderStatus === 'OK';
+    });
+
+    return {
+      success: true,
+      newOrders: newOrders.length,
+      pendingShipping: pendingShipping.length,
+      preShipTotal: payedResult.length,
+    };
+  }
+
+  // query_pre_shipping_total: 배송 전 처리 대상 전체
+  if (action === 'query_pre_shipping_total') {
+    const payedResult = await fetchOrders(['PAYED'], 7);
+    const newOrders = payedResult.filter((o: any) => {
+      const po = o.productOrder || o;
+      return po.placeOrderStatus !== 'OK';
+    });
+    const pendingShipping = payedResult.filter((o: any) => {
+      const po = o.productOrder || o;
+      return po.placeOrderStatus === 'OK';
+    });
+
+    return {
+      success: true,
+      newOrders: newOrders.length,
+      pendingShipping: pendingShipping.length,
+      preShipTotal: payedResult.length,
+    };
+  }
+
+  // query_orders_today: 오늘 신규주문
+  if (action === 'query_orders_today') {
+    const payedResult = await fetchOrders(['PAYED'], 1);
     const newOrders = payedResult.filter((o: any) => {
       const po = o.productOrder || o;
       return po.placeOrderStatus !== 'OK';

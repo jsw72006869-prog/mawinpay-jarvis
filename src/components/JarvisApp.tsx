@@ -2525,7 +2525,22 @@ export default function JarvisApp() {
           });
           const ssJson = await ssRes.json();
           if (ssJson.success || ssJson.result) {
-            smartstoreData = ssJson.result || ssJson;
+            const rawSS = ssJson.result || ssJson;
+            // smartstore 서브키가 없는 직접 응답 호환 처리
+            if (rawSS.smartstore) {
+              smartstoreData = rawSS;
+            } else {
+              smartstoreData = {
+                smartstore: {
+                  newOrders: rawSS.newOrders ?? 0,
+                  pendingShipping: rawSS.pendingShipping ?? 0,
+                  preShipTotal: rawSS.preShipTotal ?? ((rawSS.newOrders ?? 0) + (rawSS.pendingShipping ?? 0)),
+                  totalAmount: rawSS.totalAmount ?? 0,
+                  revenueChangePercent: rawSS.revenueChangePercent ?? 0,
+                },
+                influencers: rawSS.influencers || { total: 0, newYesterday: 0, byPlatform: {} },
+              };
+            }
             // 행동 로그 업데이트 (API에서 받은 로그 포함)
             const apiLogs = (ssJson.actionLogs || []).map((l: any) => ({
               step: l.step,
@@ -2966,16 +2981,29 @@ export default function JarvisApp() {
           });
           const rawData = await res.json();
           // 클라우드 서버 응답 포맷 변환 (result 래핑 해제)
-          const data = rawData.result ? {
-            success: rawData.result.success ?? rawData.success,
-            ...rawData.result.smartstore,
-            action_logs: rawData.result.actionLogs,
-            data: rawData.result.smartstore,
-            newOrders: rawData.result.smartstore?.newOrders ?? 0,
-            pendingShipping: rawData.result.smartstore?.pendingShipping ?? 0,
-            cancelOrders: rawData.result.smartstore?.cancelRequests ?? 0,
-            summary: `신규주문 ${rawData.result.smartstore?.newOrders ?? 0}건, 배송준비 ${rawData.result.smartstore?.pendingShipping ?? 0}건, 배송완료 ${rawData.result.smartstore?.delivered ?? 0}건, 구매확정 ${rawData.result.smartstore?.purchaseDecided ?? 0}건\n정산예정: ${(rawData.result.smartstore?.settlementAmount ?? 0).toLocaleString()}원\n판매중 상품: ${rawData.result.smartstore?.sellingProducts ?? 0}개, 품절: ${rawData.result.smartstore?.soldOutProducts ?? 0}개`,
-          } : rawData;
+          let data: any;
+          if (rawData.result) {
+            // 구버전 래핑 응답 호환
+            data = {
+              success: rawData.result.success ?? rawData.success,
+              ...rawData.result.smartstore,
+              action_logs: rawData.result.actionLogs,
+              data: rawData.result.smartstore,
+              newOrders: rawData.result.smartstore?.newOrders ?? 0,
+              pendingShipping: rawData.result.smartstore?.pendingShipping ?? 0,
+              cancelOrders: rawData.result.smartstore?.cancelRequests ?? 0,
+              summary: `신규주문 ${rawData.result.smartstore?.newOrders ?? 0}건, 배송준비 ${rawData.result.smartstore?.pendingShipping ?? 0}건, 배송완료 ${rawData.result.smartstore?.delivered ?? 0}건, 구매확정 ${rawData.result.smartstore?.purchaseDecided ?? 0}건\n정산예정: ${(rawData.result.smartstore?.settlementAmount ?? 0).toLocaleString()}원\n판매중 상품: ${rawData.result.smartstore?.sellingProducts ?? 0}개, 품절: ${rawData.result.smartstore?.soldOutProducts ?? 0}개`,
+            };
+          } else {
+            // 직접 응답 (cloud-proxy v2): pendingShipping 등 필드 안전 매핑
+            data = {
+              ...rawData,
+              newOrders: rawData.newOrders ?? 0,
+              pendingShipping: rawData.pendingShipping ?? 0,
+              preShipTotal: rawData.preShipTotal ?? ((rawData.newOrders ?? 0) + (rawData.pendingShipping ?? 0)),
+              cancelOrders: rawData.cancelOrders ?? rawData.cancelRequests ?? 0,
+            };
+          }
 
           // 행동 로그 업데이트
           if (data.action_logs) {
