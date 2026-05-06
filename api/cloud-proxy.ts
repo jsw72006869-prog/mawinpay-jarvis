@@ -7,6 +7,183 @@ export const config = {
 
 const CLOUD_SERVER = process.env.CLOUD_SERVER_URL || 'http://35.243.215.119:3001';
 
+// ── 스마트스토어 API 직접 처리 ──
+const SS_CLIENT_ID = process.env.SMARTSTORE_CLIENT_ID || process.env.NAVER_CLIENT_ID || '';
+const SS_CLIENT_SECRET = process.env.SMARTSTORE_CLIENT_SECRET || process.env.NAVER_CLIENT_SECRET || '';
+const SS_API_BASE = 'https://api.commerce.naver.com/external';
+
+let ssOrderCache: { data: any; ts: number } | null = null;
+const SS_CACHE_TTL = 60000;
+
+async function getSmartStoreTokenDirect(): Promise<string> {
+  if (!SS_CLIENT_ID || !SS_CLIENT_SECRET) {
+    throw new Error('SMARTSTORE credentials not configured');
+  }
+  const crypto = await import('crypto');
+  const timestamp = String(Date.now());
+  const pwd = `${SS_CLIENT_ID}_${timestamp}`;
+  const hashed = crypto.createHmac('sha256', SS_CLIENT_SECRET).update(pwd).digest('hex');
+  const clientSecretSign = Buffer.from(hashed).toString('base64');
+  const params = new URLSearchParams({
+    client_id: SS_CLIENT_ID,
+    timestamp,
+    client_secret_sign: clientSecretSign,
+    grant_type: 'client_credentials',
+    type: 'SELF',
+  });
+  const resp = await fetch(`${SS_API_BASE}/v1/oauth2/token?${params.toString()}`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/x-www-form-urlencoded' },
+  });
+  const data = await resp.json() as any;
+  if (!data.access_token) {
+    throw new Error(`Token failed: ${data.error || data.message || 'unknown'}`);
+  }
+  return data.access_token;
+}
+
+function formatNaverDate(d: Date): string {
+  const kst = new Date(d.getTime() + 9 * 60 * 60 * 1000);
+  const yyyy = kst.getUTCFullYear();
+  const mm = String(kst.getUTCMonth() + 1).padStart(2, '0');
+  const dd2 = String(kst.getUTCDate()).padStart(2, '0');
+  const hh = String(kst.getUTCHours()).padStart(2, '0');
+  const mi = String(kst.getUTCMinutes()).padStart(2, '0');
+  const ss2 = String(kst.getUTCSeconds()).padStart(2, '0');
+  return `${yyyy}-${mm}-${dd2}T${hh}:${mi}:${ss2}.000+09:00`;
+}
+
+async function fetchOrderIdsDirect(token: string, days: number, statuses: string[] = ['PAYED']): Promise<string[]> {
+  const now = new Date();
+  const headers = { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' };
+  const allIds: string[] = [];
+  for (let i = 0; i < days; i++) {
+    const dayStart = new Date(now.getTime() - (i + 1) * 24 * 60 * 60 * 1000);
+    const dayEnd = new Date(now.getTime() - i * 24 * 60 * 60 * 1000);
+    const qp = new URLSearchParams();
+    qp.append('from', formatNaverDate(dayStart));
+    qp.append('to', formatNaverDate(dayEnd));
+    qp.append('rangeType', 'PAYED_DATETIME');
+    qp.append('pageSize', '300');
+    qp.append('page', '1');
+    statuses.forEach(s => qp.append('productOrderStatuses', s));
+    try {
+      const resp = await fetch(`${SS_API_BASE}/v1/pay-order/seller/product-orders?${qp.toString()}`, { method: 'GET', headers });
+      if (resp.status === 200) {
+        const data = await resp.json() as any;
+        const responseData = data.data || data;
+        const contents = responseData.contents || responseData || [];
+        if (Array.isArray(contents)) {
+          contents.forEach((item: any) => {
+            const id = (item.productOrder || item).productOrderId;
+            if (id) allIds.push(id);
+          });
+        }
+      }
+    } catch (e) { /* skip day */ }
+  }
+  return [...new Set(allIds)];
+}
+
+async function fetchOrderDetailsDirect(token: string, productOrderIds: string[]): Promise<any[]> {
+  if (!productOrderIds.length) return [];
+  const headers = { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' };
+  let allDetails: any[] = [];
+  for (let i = 0; i < productOrderIds.length; i += 300) {
+    const batch = productOrderIds.slice(i, i + 300);
+    try {
+      const resp = await fetch(`${SS_API_BASE}/v1/pay-order/seller/product-orders/query`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ productOrderIds: batch }),
+      });
+      if (resp.status === 200) {
+        const data = await resp.json() as any;
+        const details = data.data || data;
+        if (Array.isArray(details)) allDetails = allDetails.concat(details);
+      }
+    } catch (e) { /* skip batch */ }
+  }
+  return allDetails;
+}
+
+async function handleSmartstoreOrdersDirect(): Promise<any> {
+  if (ssOrderCache && (Date.now() - ssOrderCache.ts) < SS_CACHE_TTL) {
+    console.log('[cloud-proxy] Using cached smartstore data (60s TTL)');
+    return ssOrderCache.data;
+  }
+  const actionLogs: any[] = [];
+  const log = (step: string, status: string, detail: string) => {
+    actionLogs.push({ step, status, detail, timestamp: new Date().toISOString() });
+  };
+  log('AUTH', 'processing', 'Naver Commerce API 인증 중...');
+  const token = await getSmartStoreTokenDirect();
+  log('AUTH', 'success', '토큰 발급 완료');
+
+  const now = new Date();
+  const kstOffset = 9 * 60 * 60 * 1000;
+  const kstNow = new Date(now.getTime() + kstOffset);
+  const todayStart = new Date(kstNow);
+  todayStart.setUTCHours(0, 0, 0, 0);
+  const todayStartUTC = new Date(todayStart.getTime() - kstOffset);
+
+  log('QUERY', 'processing', '배송 전 처리 대상 조회 중 (PAYED, 7일)...');
+  const payedIds = await fetchOrderIdsDirect(token, 7, ['PAYED']);
+  log('QUERY', 'success', `PAYED 주문 ID ${payedIds.length}건 수집`);
+
+  log('QUERY', 'processing', '상세 조회 중 (신규주문/배송준비 구분)...');
+  const payedDetails = await fetchOrderDetailsDirect(token, payedIds);
+  let newOrders = 0;
+  let pendingShipping = 0;
+  let todayOrders = 0;
+  let todaySales = 0;
+  payedDetails.forEach((item: any) => {
+    const po = item.productOrder || item;
+    const placeStatus = po.placeOrderStatus || 'NOT_YET';
+    if (placeStatus === 'NOT_YET') newOrders++;
+    else if (placeStatus === 'OK') pendingShipping++;
+    const payDate = new Date(po.paymentDate || po.orderDate || 0);
+    if (payDate >= todayStartUTC) {
+      todayOrders++;
+      todaySales += po.totalPaymentAmount || 0;
+    }
+  });
+  log('QUERY', 'success', `현재 신규주문: ${newOrders}건, 배송준비: ${pendingShipping}건`);
+
+  log('QUERY', 'processing', '배송중/배송완료/구매확정/취소 조회 중...');
+  const deliveringIds = await fetchOrderIdsDirect(token, 7, ['DELIVERING']);
+  const deliveredIds = await fetchOrderIdsDirect(token, 7, ['DELIVERED']);
+  const purchaseDecidedIds = await fetchOrderIdsDirect(token, 7, ['PURCHASE_DECIDED']);
+  const cancelIds = await fetchOrderIdsDirect(token, 7, ['CANCEL_REQUESTED']);
+  log('COMPLETE', 'success', '전체 조회 완료');
+
+  const totalPreShipping = newOrders + pendingShipping;
+  const resultData = {
+    success: true,
+    result: {
+      smartstore: {
+        newOrders,
+        pendingShipping,
+        totalPreShipping,
+        todayNewOrders: todayOrders,
+        todayOrders,
+        todaySales,
+        totalAmount: todaySales,
+        delivering: deliveringIds.length,
+        delivered: deliveredIds.length,
+        purchaseDecided: purchaseDecidedIds.length,
+        cancelRequests: cancelIds.length,
+        settlementAmount: 0,
+        sellingProducts: 0,
+        soldOutProducts: 0,
+      },
+      actionLogs,
+    },
+  };
+  ssOrderCache = { data: resultData, ts: Date.now() };
+  return resultData;
+}
+
 // ── TiDB 연결 설정 ──
 function getDbConnection() {
   return mysql.createConnection({
@@ -465,6 +642,58 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           params?.period || ''
         );
         return res.status(200).json(result);
+      }
+
+      // ── 스마트스토어 주문 조회 (Vercel serverless 직접 처리) ──
+      if (taskType === 'smartstore-orders') {
+        console.log('[cloud-proxy] smartstore-orders: direct Naver Commerce API call');
+        try {
+          const ssResult = await handleSmartstoreOrdersDirect();
+          return res.status(200).json(ssResult);
+        } catch (err: any) {
+          console.error('[cloud-proxy] smartstore-orders error:', err.message);
+          return res.status(500).json({ success: false, error: err.message });
+        }
+      }
+
+      // ── 일일 브리핑 (Vercel serverless 직접 처리) ──
+      if (taskType === 'daily-briefing') {
+        console.log('[cloud-proxy] daily-briefing: direct processing');
+        try {
+          const ssResult = await handleSmartstoreOrdersDirect();
+          if (!ssResult.success) {
+            return res.status(500).json({ success: false, error: 'smartstore data fetch failed' });
+          }
+          const ss = ssResult.result.smartstore;
+          const now = new Date();
+          const kstNow = new Date(now.getTime() + 9 * 60 * 60 * 1000);
+          const dateStr = kstNow.toISOString().split('T')[0];
+          const timeStr = kstNow.toTimeString().split(' ')[0].substring(0, 5);
+          const briefingResult = {
+            success: true,
+            result: {
+              briefing: {
+                date: dateStr,
+                time: timeStr,
+                summary: `${dateStr} ${timeStr} 기준 스마트스토어 현황입니다.\n\n` +
+                  `■ 오늘 신규주문: ${ss.todayNewOrders}건 (매출 ${ss.todaySales.toLocaleString()}원)\n` +
+                  `■ 현재 신규주문: ${ss.newOrders}건\n` +
+                  `■ 배송준비: ${ss.pendingShipping}건\n` +
+                  `■ 배송 전 처리 대상 전체: ${ss.totalPreShipping}건\n` +
+                  `■ 배송중: ${ss.delivering}건\n` +
+                  `■ 배송완료: ${ss.delivered}건\n` +
+                  `■ 구매확정: ${ss.purchaseDecided}건\n` +
+                  (ss.cancelRequests > 0 ? `■ 취소요청: ${ss.cancelRequests}건\n` : ''),
+                smartstore: ss,
+              },
+              actionLogs: ssResult.result.actionLogs,
+            },
+          };
+          return res.status(200).json(briefingResult);
+        } catch (err: any) {
+          console.error('[cloud-proxy] daily-briefing error:', err.message);
+          return res.status(500).json({ success: false, error: err.message });
+        }
       }
 
       // ── 그 외 작업은 클라우드 서버로 프록시 ──
