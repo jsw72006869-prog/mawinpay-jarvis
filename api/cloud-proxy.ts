@@ -1,5 +1,6 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import mysql from 'mysql2/promise';
+import bcryptjs from 'bcryptjs';
 
 export const config = {
   maxDuration: 60,
@@ -19,10 +20,9 @@ async function getSmartStoreTokenDirect(): Promise<string> {
   if (!SS_CLIENT_ID || !SS_CLIENT_SECRET) {
     throw new Error('SMARTSTORE credentials not configured');
   }
-  const bcrypt = await import('bcryptjs');
   const timestamp = String(Date.now());
   const pwd = `${SS_CLIENT_ID}_${timestamp}`;
-  const hashed = bcrypt.hashSync(pwd, SS_CLIENT_SECRET);
+  const hashed = bcryptjs.hashSync(pwd, SS_CLIENT_SECRET);
   const clientSecretSign = Buffer.from(hashed).toString('base64');
   const params = new URLSearchParams({
     client_id: SS_CLIENT_ID,
