@@ -297,7 +297,7 @@ export default function MarketIntelChart({ visible, data, onClose }: MarketIntel
           border: '1px solid rgba(0, 200, 255, 0.3)',
           borderRadius: '12px',
           padding: '16px',
-          zIndex: 1100,
+          zIndex: 42,
           backdropFilter: 'blur(10px)',
           boxShadow: '0 0 30px rgba(0, 150, 255, 0.2), inset 0 0 20px rgba(0, 100, 200, 0.05)',
         }}

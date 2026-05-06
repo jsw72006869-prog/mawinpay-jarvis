@@ -45,54 +45,60 @@ const THEME = {
   completionBubble: 'rgba(0,245,255,0.06)',
 };
 
-// ── Smartstore Result Card ──
+// ── Smartstore Result Card (Mission Control v1) ──
 function SmartstoreCard({ text }: { text: string }) {
-  // Parse [PKG] tagged messages for smartstore data
   const lines = text.replace('[PKG]', '').trim().split('\n').filter(l => l.trim());
   const title = lines[0]?.replace(/\*\*/g, '') || '스마트스토어';
   const dataLines = lines.slice(1).filter(l => l.includes(':') || l.includes('건') || l.includes('원'));
 
   return (
     <div style={{
-      background: 'linear-gradient(135deg, rgba(0,40,80,0.5), rgba(0,20,60,0.4))',
-      border: '1px solid rgba(0,245,255,0.25)',
-      borderRadius: 12,
-      padding: '14px 16px',
+      background: 'linear-gradient(145deg, rgba(0,20,50,0.9), rgba(0,10,30,0.85))',
+      border: '1px solid rgba(0,245,255,0.2)',
+      borderRadius: 14,
+      padding: '16px 18px',
       marginTop: 8,
+      boxShadow: '0 4px 20px rgba(0,0,0,0.3), inset 0 1px 0 rgba(0,245,255,0.08)',
     }}>
       <div style={{
         fontFamily: 'Orbitron, monospace',
-        fontSize: '0.6rem',
+        fontSize: '0.55rem',
         color: THEME.cyan,
-        letterSpacing: '0.15em',
-        marginBottom: 10,
+        letterSpacing: '0.18em',
+        marginBottom: 12,
         display: 'flex',
         alignItems: 'center',
-        gap: 6,
+        gap: 8,
+        paddingBottom: 8,
+        borderBottom: '1px solid rgba(0,245,255,0.1)',
       }}>
-        <span style={{ fontSize: '0.8rem' }}>◈</span>
+        <span style={{ fontSize: '0.85rem', filter: 'drop-shadow(0 0 4px rgba(0,245,255,0.5))' }}>◈</span>
         {title}
+        <span style={{ marginLeft: 'auto', width: 6, height: 6, borderRadius: '50%', background: '#00FF88', boxShadow: '0 0 6px #00FF88' }} />
       </div>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 8 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(100px, 1fr))', gap: 8 }}>
         {dataLines.map((line, i) => {
           const parts = line.replace(/[-•]/g, '').trim().split(/[:：]/);
           const label = parts[0]?.replace(/\*\*/g, '').trim() || '';
           const value = parts.slice(1).join(':').replace(/\*\*/g, '').trim() || '';
           const isHighlight = value.includes('건') || value.includes('원');
+          const isZero = /^0건$/.test(value.trim());
           return (
             <div key={i} style={{
-              background: 'rgba(0,245,255,0.04)',
-              border: '1px solid rgba(0,245,255,0.12)',
-              borderRadius: 8,
-              padding: '10px 12px',
+              background: 'rgba(0,245,255,0.03)',
+              border: '1px solid rgba(0,245,255,0.1)',
+              borderRadius: 10,
+              padding: '10px 10px',
               textAlign: 'center',
+              transition: 'all 0.2s',
             }}>
-              <div style={{ fontSize: '0.65rem', color: THEME.textDim, marginBottom: 4 }}>{label}</div>
+              <div style={{ fontSize: '0.6rem', color: 'rgba(140,170,200,0.7)', marginBottom: 4, letterSpacing: '0.05em' }}>{label}</div>
               <div style={{
-                fontSize: isHighlight ? '1.1rem' : '0.9rem',
+                fontSize: isHighlight ? '1.05rem' : '0.85rem',
                 fontWeight: 700,
-                color: isHighlight ? THEME.cyan : THEME.text,
+                color: isZero ? 'rgba(100,130,160,0.5)' : isHighlight ? THEME.cyan : THEME.text,
                 fontFamily: isHighlight ? 'Orbitron, monospace' : 'Inter, sans-serif',
+                textShadow: isHighlight && !isZero ? '0 0 10px rgba(0,245,255,0.4)' : 'none',
               }}>
                 {value}
               </div>
@@ -104,46 +110,83 @@ function SmartstoreCard({ text }: { text: string }) {
   );
 }
 
-// ── Briefing Card ──
+// ── Briefing Card (Mission Control v1) ──
+const SECTION_ICONS: Record<string, { icon: string; color: string }> = {
+  '주문': { icon: '📦', color: '#00F5FF' },
+  '스마트스토어': { icon: '🛒', color: '#00F5FF' },
+  '매출': { icon: '💰', color: '#00FF88' },
+  '시장': { icon: '📊', color: '#FF9800' },
+  '마케팅': { icon: '🎯', color: '#E040FB' },
+  '할일': { icon: '✅', color: '#76FF03' },
+  '일정': { icon: '📅', color: '#7BB3F0' },
+};
+
+function getSectionMeta(title: string) {
+  for (const [key, meta] of Object.entries(SECTION_ICONS)) {
+    if (title.includes(key)) return meta;
+  }
+  return { icon: '◈', color: '#C8A96E' };
+}
+
 function BriefingCard({ text }: { text: string }) {
   const sections = text.replace('[LIST]', '').trim().split(/\*\*\[/).filter(Boolean);
   
   return (
     <div style={{
-      background: 'linear-gradient(135deg, rgba(10,20,40,0.7), rgba(0,15,35,0.6))',
-      border: '1px solid rgba(200,169,110,0.25)',
-      borderRadius: 12,
-      padding: '16px 18px',
+      background: 'linear-gradient(145deg, rgba(6,12,24,0.95), rgba(0,8,20,0.9))',
+      border: '1px solid rgba(200,169,110,0.2)',
+      borderRadius: 14,
+      padding: '18px 20px',
       marginTop: 8,
+      boxShadow: '0 4px 24px rgba(0,0,0,0.4), inset 0 1px 0 rgba(200,169,110,0.1)',
     }}>
+      {/* Header */}
       <div style={{
         fontFamily: 'Orbitron, monospace',
-        fontSize: '0.6rem',
+        fontSize: '0.58rem',
         color: THEME.gold,
-        letterSpacing: '0.15em',
-        marginBottom: 12,
+        letterSpacing: '0.2em',
+        marginBottom: 14,
         display: 'flex',
         alignItems: 'center',
-        gap: 6,
+        gap: 8,
+        paddingBottom: 10,
+        borderBottom: '1px solid rgba(200,169,110,0.15)',
       }}>
-        <span style={{ fontSize: '0.8rem' }}>◈</span>
-        DAILY BRIEFING
+        <span style={{ fontSize: '0.9rem', filter: 'drop-shadow(0 0 4px rgba(200,169,110,0.5))' }}>◈</span>
+        MORNING BRIEFING
+        <span style={{ marginLeft: 'auto', fontSize: '0.45rem', color: THEME.textDim, letterSpacing: '0.1em' }}>
+          {new Date().toLocaleDateString('ko-KR', { month: 'short', day: 'numeric' })}
+        </span>
       </div>
+
+      {/* Sections */}
       {sections.map((section, i) => {
         const titleEnd = section.indexOf(']');
         const sectionTitle = titleEnd > 0 ? section.substring(0, titleEnd).replace(/\*\*/g, '') : '';
         const content = titleEnd > 0 ? section.substring(titleEnd + 1) : section;
         const items = content.split('\n').filter(l => l.trim().startsWith('-'));
+        const meta = getSectionMeta(sectionTitle);
         
         return (
-          <div key={i} style={{ marginBottom: i < sections.length - 1 ? 12 : 0 }}>
+          <div key={i} style={{
+            marginBottom: i < sections.length - 1 ? 14 : 0,
+            padding: '10px 12px',
+            background: 'rgba(0,0,0,0.2)',
+            borderRadius: 10,
+            borderLeft: `3px solid ${meta.color}44`,
+          }}>
             {sectionTitle && (
               <div style={{
-                fontSize: '0.72rem',
+                fontSize: '0.7rem',
                 fontWeight: 600,
-                color: THEME.gold,
-                marginBottom: 6,
+                color: meta.color,
+                marginBottom: 8,
+                display: 'flex',
+                alignItems: 'center',
+                gap: 6,
               }}>
+                <span style={{ fontSize: '0.8rem' }}>{meta.icon}</span>
                 {sectionTitle}
               </div>
             )}
@@ -152,21 +195,23 @@ function BriefingCard({ text }: { text: string }) {
               const parts = cleaned.split(/[:：]/);
               const label = parts[0]?.trim() || '';
               const value = parts.slice(1).join(':').trim() || '';
-              const isNumber = /\d+건|\d+원|\d+명/.test(value);
+              const isNumber = /\d+건|\d+원|\d+명|\d+%/.test(value);
+              const isZero = /^0건$/.test(value.trim());
               return (
                 <div key={j} style={{
                   display: 'flex',
                   justifyContent: 'space-between',
                   alignItems: 'center',
-                  padding: '4px 0',
-                  borderBottom: j < items.length - 1 ? '1px solid rgba(200,169,110,0.1)' : 'none',
+                  padding: '5px 0',
+                  borderBottom: j < items.length - 1 ? '1px solid rgba(255,255,255,0.04)' : 'none',
                 }}>
-                  <span style={{ fontSize: '0.78rem', color: THEME.textDim }}>{label}</span>
+                  <span style={{ fontSize: '0.75rem', color: 'rgba(180,195,210,0.8)' }}>{label}</span>
                   <span style={{
-                    fontSize: isNumber ? '0.85rem' : '0.78rem',
+                    fontSize: isNumber ? '0.85rem' : '0.75rem',
                     fontWeight: isNumber ? 700 : 400,
-                    color: isNumber ? THEME.cyan : THEME.text,
+                    color: isZero ? 'rgba(100,120,140,0.6)' : isNumber ? meta.color : THEME.text,
                     fontFamily: isNumber ? 'Orbitron, monospace' : 'Inter, sans-serif',
+                    textShadow: isNumber && !isZero ? `0 0 8px ${meta.color}44` : 'none',
                   }}>
                     {value}
                   </span>
@@ -335,14 +380,14 @@ export default function ConversationPanel({
       animate={{ opacity: 1, y: 0 }}
       style={{
         position: 'fixed',
-        bottom: 0,
-        left: '50%',
-        transform: 'translateX(-50%)',
-        width: '100%',
-        maxWidth: 600,
+        top: 80,
+        right: 20,
+        bottom: 80,
+        width: 380,
         zIndex: 50,
         pointerEvents: 'auto',
-        padding: '0 12px 12px',
+        display: 'flex',
+        flexDirection: 'column',
       }}
     >
       {/* STT Status Bar */}
@@ -390,8 +435,8 @@ export default function ConversationPanel({
         backdropFilter: 'blur(20px)',
         boxShadow: '0 -4px 30px rgba(0,0,0,0.4), 0 0 20px rgba(0,245,255,0.05)',
         overflow: 'hidden',
-        maxHeight: isExpanded ? '60vh' : '220px',
-        transition: 'max-height 0.3s ease',
+        flex: 1,
+        minHeight: 0,
         display: 'flex',
         flexDirection: 'column',
       }}>

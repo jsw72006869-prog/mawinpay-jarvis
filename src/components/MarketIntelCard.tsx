@@ -90,7 +90,7 @@ export default function MarketIntelCard({ visible, onClose }: MarketIntelCardPro
           borderRadius: '14px',
           backdropFilter: 'blur(16px)',
           boxShadow: '0 0 30px rgba(255, 152, 0, 0.1)',
-          zIndex: 9997,
+          zIndex: 40,
           overflow: 'hidden',
         }}
       >

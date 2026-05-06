@@ -142,15 +142,15 @@ export default function AgentConsolePanel({ visible, onClose, onUserInput, captc
         style={{
           position: 'fixed',
           bottom: '20px',
-          right: '20px',
-          width: '380px',
-          maxHeight: '520px',
-          background: 'rgba(6, 10, 18, 0.92)',
-          border: '1px solid rgba(0, 212, 255, 0.3)',
-          borderRadius: '16px',
+          left: '20px',
+          width: '340px',
+          maxHeight: '380px',
+          background: 'linear-gradient(180deg, rgba(6,10,18,0.95), rgba(2,6,12,0.92))',
+          border: '1px solid rgba(0, 212, 255, 0.2)',
+          borderRadius: '14px',
           backdropFilter: 'blur(20px)',
-          boxShadow: '0 0 30px rgba(0, 212, 255, 0.15), inset 0 0 60px rgba(0, 0, 0, 0.3)',
-          zIndex: 9999,
+          boxShadow: '0 8px 32px rgba(0,0,0,0.5), 0 0 20px rgba(0,212,255,0.08), inset 0 1px 0 rgba(0,212,255,0.1)',
+          zIndex: 45,
           display: 'flex',
           flexDirection: 'column',
           overflow: 'hidden',
@@ -158,11 +158,12 @@ export default function AgentConsolePanel({ visible, onClose, onUserInput, captc
       >
         {/* ─── 헤더 ─── */}
         <div style={{
-          padding: '12px 16px',
-          borderBottom: '1px solid rgba(0, 212, 255, 0.2)',
+          padding: '10px 14px',
+          borderBottom: '1px solid rgba(0, 212, 255, 0.15)',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',
+          background: 'rgba(0,212,255,0.02)',
         }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
             <motion.div
@@ -174,8 +175,8 @@ export default function AgentConsolePanel({ visible, onClose, onUserInput, captc
                 boxShadow: `0 0 8px ${isWorking ? '#00FFD4' : '#00D4FF'}`,
               }}
             />
-            <span style={{ color: '#D4E0EC', fontSize: '13px', fontWeight: 600, letterSpacing: '1px' }}>
-              AGENT CONSOLE
+            <span style={{ color: '#D4E0EC', fontSize: '11px', fontWeight: 600, letterSpacing: '1.5px', fontFamily: 'Orbitron, monospace' }}>
+              MISSION LOG
             </span>
           </div>
           <button

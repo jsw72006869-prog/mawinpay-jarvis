@@ -51,12 +51,21 @@ const THEME = {
   goldDim:    '#8B6F3E',
   blue:       '#4A90E2',
   blueLight:  '#7BB3F0',
+  cyan:       '#00F5FF',
+  cyanDim:    'rgba(0,245,255,0.4)',
+  green:      '#00FF88',
+  orange:     '#FF9800',
   silver:     '#A8B8C8',
   silverDim:  '#5A6A7A',
   bg:         '#060A12',
   bgDeep:     '#030608',
+  bgCard:     'rgba(6,10,18,0.92)',
   text:       '#D4E0EC',
   textDim:    '#5A6A7A',
+  radius:     '14px',
+  radiusSm:   '10px',
+  shadow:     '0 8px 32px rgba(0,0,0,0.4), 0 0 20px rgba(0,245,255,0.06)',
+  shadowGold: '0 8px 32px rgba(0,0,0,0.4), 0 0 20px rgba(200,169,110,0.08)',
 };
 
 const STATE_COLOR: Record<JarvisState, string> = {
@@ -4144,7 +4153,7 @@ export default function JarvisApp() {
 
   return (
     <main
-      style={{ position: 'fixed', inset: 0, overflow: 'hidden', background: THEME.bg, cursor: typeof window !== 'undefined' && ('ontouchstart' in window || navigator.maxTouchPoints > 0) ? 'auto' : 'none' }}
+      style={{ position: 'fixed', inset: 0, overflow: 'hidden', background: `${THEME.bg} repeating-linear-gradient(0deg, transparent, transparent 60px, rgba(0,245,255,0.012) 60px, rgba(0,245,255,0.012) 61px), repeating-linear-gradient(90deg, transparent, transparent 60px, rgba(0,245,255,0.012) 60px, rgba(0,245,255,0.012) 61px)`, cursor: typeof window !== 'undefined' && ('ontouchstart' in window || navigator.maxTouchPoints > 0) ? 'auto' : 'none' }}
       onClick={() => {
         // idle 상태에서만 클릭으로 활성화 허용
         if (stateRef.current === 'idle') handleActivate();
@@ -4491,8 +4500,7 @@ export default function JarvisApp() {
           justifyContent: 'center', gap: 6,
           padding: '0 10px',
         } : {
-          position: 'fixed', left: 24, top: '50%',
-          transform: 'translateY(-50%)',
+          position: 'fixed', left: 24, top: 80,
           zIndex: 20, pointerEvents: 'none',
           display: 'flex', flexDirection: 'column',
         }}
