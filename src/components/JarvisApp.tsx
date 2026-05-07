@@ -4730,7 +4730,7 @@ export default function JarvisApp() {
       {/* ── UI-E Mission Control Visual Deck (Lite) ── */}
       {/* ── UI-E Mission Control Motion Deck (Lite v1) ── */}
       <MissionControlDeck
-        state={state}
+        state={state as string}
         currentTime={currentTime}
         workspaceCount={workspaceRecords.length}
         outreachCount={outreachCandidates.length}

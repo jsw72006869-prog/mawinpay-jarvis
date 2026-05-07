@@ -12,8 +12,8 @@ const STATE_LABELS: Record<string, string> = {
   idle: 'STANDBY',
   listening: 'LISTENING',
   thinking: 'THINKING',
-  speaking: 'SPEAKING',
-  working: 'WORKING',
+  working: 'EXECUTING',
+  speaking: 'RESPONDING',
   success: 'MISSION COMPLETE',
   error: 'ATTENTION REQUIRED',
   approval_required: 'APPROVAL REQUIRED',
@@ -32,60 +32,67 @@ export default function MissionControlDeck({
 
   return (
     <div
-      className={`ui-e-mission-deck ui-e-motion-v1 ui-e-state-${safeState}`}
+      className={`ui-e-mission-deck ui-e-cinema-v2 ui-e-state-${safeState}`}
       aria-hidden="true"
     >
-      <div className="ui-e-camera-vignette" />
-      <div className="ui-e-depth-wash" />
-
-      <div className="ui-e-core-focus">
-        <div className="ui-e-core-halo ui-e-core-halo-one" />
-        <div className="ui-e-core-halo ui-e-core-halo-two" />
-        <div className="ui-e-core-halo ui-e-core-halo-three" />
-        <div className="ui-e-core-scan" />
+      <div className="ui-e-film-bars">
+        <div className="ui-e-film-bar ui-e-film-bar-top" />
+        <div className="ui-e-film-bar ui-e-film-bar-bottom" />
       </div>
 
-      <div className="ui-e-motion-orbit ui-e-motion-orbit-a" />
-      <div className="ui-e-motion-orbit ui-e-motion-orbit-b" />
-      <div className="ui-e-motion-orbit ui-e-motion-orbit-c" />
+      <div className="ui-e-cinema-camera">
+        <div className="ui-e-cinema-vignette" />
+        <div className="ui-e-cinema-depth-wash" />
+        <div className="ui-e-cinema-lens-flare" />
 
-      <div className="ui-e-flow-line ui-e-flow-line-a" />
-      <div className="ui-e-flow-line ui-e-flow-line-b" />
-      <div className="ui-e-flow-line ui-e-flow-line-c" />
-      <div className="ui-e-flow-line ui-e-flow-line-d" />
+        <div className="ui-e-cinema-tunnel">
+          <span className="ui-e-tunnel-ring ring-1" />
+          <span className="ui-e-tunnel-ring ring-2" />
+          <span className="ui-e-tunnel-ring ring-3" />
+          <span className="ui-e-tunnel-ring ring-4" />
+          <span className="ui-e-tunnel-ring ring-5" />
+        </div>
 
-      <section className="ui-e-intel-dock">
-        <div className="ui-e-intel-chip">
-          <span>MARKET</span>
-          <strong>KAMIS READY</strong>
+        <div className="ui-e-cinema-core">
+          <span className="ui-e-cinema-core-glow" />
+          <span className="ui-e-cinema-core-ring ring-a" />
+          <span className="ui-e-cinema-core-ring ring-b" />
+          <span className="ui-e-cinema-core-ring ring-c" />
+          <span className="ui-e-cinema-scan-beam" />
         </div>
-        <div className="ui-e-intel-chip">
-          <span>WEATHER</span>
-          <strong>NEXT SOURCE</strong>
+
+        <div className="ui-e-cinema-rail rail-a" />
+        <div className="ui-e-cinema-rail rail-b" />
+        <div className="ui-e-cinema-rail rail-c" />
+        <div className="ui-e-cinema-rail rail-d" />
+
+        <div className="ui-e-cinema-marker marker-orders">
+          <span>ORDERS</span>
+          <strong>LIVE</strong>
         </div>
-        <div className="ui-e-intel-chip">
-          <span>GLOBAL</span>
-          <strong>ROADMAP</strong>
-        </div>
-        <div className="ui-e-intel-chip">
+        <div className="ui-e-cinema-marker marker-outreach">
           <span>OUTREACH</span>
-          <strong>{outreachCount} CANDIDATES</strong>
+          <strong>{outreachCount}</strong>
         </div>
-        <div className="ui-e-intel-chip">
+        <div className="ui-e-cinema-marker marker-files">
           <span>FILES</span>
-          <strong>{workspaceCount} SAVED</strong>
+          <strong>{workspaceCount}</strong>
         </div>
-      </section>
+      </div>
 
-      <section className="ui-e-bottom-ribbon ui-e-motion-ribbon">
+      <div className="ui-e-cinema-scene-label">
+        <span>{stateLabel}</span>
+        <strong>{approvalLabel}</strong>
+      </div>
+
+      <section className="ui-e-bottom-ribbon ui-e-cinema-ribbon">
         <span className="ui-e-ribbon-pill">JARVIS STATE: {stateLabel}</span>
         <span className="ui-e-ribbon-pill">TIME: {currentTime}</span>
-        <span className="ui-e-ribbon-pill">APPROVAL: {approvalLabel}</span>
-        <span className="ui-e-ribbon-pill">UI-E MOTION V1</span>
+        <span className="ui-e-ribbon-pill">CAMERA: CINEMATIC V2</span>
       </section>
 
-      <div className="ui-e-axis-line ui-e-motion-axis">
-        X-AXIS // Y-AXIS // Z-AXIS // CAMERA SYNC
+      <div className="ui-e-axis-line ui-e-cinema-axis">
+        X-AXIS // Y-AXIS // Z-AXIS // CAMERA DEPTH LOCKED
       </div>
     </div>
   );
