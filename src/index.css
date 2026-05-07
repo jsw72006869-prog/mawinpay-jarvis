@@ -413,17 +413,58 @@ html, body {
 
 .ui-e-left-stack {
   position: absolute;
-  top: clamp(270px, 32vh, 330px);
-  left: 28px;
+  top: 92px;
+  left: clamp(300px, 19vw, 380px);
+  right: 430px;
   display: flex;
-  flex-direction: column;
+  flex-direction: row;
   gap: 10px;
-  transform: rotateY(7deg);
+  transform: none;
+  align-items: stretch;
+  justify-content: flex-start;
 }
 
 .ui-e-left-stack .ui-e-card {
-  width: 230px;
-  padding: 11px 13px;
+  width: clamp(150px, 11vw, 190px);
+  min-height: 78px;
+  padding: 10px 12px;
+}
+
+.ui-e-left-stack .ui-e-card-title {
+  font-size: 11px;
+}
+.ui-e-left-stack .ui-e-card-value {
+  margin-top: 5px;
+  font-size: 15px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.ui-e-left-stack .ui-e-card-detail {
+  margin-top: 4px;
+  font-size: 10px;
+  line-height: 1.25;
+  max-height: 26px;
+  overflow: hidden;
+}
+
+.ui-e-left-stack .ui-e-card:nth-child(1) {
+  animation-delay: 0.05s;
+}
+.ui-e-left-stack .ui-e-card:nth-child(2) {
+  animation-delay: 0.16s;
+}
+.ui-e-left-stack .ui-e-card:nth-child(3) {
+  animation-delay: 0.27s;
+}
+.ui-e-right-stack .ui-e-card:nth-child(1) {
+  animation-delay: 0.12s;
+}
+.ui-e-right-stack .ui-e-card:nth-child(2) {
+  animation-delay: 0.23s;
+}
+.ui-e-right-stack .ui-e-card:nth-child(3) {
+  animation-delay: 0.34s;
 }
 
 .ui-e-right-stack {
@@ -603,11 +644,13 @@ html, body {
 @keyframes uiECardEnter {
   from {
     opacity: 0;
-    transform: translateY(18px) rotateX(8deg);
+    transform: translateY(18px) scale(0.96);
+    filter: blur(6px);
   }
   to {
     opacity: 1;
-    transform: translateY(0) rotateX(0deg);
+    transform: translateY(0) scale(1);
+    filter: blur(0);
   }
 }
 
@@ -633,13 +676,16 @@ html, body {
   }
 }
 
-@media (max-width: 1360px) {
-  .ui-e-left-stack {
-    top: clamp(290px, 34vh, 350px);
-    left: 22px;
+@media (max-width: 1500px), (max-height: 820px) {
+  .ui-e-left-stack,
+  .ui-e-right-stack {
+    display: none;
   }
-
-  .ui-e-left-stack .ui-e-card {
-    width: 215px;
+  .ui-e-bottom-ribbon {
+    bottom: 62px;
+    max-width: calc(100vw - 28px);
+  }
+  .ui-e-axis-line {
+    display: none;
   }
 }
