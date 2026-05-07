@@ -4104,6 +4104,7 @@ export default function JarvisApp() {
       setOutreachLoading(true);
       setState('processing');
       emitNodeState('jarvis_brain', 'active', '인플루언서 후보 수집 중...');
+      emitNodeState('influencer', 'active', '인플루언서 후보 수집 중...');
       emitMissionLog('🔍', 'OUTREACH', `${keyword} ${platform} 후보 수집 시작 (${count}명${requireEmail ? ', 이메일 필수' : ''})`, 'thinking');
       addMessage('jarvis', `${keyword} 관련 ${platform === 'youtube' ? 'YouTube' : platform === 'naver' ? 'Naver Blog' : 'YouTube + Naver Blog'} 후보를 수집합니다.${requireEmail ? ' 공개 이메일이 있는 후보만 필터링합니다.' : ''} 최대 ${count}명까지 분석합니다.`, true);
 
@@ -4159,7 +4160,8 @@ export default function JarvisApp() {
           setOutreachCandidates(mergedCandidates);
           const telemetryInfo = data.telemetry ? ` | API ${data.telemetry.apiCalls}회, Quota ${data.telemetry.quotaUsed} units` : '';
           emitMissionLog('✅', 'OUTREACH', `${finalCandidates.length}명 수집 완료 (누적 ${mergedCandidates.length}명)${requireEmail ? ' (이메일 확인)' : ''}${telemetryInfo}`, 'success');
-          emitNodeState('jarvis_brain', 'completed', '후보 수집 완료');
+          emitNodeState('jarvis_brain', 'success', '후보 수집 완료');
+          emitNodeState('influencer', 'success', '후보 수집 완료');
 
           const highFit = finalCandidates.filter((c: any) => c.productFitScore >= 60).length;
           const contactable = finalCandidates.filter((c: any) => c.publicContactStatus === 'email_public').length;
@@ -4253,11 +4255,15 @@ export default function JarvisApp() {
           }
         } else {
           emitMissionLog('ℹ️', 'OUTREACH', '후보 없음', 'info');
+          emitNodeState('jarvis_brain', 'success', '후보 없음');
+          emitNodeState('influencer', 'success', '후보 없음');
           addMessage('jarvis', `${keyword} 관련 ${requireEmail ? '공개 이메일이 있는 ' : ''}후보를 찾지 못했습니다. 다른 키워드로 시도해보시겠습니까?`, true);
         }
       } catch (e: any) {
         setOutreachLoading(false);
         emitMissionLog('❌', 'OUTREACH', `수집 실패: ${e.message}`, 'error');
+        emitNodeState('jarvis_brain', 'error', `수집 실패: ${e.message}`);
+        emitNodeState('influencer', 'error', `수집 실패: ${e.message}`);
         addMessage('jarvis', '후보 수집 중 오류가 발생했습니다. 잠시 후 다시 시도해주세요.', true);
       }
       setState('idle');
