@@ -3774,22 +3774,64 @@ export default function JarvisApp() {
   }, [addMessage, speak, startSpeakingLevel, stopSpeakingLevel]);
 
   // ── STT 노이즈 필터: 유튜브/방송 오인식 패턴 차단 ──
-  const STT_NOISE_PATTERNS = [
-    /^(구독|좋아요|알림|알림설정|구독좋아요|구독\s*좋아요|좋아요\s*구독)[\s,!.]*$/i,
-    /구독.*좋아요.*알림/i,
-    /좋아요.*구독.*알림/i,
-    /^(감사합니다|고맙습니다|안녕하세요|안녕히계세요)[\s!.]*$/i,
-    /^(네|예|아니요|아니오)[\s!.]*$/i, // 단독 짧은 응답 (맥락 없는 경우)
-    /^[\s\p{P}]*$/u, // 구두점만 있는 경우
-  ];
+  const normalizeKoreanSpeechText = (text: string): string => {
+    return text.replace(/[\s\p{P}]/gu, '').trim();
+  };
+
+  const isLikelySttHallucination = (text: string): boolean => {
+    const compact = normalizeKoreanSpeechText(text);
+    if (!compact) return true;
+    if (compact.includes('자비스')) return false; // 호출어 포함 시 허용
+
+    // 같은 단어(토큰) 반복 체크
+    const tokens = text.split(/\s+/).filter(t => t.length >= 2);
+    const uniqueTokens = new Set(tokens);
+    if (tokens.length >= 3 && uniqueTokens.size <= 2) return true;
+
+    // 같은 2~4글자 단어가 붙어서 3회 이상 반복되는 경우
+    if (/^(.{1,4})\1{2,}$/.test(compact)) return true;
+
+    // 자주 나오는 STT 헛인식 패턴
+    const hallucinationWords = ['대구', '트위터', '구독', '좋아요', '알림설정', '감사합니다'];
+    for (const word of hallucinationWords) {
+      const count = compact.split(word).length - 1;
+      if (count >= 3) return true;
+    }
+
+    // 명령 동사가 하나도 없고, 반복 느낌이 강한 짧은 문장
+    const commandHints = ['자비스', '주문', '브리핑', '알려', '보여', '찾아', '수집', '저장', '만들', '보내', '확인', '열어', '분석', '현황', '전체', '주문량', '스마트스토어', '보고'];
+    const hasCommandHint = commandHints.some(hint => compact.includes(hint));
+    if (!hasCommandHint && compact.length <= 8 && tokens.length <= 4) return true;
+
+    // 기존 패턴 매칭
+    const STT_NOISE_PATTERNS = [
+      /^(구독|좋아요|알림|알림설정|구독좋아요|구독\s*좋아요|좋아요\s*구독)[\s,!.]*$/i,
+      /구독.*좋아요.*알림/i,
+      /좋아요.*구독.*알림/i,
+      /^(감사합니다|고맙습니다|안녕하세요|안녕히계세요)[\s!.]*$/i,
+      /^(네|예|아니요|아니오)[\s!.]*$/i,
+      /^[\s\p{P}]*$/u,
+    ];
+    return STT_NOISE_PATTERNS.some(p => p.test(text.trim()));
+  };
+
   const isSTTNoise = (text: string): boolean => {
     const trimmed = text.trim();
-    if (trimmed.length <= 1) return true; // 1글자 이하
-    return STT_NOISE_PATTERNS.some(p => p.test(trimmed));
+    if (trimmed.length <= 1) return true;
+    return isLikelySttHallucination(text);
   };
 
   const handleSpeechResult = useCallback(async (transcript: string) => {
     if (!transcript.trim()) return;
+
+    const currentState = stateRef.current;
+    // 자비스가 바쁠 때 (말하는 중, 생각 중, 작업 중) STT 무시
+    const blockedVoiceStates = ['speaking', 'thinking', 'working', 'processing'];
+    if (blockedVoiceStates.includes(String(currentState))) {
+      console.warn('[STT] ignored while Jarvis is busy:', currentState, transcript);
+      return;
+    }
+
     // STT 노이즈 필터 (단, 2차 인증/케시 대기 중에는 필터 건너뛰)
     const isWaitingForInput = verificationResolveRef.current !== null || bookingConfirmResolveRef.current !== null || captchaOpenRef.current;
     if (!isWaitingForInput && isSTTNoise(transcript)) {
@@ -3808,7 +3850,6 @@ export default function JarvisApp() {
       resolve(transcript.replace(/\s/g, '').trim());
       return;
     }
-    const currentState = stateRef.current;
     console.log('[JARVIS]  음성 명령 수신 (상태:', currentState, '):', transcript);
     // 캡차/2단계 인증 입력 대기 중이면 인증번호 전달
     if (verificationResolveRef.current) {
