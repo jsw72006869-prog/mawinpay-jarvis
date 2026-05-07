@@ -23,13 +23,22 @@ export interface ActionButton {
 }
 
 export interface ActionContext {
-  type: 'smartstore' | 'creative' | 'growth_link' | 'briefing' | 'general';
+  type: 'smartstore' | 'creative' | 'growth_link' | 'briefing' | 'general' | 'outreach_result' | 'outreach_collect' | 'market_price_result';
   newOrders?: number;
   pendingShipping?: number;
   preShipTotal?: number;
   product?: string;
   contentType?: string;
   sourceCommand?: string;
+  // OUTREACH 전용 필드
+  label?: string;
+  description?: string;
+  locked?: boolean;
+  keyword?: string;
+  collectedCount?: number;
+  emailCount?: number;
+  shortfall?: number;
+  savedTo?: string;
 }
 
 export interface WorkflowStep {
@@ -128,6 +137,19 @@ function getRecommendedActions(context: ActionContext): ActionButton[] {
       { id: 'save_campaign', label: '캠페인 저장', icon: '💾', mode: 'observe', command: '캠페인 저장해줘' },
       { id: 'later', label: '나중에 하기', icon: '⏸️', mode: 'observe', command: '' },
     ];
+  }
+
+  if (type === 'outreach_result' || type === 'outreach_collect') {
+    const actions: ActionButton[] = [
+      { id: 'view_outreach', label: 'OUTREACH 패널 보기', icon: '📋', mode: 'observe', command: '수집한 후보 보여줘' },
+      { id: 'draft_email', label: '제안 메일 초안 만들기', icon: '✉️', mode: 'draft', command: '메일 초안 보여줘' },
+      { id: 'save_sheets', label: 'Google Sheets 저장', icon: '💾', mode: 'observe', command: '후보 시트에 저장해줘' },
+    ];
+    if ((context as any).shortfall && (context as any).shortfall > 0) {
+      actions.push({ id: 'collect_more', label: '부족한 후보 추가 수집', icon: '🔍', mode: 'observe', command: `${(context as any).keyword || ''} 유튜버 추가 수집해줘` });
+    }
+    actions.push({ id: 'later', label: '나중에 하기', icon: '⏸️', mode: 'observe', command: '' });
+    return actions;
   }
 
   if (type === 'briefing') {

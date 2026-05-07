@@ -712,6 +712,44 @@ export default function JarvisApp() {
         setStats(prev => ({ ...prev, collected: prev.collected + allCollected.length }));
 
         if (allCollected.length > 0) {
+          // ── OUTREACH 패널 자동 활성화 ──
+          setOutreachVisible(true);
+
+          // ── 이메일 조건 분리 및 수집 완료 보고 ──
+          const emailConfirmed = allCollected.filter(i => i.email && i.email.includes('@'));
+          const noEmail = allCollected.filter(i => !i.email || !i.email.includes('@'));
+
+          // 수집 완료 보고 메시지
+          const collectReportMsg = `**${keyword} 수집 완료** (${allCollected.length}명)\n\n` +
+            `| 항목 | 수치 |\n|------|------|\n` +
+            `| 총 수집 | ${allCollected.length}명 |\n` +
+            `| 공개 이메일 확인 | ${emailConfirmed.length}명 |\n` +
+            `| 이메일 미확인 | ${noEmail.length}명 |\n\n` +
+            `**저장 위치**: Google Sheets (influencer_candidates 탭) + localStorage\n` +
+            `OUTREACH 패널에서 후보 카드를 확인하세요.`;
+          addMessage('jarvis', collectReportMsg, true);
+
+          // 파티클 폭발 효과
+          setClapBurst(true);
+          setTimeout(() => setClapBurst(false), 120);
+          setTimeout(() => { setClapBurst(true); setTimeout(() => setClapBurst(false), 120); }, 450);
+
+          // ── ActionCard 연결 (Next Action 제공) ──
+          setActionContext({
+            type: 'outreach_collect',
+            keyword,
+            collectedCount: allCollected.length,
+            emailCount: emailConfirmed.length,
+            shortfall: 0,
+            label: `${keyword} ${allCollected.length}명 수집 완료`,
+            description: `Google Sheets 저장 완료`,
+            savedTo: 'Google Sheets (influencer_candidates)',
+            locked: false,
+            sourceCommand: `${keyword} ${count}명 수집`,
+          });
+          setWorkflowSteps(buildWorkflowSteps({ type: 'outreach_collect', label: '후보 수집', description: '', locked: false }));
+
+          // ── Google Sheets 저장 ──
           appendInfluencersToSheet(allCollected as any).then(r => {
             console.log('[JARVIS] 시트 저장:', r.success ? `완료 (${r.count}건)` : r.message);
             saveMemory('마지막 수집', `${keyword} ${allCollected.length}명 수집 (${new Date().toLocaleDateString('ko-KR')})`);
@@ -3470,12 +3508,40 @@ export default function JarvisApp() {
         }
 
         const emailCount = collected.filter(i => i.email).length;
+        const noEmailCount = collected.filter(i => !i.email).length;
         const doneText = collected.length > 0
           ? `${platform} 인플루언서 ${collected.length}명을 수집 완료했습니다. 모두 이메일이 있는 채널입니다, 선생님.`
           : `이메일이 있는 ${platform} 인플루언서를 찾지 못했습니다. 다른 키워드로 시도해보시겠습니까?`;
         setState('speaking');
+        // OUTREACH 패널 자동 활성화
+        if (collected.length > 0) setOutreachVisible(true);
         const cardList = collected.slice(0, 5).map((c, i) => `${i + 1}. ${c.name} (${c.followers}) ${c.email ? `✉ ${c.email}` : ''}`).join('\n');
-        addMessage('jarvis', `**${platform} 인플루언서 분석 완료** - ${collected.length}명 수집 (이메일 보유)\n\n${cardList}${collected.length > 5 ? `\n... 외 ${collected.length - 5}명` : ''}`, true);
+        addMessage('jarvis', `**${platform} 인플루언서 분석 완료** - ${collected.length}명 수집 (이메일 보유)\n\n` +
+          `| 항목 | 수치 |\n|------|------|\n` +
+          `| 총 수집 | ${collected.length}명 |\n` +
+          `| 공개 이메일 확인 | ${emailCount}명 |\n\n` +
+          `${cardList}${collected.length > 5 ? `\n... 외 ${collected.length - 5}명` : ''}\n\n` +
+          `**저장 위치**: Google Sheets (influencer_candidates 탭) + localStorage`, true);
+        // 파티클 폭발
+        setClapBurst(true);
+        setTimeout(() => setClapBurst(false), 120);
+        setTimeout(() => { setClapBurst(true); setTimeout(() => setClapBurst(false), 120); }, 450);
+        // ActionCard 연결
+        if (collected.length > 0) {
+          setActionContext({
+            type: 'outreach_collect',
+            keyword,
+            collectedCount: collected.length,
+            emailCount,
+            shortfall: 0,
+            label: `${keyword} ${collected.length}명 수집 완료`,
+            description: `Google Sheets 저장 완료`,
+            savedTo: 'Google Sheets (influencer_candidates)',
+            locked: false,
+            sourceCommand: `${keyword} ${platform} ${count}명 수집`,
+          });
+          setWorkflowSteps(buildWorkflowSteps({ type: 'outreach_collect', label: '후보 수집', description: '', locked: false }));
+        }
         startSpeakingLevel();
         await new Promise<void>(resolve => { speak(doneText, undefined, () => { stopSpeakingLevel(); resolve(); }); });
       } catch (err: any) {
@@ -3852,8 +3918,11 @@ export default function JarvisApp() {
       let keyword = '';
       let platform = 'all';
       let count = 5;
+      let requireEmail = false;
       if (match) {
         const fullText = text;
+        // 이메일 조건 파싱: "이메일 있는", "공개 이메일", "연락 가능한" 등
+        requireEmail = /이메일\s*있는|공개\s*이메일|연락\s*가능한|메일\s*있는|이메일.*만/.test(fullText);
         // 키워드 추출
         const kwMatch = fullText.match(/(캠핑|옥수수|복숭아|제철|농산물|먹방|집밥|간식|요리|육아|가족)/);
         keyword = kwMatch ? kwMatch[1] : match[1] || match[2] || '옥수수';
@@ -3862,21 +3931,23 @@ export default function JarvisApp() {
         else if (fullText.includes('블로거') || fullText.includes('네이버') || fullText.includes('Naver')) platform = 'naver';
         // 수량 추출
         const numMatch = fullText.match(/(\d+)\s*명/);
-        if (numMatch) count = Math.min(parseInt(numMatch[1]), 10);
+        if (numMatch) count = Math.min(parseInt(numMatch[1]), 20);
       }
 
       setOutreachVisible(true);
       setOutreachLoading(true);
       setState('processing');
       emitNodeState('jarvis_brain', 'active', '인플루언서 후보 수집 중...');
-      emitMissionLog('🔍', 'OUTREACH', `${keyword} ${platform} 후보 수집 시작 (${count}명)`, 'thinking');
-      addMessage('jarvis', `${keyword} 관련 ${platform === 'youtube' ? 'YouTube' : platform === 'naver' ? 'Naver Blog' : 'YouTube + Naver Blog'} 후보를 수집합니다. 최대 ${count}명까지 분석합니다.`, true);
+      emitMissionLog('🔍', 'OUTREACH', `${keyword} ${platform} 후보 수집 시작 (${count}명${requireEmail ? ', 이메일 필수' : ''})`, 'thinking');
+      addMessage('jarvis', `${keyword} 관련 ${platform === 'youtube' ? 'YouTube' : platform === 'naver' ? 'Naver Blog' : 'YouTube + Naver Blog'} 후보를 수집합니다.${requireEmail ? ' 공개 이메일이 있는 후보만 필터링합니다.' : ''} 최대 ${count}명까지 분석합니다.`, true);
 
       try {
+        // 이메일 필수 조건 시 더 많이 요청 (필터링 후 부족할 수 있으므로)
+        const requestCount = requireEmail ? Math.min(count * 3, 30) : count;
         const res = await fetch('/api/cloud-proxy', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ taskType: 'outreach-collect', params: { keyword, product: keyword, maxCandidates: count, platform } }),
+          body: JSON.stringify({ taskType: 'outreach-collect', params: { keyword, product: keyword, maxCandidates: requestCount, platform } }),
         });
         const data = await res.json();
         setOutreachLoading(false);
@@ -3887,29 +3958,99 @@ export default function JarvisApp() {
         }
 
         if (data.success && data.candidates && data.candidates.length > 0) {
-          setOutreachCandidates(data.candidates);
-          emitMissionLog('✅', 'OUTREACH', `${data.candidates.length}명 수집 완료`, 'success');
+          // ── 이메일 조건 필터링 ──
+          let finalCandidates = data.candidates;
+          let excludedNoEmail: any[] = [];
+          if (requireEmail) {
+            finalCandidates = data.candidates.filter((c: any) => c.publicContactStatus === 'email_public');
+            excludedNoEmail = data.candidates.filter((c: any) => c.publicContactStatus !== 'email_public');
+          }
+          // 요청 인원수로 자르기
+          finalCandidates = finalCandidates.slice(0, count);
+          const shortfall = requireEmail ? Math.max(0, count - finalCandidates.length) : 0;
+
+          setOutreachCandidates(finalCandidates);
+          emitMissionLog('✅', 'OUTREACH', `${finalCandidates.length}명 수집 완료${requireEmail ? ` (이메일 확인)` : ''}`, 'success');
           emitNodeState('jarvis_brain', 'completed', '후보 수집 완료');
-          const highFit = data.candidates.filter((c: any) => c.productFitScore >= 60).length;
-          const contactable = data.candidates.filter((c: any) => c.publicContactStatus === 'email_public').length;
-          addMessage('jarvis', `**공동구매 후보 ${data.candidates.length}명 수집 완료**\n\n` +
-            `| 항목 | 수치 |\n|------|------|\n` +
-            `| 적합도 60점↑ | ${highFit}명 |\n` +
-            `| 공개 연락 가능 | ${contactable}명 |\n` +
-            `| 메일 초안 생성 | ${contactable}명 |\n\n` +
-            `우측 패널에서 후보 카드를 확인하세요.`, true);
-          // ActionCard 연결
+
+          const highFit = finalCandidates.filter((c: any) => c.productFitScore >= 60).length;
+          const contactable = finalCandidates.filter((c: any) => c.publicContactStatus === 'email_public').length;
+
+          // ── 수집 완료 보고 메시지 ──
+          let reportMsg = '';
+          if (requireEmail && shortfall > 0) {
+            // 조건 미충족: 부족 보고
+            reportMsg = `**${keyword} 후보 수집 완료** (이메일 조건 적용)\n\n` +
+              `| 항목 | 수치 |\n|------|------|\n` +
+              `| 요청 인원 | ${count}명 |\n` +
+              `| 공개 이메일 확인 | ${finalCandidates.length}명 |\n` +
+              `| 부족 | ${shortfall}명 |\n` +
+              `| 이메일 미확인 (제외) | ${excludedNoEmail.length}명 |\n` +
+              `| 적합도 60점↑ | ${highFit}명 |\n\n` +
+              `⚠️ 요청하신 ${count}명 중 공개 이메일이 확인된 후보는 **${finalCandidates.length}명**입니다. ` +
+              `${shortfall}명이 부족합니다.\n\n` +
+              `**저장 위치**: Google Sheets (influencer_candidates 탭) + OUTREACH Workspace\n` +
+              `우측 패널에서 후보 카드를 확인하세요.`;
+          } else if (requireEmail) {
+            // 조건 충족
+            reportMsg = `**${keyword} 후보 ${finalCandidates.length}명 수집 완료** (공개 이메일 확인)\n\n` +
+              `| 항목 | 수치 |\n|------|------|\n` +
+              `| 공개 이메일 확인 | ${contactable}명 |\n` +
+              `| 적합도 60점↑ | ${highFit}명 |\n` +
+              `| 메일 초안 생성 | ${contactable}명 |\n` +
+              `| 이메일 미확인 (제외) | ${excludedNoEmail.length}명 |\n\n` +
+              `모두 공개 이메일이 확인된 후보입니다.\n\n` +
+              `**저장 위치**: Google Sheets (influencer_candidates 탭) + OUTREACH Workspace\n` +
+              `우측 패널에서 후보 카드를 확인하세요.`;
+          } else {
+            // 이메일 조건 없음 (기존 방식)
+            reportMsg = `**공동구매 후보 ${finalCandidates.length}명 수집 완료**\n\n` +
+              `| 항목 | 수치 |\n|------|------|\n` +
+              `| 적합도 60점↑ | ${highFit}명 |\n` +
+              `| 공개 연락 가능 | ${contactable}명 |\n` +
+              `| 메일 초안 생성 | ${contactable}명 |\n\n` +
+              `**저장 위치**: Google Sheets (influencer_candidates 탭) + OUTREACH Workspace\n` +
+              `우측 패널에서 후보 카드를 확인하세요.`;
+          }
+          addMessage('jarvis', reportMsg, true);
+
+          // ── 파티클 폭발 효과 ──
+          setClapBurst(true);
+          setTimeout(() => setClapBurst(false), 120);
+          setTimeout(() => { setClapBurst(true); setTimeout(() => setClapBurst(false), 120); }, 450);
+
+          // ── ActionCard 연결 (Next Action 제공) ──
           setActionContext({
-            type: 'outreach_result',
-            label: '후보 저장',
-            description: `${keyword} 후보 ${data.candidates.length}명 → Google Sheets 저장`,
+            type: 'outreach_collect',
+            keyword,
+            collectedCount: finalCandidates.length,
+            emailCount: contactable,
+            shortfall,
+            label: requireEmail ? `이메일 확인 후보 ${finalCandidates.length}명` : `후보 ${finalCandidates.length}명 수집`,
+            description: `${keyword} 후보 → Google Sheets 저장 완료`,
+            savedTo: 'Google Sheets (influencer_candidates)',
             locked: false,
             sourceCommand: text,
           });
           setWorkflowSteps(buildWorkflowSteps({ type: 'outreach_collect', label: '후보 수집', description: '', locked: false }));
+
+          // ── Google Sheets 자동 저장 ──
+          if (finalCandidates.length > 0) {
+            fetch('/api/cloud-proxy', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ taskType: 'outreach-save-candidates', params: { candidates: finalCandidates } }),
+            }).then(r => r.json()).then(saveResult => {
+              if (saveResult.success) {
+                emitMissionLog('💾', 'OUTREACH', `Google Sheets 저장 완료 (${saveResult.saved || finalCandidates.length}건)`, 'success');
+              }
+            }).catch(() => {
+              emitMissionLog('⚠️', 'OUTREACH', 'Google Sheets 저장 실패 (로컬 보관 중)', 'warning');
+            });
+          }
         } else {
           emitMissionLog('ℹ️', 'OUTREACH', '후보 없음', 'info');
-          addMessage('jarvis', `${keyword} 관련 후보를 찾지 못했습니다. 다른 키워드로 시도해보시겠습니까?`, true);
+          addMessage('jarvis', `${keyword} 관련 ${requireEmail ? '공개 이메일이 있는 ' : ''}후보를 찾지 못했습니다. 다른 키워드로 시도해보시겠습니까?`, true);
         }
       } catch (e: any) {
         setOutreachLoading(false);
