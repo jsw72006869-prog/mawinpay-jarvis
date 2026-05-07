@@ -38,40 +38,24 @@ function readJson<T>(key: string): T | null {
   }
 }
 
-/* ─── System Map Nodes ─── */
-const systemNodes = [
-  // INPUT layer
-  { id: 'voice', label: 'VOICE INPUT', layer: 'INPUT', tone: 'tone-cyan' },
-  { id: 'text', label: 'TEXT INPUT', layer: 'INPUT', tone: 'tone-cyan' },
-  { id: 'broadcast', label: 'BROADCAST CH', layer: 'INPUT', tone: 'tone-cyan' },
-  // BRAIN layer
-  { id: 'gpt', label: 'GPT BRAIN', layer: 'BRAIN', tone: 'tone-gold' },
-  { id: 'router', label: 'CMD ROUTER', layer: 'BRAIN', tone: 'tone-gold' },
-  { id: 'scene', label: 'SCENE ENGINE', layer: 'BRAIN', tone: 'tone-gold' },
-  // OPERATION layer
-  { id: 'smartstore', label: 'SMARTSTORE', layer: 'OPERATION', tone: 'tone-amber' },
-  { id: 'outreach', label: 'OUTREACH', layer: 'OPERATION', tone: 'tone-amber' },
-  { id: 'market', label: 'MARKET BRAIN', layer: 'OPERATION', tone: 'tone-amber' },
-  { id: 'workspace', label: 'WORKSPACE', layer: 'OPERATION', tone: 'tone-amber' },
-  // ACTION layer
-  { id: 'gmail', label: 'GMAIL', layer: 'ACTION', tone: 'tone-green' },
-  { id: 'sheets', label: 'SHEETS', layer: 'ACTION', tone: 'tone-green' },
-  { id: 'telegram', label: 'TELEGRAM', layer: 'ACTION', tone: 'tone-green' },
-  { id: 'deploy', label: 'DEPLOY', layer: 'ACTION', tone: 'tone-green' },
+/* ─── Strategic Video Intel Data ─── */
+const videoIntelCards = [
+  { id: 'v1', category: '농산물', title: '초당옥수수 수확 현장', type: 'ASMR/현장감', status: 'READY' },
+  { id: 'v2', category: '캠핑', title: '우중 캠핑 삼겹살 먹방', type: '감성/힐링', status: 'ANALYZING' },
+  { id: 'v3', category: '먹방', title: '매실청 담그기 1분 요약', type: '정보/숏폼', status: 'READY' },
+  { id: 'v4', category: '살림', title: '블루베리 세척 꿀팁', type: '생활정보', status: 'READY' },
+  { id: 'v5', category: '건강', title: '복숭아 다이어트 레시피', type: '건강/미용', status: 'READY' },
+  { id: 'v6', category: '여행', title: '주말 농장 체험 브이로그', type: '브이로그', status: 'READY' },
 ];
 
-const layers = ['INPUT', 'BRAIN', 'OPERATION', 'ACTION'] as const;
-
-function sceneLabel(scene?: string): string {
-  switch (scene) {
-    case 'mission-control': return 'MISSION CONTROL';
-    case 'strategy-hq': return 'STRATEGY HQ';
-    case 'files': return 'FILES';
-    case 'outreach': return 'OUTREACH';
-    case 'market': return 'MARKET';
-    default: return 'STANDBY';
-  }
-}
+const activitySignals = [
+  'SMARTSTORE SYNC ACTIVE',
+  'MARKET BRAIN SCANNING',
+  'OUTREACH SIGNAL DETECTED',
+  'WORKSPACE INDEXING',
+  'NEURAL NET STABLE',
+  'STRATEGIC WALL ONLINE',
+];
 
 const DataWallView: React.FC = () => {
   const [payload, setPayload] = useState<WallPayload | null>(null);
@@ -145,7 +129,7 @@ const DataWallView: React.FC = () => {
 
   return (
     <div className={`jarvis-data-wall ${systemArmed ? 'is-system-armed' : ''} ${openingActive ? 'is-cinematic-opening' : ''}`}>
-      {/* ─── Cinematic Morning Boot Overlay ─── */}
+      {/* ─── Cinematic Morning Boot Overlay (UI-K 유지) ─── */}
       <div className="data-wall-cinematic-sky" aria-hidden="true">
         <div className="cinematic-sunrise-core" />
         <div className="cinematic-horizon-line" />
@@ -159,68 +143,109 @@ const DataWallView: React.FC = () => {
         </div>
       </div>
 
-      {/* ─── System Map Wall (유일한 메인 뷰) ─── */}
-      <section
-        className={`jarvis-system-map-wall ${openingActive ? 'is-opening' : ''} ${systemArmed ? 'is-armed' : ''}`}
-      >
-        <header className="system-map-header">
-          <div>
-            <span className="system-map-greeting">GOOD MORNING, SIR · JARVIS ONLINE</span>
-            <strong className="system-map-title">SYSTEM AWAKENING</strong>
+      {/* ─── Strategic Hologram Wall (UI-L 메인) ─── */}
+      <section className={`strategic-hologram-wall ${openingActive ? 'is-opening' : ''}`}>
+        <header className="strategic-header">
+          <div className="header-left">
+            <span className="morning-greeting">GOOD MORNING, SIR</span>
+            <h1 className="wall-title">STRATEGIC HOLOGRAM WALL</h1>
           </div>
-          <em className="system-map-status">
-            {sceneLabel(payload?.scene)} · {String(payload?.state || 'STANDBY').toUpperCase()}
-          </em>
+          <div className="header-right">
+            <div className="system-status-badge">
+              <span className="status-dot" />
+              <span className="status-text">{openingActive ? 'AWAKENING' : 'ACTIVE'}</span>
+            </div>
+            <div className="time-display">{payload?.currentTime || '00:00:00'}</div>
+          </div>
         </header>
 
-        <div className="system-map-flow">
-          {layers.map((layer, layerIdx) => (
-            <div key={layer} className={`system-map-layer layer-${layer.toLowerCase()}`}>
-              <div className="system-map-layer-label">{layer}</div>
-              {systemNodes
-                .filter((n) => n.layer === layer)
-                .map((node, idx) => (
-                  <div
-                    key={node.id}
-                    className={`system-flow-node ${node.tone} ${openingActive ? 'is-booting' : ''}`}
-                    style={{ animationDelay: `${idx * 180 + layerIdx * 400}ms` }}
-                  >
-                    <span className="node-dot" />
-                    <span className="node-label">{node.label}</span>
+        <div className="strategic-wall-grid">
+          {/* Left Column: Market & Season Radar */}
+          <aside className="strategic-side-panel left">
+            <div className="strategic-morning-strip">
+              <div className="strip-label">MORNING BRIEF</div>
+              <div className="strip-content">
+                <div className="brief-item">
+                  <span className="label">SMARTSTORE</span>
+                  <span className="value">{smartstoreSnapshot?.preShipTotal ?? 0} PRE-SHIP</span>
+                </div>
+                <div className="brief-item">
+                  <span className="label">OUTREACH</span>
+                  <span className="value">{payload?.outreachCount ?? 0} ACTIVE</span>
+                </div>
+              </div>
+            </div>
+
+            <div className="strategic-season-radar">
+              <div className="panel-header">SEASON RADAR</div>
+              <div className="radar-display">
+                <div className="radar-circle">
+                  <div className="radar-sweep" />
+                  <div className="radar-point p1" data-label="옥수수" />
+                  <div className="radar-point p2" data-label="매실" />
+                  <div className="radar-point p3" data-label="블루베리" />
+                  <div className="radar-point p4" data-label="복숭아" />
+                </div>
+              </div>
+              <div className="radar-legend">
+                <span>옥수수 · 매실 · 블루베리 · 복숭아 시즌 감시 중</span>
+              </div>
+            </div>
+          </aside>
+
+          {/* Center Column: Strategic Stage & Video Orbit */}
+          <main className="strategic-stage">
+            <div className="stage-core">
+              <div className="core-glow" />
+              <div className="core-rings">
+                <div className="ring r1" />
+                <div className="ring r2" />
+                <div className="ring r3" />
+              </div>
+              <div className="stage-label">STRATEGIC STAGE</div>
+            </div>
+
+            <div className="strategic-video-orbit">
+              {videoIntelCards.map((card, idx) => (
+                <div 
+                  key={card.id} 
+                  className="video-intel-orbit-card"
+                  style={{ '--i': idx, '--total': videoIntelCards.length } as React.CSSProperties}
+                >
+                  <div className="card-category">{card.category}</div>
+                  <div className="card-title">{card.title}</div>
+                  <div className="card-footer">
+                    <span className="card-type">{card.type}</span>
+                    <span className={`card-status ${card.status.toLowerCase()}`}>{card.status}</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </main>
+
+          {/* Right Column: Viral & Video Intel Wall */}
+          <aside className="strategic-side-panel right">
+            <div className="strategic-video-intel-wall">
+              <div className="panel-header">VIDEO INTEL WALL</div>
+              <div className="intel-list">
+                {videoIntelCards.slice(0, 4).map((card) => (
+                  <div key={`intel-${card.id}`} className="intel-item">
+                    <div className="intel-thumb" />
+                    <div className="intel-info">
+                      <div className="intel-title">{card.title}</div>
+                      <div className="intel-meta">{card.category} · {card.type}</div>
+                    </div>
                   </div>
                 ))}
-              {/* 레이어 간 연결선 */}
-              {layerIdx < layers.length - 1 && (
-                <div className={`system-flow-line line-${layer.toLowerCase()}-${layers[layerIdx + 1].toLowerCase()}`} />
-              )}
+              </div>
             </div>
-          ))}
-        </div>
 
-        {/* 하단 요약 카드 */}
-        <div className="data-wall-briefing-strip">
-          <article className="briefing-card tone-amber">
-            <span className="briefing-card-title">SMARTSTORE</span>
-            <span className="briefing-card-value">
-              {smartstoreSnapshot ? `${smartstoreSnapshot.preShipTotal} PRE-SHIP` : 'WAITING'}
-            </span>
-          </article>
-          <article className="briefing-card tone-gold">
-            <span className="briefing-card-title">MARKET BRAIN</span>
-            <span className="briefing-card-value">옥수수 · 매실 · 블루베리 · 복숭아 시즌 감시 준비</span>
-          </article>
-          <article className="briefing-card tone-cyan">
-            <span className="briefing-card-title">OUTREACH</span>
-            <span className="briefing-card-value">
-              {payload?.outreachCount ?? 0} CANDIDATES
-            </span>
-          </article>
-          <article className="briefing-card tone-green">
-            <span className="briefing-card-title">WORKSPACE</span>
-            <span className="briefing-card-value">
-              {payload?.workspaceCount ?? 0} FILES
-            </span>
-          </article>
+            <div className="strategic-activity-stream">
+              {activitySignals.map((signal, idx) => (
+                <span key={idx} style={{ '--i': idx } as React.CSSProperties}>{signal}</span>
+              ))}
+            </div>
+          </aside>
         </div>
       </section>
     </div>
