@@ -1634,3 +1634,221 @@ html, body {
     transform: none !important;
   }
 }
+
+/* [UI-H Central Reveal Scene v1] */
+.ui-e-central-reveal {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: min(520px, 50vw);
+  height: 240px;
+  pointer-events: none !important;
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.ui-e-reveal-bloom {
+  position: absolute;
+  width: 120px;
+  height: 120px;
+  background: radial-gradient(circle, rgba(255, 215, 0, 0.4) 0%, transparent 70%);
+  border-radius: 50%;
+  animation: uiECentralRevealBloom 1.2s cubic-bezier(0.23, 1, 0.32, 1) forwards;
+}
+
+.ui-e-reveal-card {
+  position: absolute;
+  background: rgba(10, 15, 25, 0.72);
+  backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 215, 0, 0.28);
+  border-radius: 4px;
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  overflow: hidden;
+  box-shadow: 0 0 30px rgba(255, 215, 0, 0.12);
+}
+
+.ui-e-reveal-card em {
+  font-size: 9px;
+  font-style: normal;
+  color: rgba(255, 215, 0, 0.6);
+  letter-spacing: 1px;
+  font-family: 'Orbitron', sans-serif;
+}
+
+.ui-e-reveal-card strong {
+  font-size: 14px;
+  color: #fff;
+  letter-spacing: 0.5px;
+  font-family: 'Orbitron', sans-serif;
+  text-shadow: 0 0 8px rgba(255, 215, 0, 0.4);
+}
+
+.ui-e-card-scan {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(to right, transparent, rgba(255, 215, 0, 0.15), transparent);
+  animation: uiERevealScan 2.5s infinite;
+}
+
+.card-main {
+  width: 180px;
+  z-index: 3;
+  animation: uiERevealMainCard 0.8s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+}
+
+.card-left {
+  width: 150px;
+  left: 20px;
+  top: 120px;
+  z-index: 2;
+  opacity: 0;
+  animation: uiERevealLeftCard 0.8s cubic-bezier(0.23, 1, 0.32, 1) 0.3s forwards;
+}
+
+.card-right {
+  width: 150px;
+  right: 20px;
+  top: 120px;
+  z-index: 2;
+  opacity: 0;
+  animation: uiERevealRightCard 0.8s cubic-bezier(0.23, 1, 0.32, 1) 0.5s forwards;
+}
+
+/* Scene별 테마 색상 */
+.ui-e-scene-briefing .ui-e-reveal-card {
+  border-color: rgba(59, 130, 246, 0.34);
+  box-shadow: 0 0 32px rgba(59, 130, 246, 0.14);
+}
+.ui-e-scene-orders .ui-e-reveal-card {
+  border-color: rgba(255, 215, 0, 0.28);
+  box-shadow: 0 0 30px rgba(255, 215, 0, 0.12);
+}
+.ui-e-scene-market .ui-e-reveal-card {
+  border-color: rgba(16, 185, 129, 0.28);
+  box-shadow: 0 0 30px rgba(16, 185, 129, 0.12);
+}
+.ui-e-scene-outreach .ui-e-reveal-card {
+  border-color: rgba(168, 85, 247, 0.28);
+  box-shadow: 0 0 32px rgba(168, 85, 247, 0.13);
+}
+.ui-e-scene-files .ui-e-reveal-card {
+  border-color: rgba(34, 197, 94, 0.28);
+  box-shadow: 0 0 32px rgba(34, 197, 94, 0.12);
+}
+.ui-e-scene-approval .ui-e-reveal-card {
+  border-color: rgba(245, 158, 11, 0.34);
+  box-shadow: 0 0 34px rgba(245, 158, 11, 0.14);
+}
+
+@keyframes uiECentralRevealBloom {
+  0% {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(0.62);
+    filter: blur(10px);
+  }
+  42% {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1.06);
+    filter: blur(0);
+  }
+  100% {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1);
+    filter: blur(0);
+  }
+}
+
+@keyframes uiERevealMainCard {
+  0% {
+    opacity: 0;
+    transform: translate(-50%, 42px) scale(0.64);
+    filter: blur(8px);
+  }
+  100% {
+    opacity: 1;
+    transform: translate(-50%, 0) scale(1);
+    filter: blur(0);
+  }
+}
+
+@keyframes uiERevealLeftCard {
+  0% {
+    opacity: 0;
+    transform: translate(140px, 22px) scale(0.62) rotateY(18deg);
+    filter: blur(8px);
+  }
+  100% {
+    opacity: 0.92;
+    transform: translate(0, 0) scale(0.94) rotateY(7deg);
+    filter: blur(0);
+  }
+}
+
+@keyframes uiERevealRightCard {
+  0% {
+    opacity: 0;
+    transform: translate(-140px, 22px) scale(0.62) rotateY(-18deg);
+    filter: blur(8px);
+  }
+  100% {
+    opacity: 0.92;
+    transform: translate(0, 0) scale(0.94) rotateY(-7deg);
+    filter: blur(0);
+  }
+}
+
+@keyframes uiERevealScan {
+  0%, 48% {
+    transform: translateX(-120%);
+  }
+  72% {
+    transform: translateX(120%);
+  }
+  100% {
+    transform: translateX(120%);
+  }
+}
+
+/* 중앙 reveal이 기능 패널을 가리지 않도록 화면 작거나 높이 낮으면 축소 */
+@media (max-width: 1500px), (max-height: 820px) {
+  .ui-e-central-reveal {
+    width: min(460px, 46vw);
+    height: 210px;
+    transform: translate(-50%, -50%) scale(0.82);
+  }
+  .ui-e-reveal-card {
+    width: 138px;
+    min-height: 70px;
+    padding: 9px 10px;
+  }
+  .ui-e-reveal-card strong {
+    font-size: 12px;
+  }
+  .ui-e-reveal-card em {
+    display: none;
+  }
+  .ui-e-reveal-card.card-left {
+    left: 16px;
+    top: 110px;
+  }
+  .ui-e-reveal-card.card-right {
+    right: 16px;
+    top: 110px;
+  }
+}
+
+/* 너무 작은 화면에서는 reveal 숨김 */
+@media (max-width: 1100px), (max-height: 680px) {
+  .ui-e-central-reveal {
+    display: none !important;
+  }
+}

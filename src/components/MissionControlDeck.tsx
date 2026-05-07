@@ -56,9 +56,82 @@ export default function MissionControlDeck({
   const sceneLabel = SCENE_LABELS[scene] || 'MISSION CONTROL';
   const approvalLabel = actionType ? actionType.toUpperCase() : 'EXECUTE LOCKED';
 
+  // Scene별 Reveal 카드 렌더링 함수
+  const renderRevealScene = () => {
+    if (scene === 'standby') return null;
+
+    const cards: Record<JarvisScene, { main: string; left: string; right: string }> = {
+      briefing: {
+        main: 'MORNING PROTOCOL',
+        left: 'SMARTSTORE SYNC',
+        right: 'GMAIL/DRIVE SCAN',
+      },
+      orders: {
+        main: 'ORDER STATUS',
+        left: 'PRODUCT ORDER ID',
+        right: 'NEXT ACTION',
+      },
+      market: {
+        main: 'KAMIS MARKET',
+        left: 'PRICE TREND',
+        right: 'DISTRIBUTION',
+      },
+      outreach: {
+        main: 'OUTREACH RADAR',
+        left: 'INFLUENCER SCAN',
+        right: 'EMAIL VALIDATE',
+      },
+      files: {
+        main: 'WORKSPACE FILES',
+        left: 'DOCS / SHEETS',
+        right: 'RECENT ASSETS',
+      },
+      approval: {
+        main: 'APPROVAL GATE',
+        left: 'SECURITY CHECK',
+        right: 'EXECUTE PERMIT',
+      },
+      voice: {
+        main: 'VOICE LINK',
+        left: 'NEURAL NET',
+        right: 'AUDIO SYNC',
+      },
+      error: {
+        main: 'SYSTEM ALERT',
+        left: 'DIAGNOSTICS',
+        right: 'RECOVERY',
+      },
+      standby: { main: '', left: '', right: '' },
+    };
+
+    const currentCards = cards[scene];
+    if (!currentCards) return null;
+
+    return (
+      <div className="ui-e-central-reveal">
+        <div className="ui-e-reveal-bloom" />
+        <div className="ui-e-reveal-card card-main">
+          <span className="ui-e-card-scan" />
+          <em>ANALYZING...</em>
+          <strong>{currentCards.main}</strong>
+        </div>
+        <div className="ui-e-reveal-card card-left">
+          <span className="ui-e-card-scan" />
+          <em>SYNCING...</em>
+          <strong>{currentCards.left}</strong>
+        </div>
+        <div className="ui-e-reveal-card card-right">
+          <span className="ui-e-card-scan" />
+          <em>SCANNING...</em>
+          <strong>{currentCards.right}</strong>
+        </div>
+      </div>
+    );
+  };
+
   return (
     <div
-      className={`ui-e-mission-deck ui-e-cinema-v2 ui-e-state-${safeState} ui-e-scene-${scene}`}
+      className={`ui-e-mission-deck ui-e-cinema-v2 ui-e-state-${safeState} ui-e-scene-${scene} ui-e-central-reveal-v1`}
       aria-hidden="true"
     >
       <div className="ui-e-film-bars">
@@ -85,6 +158,9 @@ export default function MissionControlDeck({
           <span className="ui-e-cinema-core-ring ring-b" />
           <span className="ui-e-cinema-core-ring ring-c" />
           <span className="ui-e-cinema-scan-beam" />
+          
+          {/* 중앙 Reveal Scene 삽입 */}
+          {renderRevealScene()}
         </div>
 
         <div className="ui-e-cinema-rail rail-a" />
@@ -96,12 +172,10 @@ export default function MissionControlDeck({
           <span>ORDERS</span>
           <strong>LIVE</strong>
         </div>
-
         <div className="ui-e-cinema-marker marker-outreach">
           <span>OUTREACH</span>
           <strong>{outreachCount}</strong>
         </div>
-
         <div className="ui-e-cinema-marker marker-files">
           <span>FILES</span>
           <strong>{workspaceCount}</strong>
