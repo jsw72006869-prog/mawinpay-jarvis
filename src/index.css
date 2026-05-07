@@ -413,12 +413,17 @@ html, body {
 
 .ui-e-left-stack {
   position: absolute;
-  left: 40px;
-  top: 50%;
-  transform: translateY(-50%);
+  top: clamp(270px, 32vh, 330px);
+  left: 28px;
   display: flex;
   flex-direction: column;
-  gap: 24px;
+  gap: 10px;
+  transform: rotateY(7deg);
+}
+
+.ui-e-left-stack .ui-e-card {
+  width: 230px;
+  padding: 11px 13px;
 }
 
 .ui-e-right-stack {
@@ -625,5 +630,16 @@ html, body {
     bottom: 86px;
     max-width: calc(100vw - 32px);
     overflow: hidden;
+  }
+}
+
+@media (max-width: 1360px) {
+  .ui-e-left-stack {
+    top: clamp(290px, 34vh, 350px);
+    left: 22px;
+  }
+
+  .ui-e-left-stack .ui-e-card {
+    width: 215px;
   }
 }
