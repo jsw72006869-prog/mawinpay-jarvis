@@ -81,6 +81,12 @@ export default function AgentConsolePanel({ visible, onClose, onUserInput, captc
       if (event.type === 'node_state') {
         const payload = event.payload;
         if (payload.state === 'active' && payload.detail) {
+          // dedup: 같은 detail이 3초 이내에 중복 표시되지 않도록
+          const dedupKey = payload.detail;
+          const now = Date.now();
+          if (dedupKey === lastMsgRef.current.key && (now - lastMsgRef.current.ts) < 3000) return;
+          lastMsgRef.current = { key: dedupKey, ts: now };
+
           const newMsg: AgentMessage = {
             id: `state-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
             type: 'thinking',
