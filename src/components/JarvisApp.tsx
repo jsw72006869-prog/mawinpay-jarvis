@@ -258,6 +258,13 @@ export default function JarvisApp() {
   const [schedules, setSchedules] = useState<{ task: string; time: string }[]>([]);
   const [isInitialized, setIsInitialized] = useState(false);
   const [showHint, setShowHint] = useState(false);
+  // ── UI-J Dual Screen Opening ──
+  const DUAL_WALL_CHANNEL = 'jarvis-dual-command-wall';
+  const DUAL_WALL_STORAGE_KEY = 'jarvis.dualWall.latest';
+  const DUAL_OPENING_STORAGE_KEY = 'jarvis.dualWall.opening';
+  const [dualScreenArmed, setDualScreenArmed] = useState(false);
+  const [dualOpeningActive, setDualOpeningActive] = useState(false);
+  const [dualArmStatus, setDualArmStatus] = useState<'idle' | 'armed' | 'opened' | 'blocked'>('idle');
   const [currentTime, setCurrentTime] = useState('');
   const [currentDate, setCurrentDate] = useState('');
   const [voiceListVisible, setVoiceListVisible] = useState(false);
@@ -373,6 +380,80 @@ export default function JarvisApp() {
     setShowGoldenFlare(true);
     setTimeout(() => setShowGoldenFlare(false), 2000);
   }, []);
+
+  // ── UI-J Dual Screen Helper Functions ──
+  const openDataWallWindow = () => {
+    const url = `${window.location.origin}${window.location.pathname}?view=data-wall`;
+    const popup = window.open(url, 'jarvis-data-wall', 'width=1680,height=945,left=80,top=60,resizable=yes,scrollbars=no');
+    if (popup) {
+      popup.focus();
+      setDualArmStatus('opened');
+      return true;
+    }
+    setDualArmStatus('blocked');
+    return false;
+  };
+
+  const publishDualWallPayload = (payload: any) => {
+    try {
+      window.localStorage.setItem(DUAL_WALL_STORAGE_KEY, JSON.stringify(payload));
+    } catch { /* ignore */ }
+    try {
+      if ('BroadcastChannel' in window) {
+        const channel = new BroadcastChannel(DUAL_WALL_CHANNEL);
+        channel.postMessage(payload);
+        channel.close();
+      }
+    } catch { /* ignore */ }
+  };
+
+  const armDualScreen = () => {
+    const opened = openDataWallWindow();
+    const armPayload = {
+      type: 'dual-armed',
+      scene: activeScene,
+      state,
+      currentTime,
+      workspaceCount: workspaceRecords.length,
+      outreachCount: outreachCandidates.length,
+      actionType: actionContext?.type,
+      updatedAt: Date.now(),
+    };
+    try {
+      window.localStorage.setItem(DUAL_OPENING_STORAGE_KEY, JSON.stringify(armPayload));
+    } catch { /* ignore */ }
+    publishDualWallPayload(armPayload);
+    setDualScreenArmed(true);
+    if (!opened) {
+      setDualArmStatus('blocked');
+    } else {
+      setDualArmStatus('armed');
+    }
+  };
+
+  const triggerDualScreenOpening = (source: 'clap' | 'touch' | 'manual' = 'manual') => {
+    const openingPayload = {
+      type: 'dual-opening',
+      source,
+      scene: activeScene,
+      state,
+      currentTime,
+      workspaceCount: workspaceRecords.length,
+      outreachCount: outreachCandidates.length,
+      actionType: actionContext?.type,
+      updatedAt: Date.now(),
+    };
+    setDualOpeningActive(true);
+    setDualScreenArmed(false);
+    setDualArmStatus('idle');
+    try {
+      window.localStorage.setItem(DUAL_OPENING_STORAGE_KEY, JSON.stringify(openingPayload));
+    } catch { /* ignore */ }
+    publishDualWallPayload(openingPayload);
+    window.setTimeout(() => {
+      setDualOpeningActive(false);
+    }, 3200);
+  };
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -4959,8 +5040,20 @@ export default function JarvisApp() {
       <ParticleTextCanvas text={textInputValue} active={textInputMode} />
 
       {/* ── 박수 감지 ── */}
-      <ClapDetector onClap={handleActivate} onAudioLevel={setMicLevel} enabled={state === 'idle'} releaseStream={state !== 'idle'} />
-      {/* ClapDetector: idle에서만 박수 감지 활성, idle이 아닌 모든 상태에서 AudioContext suspend */}
+      <ClapDetector
+        onClap={() => {
+          if (dualScreenArmed) {
+            triggerDualScreenOpening('clap');
+            handleActivate();
+            return;
+          }
+          handleActivate();
+        }}
+        onAudioLevel={setMicLevel}
+        enabled={state === 'idle' || dualScreenArmed}
+        releaseStream={state !== 'idle' && !dualScreenArmed}
+      />
+      {/* ClapDetector: idle 또는 dualScreenArmed에서 박수 감지 활성 */}
 
       {/* ── 배경 방사형 그라디언트 ── */}
       <div style={{ position: 'fixed', inset: 0, pointerEvents: 'none', zIndex: 1 }}>
@@ -7338,16 +7431,44 @@ export default function JarvisApp() {
         onClose={() => setLiveViewerVisible(false)}
         taskInfo={liveViewerTask || undefined}
       />
-      <button
-        type="button"
-        className="jarvis-data-wall-launch"
-        onClick={() => {
-          const url = `${window.location.origin}${window.location.pathname}?view=data-wall`;
-          window.open(url, 'jarvis-data-wall', 'noopener,noreferrer,width=1600,height=900');
-        }}
-      >
-        DATA WALL
-      </button>
+      {/* ── UI-J Dual Screen Arm Panel ── */}
+      <div className="jarvis-dual-arm-panel">
+        <button
+          type="button"
+          className={`jarvis-dual-arm-button ${dualScreenArmed ? 'is-armed' : ''}`}
+          onClick={armDualScreen}
+          title="2번 모니터 Data Wall을 열고 박수 오프닝을 준비합니다"
+        >
+          {dualScreenArmed ? 'CLAP ARMED' : 'DUAL ARM'}
+        </button>
+        <button
+          type="button"
+          className="jarvis-dual-activate-button"
+          onClick={() => triggerDualScreenOpening('touch')}
+          title="박수 대신 수동으로 듀얼스크린 오프닝을 실행합니다"
+        >
+          ACTIVATE
+        </button>
+        {dualArmStatus !== 'idle' && (
+          <span className={`jarvis-dual-arm-status status-${dualArmStatus}`}>
+            {dualArmStatus === 'armed' && '2ND SCREEN READY'}
+            {dualArmStatus === 'opened' && 'WINDOW OPENED'}
+            {dualArmStatus === 'blocked' && 'POPUP BLOCKED'}
+          </span>
+        )}
+      </div>
+
+      {/* ── UI-J 1번 화면 Split Opening Overlay ── */}
+      {dualOpeningActive && (
+        <div className="jarvis-dual-opening-overlay" aria-hidden="true">
+          <div className="jarvis-dual-split split-left" />
+          <div className="jarvis-dual-split split-right" />
+          <div className="jarvis-dual-opening-core">
+            <span>JARVIS SYSTEM ONLINE</span>
+            <strong>DUAL SCREEN LINK ESTABLISHED</strong>
+          </div>
+        </div>
+      )}
     </main>
   );
 }

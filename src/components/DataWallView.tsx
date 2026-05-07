@@ -1,6 +1,13 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
+
+const WALL_CHANNEL = 'jarvis-dual-command-wall';
+const WALL_STORAGE_KEY = 'jarvis.dualWall.latest';
+const DUAL_OPENING_STORAGE_KEY = 'jarvis.dualWall.opening';
+const SMARTSTORE_SNAPSHOT_KEY = 'jarvis.smartstore.lastStatusSnapshot';
 
 interface WallPayload {
+  type?: string;
+  source?: string;
   scene: string;
   state: string;
   currentTime: string;
@@ -22,39 +29,89 @@ interface SmartstoreSnapshot {
   savedAt: number;
 }
 
+function readJson<T>(key: string): T | null {
+  try {
+    const raw = localStorage.getItem(key);
+    return raw ? JSON.parse(raw) : null;
+  } catch {
+    return null;
+  }
+}
+
 const DataWallView: React.FC = () => {
   const [payload, setPayload] = useState<WallPayload | null>(null);
-  const [snapshot, setSnapshot] = useState<SmartstoreSnapshot | null>(null);
+  const [smartstoreSnapshot, setSmartstoreSnapshot] = useState<SmartstoreSnapshot | null>(null);
   const [connectionStatus, setConnectionStatus] = useState<'connected' | 'waiting'>('waiting');
+  const [openingActive, setOpeningActive] = useState(false);
+  const [systemArmed, setSystemArmed] = useState(false);
+  const openingTimerRef = useRef<number | null>(null);
 
   useEffect(() => {
     // 1. 초기 로드 (localStorage)
-    const loadInitial = () => {
-      try {
-        const p = localStorage.getItem('jarvis.dualWall.latest');
-        if (p) setPayload(JSON.parse(p));
-        
-        const s = localStorage.getItem('jarvis.smartstore.lastStatusSnapshot');
-        if (s) setSnapshot(JSON.parse(s));
-      } catch (e) {
-        console.error('DataWall 초기 로드 실패:', e);
+    const refreshFromStorage = () => {
+      const p = readJson<WallPayload>(WALL_STORAGE_KEY);
+      if (p) setPayload(p);
+
+      const s = readJson<SmartstoreSnapshot>(SMARTSTORE_SNAPSHOT_KEY);
+      if (s) setSmartstoreSnapshot(s);
+
+      const openingPayload = readJson<any>(DUAL_OPENING_STORAGE_KEY);
+      if (openingPayload?.type === 'dual-armed') {
+        setSystemArmed(true);
+      }
+      if (openingPayload?.type === 'dual-opening') {
+        setSystemArmed(true);
       }
     };
-    loadInitial();
+    refreshFromStorage();
 
     // 2. 실시간 수신 (BroadcastChannel)
+    let channel: BroadcastChannel | null = null;
     if ('BroadcastChannel' in window) {
-      const channel = new BroadcastChannel('jarvis-dual-command-wall');
+      channel = new BroadcastChannel(WALL_CHANNEL);
       channel.onmessage = (event) => {
-        setPayload(event.data);
+        const data = event?.data;
+        if (!data) return;
+
         setConnectionStatus('connected');
-        
-        // 스마트스토어 스냅샷도 갱신 시도
-        const s = localStorage.getItem('jarvis.smartstore.lastStatusSnapshot');
-        if (s) setSnapshot(JSON.parse(s));
+
+        if (data.type === 'dual-armed') {
+          setSystemArmed(true);
+          setPayload(data);
+          return;
+        }
+
+        if (data.type === 'dual-opening') {
+          setSystemArmed(true);
+          setOpeningActive(true);
+          setPayload(data);
+
+          if (openingTimerRef.current) {
+            window.clearTimeout(openingTimerRef.current);
+          }
+          openingTimerRef.current = window.setTimeout(() => {
+            setOpeningActive(false);
+          }, 4200);
+          return;
+        }
+
+        setPayload(data);
+
+        const nextSmartstore = readJson<SmartstoreSnapshot>(SMARTSTORE_SNAPSHOT_KEY);
+        if (nextSmartstore) setSmartstoreSnapshot(nextSmartstore);
       };
-      return () => channel.close();
     }
+
+    // 3. 주기적 localStorage 갱신
+    const interval = setInterval(refreshFromStorage, 3000);
+
+    return () => {
+      if (channel) channel.close();
+      clearInterval(interval);
+      if (openingTimerRef.current) {
+        window.clearTimeout(openingTimerRef.current);
+      }
+    };
   }, []);
 
   const getSceneLabel = (scene: string) => {
@@ -71,6 +128,66 @@ const DataWallView: React.FC = () => {
 
   return (
     <div className="jarvis-data-wall">
+      {/* Control Bar */}
+      <section className="data-wall-control-bar">
+        <div>
+          <strong>JARVIS DATA WALL</strong>
+          <span>이 창을 2번 모니터로 옮기고 FULLSCREEN을 누른 뒤, 1번 화면에서 DUAL ARM → 박수 또는 ACTIVATE로 시스템을 여세요.</span>
+        </div>
+        <div className="data-wall-control-actions">
+          <button
+            type="button"
+            onClick={() => window.location.assign(window.location.pathname)}
+          >
+            MAIN CONTROL
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              if (document.documentElement.requestFullscreen) {
+                document.documentElement.requestFullscreen().catch(() => {});
+              }
+            }}
+          >
+            FULLSCREEN
+          </button>
+        </div>
+      </section>
+
+      {/* System Map */}
+      <section className={`data-wall-system-map ${systemArmed ? 'is-armed' : ''} ${openingActive ? 'is-opening' : ''}`}>
+        <div className="system-map-core">
+          <span>JARVIS CORE</span>
+          <strong>{openingActive ? 'ONLINE' : systemArmed ? 'ARMED' : 'STANDBY'}</strong>
+        </div>
+
+        <div className="system-map-node node-smartstore">
+          <span>SMARTSTORE</span>
+          <strong>{smartstoreSnapshot ? 'SYNCED' : 'WAITING'}</strong>
+        </div>
+
+        <div className="system-map-node node-market">
+          <span>MARKET</span>
+          <strong>READY</strong>
+        </div>
+
+        <div className="system-map-node node-outreach">
+          <span>OUTREACH</span>
+          <strong>{Number(payload?.outreachCount || 0)}</strong>
+        </div>
+
+        <div className="system-map-node node-files">
+          <span>FILES</span>
+          <strong>{Number(payload?.workspaceCount || 0)}</strong>
+        </div>
+
+        <div className="system-map-line line-a" />
+        <div className="system-map-line line-b" />
+        <div className="system-map-line line-c" />
+        <div className="system-map-line line-d" />
+      </section>
+
+      {/* Hero */}
       <div className="data-wall-hero">
         <div>
           <p className="data-wall-kicker">COMMAND CENTER // DUAL SCREEN</p>
@@ -84,6 +201,7 @@ const DataWallView: React.FC = () => {
         </div>
       </div>
 
+      {/* Grid */}
       <div className="data-wall-grid">
         {/* 1. 메인 시스템 상태 */}
         <div className="data-wall-card data-wall-card-large">
@@ -110,15 +228,15 @@ const DataWallView: React.FC = () => {
           <div className="data-wall-metrics">
             <div>
               <span>NEW ORDERS</span>
-              <strong>{snapshot?.newOrders ?? '--'}</strong>
+              <strong>{smartstoreSnapshot?.newOrders ?? '--'}</strong>
             </div>
             <div>
               <span>PENDING</span>
-              <strong>{snapshot?.pendingShipping ?? '--'}</strong>
+              <strong>{smartstoreSnapshot?.pendingShipping ?? '--'}</strong>
             </div>
           </div>
           <p>
-            {snapshot ? `최종 업데이트: ${new Date(snapshot.savedAt).toLocaleTimeString()}` : '데이터 수신 대기 중...'}
+            {smartstoreSnapshot ? `최종 업데이트: ${new Date(smartstoreSnapshot.savedAt).toLocaleTimeString()}` : '데이터 수신 대기 중...'}
           </p>
         </div>
 
