@@ -689,3 +689,69 @@ html, body {
     display: none;
   }
 }
+
+/* UI-E Mission Control Safe-Zone Override: keep intel cards centered and non-blocking */
+.ui-e-left-stack {
+  top: 118px !important;
+  left: 50% !important;
+  right: auto !important;
+  width: min(560px, calc(100vw - 820px)) !important;
+  min-width: 420px !important;
+  display: flex !important;
+  flex-direction: row !important;
+  justify-content: center !important;
+  align-items: stretch !important;
+  gap: 10px !important;
+  transform: translateX(-50%) !important;
+  z-index: 10 !important;
+}
+.ui-e-left-stack .ui-e-card {
+  width: 170px !important;
+  min-height: 72px !important;
+  padding: 9px 11px !important;
+  border-radius: 13px !important;
+}
+.ui-e-left-stack .ui-e-card-kicker {
+  font-size: 8px !important;
+  letter-spacing: 0.14em !important;
+}
+.ui-e-left-stack .ui-e-card-title {
+  font-size: 10px !important;
+  line-height: 1.1 !important;
+}
+.ui-e-left-stack .ui-e-card-value {
+  margin-top: 4px !important;
+  font-size: 13px !important;
+  line-height: 1.1 !important;
+  white-space: nowrap !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+}
+.ui-e-left-stack .ui-e-card-detail {
+  margin-top: 3px !important;
+  font-size: 9px !important;
+  line-height: 1.2 !important;
+  max-height: 22px !important;
+  overflow: hidden !important;
+}
+/* Keep decorative UI away from functional panels on normal/split screens */
+@media (max-width: 1740px), (max-height: 880px) {
+  .ui-e-left-stack,
+  .ui-e-right-stack {
+    display: none !important;
+  }
+  .ui-e-axis-line {
+    display: none !important;
+  }
+  .ui-e-bottom-ribbon {
+    bottom: 58px !important;
+    max-width: calc(100vw - 32px) !important;
+    overflow: hidden !important;
+  }
+}
+/* Ultra-wide monitor mode: show intelligence strip only when enough safe space exists */
+@media (min-width: 1741px) and (min-height: 881px) {
+  .ui-e-left-stack {
+    display: flex !important;
+  }
+}
