@@ -1857,7 +1857,7 @@ async function handleKamisMini(params: any) {
         success: true,
         item: itemName,
         date: today,
-        message: `${itemName}은 KAMIS 일별 가격 조회 대상 품목이 아닙니다. 데이터 부족.`,
+        message: `${itemName}${getPostposition(itemName, '은', '는')} KAMIS 일별 가격 조회 대상 품목이 아닙니다. 데이터 부족.`,
         prices: null,
         note: 'KAMIS API에서 해당 품목의 일별 가격 데이터를 제공하지 않습니다.',
       };
