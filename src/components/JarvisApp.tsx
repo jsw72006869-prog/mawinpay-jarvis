@@ -382,9 +382,41 @@ export default function JarvisApp() {
   }, []);
 
   // ── UI-J Dual Screen Helper Functions ──
-  const openDataWallWindow = () => {
+  const openDataWallWindow = async () => {
     const url = `${window.location.origin}${window.location.pathname}?view=data-wall`;
-    const popup = window.open(url, 'jarvis-data-wall', 'width=1680,height=945,left=80,top=60,resizable=yes,scrollbars=no');
+    let features = 'width=1680,height=945,left=80,top=60,resizable=yes,scrollbars=no';
+
+    try {
+      // Window Management API 사용 시도
+      if ('getScreenDetails' in window) {
+        const screenDetails = await (window as any).getScreenDetails();
+        console.log('[DUAL] screen.isExtended', screenDetails.isExtended);
+        console.log('[DUAL] screens', screenDetails.screens);
+
+        if (screenDetails.screens.length > 1) {
+          const currentScreen = screenDetails.currentScreen;
+          console.log('[DUAL] currentScreen', currentScreen);
+
+          // 현재 화면이 아닌 다른 화면(2번 모니터) 찾기
+          // 대표님 환경: 1번(우측, 현재), 2번(좌측, 타겟)
+          const targetScreen = screenDetails.screens.find((s: any) => s !== currentScreen) || screenDetails.screens[0];
+          console.log('[DUAL] targetScreen', targetScreen);
+
+          if (targetScreen) {
+            const { availLeft, availTop, availWidth, availHeight } = targetScreen;
+            // 타겟 모니터의 중앙 또는 전체에 가깝게 배치 (1680x945)
+            const left = availLeft + Math.max(0, (availWidth - 1680) / 2);
+            const top = availTop + Math.max(0, (availHeight - 945) / 2);
+            features = `width=1680,height=945,left=${left},top=${top},resizable=yes,scrollbars=no`;
+            console.log('[DUAL] opening Data Wall with features', features);
+          }
+        }
+      }
+    } catch (err) {
+      console.error('[DUAL] Window Management API error, falling back', err);
+    }
+
+    const popup = window.open(url, 'jarvis-data-wall', features);
     if (popup) {
       popup.focus();
       setDualArmStatus('opened');
@@ -407,8 +439,8 @@ export default function JarvisApp() {
     } catch { /* ignore */ }
   };
 
-  const armDualScreen = () => {
-    const opened = openDataWallWindow();
+  const armDualScreen = async () => {
+    const opened = await openDataWallWindow();
     const armPayload = {
       type: 'dual-armed',
       scene: activeScene,
