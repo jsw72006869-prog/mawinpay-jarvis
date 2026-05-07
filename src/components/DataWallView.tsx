@@ -62,6 +62,17 @@ const systemNodes = [
 
 const layers = ['INPUT', 'BRAIN', 'OPERATION', 'ACTION'] as const;
 
+function sceneLabel(scene?: string): string {
+  switch (scene) {
+    case 'mission-control': return 'MISSION CONTROL';
+    case 'strategy-hq': return 'STRATEGY HQ';
+    case 'files': return 'FILES';
+    case 'outreach': return 'OUTREACH';
+    case 'market': return 'MARKET';
+    default: return 'STANDBY';
+  }
+}
+
 const DataWallView: React.FC = () => {
   const [payload, setPayload] = useState<WallPayload | null>(null);
   const [smartstoreSnapshot, setSmartstoreSnapshot] = useState<SmartstoreSnapshot | null>(null);
@@ -110,7 +121,7 @@ const DataWallView: React.FC = () => {
           }
           openingTimerRef.current = window.setTimeout(() => {
             setOpeningActive(false);
-          }, 4200);
+          }, 6000);
           return;
         }
 
@@ -133,21 +144,38 @@ const DataWallView: React.FC = () => {
   }, []);
 
   return (
-    <div className="jarvis-data-wall">
+    <div className={`jarvis-data-wall ${systemArmed ? 'is-system-armed' : ''} ${openingActive ? 'is-cinematic-opening' : ''}`}>
+      {/* ─── Cinematic Morning Boot Overlay ─── */}
+      <div className="data-wall-cinematic-sky" aria-hidden="true">
+        <div className="cinematic-sunrise-core" />
+        <div className="cinematic-horizon-line" />
+        <div className="cinematic-light-sweep sweep-a" />
+        <div className="cinematic-light-sweep sweep-b" />
+        <div className="cinematic-scan-grid" />
+        <div className="cinematic-particle-field">
+          {Array.from({ length: 28 }).map((_, index) => (
+            <span key={index} style={{ '--i': index } as React.CSSProperties} />
+          ))}
+        </div>
+      </div>
+
       {/* ─── System Map Wall (유일한 메인 뷰) ─── */}
       <section
         className={`jarvis-system-map-wall ${openingActive ? 'is-opening' : ''} ${systemArmed ? 'is-armed' : ''}`}
       >
         <header className="system-map-header">
-          <span className="system-map-title">JARVIS SYSTEM MAP</span>
-          <span className="system-map-status">
-            {openingActive ? 'BOOTING' : systemArmed ? 'ARMED' : 'STANDBY'}
-          </span>
+          <div>
+            <span className="system-map-greeting">GOOD MORNING, SIR · JARVIS ONLINE</span>
+            <strong className="system-map-title">SYSTEM AWAKENING</strong>
+          </div>
+          <em className="system-map-status">
+            {sceneLabel(payload?.scene)} · {String(payload?.state || 'STANDBY').toUpperCase()}
+          </em>
         </header>
 
         <div className="system-map-flow">
-          {layers.map((layer) => (
-            <div key={layer} className="system-map-layer">
+          {layers.map((layer, layerIdx) => (
+            <div key={layer} className={`system-map-layer layer-${layer.toLowerCase()}`}>
               <div className="system-map-layer-label">{layer}</div>
               {systemNodes
                 .filter((n) => n.layer === layer)
@@ -155,40 +183,44 @@ const DataWallView: React.FC = () => {
                   <div
                     key={node.id}
                     className={`system-flow-node ${node.tone} ${openingActive ? 'is-booting' : ''}`}
-                    style={{ animationDelay: `${idx * 180 + layers.indexOf(layer) * 400}ms` }}
+                    style={{ animationDelay: `${idx * 180 + layerIdx * 400}ms` }}
                   >
                     <span className="node-dot" />
                     <span className="node-label">{node.label}</span>
                   </div>
                 ))}
+              {/* 레이어 간 연결선 */}
+              {layerIdx < layers.length - 1 && (
+                <div className={`system-flow-line line-${layer.toLowerCase()}-${layers[layerIdx + 1].toLowerCase()}`} />
+              )}
             </div>
           ))}
         </div>
 
         {/* 하단 요약 카드 */}
         <div className="data-wall-briefing-strip">
-          <div className="briefing-card tone-amber">
+          <article className="briefing-card tone-amber">
             <span className="briefing-card-title">SMARTSTORE</span>
             <span className="briefing-card-value">
               {smartstoreSnapshot ? `${smartstoreSnapshot.preShipTotal} PRE-SHIP` : 'WAITING'}
             </span>
-          </div>
-          <div className="briefing-card tone-gold">
+          </article>
+          <article className="briefing-card tone-gold">
             <span className="briefing-card-title">MARKET BRAIN</span>
-            <span className="briefing-card-value">SEASON WATCH</span>
-          </div>
-          <div className="briefing-card tone-cyan">
+            <span className="briefing-card-value">옥수수 · 매실 · 블루베리 · 복숭아 시즌 감시 준비</span>
+          </article>
+          <article className="briefing-card tone-cyan">
             <span className="briefing-card-title">OUTREACH</span>
             <span className="briefing-card-value">
               {payload?.outreachCount ?? 0} CANDIDATES
             </span>
-          </div>
-          <div className="briefing-card tone-green">
+          </article>
+          <article className="briefing-card tone-green">
             <span className="briefing-card-title">WORKSPACE</span>
             <span className="briefing-card-value">
               {payload?.workspaceCount ?? 0} FILES
             </span>
-          </div>
+          </article>
         </div>
       </section>
     </div>
