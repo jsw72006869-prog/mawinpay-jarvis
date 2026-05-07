@@ -4728,7 +4728,14 @@ export default function JarvisApp() {
       <CloudStatusOverlay />
 
       {/* ── UI-E Mission Control Visual Deck (Lite) ── */}
-      <MissionControlDeck />
+      {/* ── UI-E Mission Control Motion Deck (Lite v1) ── */}
+      <MissionControlDeck
+        state={state}
+        currentTime={currentTime}
+        workspaceCount={workspaceRecords.length}
+        outreachCount={outreachCandidates.length}
+        actionType={actionContext?.type}
+      />
 
       {/* ── Three.js 파티클 배경 ── */}
       <SparkleParticles state={state} audioLevel={micLevel} speakingLevel={speakingLevel} clapBurst={clapBurst} freqData={micFreqData ?? undefined} />

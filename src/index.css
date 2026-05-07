@@ -755,3 +755,249 @@ html, body {
     display: flex !important;
   }
 }
+
+/* UI-E Motion Polish v1: replace static cards with cinematic motion shell */
+.ui-e-motion-v1 {
+  z-index: 6 !important;
+  pointer-events: none !important;
+  overflow: hidden !important;
+}
+
+/* 기존 정적 카드가 남아도 화면을 어지럽히지 않도록 강제 숨김 */
+.ui-e-motion-v1 .ui-e-left-stack,
+.ui-e-motion-v1 .ui-e-right-stack,
+.ui-e-motion-v1 .ui-e-card {
+  display: none !important;
+}
+
+.ui-e-camera-vignette {
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(circle at 50% 50%, transparent 0%, transparent 38%, rgba(0, 0, 0, 0.22) 74%, rgba(0, 0, 0, 0.58) 100%),
+    radial-gradient(circle at 50% 48%, rgba(0, 245, 255, 0.055), transparent 36%);
+  opacity: 0.85;
+  animation: uiECameraBreath 8s ease-in-out infinite;
+}
+
+.ui-e-depth-wash {
+  position: absolute;
+  inset: 9% 18%;
+  border-radius: 999px;
+  background:
+    linear-gradient(90deg, transparent, rgba(0, 245, 255, 0.08), transparent),
+    radial-gradient(ellipse at center, rgba(200, 169, 110, 0.06), transparent 58%);
+  filter: blur(10px);
+  opacity: 0.36;
+  transform: rotate(-8deg);
+  animation: uiEDepthDrift 11s ease-in-out infinite;
+}
+
+.ui-e-core-focus {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: min(46vmin, 520px);
+  height: min(46vmin, 520px);
+  transform: translate(-50%, -50%);
+  border-radius: 999px;
+}
+
+.ui-e-core-halo {
+  position: absolute;
+  inset: 0;
+  border-radius: 999px;
+  border: 1px solid rgba(0, 245, 255, 0.12);
+  box-shadow:
+    0 0 28px rgba(0, 245, 255, 0.08),
+    inset 0 0 28px rgba(0, 245, 255, 0.05);
+  animation: uiECorePulse 5.8s ease-in-out infinite;
+}
+
+.ui-e-core-halo-two {
+  inset: 9%;
+  border-color: rgba(200, 169, 110, 0.14);
+  animation-delay: -1.4s;
+  animation-duration: 7.2s;
+}
+
+.ui-e-core-halo-three {
+  inset: 18%;
+  border-color: rgba(255, 255, 255, 0.11);
+  animation-delay: -2.5s;
+  animation-duration: 4.8s;
+}
+
+.ui-e-core-scan {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 150%;
+  height: 1px;
+  transform-origin: left center;
+  background: linear-gradient(90deg, transparent, rgba(0, 245, 255, 0.58), transparent);
+  opacity: 0.32;
+  animation: uiECoreScan 9s linear infinite;
+}
+
+.ui-e-motion-orbit {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  border-radius: 999px;
+  border: 1px solid rgba(0, 245, 255, 0.08);
+  transform: translate(-50%, -50%) rotateX(66deg);
+  box-shadow: 0 0 28px rgba(0, 245, 255, 0.04);
+}
+
+.ui-e-motion-orbit-a {
+  width: min(64vmin, 720px);
+  height: min(22vmin, 250px);
+  animation: uiEOrbitWide 16s ease-in-out infinite;
+}
+
+.ui-e-motion-orbit-b {
+  width: min(78vmin, 900px);
+  height: min(28vmin, 320px);
+  border-color: rgba(200, 169, 110, 0.09);
+  animation: uiEOrbitWide 21s ease-in-out infinite reverse;
+}
+
+.ui-e-motion-orbit-c {
+  width: min(92vmin, 1050px);
+  height: min(34vmin, 390px);
+  border-color: rgba(255, 255, 255, 0.055);
+  animation: uiEOrbitWide 27s ease-in-out infinite;
+}
+
+.ui-e-flow-line {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: min(38vmin, 430px);
+  height: 1px;
+  transform-origin: left center;
+  background: linear-gradient(90deg, rgba(0, 245, 255, 0.32), transparent);
+  opacity: 0.28;
+  animation: uiEFlowPulse 5.5s ease-in-out infinite;
+}
+
+.ui-e-flow-line-a { transform: rotate(18deg); }
+.ui-e-flow-line-b { transform: rotate(128deg); animation-delay: -1.1s; }
+.ui-e-flow-line-c { transform: rotate(218deg); animation-delay: -2.2s; }
+.ui-e-flow-line-d { transform: rotate(308deg); animation-delay: -3.3s; }
+
+.ui-e-intel-dock {
+  position: absolute;
+  left: 50%;
+  top: 118px;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: stretch;
+  justify-content: center;
+  gap: 8px;
+  width: min(720px, calc(100vw - 760px));
+  min-width: 520px;
+  z-index: 8;
+  animation: uiEDockEnter 0.9s ease-out both;
+}
+
+.ui-e-intel-chip {
+  min-width: 112px;
+  padding: 8px 10px;
+  border-radius: 999px;
+  border: 1px solid rgba(0, 245, 255, 0.14);
+  background: rgba(3, 10, 22, 0.46);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  box-shadow: 0 0 18px rgba(0, 245, 255, 0.06);
+  text-align: center;
+  overflow: hidden;
+}
+
+.ui-e-intel-chip span {
+  display: block;
+  color: rgba(103, 232, 249, 0.82);
+  font-size: 8px;
+  font-weight: 800;
+  letter-spacing: 0.16em;
+}
+
+.ui-e-intel-chip strong {
+  display: block;
+  margin-top: 3px;
+  color: rgba(255, 255, 255, 0.82);
+  font-size: 9px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.ui-e-motion-ribbon {
+  animation: uiERibbonFloat 5.2s ease-in-out infinite;
+}
+
+.ui-e-motion-axis {
+  animation: uiEAxisGlow 4.5s ease-in-out infinite;
+}
+
+/* State-aware motion */
+.ui-e-state-listening .ui-e-core-halo,
+.ui-e-state-speaking .ui-e-core-halo {
+  border-color: rgba(255, 149, 0, 0.28);
+  box-shadow:
+    0 0 34px rgba(255, 149, 0, 0.16),
+    inset 0 0 26px rgba(255, 149, 0, 0.08);
+}
+
+.ui-e-state-thinking .ui-e-core-halo,
+.ui-e-state-working .ui-e-core-halo {
+  border-color: rgba(168, 85, 247, 0.30);
+  box-shadow:
+    0 0 38px rgba(168, 85, 247, 0.16),
+    inset 0 0 24px rgba(168, 85, 247, 0.08);
+}
+
+.ui-e-state-success .ui-e-core-halo {
+  border-color: rgba(255, 215, 0, 0.36);
+  box-shadow:
+    0 0 44px rgba(255, 215, 0, 0.20),
+    inset 0 0 28px rgba(255, 215, 0, 0.10);
+}
+
+/* Keyframes */
+@keyframes uiECameraBreath {
+  0%, 100% { transform: scale(1); opacity: 0.85; }
+  50% { transform: scale(1.02); opacity: 0.75; }
+}
+@keyframes uiEDepthDrift {
+  0%, 100% { transform: rotate(-8deg) translate(0, 0); }
+  50% { transform: rotate(-6deg) translate(10px, 15px); }
+}
+@keyframes uiECorePulse {
+  0%, 100% { transform: scale(1); opacity: 0.8; }
+  50% { transform: scale(1.05); opacity: 1; }
+}
+@keyframes uiECoreScan {
+  from { transform: translate(-50%, -50%) rotate(0deg); }
+  to { transform: translate(-50%, -50%) rotate(360deg); }
+}
+@keyframes uiEOrbitWide {
+  0%, 100% { transform: translate(-50%, -50%) rotateX(66deg) rotateZ(0deg); }
+  50% { transform: translate(-50%, -50%) rotateX(62deg) rotateZ(180deg); }
+}
+@keyframes uiEFlowPulse {
+  0%, 100% { opacity: 0.1; width: 30%; }
+  50% { opacity: 0.4; width: 100%; }
+}
+@keyframes uiEDockEnter {
+  from { opacity: 0; transform: translate(-50%, -20px); }
+  to { opacity: 1; transform: translate(-50%, 0); }
+}
+@keyframes uiERibbonFloat {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-5px); }
+}
+@keyframes uiEAxisGlow {
+  0%, 100% { opacity: 0.4; }
+  50% { opacity: 0.8; text-shadow: 0 0 10px rgba(0, 245, 255, 0.5); }
+}
