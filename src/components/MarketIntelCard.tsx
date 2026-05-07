@@ -137,24 +137,24 @@ export default function MarketIntelCard({ visible, onClose }: MarketIntelCardPro
             </motion.span>
           </div>
 
-          {/* 가격 정보 그리드 */}
+          {/* 가격 정보 그리드 (0/null/NaN → N/A 처리) */}
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '8px', marginBottom: '12px' }}>
             <div style={{ textAlign: 'center', padding: '8px', background: 'rgba(0,0,0,0.2)', borderRadius: '8px' }}>
               <div style={{ color: '#5A6A7A', fontSize: '9px', letterSpacing: '0.5px', marginBottom: '4px' }}>MAX</div>
               <div style={{ color: '#FF3D00', fontSize: '14px', fontWeight: 700 }}>
-                {marketData.maxPrice.toLocaleString()}
+                {marketData.maxPrice && !isNaN(marketData.maxPrice) ? marketData.maxPrice.toLocaleString() : 'N/A'}
               </div>
             </div>
             <div style={{ textAlign: 'center', padding: '8px', background: 'rgba(0,0,0,0.2)', borderRadius: '8px' }}>
               <div style={{ color: '#5A6A7A', fontSize: '9px', letterSpacing: '0.5px', marginBottom: '4px' }}>AVG</div>
               <div style={{ color: '#D4E0EC', fontSize: '14px', fontWeight: 700 }}>
-                {marketData.avgPrice.toLocaleString()}
+                {marketData.avgPrice && !isNaN(marketData.avgPrice) ? marketData.avgPrice.toLocaleString() : 'N/A'}
               </div>
             </div>
             <div style={{ textAlign: 'center', padding: '8px', background: 'rgba(0,0,0,0.2)', borderRadius: '8px' }}>
               <div style={{ color: '#5A6A7A', fontSize: '9px', letterSpacing: '0.5px', marginBottom: '4px' }}>MIN</div>
               <div style={{ color: '#2196F3', fontSize: '14px', fontWeight: 700 }}>
-                {marketData.minPrice.toLocaleString()}
+                {marketData.minPrice && !isNaN(marketData.minPrice) ? marketData.minPrice.toLocaleString() : 'N/A'}
               </div>
             </div>
           </div>

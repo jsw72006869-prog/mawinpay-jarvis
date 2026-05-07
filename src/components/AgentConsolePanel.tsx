@@ -50,11 +50,18 @@ export default function AgentConsolePanel({ visible, onClose, onUserInput, captc
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  // ─── 텔레메트리 이벤트 구독 ───
+  // ─── 텔레메트리 이벤트 구독 (dedup: 3초 이내 동일 메시지 중복 방지) ───
+  const lastMsgRef = useRef<{ key: string; ts: number }>({ key: '', ts: 0 });
   useEffect(() => {
     const cleanup = onTelemetryEvent((event: TelemetryEvent) => {
       if (event.type === 'mission_log') {
         const payload = event.payload;
+        // dedup check
+        const dedupKey = `${payload.source}::${payload.message}`;
+        const now = Date.now();
+        if (dedupKey === lastMsgRef.current.key && (now - lastMsgRef.current.ts) < 3000) return;
+        lastMsgRef.current = { key: dedupKey, ts: now };
+
         const msgType = payload.logType === 'success' ? 'success'
           : payload.logType === 'error' ? 'error'
           : payload.logType === 'warn' ? 'warning'

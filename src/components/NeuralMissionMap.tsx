@@ -254,8 +254,15 @@ export default function NeuralMissionMap({ onClose }: { onClose: () => void }) {
   // 로그 자동 스크롤
   useEffect(() => { logsEndRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [logs]);
 
-  // 로그 추가 헬퍼
+  // 로그 추가 헬퍼 (dedup: 같은 source+text가 3초 이내 중복 등록 방지)
+  const lastLogRef = useRef<{ key: string; ts: number }>({ key: '', ts: 0 });
   const addLog = useCallback((icon: string, source: string, text: string, type: LogEntry['type'] = 'info') => {
+    const now = Date.now();
+    const dedupKey = `${source}::${text}`;
+    if (dedupKey === lastLogRef.current.key && (now - lastLogRef.current.ts) < 3000) {
+      return; // 3초 이내 동일 로그 무시
+    }
+    lastLogRef.current = { key: dedupKey, ts: now };
     const time = new Date().toLocaleTimeString('ko-KR', { hour12: false });
     setLogs(prev => [...prev.slice(-80), { time, icon, source, text, type }]);
   }, []);

@@ -2518,7 +2518,7 @@ export default function JarvisApp() {
       });
 
       try {
-        // ── Step 1: 스마트스토어 데이터 수집 ──
+        // ── Step 1: 스마트스토어 데이터 수집 (캐시 3분 이내면 즉시 사용 + 백그라운드 refresh) ──
         emitBriefingSequence('node_focus', 'smartstore', '스마트스토어 데이터 수집 중...');
         setDataPanel(prev => ({
           ...prev,
@@ -2528,13 +2528,40 @@ export default function JarvisApp() {
         }));
 
         let smartstoreData: any = null;
-        try {
-          // 클라우드 서버를 통해 스마트스토어 직접 접속
-          const ssRes = await fetch('/api/cloud-proxy', {
+        // 캐시가 3분 이내면 캐시 우선 사용 (브리핑 응답 시간 개선)
+        const freshCache = ssCountsCacheRef.current;
+        const cacheAge = freshCache ? (Date.now() - freshCache.fetchedAt) : Infinity;
+        if (freshCache && cacheAge < 3 * 60 * 1000) {
+          smartstoreData = { smartstore: { ...freshCache.data, isCached: true }, influencers: { total: 0, newYesterday: 0, byPlatform: {} } };
+          setDataPanel(prev => ({
+            ...prev,
+            progress: 60,
+            actionLogs: [...(prev.actionLogs || []), { step: 'SMARTSTORE', status: 'success', detail: `캐시 데이터 사용 (${Math.round(cacheAge / 1000)}초 전)`, timestamp: new Date().toISOString() }],
+          }));
+          // 백그라운드 refresh (fire-and-forget)
+          fetch('/api/cloud-proxy', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ endpoint: 'task', taskType: 'smartstore-orders', params: { action: 'query_order_status' } })
+          }).then(r => r.json()).then(j => {
+            if (j.success || j.result) {
+              const raw = j.result || j;
+              const c2 = raw.counts || {};
+              ssCountsCacheRef.current = { data: { newOrders: c2.newOrders ?? raw.newOrders ?? 0, pendingShipping: c2.pendingShipping ?? raw.pendingShipping ?? 0, preShipTotal: c2.preShipTotal ?? raw.preShipTotal ?? 0, shipping: c2.shipping ?? raw.shipping ?? 0, delivered: c2.delivered ?? raw.delivered ?? 0, purchaseConfirmed: c2.purchaseConfirmed ?? raw.purchaseConfirmed ?? 0, totalAmount: raw.totalAmount ?? 0, revenueChangePercent: raw.revenueChangePercent ?? 0, source: raw.source || 'naver-commerce-api', fetchedAt: raw.fetchedAt || null, isCached: false }, fetchedAt: Date.now() };
+            }
+          }).catch(() => {});
+        } else {
+        try {
+          // 클라우드 서버를 통해 스마트스토어 직접 접속 (15초 timeout)
+          const abortCtrl = new AbortController();
+          const timeoutId = setTimeout(() => abortCtrl.abort(), 15000);
+          const ssRes = await fetch('/api/cloud-proxy', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ endpoint: 'task', taskType: 'smartstore-orders', params: { action: 'query_order_status' } }),
+            signal: abortCtrl.signal,
           });
+          clearTimeout(timeoutId);
           const ssJson = await ssRes.json();
           if (ssJson.success || ssJson.result) {
             const rawSS = ssJson.result || ssJson;
@@ -2593,6 +2620,7 @@ export default function JarvisApp() {
             smartstoreData = { smartstore: { _error: true, errorMessage: '최신 주문 데이터를 불러오지 못했습니다', newOrders: null, pendingShipping: null, preShipTotal: null, shipping: null, delivered: null, purchaseConfirmed: null, totalAmount: 0, revenueChangePercent: 0, error: String(ssErr) }, influencers: { total: 0, newYesterday: 0, byPlatform: {} } };
           }
         }
+        } // 캐시 분기 else 닫기
 
         // ── Step 2: 농산물 시장 분석 (MarketIntelligence) - 비동기 처리 (브리핑 응답 차단 안 함) ──
         emitBriefingSequence('node_focus', 'market_intel', '농산물 시장 데이터 수집 중...');
@@ -2623,16 +2651,23 @@ export default function JarvisApp() {
             const changePercent = monthPrice ? ((todayPrice - monthPrice) / monthPrice * 100) : 0;
             const trend = changePercent > 2 ? 'up' : changePercent < -2 ? 'down' : 'stable';
             const recommendation = trend === 'down' ? 'buy' : trend === 'up' ? 'sell' : 'hold';
+            // MAX/MIN 논리적 정렬: 유효 가격만 수집 (0 제외)
+            const validPrices = [todayPrice, monthPrice, yearPrice].filter(p => p > 0);
+            const avgParsed = parseInt((marketJson.prices.average || '0').replace(/,/g, ''));
+            if (avgParsed > 0) validPrices.push(avgParsed);
+            const computedMax = validPrices.length > 0 ? Math.max(...validPrices) : 0;
+            const computedMin = validPrices.length > 0 ? Math.min(...validPrices) : 0;
+            const computedAvg = avgParsed > 0 ? avgParsed : (validPrices.length > 0 ? Math.round(validPrices.reduce((a, b) => a + b, 0) / validPrices.length) : 0);
             emitNodeData('market_intel', {
               item: marketJson.item || '배추',
-              maxPrice: todayPrice,
-              minPrice: yearPrice || todayPrice,
-              avgPrice: parseInt((marketJson.prices.average || '0').replace(/,/g, '')) || todayPrice,
+              maxPrice: computedMax,
+              minPrice: computedMin,
+              avgPrice: computedAvg,
               trend,
               changePercent: parseFloat(changePercent.toFixed(1)),
               recommendation,
               lastUpdated: new Date().toLocaleTimeString('ko-KR'),
-              totalRecords: 1,
+              totalRecords: validPrices.length,
               movingAvg5: monthPrice || 0,
               movingAvg20: yearPrice || 0,
             });
@@ -3162,7 +3197,7 @@ export default function JarvisApp() {
           const timeLabel = data.fetchedAt ? new Date(data.fetchedAt).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' }) : '';
 
           if (ssAction === 'current_new_orders') {
-            resultMsg = `[PKG] **현재 주문 현황** ${srcLabel}\n\n현재 신규주문: ${nO}건\n배송준비: ${pS}건\n배송 전 처리 대상 전체: ${preT}건\n배송중: ${ship}건\n배송완료: ${dlvd}건\n구매확정: ${pConf}건`;
+            resultMsg = `[PKG] **현재 주문 현황** ${srcLabel}\n\n현재 신규주문: ${nO}건\n배송준비: ${pS}건\n배송 전 처리 대상 전체: ${preT}건\n배송중: ${ship}건\n배송완료: ${dlvd}건\n구매확정: ${pConf}건 (최근 7일 기준)`;
             if (timeLabel) resultMsg += `\n\n조회 시각: ${timeLabel}`;
             doneText = `현재 신규주문 ${nO}건, 배송준비 ${pS}건입니다, 선생님.`;
           } else if (ssAction === 'query_pending_shipping') {
@@ -3190,7 +3225,7 @@ export default function JarvisApp() {
             }
             resultMsg = `[PKG] **${getActionLabel(ssAction)}**\n\n`;
             if (ssAction === 'morning_report') {
-              resultMsg += `신규 주문: ${nO}건\n취소 요청: ${safeNum(data.cancelOrders)}건\n발송 대기: ${pS}건\n배송중: ${ship}건\n배송완료: ${dlvd}건\n구매확정: ${pConf}건`;
+              resultMsg += `신규 주문: ${nO}건\n취소 요청: ${safeNum(data.cancelOrders)}건\n발송 대기: ${pS}건\n배송중: ${ship}건\n배송완료: ${dlvd}건\n구매확정: ${pConf}건 (최근 7일 기준)`;
               doneText = `아침 업무 보고 완료입니다, 선생님. 신규 주문 ${nO}건, 배송준비 ${pS}건입니다.`;
             } else {
               resultMsg += data.summary || `총 ${count}건 조회되었습니다.`;
