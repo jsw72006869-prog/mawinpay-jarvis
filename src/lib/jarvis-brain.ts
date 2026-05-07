@@ -597,7 +597,7 @@ export async function askGPT(userMessage: string): Promise<JarvisAction> {
       console.log('[JARVIS] Function call:', fnName, fnArgs);
       let responseText = String(fnArgs.response || '');
       // pseudo-code / 코드 블록 차단 (function calling response 필드)
-      if (/```/.test(responseText) || /function\s*\(|=>|import\s|const\s|let\s|var\s/.test(responseText)) {
+      if (/```/.test(responseText) || /function\s*\(|=>|import\s|const\s|let\s|var\s/.test(responseText) || /functions\.\w+\(/.test(responseText) || /Direct API/.test(responseText)) {
         console.warn('[JARVIS] FC pseudo-code 차단:', responseText.substring(0, 80));
         responseText = '작업을 시작하겠습니다, 선생님.';
       }
@@ -612,7 +612,7 @@ export async function askGPT(userMessage: string): Promise<JarvisAction> {
     // 일반 텍스트 응답 (코드 블록 / pseudo-code 필터링)
     let reply = message?.content ?? '죄송합니다, 잠시 연결이 불안정합니다.';
     // pseudo-code / 코드 블록 차단: GPT가 코드를 반환하면 사용자에게 노출하지 않음
-    if (/```/.test(reply) || /function\s*\(|=>|import\s|const\s|let\s|var\s/.test(reply)) {
+    if (/```/.test(reply) || /function\s*\(|=>|import\s|const\s|let\s|var\s/.test(reply) || /functions\.\w+\(/.test(reply) || /Direct API/.test(reply)) {
       console.warn('[JARVIS] pseudo-code 차단:', reply.substring(0, 100));
       reply = '네, 선생님. 해당 작업을 진행하겠습니다. 구체적인 내용을 말씀해 주시면 도와드리겠습니다.';
     }

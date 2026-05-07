@@ -4320,7 +4320,7 @@ export default function JarvisApp() {
       return;
     }
 
-    if (emailDraftViewMatch && emailDraftState === 'draft_created' && emailDraftData) {
+    if (emailDraftViewMatch && emailDraftState !== 'idle' && emailDraftData) {
       // 초안 미리보기
       setEmailDraftState('approval_required');
       addMessage('jarvis', `📋 **이메일 초안 미리보기**\n\n**제목:** ${emailDraftData.subject}\n**수신자:** ${emailDraftData.to} (${emailDraftData.toName})\n**상품:** ${emailDraftData.product} 공동구매\n**상태:** approval_required\n\n---\n\n이메일 본문은 JARVIS 시그니처 디자인 HTML 템플릿입니다.\n\n⚠️ **보호 조건:**\n• 수신자: jungsng805@naver.com 1명만\n• 실제 유튜버 발송: 0건\n• 실제 거래처 발송: 0건\n• 승인 전 발송: 차단\n\n💡 "테스트 수신자에게만 제안 메일 보내줘"로 발송 요청 가능`, true);
