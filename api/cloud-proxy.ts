@@ -1606,6 +1606,16 @@ function calculateMargin(params: any) {
   };
 }
 
+// 한국어 조사 처리: 받침 유무에 따라 은/는, 이/가, 을/를 선택
+function getPostposition(word: string, withBatchim: string, withoutBatchim: string): string {
+  if (!word) return withoutBatchim;
+  const lastChar = word.charCodeAt(word.length - 1);
+  // 한글 유니코드 범위: 0xAC00 ~ 0xD7A3
+  if (lastChar < 0xAC00 || lastChar > 0xD7A3) return withoutBatchim;
+  const hasBatchim = (lastChar - 0xAC00) % 28 !== 0;
+  return hasBatchim ? withBatchim : withoutBatchim;
+}
+
 function generateJarvisDecision(productName: string, calc: any): { decision: string; action: string; jarvisMessage: string } {
   const { estimatedMargin, estimatedMarginRate, currentPrice, competitorMinPrice, competitorAvgPrice, rawMaterialCost } = calc;
 
@@ -1617,7 +1627,7 @@ function generateJarvisDecision(productName: string, calc: any): { decision: str
   if (estimatedMarginRate >= 30) {
     decision = '가격 방어 가능 (고마진)';
     action = '현재 가격 유지 + 프리미엄 메시지 강화';
-    jarvisMessage = `대표님, 지금 ${productName}은 가격을 낮출 필요 없습니다.\n` +
+    jarvisMessage = `대표님, 지금 ${productName}${getPostposition(productName, '은', '는')} 가격을 낮출 필요 없습니다.\n` +
       `원물가 대비 마진율이 ${estimatedMarginRate}%로 충분합니다.\n` +
       `최저가 경쟁보다 산지직송/한정수량/프리미엄 메시지로 가는 게 좋습니다.`;
   } else if (estimatedMarginRate >= 15) {
@@ -1629,19 +1639,19 @@ function generateJarvisDecision(productName: string, calc: any): { decision: str
   } else if (estimatedMarginRate >= 5) {
     decision = '가격 인상 검토 필요';
     action = '100~500원 인상 시뮬레이션 + 경쟁가 모니터링';
-    jarvisMessage = `대표님, ${productName}은 마진이 빠듯합니다.\n` +
+    jarvisMessage = `대표님, ${productName}${getPostposition(productName, '은', '는')} 마진이 빠듯합니다.\n` +
       `마진율 ${estimatedMarginRate}%면 배송 사고나 반품 한 건에 적자 전환될 수 있습니다.\n` +
       `가격을 100~500원 올리거나, 용량/수량을 조정하는 게 안전합니다.`;
   } else if (estimatedMargin > 0) {
     decision = '가격 인상 필요';
     action = '즉시 가격 인상 또는 판매 중단 검토';
-    jarvisMessage = `대표님, ${productName}은 지금 거의 마진이 없습니다.\n` +
+    jarvisMessage = `대표님, ${productName}${getPostposition(productName, '은', '는')} 지금 거의 마진이 없습니다.\n` +
       `마진율 ${estimatedMarginRate}%면 팔수록 손해에 가깝습니다.\n` +
       `가격 인상이 어려우면 판매 중단하고 다음 시즌을 기다리는 것도 방법입니다.`;
   } else {
     decision = '적자 상태 - 즉시 조치 필요';
     action = '판매 중단 또는 대폭 가격 인상';
-    jarvisMessage = `대표님, ${productName}은 현재 팔면 팔수록 적자입니다.\n` +
+    jarvisMessage = `대표님, ${productName}${getPostposition(productName, '은', '는')} 현재 팔면 팔수록 적자입니다.\n` +
       `예상 마진이 ${estimatedMargin.toLocaleString()}원으로 마이너스입니다.\n` +
       `즉시 가격을 올리거나 판매를 중단하는 게 맞습니다.`;
   }

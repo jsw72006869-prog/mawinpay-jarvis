@@ -2552,17 +2552,26 @@ export default function JarvisApp() {
           }).catch(() => {});
         } else {
         try {
-          // 클라우드 서버를 통해 스마트스토어 직접 접속 (15초 timeout)
-          const abortCtrl = new AbortController();
-          const timeoutId = setTimeout(() => abortCtrl.abort(), 15000);
-          const ssRes = await fetch('/api/cloud-proxy', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ endpoint: 'task', taskType: 'smartstore-orders', params: { action: 'query_order_status' } }),
-            signal: abortCtrl.signal,
-          });
-          clearTimeout(timeoutId);
-          const ssJson = await ssRes.json();
+          // 클라우드 서버를 통해 스마트스토어 직접 접속 (30초 timeout + 1회 재시도)
+          const fetchSS = async (timeoutMs: number) => {
+            const ctrl = new AbortController();
+            const tid = setTimeout(() => ctrl.abort(), timeoutMs);
+            const r = await fetch('/api/cloud-proxy', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ endpoint: 'task', taskType: 'smartstore-orders', params: { action: 'query_order_status' } }),
+              signal: ctrl.signal,
+            });
+            clearTimeout(tid);
+            return r.json();
+          };
+          let ssJson: any;
+          try {
+            ssJson = await fetchSS(30000);
+          } catch (firstErr) {
+            // 1회 재시도 (20초)
+            ssJson = await fetchSS(20000);
+          }
           if (ssJson.success || ssJson.result) {
             const rawSS = ssJson.result || ssJson;
             // v3 통일 구조: counts 우선, 하위호환 유지
