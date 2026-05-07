@@ -1511,3 +1511,126 @@ html, body {
     animation-iteration-count: 1 !important;
   }
 }
+
+/* UI-F Scene Mode v1: command-aware cinematic focus */
+.ui-e-cinema-scene-label em {
+  display: block;
+  margin-bottom: 5px;
+  color: rgba(103, 232, 249, 0.86);
+  font-style: normal;
+  font-size: 9px;
+  font-weight: 900;
+  letter-spacing: 0.28em;
+  text-shadow: 0 0 14px rgba(0, 245, 255, 0.28);
+}
+
+.ui-e-scene-briefing .ui-e-cinema-vignette {
+  background:
+    radial-gradient(circle at 50% 48%, rgba(0, 245, 255, 0.10), transparent 34%),
+    radial-gradient(circle at 50% 50%, transparent 0%, transparent 36%, rgba(0, 0, 0, 0.18) 70%, rgba(0, 0, 0, 0.62) 100%);
+}
+
+.ui-e-scene-orders .ui-e-cinema-core-ring,
+.ui-e-scene-orders .ui-e-tunnel-ring {
+  border-color: rgba(34, 211, 238, 0.24) !important;
+  box-shadow:
+    inset 0 0 24px rgba(34, 211, 238, 0.06);
+}
+
+.ui-e-scene-orders .marker-orders {
+  opacity: 0.96 !important;
+  transform: scale(1.08);
+  border-color: rgba(34, 211, 238, 0.34);
+  box-shadow: 0 0 24px rgba(34, 211, 238, 0.14);
+}
+
+.ui-e-scene-market .ui-e-cinema-depth-wash {
+  opacity: 0.56 !important;
+  background:
+    radial-gradient(circle, rgba(200, 169, 110, 0.14), transparent 44%),
+    conic-gradient(from 120deg, transparent, rgba(200, 169, 110, 0.16), transparent, rgba(0, 245, 255, 0.08), transparent);
+}
+
+.ui-e-scene-market .ui-e-cinema-core-ring {
+  border-color: rgba(200, 169, 110, 0.30) !important;
+  box-shadow:
+    0 0 40px rgba(200, 169, 110, 0.16),
+    inset 0 0 26px rgba(200, 169, 110, 0.08);
+}
+
+.ui-e-scene-outreach .marker-outreach {
+  opacity: 1 !important;
+  transform: scale(1.12);
+  border-color: rgba(168, 85, 247, 0.42);
+  box-shadow: 0 0 28px rgba(168, 85, 247, 0.18);
+}
+
+.ui-e-scene-outreach .ui-e-cinema-rail {
+  opacity: 0.36 !important;
+  background: linear-gradient(90deg, rgba(168, 85, 247, 0.46), transparent);
+}
+
+.ui-e-scene-files .marker-files {
+  opacity: 1 !important;
+  transform: scale(1.12);
+  border-color: rgba(34, 197, 94, 0.42);
+  box-shadow: 0 0 28px rgba(34, 197, 94, 0.18);
+}
+
+.ui-e-scene-files .ui-e-cinema-depth-wash {
+  opacity: 0.42 !important;
+  background:
+    radial-gradient(circle, rgba(34, 197, 94, 0.12), transparent 44%),
+    conic-gradient(from 120deg, transparent, rgba(34, 197, 94, 0.12), transparent, rgba(0, 245, 255, 0.06), transparent);
+}
+
+.ui-e-scene-approval .ui-e-cinema-core-ring,
+.ui-e-scene-approval .ui-e-tunnel-ring {
+  border-color: rgba(245, 158, 11, 0.34) !important;
+  box-shadow:
+    0 0 44px rgba(245, 158, 11, 0.16),
+    inset 0 0 28px rgba(245, 158, 11, 0.08);
+}
+
+.ui-e-scene-approval .ui-e-film-bar {
+  opacity: 0.36 !important;
+}
+
+.ui-e-scene-voice .ui-e-cinema-core-ring {
+  border-color: rgba(255, 149, 0, 0.34) !important;
+  box-shadow:
+    0 0 42px rgba(255, 149, 0, 0.16),
+    inset 0 0 28px rgba(255, 149, 0, 0.08);
+}
+
+.ui-e-scene-error .ui-e-cinema-vignette {
+  background:
+    radial-gradient(circle at 50% 48%, rgba(255, 68, 68, 0.12), transparent 34%),
+    radial-gradient(circle at 50% 50%, transparent 0%, transparent 36%, rgba(0, 0, 0, 0.22) 70%, rgba(0, 0, 0, 0.72) 100%);
+}
+
+.ui-e-scene-error .ui-e-cinema-core-ring {
+  border-color: rgba(255, 68, 68, 0.36) !important;
+  box-shadow:
+    0 0 46px rgba(255, 68, 68, 0.18),
+    inset 0 0 28px rgba(255, 68, 68, 0.10);
+}
+
+/* Scene mode must stay non-blocking */
+.ui-e-cinema-v2 {
+  pointer-events: none !important;
+}
+
+/* Keep scene accents subtle in split/devtools screens */
+@media (max-width: 1500px), (max-height: 820px) {
+  .ui-e-cinema-scene-label em {
+    font-size: 8px !important;
+    letter-spacing: 0.18em !important;
+  }
+
+  .ui-e-scene-outreach .marker-outreach,
+  .ui-e-scene-files .marker-files,
+  .ui-e-scene-orders .marker-orders {
+    transform: none !important;
+  }
+}

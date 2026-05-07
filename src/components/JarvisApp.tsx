@@ -126,8 +126,101 @@ function getActionLabel(action: string): string {
   return labels[action] || action;
 }
 
+type JarvisScene =
+  | 'standby'
+  | 'briefing'
+  | 'orders'
+  | 'market'
+  | 'outreach'
+  | 'files'
+  | 'approval'
+  | 'voice'
+  | 'error';
+
+function inferJarvisSceneFromCommand(input: string): JarvisScene {
+  const text = String(input || '').toLowerCase().replace(/\s+/g, '');
+
+  if (!text) return 'standby';
+
+  if (
+    text.includes('브리핑') ||
+    text.includes('보고서') ||
+    text.includes('오늘보고') ||
+    text.includes('오늘리포트')
+  ) {
+    return 'briefing';
+  }
+
+  if (
+    text.includes('주문') ||
+    text.includes('주문현황') ||
+    text.includes('전체주문') ||
+    text.includes('배송') ||
+    text.includes('구매확정') ||
+    text.includes('스마트스토어')
+  ) {
+    return 'orders';
+  }
+
+  if (
+    text.includes('시장') ||
+    text.includes('시세') ||
+    text.includes('가격') ||
+    text.includes('카미스') ||
+    text.includes('kamis') ||
+    text.includes('마진') ||
+    text.includes('도매')
+  ) {
+    return 'market';
+  }
+
+  if (
+    text.includes('유튜버') ||
+    text.includes('블로거') ||
+    text.includes('인플루언서') ||
+    text.includes('outreach') ||
+    text.includes('아웃리치') ||
+    text.includes('수집')
+  ) {
+    return 'outreach';
+  }
+
+  if (
+    text.includes('저장된작업') ||
+    text.includes('작업보여') ||
+    text.includes('파일') ||
+    text.includes('발주서') ||
+    text.includes('정산서') ||
+    text.includes('시트') ||
+    text.includes('sheets')
+  ) {
+    return 'files';
+  }
+
+  if (
+    text.includes('승인') ||
+    text.includes('실행해') ||
+    text.includes('보내') ||
+    text.includes('메일발송') ||
+    text.includes('결제')
+  ) {
+    return 'approval';
+  }
+
+  if (
+    text.includes('자비스') ||
+    text.includes('안녕') ||
+    text.includes('들리')
+  ) {
+    return 'voice';
+  }
+
+  return 'standby';
+}
+
 export default function JarvisApp() {
   const [state, setState] = useState<JarvisState>('idle');
+  const [activeScene, setActiveScene] = useState<JarvisScene>('standby');
   const [messages, setMessages] = useState<Message[]>([]);
   const [isListening, setIsListening] = useState(false);
   const [micLevel, setMicLevel] = useState(0);
@@ -3851,6 +3944,10 @@ export default function JarvisApp() {
       return;
     }
     console.log('[JARVIS]  음성 명령 수신 (상태:', currentState, '):', transcript);
+
+    // UI Scene 추론 및 설정 (STT guard 통과 후)
+    setActiveScene(inferJarvisSceneFromCommand(transcript));
+
     // 캡차/2단계 인증 입력 대기 중이면 인증번호 전달
     if (verificationResolveRef.current) {
       const resolve = verificationResolveRef.current;
@@ -3921,6 +4018,10 @@ export default function JarvisApp() {
     if (!text.trim()) return;
     setTextInputValue('');
     setTextInputMode(false);
+
+    // UI Scene 추론 및 설정
+    const nextScene = inferJarvisSceneFromCommand(text);
+    setActiveScene(nextScene);
 
     // 캡차/2단계 인증 입력 대기 중이면 인증번호 전달
     if (verificationResolveRef.current) {
@@ -4770,13 +4871,14 @@ export default function JarvisApp() {
 
       {/* ── UI-E Mission Control Visual Deck (Lite) ── */}
       {/* ── UI-E Mission Control Motion Deck (Lite v1) ── */}
-      <MissionControlDeck
-        state={state as string}
-        currentTime={currentTime}
-        workspaceCount={workspaceRecords.length}
-        outreachCount={outreachCandidates.length}
-        actionType={actionContext?.type}
-      />
+        <MissionControlDeck
+          state={state as string}
+          scene={activeScene}
+          currentTime={currentTime}
+          workspaceCount={workspaceRecords.length}
+          outreachCount={outreachCandidates.length}
+          actionType={actionContext?.type}
+        />
 
       {/* ── Three.js 파티클 배경 ── */}
       <SparkleParticles state={state} audioLevel={micLevel} speakingLevel={speakingLevel} clapBurst={clapBurst} freqData={micFreqData ?? undefined} />

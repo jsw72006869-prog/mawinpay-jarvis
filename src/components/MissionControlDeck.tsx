@@ -1,7 +1,19 @@
 import React from 'react';
 
+type JarvisScene =
+  | 'standby'
+  | 'briefing'
+  | 'orders'
+  | 'market'
+  | 'outreach'
+  | 'files'
+  | 'approval'
+  | 'voice'
+  | 'error';
+
 type MissionControlDeckProps = {
   state?: string;
+  scene?: JarvisScene;
   currentTime?: string;
   workspaceCount?: number;
   outreachCount?: number;
@@ -19,8 +31,21 @@ const STATE_LABELS: Record<string, string> = {
   approval_required: 'APPROVAL REQUIRED',
 };
 
+const SCENE_LABELS: Record<JarvisScene, string> = {
+  standby: 'MISSION CONTROL',
+  briefing: 'DAILY BRIEFING',
+  orders: 'SMARTSTORE ORDERS',
+  market: 'MARKET INTEL',
+  outreach: 'OUTREACH RADAR',
+  files: 'WORKSPACE FILES',
+  approval: 'APPROVAL GATE',
+  voice: 'VOICE LINK',
+  error: 'SYSTEM ALERT',
+};
+
 export default function MissionControlDeck({
   state = 'idle',
+  scene = 'standby',
   currentTime = '--:--',
   workspaceCount = 0,
   outreachCount = 0,
@@ -28,11 +53,12 @@ export default function MissionControlDeck({
 }: MissionControlDeckProps) {
   const safeState = STATE_LABELS[state] ? state : 'idle';
   const stateLabel = STATE_LABELS[safeState] || 'STANDBY';
+  const sceneLabel = SCENE_LABELS[scene] || 'MISSION CONTROL';
   const approvalLabel = actionType ? actionType.toUpperCase() : 'EXECUTE LOCKED';
 
   return (
     <div
-      className={`ui-e-mission-deck ui-e-cinema-v2 ui-e-state-${safeState}`}
+      className={`ui-e-mission-deck ui-e-cinema-v2 ui-e-state-${safeState} ui-e-scene-${scene}`}
       aria-hidden="true"
     >
       <div className="ui-e-film-bars">
@@ -70,10 +96,12 @@ export default function MissionControlDeck({
           <span>ORDERS</span>
           <strong>LIVE</strong>
         </div>
+
         <div className="ui-e-cinema-marker marker-outreach">
           <span>OUTREACH</span>
           <strong>{outreachCount}</strong>
         </div>
+
         <div className="ui-e-cinema-marker marker-files">
           <span>FILES</span>
           <strong>{workspaceCount}</strong>
@@ -81,6 +109,7 @@ export default function MissionControlDeck({
       </div>
 
       <div className="ui-e-cinema-scene-label">
+        <em>{sceneLabel}</em>
         <span>{stateLabel}</span>
         <strong>{approvalLabel}</strong>
       </div>
