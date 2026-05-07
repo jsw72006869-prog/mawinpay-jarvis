@@ -258,9 +258,10 @@ export default function NeuralMissionMap({ onClose }: { onClose: () => void }) {
   const lastLogRef = useRef<{ key: string; ts: number }>({ key: '', ts: 0 });
   const addLog = useCallback((icon: string, source: string, text: string, type: LogEntry['type'] = 'info') => {
     const now = Date.now();
-    const dedupKey = `${source}::${text}`;
+    // dedup: message(text)만으로 중복 판단 (source가 다르더라도 같은 메시지면 3초 이내 중복 무시)
+    const dedupKey = text;
     if (dedupKey === lastLogRef.current.key && (now - lastLogRef.current.ts) < 3000) {
-      return; // 3초 이내 동일 로그 무시
+      return;
     }
     lastLogRef.current = { key: dedupKey, ts: now };
     const time = new Date().toLocaleTimeString('ko-KR', { hour12: false });

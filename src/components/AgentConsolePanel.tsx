@@ -56,8 +56,8 @@ export default function AgentConsolePanel({ visible, onClose, onUserInput, captc
     const cleanup = onTelemetryEvent((event: TelemetryEvent) => {
       if (event.type === 'mission_log') {
         const payload = event.payload;
-        // dedup check
-        const dedupKey = `${payload.source}::${payload.message}`;
+        // dedup check: message만으로 중복 판단 (source가 다르더라도 같은 메시지면 3초 이내 중복 무시)
+        const dedupKey = payload.message;
         const now = Date.now();
         if (dedupKey === lastMsgRef.current.key && (now - lastMsgRef.current.ts) < 3000) return;
         lastMsgRef.current = { key: dedupKey, ts: now };
