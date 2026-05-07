@@ -4069,12 +4069,14 @@ export default function JarvisApp() {
       const match = outreachCollectFinal || outreachCollectMatchGeneric;
       let keyword = '';
       let platform = 'all';
-      let count = 5;
-      let requireEmail = false;
+      let count = 20;
+      let requireEmail = true;
       if (match) {
         const fullText = text;
-        // 이메일 조건 파싱: "이메일 있는", "공개 이메일", "연락 가능한" 등
-        requireEmail = /이메일\s*있는|공개\s*이메일|연락\s*가능한|메일\s*있는|이메일.*만/.test(fullText);
+        // 이메일 조건 파싱: 기본 true, "이메일 없어도/상관없이/전부" 등이 있으면 false
+        if (/이메일\s*없어도|이메일\s*상관없|전부|모두|이메일\s*무관/.test(fullText)) {
+          requireEmail = false;
+        }
         // 키워드 추출 (상품명 우선 → 카테고리 우선 → 일반 한글 추출)
         const productKws = ['옥수수','복숭아','사과','배','감','딸기','수박','참외','토마토','고구마','감자','배추','김치','떡','한과','꿀','잼','과일','채소','농산물','캠핑','요리','먹방','집밥','간식','육아','가족','제철','대학찰옥수수','괴산'];
         const productMatch = productKws.find(k => fullText.includes(k));
@@ -4095,7 +4097,7 @@ export default function JarvisApp() {
         else if (fullText.includes('블로거') || fullText.includes('네이버') || fullText.includes('Naver')) platform = 'naver';
         // 수량 추출
         const numMatch = fullText.match(/(\d+)\s*명/);
-        if (numMatch) count = Math.min(parseInt(numMatch[1]), 30);
+        if (numMatch) count = Math.min(parseInt(numMatch[1]), 50);
       }
 
       setOutreachVisible(true);
@@ -4107,11 +4109,13 @@ export default function JarvisApp() {
 
       try {
         // 카테고리 기반 수집: requireEmail을 API에 전달하여 서버에서 필터링
-        const requestCount = Math.min(count, 30);
+        const requestCount = Math.min(count, 50);
+        // Append 모드: 기존 후보 ID 전달하여 중복 제거
+        const existingIds = (outreachCandidates || []).map((c: any) => c.channelId || c.channelOrBlogUrl).filter(Boolean);
         const res = await fetch('/api/cloud-proxy', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ taskType: 'outreach-collect', params: { keyword, product: keyword, maxCandidates: requestCount, platform, requireEmail } }),
+          body: JSON.stringify({ taskType: 'outreach-collect', params: { keyword, product: keyword, maxCandidates: requestCount, platform, requireEmail, existingCandidateIds: existingIds } }),
         });
         const data = await res.json();
         setOutreachLoading(false);
@@ -4129,8 +4133,12 @@ export default function JarvisApp() {
           const searchedSegments = data.searchedSegments || [];
           const segmentStats = data.segmentStats || {};
 
-          setOutreachCandidates(finalCandidates);
-          emitMissionLog('✅', 'OUTREACH', `${finalCandidates.length}명 수집 완료${requireEmail ? ` (이메일 확인)` : ''}`, 'success');
+          // Append 모드: 기존 후보에 새 후보 추가 (중복 제거)
+          const prevCandidates = outreachCandidates || [];
+          const mergedCandidates = [...prevCandidates, ...finalCandidates];
+          setOutreachCandidates(mergedCandidates);
+          const telemetryInfo = data.telemetry ? ` | API ${data.telemetry.apiCalls}회, Quota ${data.telemetry.quotaUsed} units` : '';
+          emitMissionLog('✅', 'OUTREACH', `${finalCandidates.length}명 수집 완료 (누적 ${mergedCandidates.length}명)${requireEmail ? ' (이메일 확인)' : ''}${telemetryInfo}`, 'success');
           emitNodeState('jarvis_brain', 'completed', '후보 수집 완료');
 
           const highFit = finalCandidates.filter((c: any) => c.productFitScore >= 60).length;
@@ -4157,10 +4165,11 @@ export default function JarvisApp() {
               `${shortfall}명이 부족합니다.\n\n` +
               `**주요 세그먼트**: ${segmentSummary || '분석 중'}\n` +
               `**저장 위치**: Google Sheets (influencer_candidates 탭) + OUTREACH Workspace\n` +
+              (data.telemetry ? `**Telemetry**: API ${data.telemetry.apiCalls}회 호출, Quota ${data.telemetry.quotaUsed} units 사용, 트렌드 채널 ${data.telemetry.trendChannelsFound}개, 검색 채널 ${data.telemetry.searchChannelsFound}개\n` : '') +
               `우측 패널에서 후보 카드를 확인하세요.`;
           } else if (requireEmail) {
             // 조건 충족
-            reportMsg = `**${keyword} 후보 ${finalCandidates.length}명 수집 완료** (YouTube 공식 카테고리 전체 탐색, 공개 이메일 확인)\n\n` +
+            reportMsg = `**${keyword} 후보 ${finalCandidates.length}명 수집 완료** (4단계 파이프라인, 공개 이메일 확인)\n\n` +
               `| 항목 | 수치 |\n|------|------|\n` +
               `| 공개 이메일 확인 | ${contactable}명 |\n` +
               `| 적합도 60점↑ | ${highFit}명 |\n` +
@@ -4170,6 +4179,7 @@ export default function JarvisApp() {
               `모두 공개 이메일이 확인된 후보입니다.\n\n` +
               `**주요 세그먼트**: ${segmentSummary || '분석 중'}\n` +
               `**저장 위치**: Google Sheets (influencer_candidates 탭) + OUTREACH Workspace\n` +
+              (data.telemetry ? `**Telemetry**: API ${data.telemetry.apiCalls}회, Quota ${data.telemetry.quotaUsed} units, 트렌드 ${data.telemetry.trendChannelsFound}개, 검색 ${data.telemetry.searchChannelsFound}개\n` : '') +
               `우측 패널에서 후보 카드를 확인하세요.`;
           } else {
             // 이메일 조건 없음
@@ -4195,11 +4205,13 @@ export default function JarvisApp() {
             type: 'outreach_collect',
             keyword,
             collectedCount: finalCandidates.length,
+            totalCount: mergedCandidates.length,
             emailCount: contactable,
             shortfall,
-            label: requireEmail ? `이메일 확인 후보 ${finalCandidates.length}명` : `후보 ${finalCandidates.length}명 수집`,
+            label: requireEmail ? `이메일 확인 후보 ${finalCandidates.length}명 (누적 ${mergedCandidates.length}명)` : `후보 ${finalCandidates.length}명 수집 (누적 ${mergedCandidates.length}명)`,
             description: `${keyword} 후보 → Google Sheets 저장 완료`,
             savedTo: 'Google Sheets (influencer_candidates)',
+            telemetry: data.telemetry || null,
             locked: false,
             sourceCommand: text,
           });

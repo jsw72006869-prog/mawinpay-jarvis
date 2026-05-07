@@ -1,0 +1,352 @@
+src/components/ConversationPanel.tsx:50:  const lines = text.replace('[PKG]', '').trim().split('\n').filter(l => l.trim());
+src/components/ConversationPanel.tsx:51:  const title = lines[0]?.replace(/\*\*/g, '') || '스마트스토어';
+src/components/ConversationPanel.tsx:81:          const parts = line.replace(/[-•]/g, '').trim().split(/[:：]/);
+src/components/ConversationPanel.tsx:82:          const label = parts[0]?.replace(/\*\*/g, '').trim() || '';
+src/components/ConversationPanel.tsx:83:          const value = parts.slice(1).join(':').replace(/\*\*/g, '').trim() || '';
+src/components/ConversationPanel.tsx:132:  const sections = text.replace('[LIST]', '').trim().split(/\*\*\[/).filter(Boolean);
+src/components/ConversationPanel.tsx:166:        const sectionTitle = titleEnd > 0 ? section.substring(0, titleEnd).replace(/\*\*/g, '') : '';
+src/components/ConversationPanel.tsx:194:              const cleaned = item.replace(/^-\s*/, '').replace(/\*\*/g, '');
+src/components/ConversationPanel.tsx:316:      const cleaned = line.replace(/^[-•▸]\s*/, '').replace(/\*\*/g, '').trim();
+src/components/InfluencerCards.tsx:291:            @{influencer.email?.split('@')[0] || influencer.name.toLowerCase().replace(/\s/g, '_')}
+src/components/JarvisApp.tsx:8:import { appendInfluencersToSheet, appendEmailLogToSheet, appendNaverResultsToSheet, appendInstagramToSheet, appendLocalBusinessToSheet, generateMockInfluencers, generateEmailLogs, sendEmailsViaResend, buildInfluencerEmailHtml, type NaverCollectedData } from '../lib/google-sheets';
+src/components/JarvisApp.tsx:190:      const saved = localStorage.getItem('jarvis-collected-influencers');
+src/components/JarvisApp.tsx:237:    const saved = localStorage.getItem('jarvis_booking_session');
+src/components/JarvisApp.tsx:280:    const stored = JSON.parse(localStorage.getItem('jarvis_api_keys') || '{}');
+src/components/JarvisApp.tsx:302:      console.log('[JARVIS] localStorage에서 OpenAI 키 로드 성공');
+src/components/JarvisApp.tsx:321:    const stored = JSON.parse(localStorage.getItem('jarvis_naver_creds') || '{}');
+src/components/JarvisApp.tsx:393:  // ── 수집된 인플루언서 localStorage 자동 저장 (중복방지 학습) ──
+src/components/JarvisApp.tsx:396:      localStorage.setItem('jarvis-collected-influencers', JSON.stringify(collectedInfluencers));
+src/components/JarvisApp.tsx:397:    } catch (e) { console.warn('[JARVIS] localStorage 저장 실패:', e); }
+src/components/JarvisApp.tsx:400:  // ── Workspace: Google Sheets 저장/조회 ──
+src/components/JarvisApp.tsx:422:        body: JSON.stringify({ taskType: 'workspace-save', params: { type, data, sourceCommand } }),
+src/components/JarvisApp.tsx:503:    document.body.appendChild(cursor);
+src/components/JarvisApp.tsx:506:    document.body.appendChild(dot);
+src/components/JarvisApp.tsx:656:                name: item.creatorName || item.title.replace(/<[^>]*>/g, '').substring(0, 20),
+src/components/JarvisApp.tsx:673:              appendNaverResultsToSheet(sheetData).then(() => invalidateSheetCache()).catch(err => console.warn('[JARVIS] 네이버 시트 저장 실패:', err));
+src/components/JarvisApp.tsx:736:            `**저장 위치**: Google Sheets (influencer_candidates 탭) + localStorage\n` +
+src/components/JarvisApp.tsx:753:            description: `Google Sheets 저장 완료`,
+src/components/JarvisApp.tsx:754:            savedTo: 'Google Sheets (influencer_candidates)',
+src/components/JarvisApp.tsx:760:          // ── Google Sheets 저장 ──
+src/components/JarvisApp.tsx:761:          appendInfluencersToSheet(allCollected as any).then(r => {
+src/components/JarvisApp.tsx:811:            appendEmailLogToSheet(logs);
+src/components/JarvisApp.tsx:819:          appendEmailLogToSheet(logs);
+src/components/JarvisApp.tsx:979:        appendNaverResultsToSheet(sheetData).then(res => {
+src/components/JarvisApp.tsx:1049:          name: item.name.replace(/<[^>]*>/g, ''),
+src/components/JarvisApp.tsx:1081:        appendLocalBusinessToSheet(sheetRows).then(r => {
+src/components/JarvisApp.tsx:1354:        const naverCreds = JSON.parse(localStorage.getItem('jarvis_naver_creds') || '{}');
+src/components/JarvisApp.tsx:1600:                const refinedMsg = progressMsg.replace(/\[AGENT\]\s*/g, '').replace(/⏳\s*/g, '');
+src/components/JarvisApp.tsx:1814:        const naverCreds = JSON.parse(localStorage.getItem('jarvis_naver_creds') || '{}');
+src/components/JarvisApp.tsx:1819:        // localStorage에서도 읽어서 React state 비동기 문제 우회
+src/components/JarvisApp.tsx:1820:        const savedSessionId = localStorage.getItem('jarvis_booking_session') || '';
+src/components/JarvisApp.tsx:1897:                  localStorage.setItem('jarvis_booking_session', sessionCheckData.sessionId);
+src/components/JarvisApp.tsx:1920:                localStorage.setItem('jarvis_booking_session', loginData.sessionId);
+src/components/JarvisApp.tsx:1951:                    return (vd.choices?.[0]?.message?.content?.trim() || '').replace(/[^0-9]/g, '');
+src/components/JarvisApp.tsx:1966:                    localStorage.setItem('jarvis_booking_session', retryData.sessionId);
+src/components/JarvisApp.tsx:2043:                        localStorage.setItem('jarvis_booking_session', verifyData.sessionId);
+src/components/JarvisApp.tsx:2110:                    s.replace(':', '').includes(requestedTime.replace(':', '').replace('시', '').replace('분', ''))
+src/components/JarvisApp.tsx:2190:                localStorage.setItem('jarvis_booking_session', loginData2.sessionId);
+src/components/JarvisApp.tsx:2213:                  localStorage.setItem('jarvis_booking_session', retryData2.sessionId);
+src/components/JarvisApp.tsx:2703:            const todayPrice = parseInt((marketJson.prices.today || '0').replace(/,/g, ''));
+src/components/JarvisApp.tsx:2704:            const monthPrice = parseInt((marketJson.prices.monthBefore || '0').replace(/,/g, ''));
+src/components/JarvisApp.tsx:2705:            const yearPrice = parseInt((marketJson.prices.yearBefore || '0').replace(/,/g, ''));
+src/components/JarvisApp.tsx:2711:            const avgParsed = parseInt((marketJson.prices.average || '0').replace(/,/g, ''));
+src/components/JarvisApp.tsx:2829:        emitNodeData('sheets', {
+src/components/JarvisApp.tsx:3436:            name: item.bloggername?.replace(/<[^>]*>/g, '') || '',
+src/components/JarvisApp.tsx:3479:        // 새 수집 데이터를 기존에 추가 (누적 저장 + localStorage 자동 저장)
+src/components/JarvisApp.tsx:3486:          appendInfluencersToSheet(collected as any).then(r => {
+src/components/JarvisApp.tsx:3536:          `**저장 위치**: Google Sheets (influencer_candidates 탭) + localStorage`, true);
+src/components/JarvisApp.tsx:3550:            description: `Google Sheets 저장 완료`,
+src/components/JarvisApp.tsx:3551:            savedTo: 'Google Sheets (influencer_candidates)',
+src/components/JarvisApp.tsx:3807:      resolve(transcript.replace(/\s/g, '').trim());
+src/components/JarvisApp.tsx:3817:      resolve(transcript.replace(/\s/g, '').trim());
+src/components/JarvisApp.tsx:3887:      resolve(text.replace(/\s/g, '').trim());
+src/components/JarvisApp.tsx:3996:              body: JSON.stringify({ task: 'workspace-save', record: { type: 'order_sheet', title: `TEST ${tmplName} ${prodName}발주서`, content: `더미 ${testOrderData.orderCount}건, dry-run`, timestamp: new Date().toISOString() } }),
+src/components/JarvisApp.tsx:4035:              body: JSON.stringify({ task: 'workspace-save', record: { type: 'settlement', title: `TEST ${prodName}정산서`, content: `더미 데이터, dry-run, 원가 확인됨`, timestamp: new Date().toISOString() } }),
+src/components/JarvisApp.tsx:4085:          if (compoundMatch) keyword = compoundMatch[1].replace(/\s+/g, ' ');
+src/components/JarvisApp.tsx:4159:              `**저장 위치**: Google Sheets (influencer_candidates 탭) + OUTREACH Workspace\n` +
+src/components/JarvisApp.tsx:4172:              `**저장 위치**: Google Sheets (influencer_candidates 탭) + OUTREACH Workspace\n` +
+src/components/JarvisApp.tsx:4183:              `**저장 위치**: Google Sheets (influencer_candidates 탭) + OUTREACH Workspace\n` +
+src/components/JarvisApp.tsx:4201:            description: `${keyword} 후보 → Google Sheets 저장 완료`,
+src/components/JarvisApp.tsx:4202:            savedTo: 'Google Sheets (influencer_candidates)',
+src/components/JarvisApp.tsx:4208:          // ── Google Sheets 자동 저장 ──
+src/components/JarvisApp.tsx:4216:                emitMissionLog('💾', 'OUTREACH', `Google Sheets 저장 완료 (${saveResult.saved || finalCandidates.length}건)`, 'success');
+src/components/JarvisApp.tsx:4219:              emitMissionLog('⚠️', 'OUTREACH', 'Google Sheets 저장 실패 (로컬 보관 중)', 'warning');
+src/components/JarvisApp.tsx:4251:            addMessage('jarvis', `Google Sheets에서 ${data.candidates.length}명의 후보를 불러왔습니다.`, true);
+src/components/JarvisApp.tsx:4435:                task: 'workspace-save',
+src/components/JarvisApp.tsx:4505:          addMessage('jarvis', `📊 최근 가격 판단 기록:\n\n${summary}\n\n상세 내용은 Google Sheets에서 확인하세요.`, true);
+src/components/JarvisApp.tsx:4653:          localStorage.setItem('jarvis_booking_session', result.sessionId);
+src/components/JarvisApp.tsx:5845:                              localStorage.setItem('jarvis_booking_session', saveData.sessionId);
+src/components/JarvisApp.tsx:5867:                          localStorage.setItem('jarvis_booking_session', result.sessionId);
+src/components/JarvisApp.tsx:5929:                          localStorage.setItem('jarvis_booking_session', data.sessionId);
+src/components/JarvisApp.tsx:6050:                    localStorage.setItem('jarvis_api_keys', JSON.stringify(settingsForm));
+src/components/JarvisApp.tsx:6053:      }             localStorage.setItem('jarvis_naver_creds', JSON.stringify({
+src/components/JarvisApp.tsx:6293:                  const res = await appendNaverResultsToSheet(sheetData);
+src/components/JarvisApp.tsx:6311:                      `"${r.title.replace(/"/g, '""')}"`,
+src/components/JarvisApp.tsx:6314:                      `"${r.description.replace(/"/g, '""')}"`,
+src/components/JarvisApp.tsx:6471:                          resolve(val.replace(/\s/g, '').trim());
+src/components/JarvisApp.tsx:6501:                        resolve(val.replace(/\s/g, '').trim());
+src/components/JarvisApp.tsx:7025:              emitMissionLog('📥', 'OUTREACH', `${candidates.length}명 Google Sheets 저장 완료`, 'success');
+src/components/JarvisApp.tsx:7026:              addMessage('jarvis', `✅ ${candidates.length}명의 후보를 Google Sheets에 저장했습니다.`, true);
+src/components/JarvisOrb.tsx:86:      outerGlow.addColorStop(0, colors.glow.replace('0.6', '0.12').replace('0.8', '0.15').replace('0.9', '0.18'));
+src/components/JarvisOrb.tsx:151:      glowGrad.addColorStop(0, colors.glow.replace('0.6', '0.4').replace('0.8', '0.5').replace('0.9', '0.6'));
+src/components/JarvisOrb.tsx:152:      glowGrad.addColorStop(0.5, colors.glow.replace('0.6', '0.15').replace('0.8', '0.2').replace('0.9', '0.25'));
+src/components/LiveBrowserViewer.tsx:39:  const CLOUD_WS_URL = wsUrl || cloudUrl.replace('http://', 'ws://').replace('https://', 'wss://') + '/ws';
+src/components/LocalBusinessCards.tsx:207:                {biz.description.replace(/<[^>]*>/g, '').slice(0, 50)}{biz.description.length > 50 ? '...' : ''}
+src/components/LocalBusinessCards.tsx:220:                  {(biz.roadAddress || biz.address || '').replace(/<[^>]*>/g, '').slice(0, 55)}
+src/components/ManusStrategyDashboard.tsx:103:    const prompt = customPrompt || strategy.examplePrompt.replace(/"/g, '');
+src/components/NeuralMissionMap.tsx:76:  { id: 'sheets',       label: 'SHEETS',        sublabel: 'Google Sheets',      icon: '📋', state: 'idle', detail: 'Data warehouse ready',       x: 16,  y: -20,  z: -3,  baseColor: T.goldLight },
+src/components/NeuralMissionMap.tsx:88:  ['jarvis_brain', 'instagram'], ['jarvis_brain', 'email'], ['jarvis_brain', 'sheets'],
+src/components/NeuralMissionMap.tsx:91:  ['sheets', 'email'],
+src/components/NeuralMissionMap.tsx:95:  ['market_intel', 'sheets'], ['influencer', 'youtube'], ['influencer', 'email'],
+src/components/NeuralMissionMap.tsx:306:    const sequence = ['smartstore', 'sheets', 'youtube', 'naver', 'instagram', 'email', 'manus_agent'];
+src/components/NeuralMissionMap.tsx:376:    // 초기 로드 시 localStorage에서 노드 데이터 복원
+src/components/NeuralMissionMap.tsx:378:      const stored = JSON.parse(localStorage.getItem('jarvis-node-data') || '{}');
+src/components/ParticleBackground.tsx:168:          ctx.fillStyle = p.color.replace(')', ',0.08)').replace('rgb', 'rgba');
+src/components/PlatformDataCards.tsx:33:  { id: 'sheets',       label: 'SHEETS', icon: '📋', primary: '#E8D5A3', secondary: '#C8A96E', glow: 'rgba(232,213,163,0.6)', bg: 'linear-gradient(160deg, #0a0800 0%, #1a1200 100%)' },
+src/components/PlatformDataCards_Enhanced.tsx:36:  { id: 'sheets',       label: 'SHEETS', icon: '📋', primary: '#E8D5A3', secondary: '#C8A96E', glow: 'rgba(232,213,163,0.6)', bg: 'linear-gradient(160deg, #0a0800 0%, #1a1200 100%)' },
+src/components/SpeechEngine.tsx:47:  for (const [pattern, replacement] of corrections) {
+src/components/SpeechEngine.tsx:48:    result = result.replace(pattern, replacement);
+src/components/SpeechEngine.tsx:113:      formData.append('file', audioBlob, 'audio.webm');
+src/components/SpeechEngine.tsx:114:      formData.append('model', 'whisper-1');
+src/components/SpeechEngine.tsx:115:      formData.append('language', 'ko');
+src/components/SpeechEngine.tsx:116:      formData.append('response_format', 'json');
+src/components/SpeechEngine.tsx:117:      formData.append('temperature', '0');
+src/components/SpeechEngine.tsx:119:      formData.append('prompt', '자비스, 대기해, 수집해, 검색해, 보내줘, 찾아줘, 저장해, 시작해, 중단해, 확인해, 유튜버, 블로거, 인플루언서, 인스타그램, 네이버, 이메일, 팔로워, 맛집, 뷰티, 패션, 여행, 협업, 마케팅, 수집, 발송, 목록, 시트, 자동화, 날씨, 대구, 서울, 부산');
+src/components/SpeechEngine.tsx:381:  return localStorage.getItem(VOICE_STORAGE_KEY) || DEFAULT_VOICE_ID;
+src/components/SpeechEngine.tsx:385:  localStorage.setItem(VOICE_STORAGE_KEY, voiceId);
+src/components/ActionCard.tsx:147:      { id: 'save_sheets', label: 'Google Sheets 저장', icon: '💾', mode: 'observe', command: '후보 시트에 저장해줘' },
+src/components/ActionCard.tsx:616:              Google Sheets에 저장
+src/components/ActionCard.tsx:658:    const labelNorm = action.label.replace(/\s/g, '').toLowerCase();
+src/components/ActionCard.tsx:659:    if (normalized.replace(/\s/g, '').includes(labelNorm)) return action.command;
+src/components/ActionCard.tsx:744:      { id: 'waiting', label: 'Google Sheets 저장 대기 중', status: 'active' },
+src/components/ActionCard.tsx:754:      { id: 'save', label: 'Google Sheets 저장 완료', status: 'completed', timestamp: now },
+src/components/FileWorkspacePanel.tsx:191:        <span style={{ color: '#555', fontSize: 10 }}>Google Sheets 연동</span>
+src/components/FileWorkspacePanel.tsx:193:          href="https://docs.google.com/spreadsheets/d/1RHJikwOZHS-7cDTZeNO9MzX_gD4dY717UiOTFu2t040/edit"
+src/components/InfluencerOutreachPanel.tsx:244:            }}>📥 Google Sheets 저장</button>
+src/components/MarketPricePanel.tsx:360:                  ✓ Google Sheets에 자동 저장됨
+src/components/JarvisApp.tsx_fix:16:        emitNodeData('sheets', {
+src/lib/google-sheets.ts:1:// Google Sheets 자동 입력 모듈 (서비스 계정 방식 - Vercel API 경유)
+src/lib/google-sheets.ts:3:// API 엔드포인트: /api/sheets-save
+src/lib/google-sheets.ts:56:// ── Vercel API 경유 Google Sheets 저장 ──
+src/lib/google-sheets.ts:62:      body: JSON.stringify({ endpoint: 'sheets-save', params: { type, data } }),
+src/lib/google-sheets.ts:79:export async function appendInfluencersToSheet(
+src/lib/google-sheets.ts:115:export async function appendEmailLogToSheet(
+src/lib/google-sheets.ts:125:export async function appendNaverResultsToSheet(
+src/lib/google-sheets.ts:162:export async function appendLocalBusinessToSheet(
+src/lib/google-sheets.ts:170:export async function appendInstagramToSheet(
+src/lib/jarvis-brain-openai.ts.bak:47:  try { return JSON.parse(localStorage.getItem(MEMORY_KEY) || '{}'); } catch { return {}; }
+src/lib/jarvis-brain-openai.ts.bak:52:  localStorage.setItem(MEMORY_KEY, JSON.stringify(m));
+src/lib/jarvis-brain-openai.ts.bak:54:export function clearMemory() { localStorage.removeItem(MEMORY_KEY); }
+src/lib/jarvis-brain-openai.ts.bak:63:  return text.trim().slice(0, 30).toLowerCase().replace(/\s+/g, ' ');
+src/lib/jarvis-brain-openai.ts.bak:651:    const res = await fetch('/api/sheets-read');
+src/lib/jarvis-brain-openai.ts.bak:1214:  const schedules: ScheduledTask[] = JSON.parse(localStorage.getItem('jarvis_schedules') || '[]');
+src/lib/jarvis-brain-openai.ts.bak:1222:  localStorage.setItem('jarvis_schedules', JSON.stringify(schedules));
+src/lib/jarvis-brain-openai.ts.bak:1228:  return JSON.parse(localStorage.getItem('jarvis_schedules') || '[]');
+src/lib/jarvis-brain-openai.ts.bak:1316:    const keyword = text.replace(/검색|해줘|해주세요/g, '').trim();
+src/lib/jarvis-brain-openai.ts.bak:1358:      params: { query: text.replace(/해줘|찾아줘|검색해줘/g, '').trim() || text, category: '', display: 30, hours_filter: 'all' },
+src/lib/jarvis-brain.ts:31:  appendInfluencersToSheet,
+src/lib/jarvis-brain.ts:32:  appendEmailLogToSheet,
+src/lib/jarvis-brain.ts:33:  appendNaverResultsToSheet,
+src/lib/jarvis-brain.ts:34:  appendInstagramToSheet,
+src/lib/jarvis-brain.ts:35:  appendLocalBusinessToSheet,
+src/lib/jarvis-brain.ts:37:} from './google-sheets';
+src/lib/jarvis-brain.ts:75:  try { return JSON.parse(localStorage.getItem(MEMORY_KEY) || '{}'); } catch { return {}; }
+src/lib/jarvis-brain.ts:80:  localStorage.setItem(MEMORY_KEY, JSON.stringify(m));
+src/lib/jarvis-brain.ts:82:export function clearMemory() { localStorage.removeItem(MEMORY_KEY); }
+src/lib/jarvis-brain.ts:122:    const response = await fetch('/api/cloud-proxy?endpoint=sheets-read');
+src/lib/jarvis-brain.ts:883:  const schedules: ScheduledTask[] = JSON.parse(localStorage.getItem('jarvis_schedules') || '[]');
+src/lib/jarvis-brain.ts:891:  localStorage.setItem('jarvis_schedules', JSON.stringify(schedules));
+src/lib/jarvis-brain.ts:897:  return JSON.parse(localStorage.getItem('jarvis_schedules') || '[]');
+src/lib/jarvis-brain.ts:1043:    const keyword = text.replace(/검색|해줘|해주세요/g, '').trim();
+src/lib/jarvis-brain.ts:1092:      params: { query: text.replace(/해줘|찾아줘|검색해줘/g, '').trim() || text },
+src/lib/jarvis-memory.ts:29:  let sid = sessionStorage.getItem(STORAGE_KEYS.SESSION_ID);
+src/lib/jarvis-memory.ts:32:    sessionStorage.setItem(STORAGE_KEYS.SESSION_ID, sid);
+src/lib/jarvis-memory.ts:53:    localStorage.setItem(STORAGE_KEYS.CONVERSATION_LOG, JSON.stringify(log));
+src/lib/jarvis-memory.ts:56:    const total = parseInt(localStorage.getItem(STORAGE_KEYS.TOTAL_TURNS) || '0') + 1;
+src/lib/jarvis-memory.ts:57:    localStorage.setItem(STORAGE_KEYS.TOTAL_TURNS, total.toString());
+src/lib/jarvis-memory.ts:66:    return JSON.parse(localStorage.getItem(STORAGE_KEYS.CONVERSATION_LOG) || '[]');
+src/lib/jarvis-memory.ts:98:  const totalTurns = parseInt(localStorage.getItem(STORAGE_KEYS.TOTAL_TURNS) || '0');
+src/lib/jarvis-memory.ts:125:  localStorage.setItem(STORAGE_KEYS.LEARNED_KNOWLEDGE, JSON.stringify(knowledge));
+src/lib/jarvis-memory.ts:132:    return JSON.parse(localStorage.getItem(STORAGE_KEYS.LEARNED_KNOWLEDGE) || '[]');
+src/lib/jarvis-memory.ts:189:    totalTurns: parseInt(localStorage.getItem(STORAGE_KEYS.TOTAL_TURNS) || '0'),
+src/lib/jarvis-memory.ts:198:  localStorage.removeItem(STORAGE_KEYS.CONVERSATION_LOG);
+src/lib/jarvis-memory.ts:199:  localStorage.removeItem(STORAGE_KEYS.LEARNED_KNOWLEDGE);
+src/lib/jarvis-memory.ts:200:  localStorage.removeItem(STORAGE_KEYS.TOTAL_TURNS);
+src/lib/jarvis-memory.ts:201:  localStorage.removeItem('jarvis_memory'); // 기존 장기 메모리도 초기화
+src/lib/jarvis-memory.ts:216:    const stored = JSON.parse(localStorage.getItem(API_KEY_STORAGE) || '{}');
+src/lib/jarvis-memory.ts:220:      elevenLabsVoiceId: stored.elevenLabsVoiceId || localStorage.getItem('jarvis_voice_id') || 'pNInz6obpgDQGcFmaJgB',
+src/lib/jarvis-memory.ts:230:  localStorage.setItem(API_KEY_STORAGE, JSON.stringify(updated));
+src/lib/jarvis-memory.ts:233:    localStorage.setItem('jarvis_voice_id', keys.elevenLabsVoiceId);
+src/lib/jarvis-memory.ts:239:// 서버 동기화 — localStorage + 서버 이중 저장
+src/lib/jarvis-memory.ts:248:async function appendToServer(entry: ConversationEntry): Promise<void> {
+src/lib/jarvis-memory.ts:253:      body: JSON.stringify({ action: 'append', entry }),
+src/lib/jarvis-memory.ts:315:        localStorage.setItem(STORAGE_KEYS.CONVERSATION_LOG, JSON.stringify(serverConvos));
+src/lib/jarvis-memory.ts:319:        localStorage.setItem(STORAGE_KEYS.LEARNED_KNOWLEDGE, JSON.stringify(serverKnowledge));
+src/lib/jarvis-memory.ts:346:  appendToServer(entry);
+src/lib/jarvis-telemetry.ts:57:  'morning_briefing':         { nodes: ['smartstore', 'email', 'sheets', 'youtube'], speed: 'normal', icon: '☀️' },
+src/lib/jarvis-telemetry.ts:65:  'read_google_sheet':        { nodes: ['sheets'],                    speed: 'slow',    icon: '📋' },
+src/lib/jarvis-telemetry.ts:66:  'save_to_google_sheet':     { nodes: ['sheets'],                    speed: 'normal',  icon: '💾' },
+src/lib/jarvis-telemetry.ts:75:  'workspace_save':            { nodes: ['sheets'],                    speed: 'normal',  icon: '💾' },
+src/lib/jarvis-telemetry.ts:76:  'workspace_query':           { nodes: ['sheets'],                    speed: 'slow',    icon: '📂' },
+src/lib/jarvis-telemetry.ts:78:  'outreach_save':             { nodes: ['influencer', 'sheets'],      speed: 'normal',  icon: '📥' },
+src/lib/jarvis-telemetry.ts:79:  'market_price_check':        { nodes: ['market_intel', 'sheets'],    speed: 'normal',  icon: '📊' },
+src/lib/jarvis-telemetry.ts:81:  'kamis_price':               { nodes: ['market_intel', 'sheets'],    speed: 'normal',  icon: '🌾' },
+src/lib/jarvis-telemetry.ts:128:    const stored = JSON.parse(localStorage.getItem('jarvis-node-data') || '{}');
+src/lib/jarvis-telemetry.ts:130:    localStorage.setItem('jarvis-node-data', JSON.stringify(stored));
+src/lib/jarvis-telemetry.ts:161:    const stored = JSON.parse(localStorage.getItem('jarvis-node-data') || '{}');
+src/lib/jarvis-telemetry.ts:163:    localStorage.setItem('jarvis-node-data', JSON.stringify(stored));
+api/_archive/_telegram.js:56:    form.append('chat_id', chat);
+api/_archive/_telegram.js:57:    form.append('caption', caption);
+api/_archive/_telegram.js:58:    form.append('document', new Blob([fileBuffer]), fileName);
+api/_archive/instagram-search.js:18:  return str.replace(/<[^>]*>/g, '').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&#39;/g, "'").trim();
+api/_archive/instagram-search.js:50:          const username = match[1].replace(/\/$/, '').toLowerCase();
+api/_archive/market-intelligence.js:179:      price: parseInt(String(i.price).replace(/,/g, ''), 10),
+api/_archive/morning-briefing-v2.js:18:// ── Google Sheets 읽기 ──
+api/_archive/morning-briefing-v2.js:25:    scope: 'https://www.googleapis.com/auth/spreadsheets.readonly',
+api/_archive/morning-briefing-v2.js:41:  if (!tokenData.access_token) throw new Error('Google Sheets 인증 실패');
+api/_archive/morning-briefing-v2.js:48:    `https://sheets.googleapis.com/v4/spreadsheets/${SPREADSHEET_ID}/values/${range}`,
+api/_archive/morning-briefing-v2.js:107:    params.append('from', formatNaverDate(currentFrom));
+api/_archive/morning-briefing-v2.js:108:    params.append('to', formatNaverDate(currentTo));
+api/_archive/morning-briefing-v2.js:109:    params.append('rangeType', 'PAYED_DATETIME');
+api/_archive/morning-briefing-v2.js:110:    params.append('pageSize', '300');
+api/_archive/morning-briefing-v2.js:111:    params.append('page', '1');
+api/_archive/morning-briefing-v2.js:112:    statuses.forEach(s => params.append('productOrderStatuses', s));
+api/_archive/morning-briefing-v2.js:264:    // 2. Google Sheets 인플루언서 현황
+api/_archive/morning-briefing.js:7: * 2. Google Sheets: 인플루언서 누적 현황
+api/_archive/morning-briefing.js:13:// ── Google Sheets 읽기 ──
+api/_archive/morning-briefing.js:23:    scope: 'https://www.googleapis.com/auth/spreadsheets.readonly',
+api/_archive/morning-briefing.js:38:  if (!tokenData.access_token) throw new Error('Google Sheets 인증 실패');
+api/_archive/morning-briefing.js:45:    `https://sheets.googleapis.com/v4/spreadsheets/${SPREADSHEET_ID}/values/${range}`,
+api/_archive/morning-briefing.js:89:    params.append('from', formatNaverDate(currentFrom));
+api/_archive/morning-briefing.js:90:    params.append('to', formatNaverDate(currentTo));
+api/_archive/morning-briefing.js:91:    params.append('rangeType', 'PAYED_DATETIME');
+api/_archive/morning-briefing.js:92:    params.append('pageSize', '300');
+api/_archive/morning-briefing.js:93:    params.append('page', '1');
+api/_archive/morning-briefing.js:94:    statuses.forEach(s => params.append('productOrderStatuses', s));
+api/_archive/morning-briefing.js:244:    // 2. Google Sheets 인플루언서 현황
+api/_archive/naver-local-search.js:63:    const stripHtml = (str) => str ? str.replace(/<[^>]*>/g, '').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"') : '';
+api/_archive/naver-place-hours.js:47:    const stripHtml = (str) => str.replace(/<[^>]*>/g, '').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&#39;/g, "'").trim();
+api/_archive/rank-tracker.js:10: * Google Sheets 또는 로컬 JSON에 시계열 데이터를 기록하여
+api/_archive/rank-tracker.js:175:      // 이전 기록과 비교 (localStorage 대신 쿼리 파라미터로 이전 순위 전달)
+api/_archive/sheets-read.js:1:// api/sheets-read.js
+api/_archive/sheets-read.js:10:// Google Sheets API 토큰 발급 (서비스 계정)
+api/_archive/sheets-read.js:17:    scope: 'https://www.googleapis.com/auth/spreadsheets.readonly',
+api/_archive/sheets-read.js:40:    `https://sheets.googleapis.com/v4/spreadsheets/${SPREADSHEET_ID}/values/${range}`,
+api/_archive/sheets-read.js:189:    console.error('[sheets-read] 오류:', error);
+api/_archive/sheets-read.js:190:    return res.status(500).json({ error: 'Failed to read from Google Sheets', message: error.message });
+api/_archive/sheets-save.js:54:// ── Google Sheets API 토큰 발급 (서비스 계정) ──
+api/_archive/sheets-save.js:61:        scope: 'https://www.googleapis.com/auth/spreadsheets',
+api/_archive/sheets-save.js:87:    const infoRes = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${SPREADSHEET_ID}`, { headers: { Authorization: `Bearer ${token}` } });
+api/_archive/sheets-save.js:89:    const sheets = info.sheets || [];
+api/_archive/sheets-save.js:90:    const exists = sheets.some((s) => s.properties?.title === sheetName);
+api/_archive/sheets-save.js:92:        await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${SPREADSHEET_ID}:batchUpdate`, {
+api/_archive/sheets-save.js:99:    const headerRes = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${SPREADSHEET_ID}/values/${encodeURIComponent(sheetRange(sheetName, 'A1'))}`, { headers: { Authorization: `Bearer ${token}` } });
+api/_archive/sheets-save.js:103:        await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${SPREADSHEET_ID}/values/${encodeURIComponent(sheetRange(sheetName, `A1:${colLetter}1`))}?valueInputOption=RAW`, {
+api/_archive/sheets-save.js:112:    const res = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${SPREADSHEET_ID}/values/${encodeURIComponent(sheetRange(sheetName, 'A:A'))}`, { headers: { Authorization: `Bearer ${token}` } });
+api/_archive/sheets-save.js:116:// ── 행 추가 (append API 사용 - 가장 안정적) ──
+api/_archive/sheets-save.js:117:async function appendRows(token, sheetName, rows) {
+api/_archive/sheets-save.js:119:    const res = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${SPREADSHEET_ID}/values/${range}:append?valueInputOption=USER_ENTERED&insertDataOption=INSERT_ROWS`, {
+api/_archive/sheets-save.js:126:        throw new Error(`Sheets append error: ${JSON.stringify(result.error)}`);
+api/_archive/sheets-save.js:176:                await appendRows(token, INFLUENCER_SHEET, rows);
+api/_archive/sheets-save.js:199:            await appendRows(token, INFLUENCER_SHEET, rows);
+api/_archive/sheets-save.js:226:            await appendRows(token, INFLUENCER_SHEET, rows);
+api/_archive/sheets-save.js:248:            await appendRows(token, NAVER_SHEET, rows);
+api/_archive/sheets-save.js:265:                (item.description || '').replace(/<[^>]*>/g, '').substring(0, 200),
+api/_archive/sheets-save.js:269:            await appendRows(token, LOCAL_SHEET, rows);
+api/_archive/sheets-save.js:276:        return res.status(500).json({ error: 'Failed to save to Google Sheets', message: error.message });
+api/_archive/smartstore-automation.js:76:      params.append('from', formatNaverDate(currentFrom));
+api/_archive/smartstore-automation.js:77:      params.append('to', formatNaverDate(currentTo));
+api/_archive/smartstore-automation.js:78:      params.append('rangeType', 'PAYED_DATETIME');
+api/_archive/smartstore-automation.js:79:      params.append('pageSize', '300');
+api/_archive/smartstore-automation.js:80:      params.append('page', '1');
+api/_archive/smartstore-automation.js:83:        params.append('productOrderStatuses', s);
+api/_archive/smartstore-automation.js:87:        params.append('placeOrderStatusType', placeOrderStatusType);
+api/_archive/smartstore-orders.js:56:      params.append('from', formatNaverDate(currentFrom));
+api/_archive/smartstore-orders.js:57:      params.append('to', formatNaverDate(currentTo));
+api/_archive/smartstore-orders.js:58:      params.append('rangeType', 'PAYED_DATETIME');
+api/_archive/smartstore-orders.js:59:      params.append('pageSize', String(Math.min(parseInt(size), 300)));
+api/_archive/smartstore-orders.js:60:      params.append('page', '1');
+api/_archive/smartstore-orders.js:63:        params.append('productOrderStatuses', s);
+api/_archive/smartstore-process-order.js:98:    form.append('chat_id', TG_CHAT_ID);
+api/_archive/smartstore-process-order.js:99:    form.append('caption', caption || '');
+api/_archive/smartstore-process-order.js:100:    form.append('document', fileBuffer, { filename });
+api/_archive/smartstore-process-order.js:365:    const ws = wb.worksheets[0];
+api/_archive/smartstore-products.js:32:      params.append('sellerManagementCode', '');
+api/_archive/youtube-analyze.js:94:      text: item.snippet.topLevelComment.snippet.textDisplay.replace(/<[^>]*>/g, '').slice(0, 200),
+api/_archive/youtube-search.js:17:            instagram = m[1].replace(/\/$/, '');
+api/_archive/youtube-search.js:30:            tiktok = m[1].replace(/\/$/, '');
+api/_archive/youtube-search.js:61:            const username = m.replace('instagram.com/', '').replace(/\/$/, '');
+api/_archive/youtube-search.js:161:                    customUrl: snippet.customUrl ? `https://youtube.com/@${snippet.customUrl.replace('@', '')}` : `https://youtube.com/channel/${ch.id}`,
+api/browser-agent.js:226:      const yyyymmdd = dateStr.replace(/-/g, '');
+api/browser-agent.js:299:    date, time, name, phone: phone ? phone.replace(/(\d{3})\d{4}(\d{4})/, '$1****$2') : '미입력', memo,
+api/cloud-proxy.ts:204:    const fromStr = from.toISOString().replace(/\.\d{3}Z$/, '.000Z');
+api/cloud-proxy.ts:205:    const toStr = to.toISOString().replace(/\.\d{3}Z$/, '.000Z');
+api/cloud-proxy.ts:337:    const fromUtc24 = from24h.toISOString().replace(/\.\d{3}Z$/, '.000Z');
+api/cloud-proxy.ts:338:    const toUtc = now.toISOString().replace(/\.\d{3}Z$/, '.000Z');
+api/cloud-proxy.ts:573:    params.append('from', formatNaverDate(from));
+api/cloud-proxy.ts:574:    params.append('to', formatNaverDate(to));
+api/cloud-proxy.ts:575:    params.append('rangeType', 'PAYED_DATETIME');
+api/cloud-proxy.ts:576:    params.append('pageSize', '300');
+api/cloud-proxy.ts:577:    params.append('page', '1');
+api/cloud-proxy.ts:578:    statuses.forEach(s => params.append('productOrderStatuses', s));
+api/cloud-proxy.ts:700:    sheets: (WORKSPACE_SHEET_ID && GOOGLE_SHEETS_CREDENTIALS) ? 'NORMAL' : 'ERROR',
+api/cloud-proxy.ts:879:  const instagram = igMatch ? igMatch[1].replace(/\/$/, '') : '';
+api/cloud-proxy.ts:1006:// ── WORKSPACE: Google Sheets Storage Bridge ──
+api/cloud-proxy.ts:1018:    scope: 'https://www.googleapis.com/auth/spreadsheets',
+api/cloud-proxy.ts:1033:  if (!tokenData.access_token) throw new Error('Google Sheets token failed');
+api/cloud-proxy.ts:1037:async function sheetsAppend(tab: string, values: string[][]): Promise<any> {
+api/cloud-proxy.ts:1040:  const url = `https://sheets.googleapis.com/v4/spreadsheets/${WORKSPACE_SHEET_ID}/values/${range}:append?valueInputOption=RAW&insertDataOption=INSERT_ROWS`;
+api/cloud-proxy.ts:1047:  if (!res.ok) throw new Error(`Sheets append error (${res.status}): ${JSON.stringify(data.error?.message || data)}`);
+api/cloud-proxy.ts:1051:async function sheetsRead(tab: string, range?: string): Promise<any> {
+api/cloud-proxy.ts:1054:  const url = `https://sheets.googleapis.com/v4/spreadsheets/${WORKSPACE_SHEET_ID}/values/${encodeURIComponent(r)}`;
+api/cloud-proxy.ts:1073:  const url = `https://sheets.googleapis.com/v4/spreadsheets/${WORKSPACE_SHEET_ID}:batchUpdate`;
+api/cloud-proxy.ts:1086:    const result = await sheetsRead(tab, `${tab}!A1:A1`);
+api/cloud-proxy.ts:1090:      const url = `https://sheets.googleapis.com/v4/spreadsheets/${WORKSPACE_SHEET_ID}/values/${range}?valueInputOption=RAW`;
+api/cloud-proxy.ts:1103:      const url = `https://sheets.googleapis.com/v4/spreadsheets/${WORKSPACE_SHEET_ID}/values/${range}?valueInputOption=RAW`;
+api/cloud-proxy.ts:1123:    return { success: false, error: 'Google Sheets not configured' };
+api/cloud-proxy.ts:1141:      await sheetsAppend('briefings', [[
+api/cloud-proxy.ts:1149:      await sheetsAppend('creative_scripts', [[
+api/cloud-proxy.ts:1156:      await sheetsAppend('growth_campaigns', [[
+api/cloud-proxy.ts:1162:      await sheetsAppend('purchase_order_drafts', [[
+api/cloud-proxy.ts:1169:      await sheetsAppend('market_price_checks', [[
+api/cloud-proxy.ts:1181:      await sheetsAppend('influencer_candidates', [[
+api/cloud-proxy.ts:1197:    await sheetsAppend('jarvis_records', [[
+api/cloud-proxy.ts:1217:    return { success: false, error: 'Google Sheets not configured' };
+api/cloud-proxy.ts:1225:    const result = await sheetsRead(tab);
+api/cloud-proxy.ts:1247:    return { success: false, error: 'Google Sheets not configured' };
+api/cloud-proxy.ts:1250:    const result = await sheetsRead('jarvis_records');
+api/cloud-proxy.ts:1581:        const cleanTitle = (item.title || '').replace(/<[^>]*>/g, '');
+api/cloud-proxy.ts:1582:        const cleanDesc = (item.description || '').replace(/<[^>]*>/g, '').substring(0, 100);
+api/cloud-proxy.ts:1675:    return { success: false, error: 'Google Sheets not configured' };
+api/cloud-proxy.ts:1681:      await sheetsAppend('influencer_candidates', [[
+api/cloud-proxy.ts:1696:    return { success: true, saved, total: candidates.length, message: `${saved}명의 후보를 Google Sheets에 저장했습니다.` };
+api/cloud-proxy.ts:1704:    return { success: false, error: 'Google Sheets not configured' };
+api/cloud-proxy.ts:1708:    const result = await sheetsRead('influencer_candidates');
+api/cloud-proxy.ts:1862:  // 3. Google Sheets 저장
+api/cloud-proxy.ts:1869:      await sheetsAppend('market_price_checks', [[
+api/cloud-proxy.ts:1912:    return { success: false, error: 'Google Sheets not configured' };
+api/cloud-proxy.ts:1916:    const result = await sheetsRead('market_price_checks');
+api/cloud-proxy.ts:2052:        const t = parseFloat((best.dpr1 || '0').replace(/,/g, ''));
+api/cloud-proxy.ts:2053:        const m = parseFloat((best.dpr5 || '0').replace(/,/g, ''));
+api/cloud-proxy.ts:2059:        const t = parseFloat((best.dpr1 || '0').replace(/,/g, ''));
+api/cloud-proxy.ts:2060:        const m = parseFloat((best.dpr5 || '0').replace(/,/g, ''));
+api/cloud-proxy.ts:2066:    // Google Sheets 저장
+api/cloud-proxy.ts:2071:        await sheetsAppend('kamis_price_log', [[
+api/cloud-proxy.ts:2319:      // ── Workspace: Google Sheets 저장/조회 ──
+api/cloud-proxy.ts:2320:      if (resolvedTask === 'workspace-save') {
+api/cloud-proxy.ts:2714:    const ws = wb.worksheets[0];
+api/cron/market-daily.js:108:          price: parseInt(String(i.price).replace(/,/g, ''), 10),
+api/influencer-agent.js:28:  const instagram = igMatch ? igMatch[1].replace(/\/$/, '') : '';
+api/influencer-agent.js:66:    .replace('{{name}}', influencer.name)
+api/influencer-agent.js:67:    .replace('{{channel}}', influencer.customUrl || influencer.profileUrl)
+api/influencer-agent.js:68:    .replace('{{subscribers}}', influencer.subscribersFormatted)
+api/influencer-agent.js:69:    .replace('{{category}}', influencer.category);
+api/influencer-agent.js:216:          customUrl: snippet.customUrl ? `https://youtube.com/@${snippet.customUrl.replace('@', '')}` : '',
+api/memory-sync.ts:6: * - localStorage와 서버 이중 저장으로 데이터 안전성 확보
+api/memory-sync.ts:83:        // 전체 동기화 - localStorage 데이터를 서버에 백업
+api/memory-sync.ts:115:      if (action === 'append') {
+api/memory-sync.ts:129:            body: JSON.stringify({ action: 'append', entry }),
+api/memory-sync.ts:165:      return res.status(400).json({ error: 'Invalid action. Use: sync, append, learn' });
+api/naver-search.js:39:            result.neighborCount = parseInt(neighborMatch[1].replace(/,/g, ''), 10);
+api/naver-search.js:43:            result.dailyVisitors = parseInt(visitorMatch[1].replace(/,/g, ''), 10);
+api/naver-search.js:73:    return str.replace(/<[^>]*>/g, '').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&#39;/g, "'").trim();

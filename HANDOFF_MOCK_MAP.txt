@@ -1,0 +1,61 @@
+src/App.tsx:16:            <Suspense fallback={
+src/components/AgentConsolePanel.tsx:317:                placeholder={captchaMode === 'captcha' ? '캡차 문자 입력...' : 'OTP 번호 입력...'}
+src/components/BookingPanel.tsx:424:                placeholder="보안 문자 입력..."
+src/components/HoloDataPanel.tsx:89:const mockInfluencers = [
+src/components/HoloDataPanel.tsx:148:          if (prev >= mockInfluencers.length) { clearInterval(interval); return prev; }
+src/components/HoloDataPanel.tsx:394:                  {mockInfluencers.slice(0, visibleRows).map((inf, i) => (
+src/components/JarvisApp.tsx:2479:          const fallbackMsg = `죄송합니다 선생님, ${product || '콘텐츠'} 생성 중 오류가 발생했습니다. 다시 시도해 주십시오.`;
+src/components/JarvisApp.tsx:2480:          addMessage('jarvis', fallbackMsg);
+src/components/JarvisApp.tsx:2484:            speak(fallbackMsg, undefined, () => { stopSpeakingLevel(); resolve(); });
+src/components/JarvisApp.tsx:3232:          // SSoT 캐시 저장 (브리핑 fallback용)
+src/components/JarvisApp.tsx:3432:          // Naver Blog fallback
+src/components/JarvisApp.tsx:3699:        const sampleText = `이 목소리는 어때세요, 토니? ${newName} 목소리로 설정되었습니다. 마음에 드시면 계속 사용하겠습니다.`;
+src/components/JarvisApp.tsx:3702:        addMessage('jarvis', sampleText);
+src/components/JarvisApp.tsx:3705:          speak(sampleText, undefined, () => {
+src/components/JarvisApp.tsx:5212:                    placeholder="명령을 입력하세요... (Enter 제출, Esc 취소)"
+src/components/JarvisApp.tsx:5582:                    const sampleText = `안녕하세요, 토니. ${v.name} 목소리로 변경되었습니다.`;
+src/components/JarvisApp.tsx:5583:                    addMessage('jarvis', sampleText);
+src/components/JarvisApp.tsx:5586:                    speak(sampleText, undefined, () => {
+src/components/JarvisApp.tsx:5709:                  placeholder="sk-proj-..."
+src/components/JarvisApp.tsx:5734:                  placeholder="위 키와 동일"
+src/components/JarvisApp.tsx:5755:                  placeholder="여기에 ElevenLabs 키 입력..."
+src/components/JarvisApp.tsx:5778:                    placeholder="네이버 아이디 입력..."
+src/components/JarvisApp.tsx:5797:                    placeholder="네이버 비밀번호 입력..."
+src/components/JarvisApp.tsx:6003:                    placeholder="예약자 이름 입력..."
+src/components/JarvisApp.tsx:6022:                    placeholder="010-0000-0000"
+src/components/JarvisApp.tsx:6153:                    placeholder="제목 (ex: 내 이름)"
+src/components/JarvisApp.tsx:6163:                    placeholder="내용"
+src/components/JarvisApp.tsx:6459:                    placeholder="정답을 입력하세요..."
+src/components/JarvisApp.tsx:6601:                    placeholder="비밀번호 입력..."
+src/components/ManusStrategyDashboard.tsx:280:                  placeholder="직접 명령을 입력하세요 (비워두면 예시 명령 실행)"
+src/components/NeuralMissionMap.tsx:435:            <Suspense fallback={null}>
+src/components/ParticleTextCanvas.tsx:58:  const sampleTextPositions = useCallback((phrase: string) => {
+src/components/ParticleTextCanvas.tsx:123:    const pts = sampleTextPositions(phrase);
+src/components/ParticleTextCanvas.tsx:134:  }, [initSphereTargets, sampleTextPositions]);
+src/components/SpeechEngine.tsx:430:      // fallback: blob 방식
+src/components/MarketPricePanel.tsx:179:              <InputField label="품목명" value={form.productName} onChange={v => handleChange('productName', v)} placeholder="예: 옥수수, 복숭아, 절임배추" />
+src/components/MarketPricePanel.tsx:180:              <InputField label="원물가 (원)" value={String(form.rawMaterialCost || '')} onChange={v => handleChange('rawMaterialCost', v)} placeholder="원물 매입가" type="number" />
+src/components/MarketPricePanel.tsx:181:              <InputField label="현재 판매가 (원)" value={String(form.currentPrice || '')} onChange={v => handleChange('currentPrice', v)} placeholder="스마트스토어 판매가" type="number" />
+src/components/MarketPricePanel.tsx:182:              <InputField label="택배비 (원)" value={String(form.shippingCost || '')} onChange={v => handleChange('shippingCost', v)} placeholder="3000" type="number" />
+src/components/MarketPricePanel.tsx:183:              <InputField label="포장비 (원)" value={String(form.packagingCost || '')} onChange={v => handleChange('packagingCost', v)} placeholder="500" type="number" />
+src/components/MarketPricePanel.tsx:184:              <InputField label="플랫폼 수수료율 (%)" value={String(form.platformFeeRate || '')} onChange={v => handleChange('platformFeeRate', v)} placeholder="5.5" type="number" />
+src/components/MarketPricePanel.tsx:185:              <InputField label="기타 비용 (원)" value={String(form.otherCosts || '')} onChange={v => handleChange('otherCosts', v)} placeholder="0" type="number" />
+src/components/MarketPricePanel.tsx:186:              <InputField label="온라인 경쟁가 (쉼표 구분)" value={form.competitorPrices} onChange={v => handleChange('competitorPrices', v)} placeholder="예: 15900,16500,17000" />
+src/components/MarketPricePanel.tsx:372:function InputField({ label, value, onChange, placeholder, type = 'text' }: {
+src/components/MarketPricePanel.tsx:373:  label: string; value: string; onChange: (v: string) => void; placeholder?: string; type?: string;
+src/components/MarketPricePanel.tsx:382:        placeholder={placeholder}
+src/lib/jarvis-brain.ts:194:8번: fallback → 일반 대화
+src/lib/jarvis-brain.ts:937:  // [B-2] 주문현황/전체현황 → 5개 상태 전체 조회 (GPT fallback에서도 매칭)
+api/_archive/_smartstore-auth.js:41:    console.warn('[smartstore-auth] bcryptjs 없음, HMAC fallback 사용');
+api/_archive/_telegram.js:51:      // Node 18 이하 fallback
+api/browser-agent.js:100:          mode: 'api-fallback',
+api/browser-agent.js:111:          mode: 'api-fallback',
+api/cloud-proxy.ts:362:          sampleKeys: Object.keys(items[0] || {}),
+api/cloud-proxy.ts:2631:    const dummyOrders: OrderItem[] = [
+api/cloud-proxy.ts:2637:    const orderBuffer = await createOrderExcelBuffer(dummyOrders, targetType as 'bam' | 'oksu', targetTemplate as 'logen' | 'lotte');
+api/cloud-proxy.ts:2648:      orderCount: dummyOrders.length,
+api/cloud-proxy.ts:2652:        totalRows: dummyOrders.length,
+api/cloud-proxy.ts:2668:    const dummyQty: Record<string, number> = {};
+api/cloud-proxy.ts:2670:    keys.forEach((k, i) => { dummyQty[k] = i === 0 ? 2 : (i === 1 ? 1 : 0); });
+api/cloud-proxy.ts:2672:    const settlement = await createSettlementBuffer(dummyQty, supplyMap, saleMap, targetType as 'bam' | 'oksu', today);
+api/memory-sync.ts:65:          // fallback

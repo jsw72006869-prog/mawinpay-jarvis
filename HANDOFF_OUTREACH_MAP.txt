@@ -1,0 +1,673 @@
+src/api/manus-naver-booking.ts:49:    const response = await fetch('/api/manus-agent/influencer-discovery', {
+src/api/manus-naver-booking.ts:52:      body: JSON.stringify({ action: 'discover_influencers_automatically', keyword, platforms, limit }),
+src/api/manus-naver-booking.ts:56:    return { success: false, influencers: [] };
+src/components/HoloDataPanel.tsx:16:  type: 'collect' | 'send_email' | 'create_banner' | 'report' | 'booking' | 'smartstore' | 'youtube' | 'influencer_content' | 'manus' | null;
+src/components/HoloDataPanel.tsx:38:  youtube: {
+src/components/HoloDataPanel.tsx:52:  influencer_content: {
+src/components/HoloDataPanel.tsx:59:  collect: {
+src/components/HoloDataPanel.tsx:113:  const config = type ? (PANEL_CONFIG[type as keyof typeof PANEL_CONFIG] || PANEL_CONFIG.collect) : PANEL_CONFIG.collect;
+src/components/HoloDataPanel.tsx:121:    if ((type === 'smartstore' || type === 'booking' || type === 'youtube' || type === 'manus') && actionLogs.length > 0) {
+src/components/HoloDataPanel.tsx:144:    if (type === 'collect') {
+src/components/HoloDataPanel.tsx:173:        width: (type === 'smartstore' || type === 'booking' || type === 'youtube' || type === 'manus') ? 280 : 200,
+src/components/HoloDataPanel.tsx:205:                {(type === 'smartstore' || type === 'booking' || type === 'youtube' || type === 'manus') && (
+src/components/HoloDataPanel.tsx:245:            {(type === 'smartstore' || type === 'booking' || type === 'youtube' || type === 'manus') && (
+src/components/HoloDataPanel.tsx:355:            {type !== 'smartstore' && type !== 'booking' && type !== 'youtube' && (
+src/components/HoloDataPanel.tsx:385:            {/* 수집 결과 테이블 (collect 타입) */}
+src/components/HoloDataPanel.tsx:386:            {type === 'collect' && (
+src/components/HoloDataPanel.tsx:414:            {type !== 'smartstore' && type !== 'youtube' && (
+src/components/HoloDataPanel.tsx:438:            {(type === 'smartstore' || type === 'youtube') && progress >= 100 && (
+src/components/HologramWorkPanel.tsx:38:  'influencer_agent': '인플루언서 스캔',
+src/components/HologramWorkPanel.tsx:45:  'search_youtube': '유튜브 검색',
+src/components/HologramWorkPanel.tsx:54:  influencer: '#9C27B0',
+src/components/HologramWorkPanel.tsx:58:  youtube: '#FF0000',
+src/components/InfluencerCards.tsx:25:  collectedAt?: string;
+src/components/InfluencerCards.tsx:39:  influencers: InfluencerData[];
+src/components/InfluencerCards.tsx:42:  onSendEmail?: (influencers: InfluencerData[]) => void;
+src/components/InfluencerCards.tsx:43:  onAiProposal?: (influencers: InfluencerData[]) => void;
+src/components/InfluencerCards.tsx:52:function getChannelUrl(influencer: InfluencerData): string {
+src/components/InfluencerCards.tsx:53:  if (influencer.channelUrl) return ensureHttps(influencer.channelUrl);
+src/components/InfluencerCards.tsx:54:  if (influencer.profileUrl && influencer.profileUrl.startsWith('http')) return ensureHttps(influencer.profileUrl);
+src/components/InfluencerCards.tsx:55:  if (influencer.channelId) return `https://www.youtube.com/channel/${influencer.channelId}`;
+src/components/InfluencerCards.tsx:56:  if (influencer.profileUrl) return ensureHttps(influencer.profileUrl);
+src/components/InfluencerCards.tsx:57:  return `https://www.youtube.com/results?search_query=${encodeURIComponent(influencer.name)}`;
+src/components/InfluencerCards.tsx:98:    if (platform.includes('youtube')) tags.push('유튜브');
+src/components/InfluencerCards.tsx:106:function HoloCard({ influencer, index, visible, selected, onSelect, onSendEmail }: {
+src/components/InfluencerCards.tsx:107:  influencer: InfluencerData; index: number; visible: boolean;
+src/components/InfluencerCards.tsx:115:  const channelUrl = getChannelUrl(influencer);
+src/components/InfluencerCards.tsx:116:  const followers = formatFollowers(influencer);
+src/components/InfluencerCards.tsx:117:  const engage = getEngageRate(influencer);
+src/components/InfluencerCards.tsx:118:  const score = getScore(influencer);
+src/components/InfluencerCards.tsx:119:  const tags = getCategoryTags(influencer);
+src/components/InfluencerCards.tsx:249:            {influencer.thumbnailUrl && !imgError ? (
+src/components/InfluencerCards.tsx:251:                src={influencer.thumbnailUrl}
+src/components/InfluencerCards.tsx:252:                alt={influencer.name}
+src/components/InfluencerCards.tsx:270:                {influencer.platform?.toLowerCase().includes('youtube') ? '▶' : '👤'}
+src/components/InfluencerCards.tsx:282:            {influencer.name}
+src/components/InfluencerCards.tsx:291:            @{influencer.email?.split('@')[0] || influencer.name.toLowerCase().replace(/\s/g, '_')}
+src/components/InfluencerCards.tsx:353:                if (onSendEmail && influencer.email) onSendEmail([influencer]);
+src/components/InfluencerCards.tsx:354:                else if (influencer.email) window.open(`mailto:${influencer.email}`, '_blank');
+src/components/InfluencerCards.tsx:393:export default function InfluencerCards({ influencers, visible, onClose, onSendEmail, onAiProposal }: InfluencerCardsProps) {
+src/components/InfluencerCards.tsx:407:  }, [visible, influencers]);
+src/components/InfluencerCards.tsx:425:  let filteredList = [...influencers];
+src/components/InfluencerCards.tsx:439:    total: influencers.length,
+src/components/InfluencerCards.tsx:441:    emailCount: influencers.filter(i => i.email && i.email.includes('@')).length,
+src/components/InfluencerCards.tsx:449:      {visible && influencers.length > 0 && (
+src/components/InfluencerCards.tsx:558:                { key: 'youtube', label: 'YOUTUBE', color: '#FF3333' },
+src/components/InfluencerCards.tsx:710:                    influencer={inf}
+src/components/JarvisApp.tsx:4:import { askGPT, parseCommand, generateBannerImage, saveSchedule, saveMemory, searchNaverAPI, searchYouTubeAPI, searchInstagramAPI, invalidateSheetCache, executeManusTask, getManusTaskStatus, sendManusMsg as sendManusMessage, setActiveUIContext, type JarvisState, type JarvisAction, type NaverSearchItem, type YouTubeChannel, type InstagramAccount, initializeGemini, getGeminiClient } from '../lib/jarvis-brain';
+src/components/JarvisApp.tsx:146:  const [outreachVisible, setOutreachVisible] = useState(false);
+src/components/JarvisApp.tsx:147:  const [outreachCandidates, setOutreachCandidates] = useState<InfluencerCandidate[]>([]);
+src/components/JarvisApp.tsx:148:  const [outreachLoading, setOutreachLoading] = useState(false);
+src/components/JarvisApp.tsx:155:    type: 'collect' | 'send_email' | 'create_banner' | 'report' | 'booking' | 'smartstore' | 'youtube' | null;
+src/components/JarvisApp.tsx:161:  const [stats, setStats] = useState({ collected: 247, emailsSent: 183, responseRate: 23.5, contracts: 4 });
+src/components/JarvisApp.tsx:188:  const [collectedInfluencers, setCollectedInfluencers] = useState<InfluencerData[]>(() => {
+src/components/JarvisApp.tsx:190:      const saved = localStorage.getItem('jarvis-collected-influencers');
+src/components/JarvisApp.tsx:194:  const [influencerCardsVisible, setInfluencerCardsVisible] = useState(false);
+src/components/JarvisApp.tsx:195:  const [collectedBusinesses, setCollectedBusinesses] = useState<LocalBusinessData[]>([]);
+src/components/JarvisApp.tsx:396:      localStorage.setItem('jarvis-collected-influencers', JSON.stringify(collectedInfluencers));
+src/components/JarvisApp.tsx:398:  }, [collectedInfluencers]);
+src/components/JarvisApp.tsx:527:    const isWorkingType = action?.type === 'collect' || action?.type === 'send_email' || action?.type === 'create_banner' || action?.type === 'report';
+src/components/JarvisApp.tsx:532:      setDataPanel({ visible: true, type: action.type as 'collect' | 'send_email' | 'create_banner' | 'report', progress: 0, message: action.workingMessage });
+src/components/JarvisApp.tsx:539:      if (action.type === 'collect') {
+src/components/JarvisApp.tsx:545:        const collectedAt = new Date().toLocaleString('ko-KR');
+src/components/JarvisApp.tsx:573:        const collectForPlatform = async (plt: string, cnt: number): Promise<InfluencerData[]> => {
+src/components/JarvisApp.tsx:574:          const isYT = plt.toLowerCase().includes('youtube') || plt.toLowerCase().includes('유튜브');
+src/components/JarvisApp.tsx:579:              console.log(`[JARVIS] YouTube API 수집: ${keyword}, ${cnt}명`);
+src/components/JarvisApp.tsx:580:              emitNodeState('influencer', 'active');
+src/components/JarvisApp.tsx:581:              telemetryFunctionStart('search_youtube', `YouTube 수집: "${keyword}" ${cnt}명`);
+src/components/JarvisApp.tsx:582:              const result = await searchYouTubeAPI(keyword, Math.min(cnt * 3, 50)); // 필터 고려 3배 요청
+src/components/JarvisApp.tsx:583:              const items: InfluencerData[] = result.items.map((ch: YouTubeChannel) => ({
+src/components/JarvisApp.tsx:585:                platform: 'YouTube',
+src/components/JarvisApp.tsx:593:                profileUrl: ch.profileUrl || (ch as any).customUrl ? `https://www.youtube.com/${(ch as any).customUrl}` : '',
+src/components/JarvisApp.tsx:594:                channelUrl: ch.profileUrl || ((ch as any).customUrl ? `https://www.youtube.com/${(ch as any).customUrl}` : `https://www.youtube.com/channel/${ch.channelId}`),
+src/components/JarvisApp.tsx:604:                collectedAt,
+src/components/JarvisApp.tsx:608:              console.log(`[JARVIS] YouTube 이메일 필터: ${items.length}명 → ${emailFiltered.length}명`);
+src/components/JarvisApp.tsx:611:              const existingIds = new Set(collectedInfluencers.map(i => (i as any).channelId || i.name.toLowerCase().trim()));
+src/components/JarvisApp.tsx:616:              telemetryFunctionSuccess('search_youtube', `YouTube ${deduped.slice(0, cnt).length}명 수집 완료 (이메일 보유)`, { count: deduped.slice(0, cnt).length, keyword: keyword });
+src/components/JarvisApp.tsx:617:              emitNodeData('influencer', { scannedVideos: result.items.length, selectedInfluencers: deduped.slice(0, cnt).length, emailsFound: deduped.slice(0, cnt).length, keyword, lastUpdated: new Date().toISOString() });
+src/components/JarvisApp.tsx:618:              emitNodeState('influencer', 'success');
+src/components/JarvisApp.tsx:621:              console.error('[JARVIS] YouTube 수집 실패:', err);
+src/components/JarvisApp.tsx:622:              telemetryFunctionError('search_youtube', `YouTube 수집 실패: ${err}`);
+src/components/JarvisApp.tsx:623:              emitNodeState('influencer', 'error');
+src/components/JarvisApp.tsx:640:                collectedAt,
+src/components/JarvisApp.tsx:664:                collectedAt,
+src/components/JarvisApp.tsx:671:                link: item.url, description: item.description, type: 'blog', keyword, collectedAt,
+src/components/JarvisApp.tsx:695:              platformList.map(p => collectForPlatform(p.platform, p.count || count))
+src/components/JarvisApp.tsx:705:            const items = await collectForPlatform(platform, count);
+src/components/JarvisApp.tsx:710:          const isYouTube = platform.toLowerCase().includes('youtube') || platform.toLowerCase().includes('유튜브') || keyword.includes('유튜버') || keyword.includes('유튜브');
+src/components/JarvisApp.tsx:712:          const resolvedPlatform = isYouTube ? 'YouTube' : isInstagram ? 'Instagram' : 'Naver Blog';
+src/components/JarvisApp.tsx:713:          const items = await collectForPlatform(resolvedPlatform, count);
+src/components/JarvisApp.tsx:720:        setStats(prev => ({ ...prev, collected: prev.collected + allCollected.length }));
+src/components/JarvisApp.tsx:723:          // ── OUTREACH 패널 자동 활성화 ──
+src/components/JarvisApp.tsx:731:          const collectReportMsg = `**${keyword} 수집 완료** (${allCollected.length}명)\n\n` +
+src/components/JarvisApp.tsx:736:            `**저장 위치**: Google Sheets (influencer_candidates 탭) + localStorage\n` +
+src/components/JarvisApp.tsx:737:            `OUTREACH 패널에서 후보 카드를 확인하세요.`;
+src/components/JarvisApp.tsx:738:          addMessage('jarvis', collectReportMsg, true);
+src/components/JarvisApp.tsx:747:            type: 'outreach_collect',
+src/components/JarvisApp.tsx:749:            collectedCount: allCollected.length,
+src/components/JarvisApp.tsx:754:            savedTo: 'Google Sheets (influencer_candidates)',
+src/components/JarvisApp.tsx:758:          setWorkflowSteps(buildWorkflowSteps({ type: 'outreach_collect', label: '후보 수집', description: '', locked: false }));
+src/components/JarvisApp.tsx:773:        const emailTargets = collectedInfluencers
+src/components/JarvisApp.tsx:782:              influencerName: inf.name,
+src/components/JarvisApp.tsx:823:        const prompt = String(action.params?.prompt || 'influencer marketing campaign');
+src/components/JarvisApp.tsx:964:        const collectedAt = new Date().toLocaleString('ko-KR');
+src/components/JarvisApp.tsx:977:          collectedAt,
+src/components/JarvisApp.tsx:1061:          collectedAt: new Date().toLocaleString('ko-KR'),
+src/components/JarvisApp.tsx:1114:    // ── 인플루언서 맞춤 콘텐츠 생성 액션 (generate_influencer_content) ──
+src/components/JarvisApp.tsx:1115:    if (action?.type === 'generate_influencer_content') {
+src/components/JarvisApp.tsx:1119:      const influencerName = String(params.influencer_name || '');
+src/components/JarvisApp.tsx:1127:        type: 'influencer_content',
+src/components/JarvisApp.tsx:1129:        logs: [{ step: 1, status: 'pending', message: `${influencerName} 맞춤 ${contentType === 'email' ? '이메일' : contentType === 'script' ? '스크립트' : '제안서'} 생성 준비 중...` }],
+src/components/JarvisApp.tsx:1140:            influencer_name: influencerName,
+src/components/JarvisApp.tsx:1141:            influencer_category: params.influencer_category || '',
+src/components/JarvisApp.tsx:1169:          addMessage('jarvis', `${influencerName}님께 보낼 ${contentTitle}을(를) 생성했습니다:\n\n${generatedContent}\n\n이 ${contentTitle}을(를) 바로 보낼까요?`);
+src/components/JarvisApp.tsx:1172:          const speakText = `${influencerName}님 맞춤 ${contentTitle}을 생성했습니다. 확인해 주세요.`;
+src/components/JarvisApp.tsx:1189:    // ── 유튜브 인기 영상 조회/분석 액션 (youtube_trending) ──
+src/components/JarvisApp.tsx:1190:    if (action?.type === 'youtube_trending') {
+src/components/JarvisApp.tsx:1199:      telemetryFunctionStart('search_youtube', `유튜브 ${ytAction}: ${ytKeyword || ytChannelName || ytCategory}`);
+src/components/JarvisApp.tsx:1204:        type: 'youtube',
+src/components/JarvisApp.tsx:1225:          endpoint = 'youtube-analyze';
+src/components/JarvisApp.tsx:1237:          endpoint = 'youtube-trending';
+src/components/JarvisApp.tsx:1240:          endpoint = 'youtube-trending';
+src/components/JarvisApp.tsx:1250:          telemetryFunctionSuccess('search_youtube', `유튜브 ${ytData.videos.length}건 조회 완료`, { videoCount: ytData.videos.length, keyword: ytKeyword || ytCategory });
+src/components/JarvisApp.tsx:1286:          telemetryFunctionError('search_youtube', ytData.error || '유튜브 영상 조회 실패');
+src/components/JarvisApp.tsx:1290:        telemetryFunctionError('search_youtube', `유튜브 조회 오류: ${err.message}`);
+src/components/JarvisApp.tsx:2581:          smartstoreData = { smartstore: { ...freshCache.data, isCached: true }, influencers: { total: 0, newYesterday: 0, byPlatform: {} } };
+src/components/JarvisApp.tsx:2639:              influencers: rawSS.influencers || { total: 0, newYesterday: 0, byPlatform: {} },
+src/components/JarvisApp.tsx:2663:            smartstoreData = { smartstore: { ...cache.data, isCached: true }, influencers: { total: 0, newYesterday: 0, byPlatform: {} } };
+src/components/JarvisApp.tsx:2675:            smartstoreData = { smartstore: { _error: true, errorMessage: '최신 주문 데이터를 불러오지 못했습니다', newOrders: null, pendingShipping: null, preShipTotal: null, shipping: null, delivered: null, purchaseConfirmed: null, totalAmount: 0, revenueChangePercent: 0, error: String(ssErr) }, influencers: { total: 0, newYesterday: 0, byPlatform: {} } };
+src/components/JarvisApp.tsx:2754:        const outreach = smartstoreData?.outreach || {};
+src/components/JarvisApp.tsx:2784:        briefingDisplay += `- 총 후보: **${outreach.total || 0}명**\n`;
+src/components/JarvisApp.tsx:2785:        briefingDisplay += `- 연락가능: **${outreach.contactable || 0}명**\n`;
+src/components/JarvisApp.tsx:2786:        briefingDisplay += `- 고적합도: **${outreach.highFit || 0}명**\n`;
+src/components/JarvisApp.tsx:2800:        voiceBriefing += `바이럴 후보는 총 ${outreach.total || 0}명 확보되어 있습니다. `;
+src/components/JarvisApp.tsx:2820:          influencerTotal: outreach.total || 0,
+src/components/JarvisApp.tsx:2830:          '인플루언서총계': outreach.total || 0,
+src/components/JarvisApp.tsx:2831:          '어제신규': outreach.newYesterday || 0,
+src/components/JarvisApp.tsx:2878:        outreach: smartstoreData.outreach,
+src/components/JarvisApp.tsx:3386:    if (action?.type === 'analyze_influencers_smart') {
+src/components/JarvisApp.tsx:3387:      const platform = String(action.params?.platform || 'YouTube');
+src/components/JarvisApp.tsx:3398:        emitNodeState('influencer', 'active');
+src/components/JarvisApp.tsx:3399:        telemetryFunctionStart('analyze_influencers_smart', `${platform} 인플루언서 분석: "${keyword}" ${count}명`);
+src/components/JarvisApp.tsx:3400:        const isYT = platform.toLowerCase().includes('youtube') || platform.toLowerCase().includes('유튜브');
+src/components/JarvisApp.tsx:3402:        let collected: InfluencerData[] = [];
+src/components/JarvisApp.tsx:3404:          const result = await searchYouTubeAPI(keyword || '인플루언서', Math.min(count * 3, 50));
+src/components/JarvisApp.tsx:3405:          collected = result.items.map((ch: YouTubeChannel) => ({
+src/components/JarvisApp.tsx:3408:            platform: 'YouTube',
+src/components/JarvisApp.tsx:3415:            collectedAt: new Date().toLocaleString('ko-KR'),
+src/components/JarvisApp.tsx:3420:          collected = result.items.map((acc: InstagramAccount) => ({
+src/components/JarvisApp.tsx:3428:            collectedAt: new Date().toLocaleString('ko-KR'),
+src/components/JarvisApp.tsx:3434:          collected = result.items.map((item: NaverSearchItem) => ({
+src/components/JarvisApp.tsx:3442:            collectedAt: new Date().toLocaleString('ko-KR'),
+src/components/JarvisApp.tsx:3447:        const isYouTubeCollect = isYT;
+src/components/JarvisApp.tsx:3448:        if (isYouTubeCollect) {
+src/components/JarvisApp.tsx:3449:          const beforeFilter = collected.length;
+src/components/JarvisApp.tsx:3450:          collected = collected.filter(i => i.email && i.email.includes('@'));
+src/components/JarvisApp.tsx:3451:          console.log(`[JARVIS] 이메일 필터: ${beforeFilter}명 → ${collected.length}명 (이메일 있는 채널만)`);
+src/components/JarvisApp.tsx:3456:          collected = collected.filter(i => {
+src/components/JarvisApp.tsx:3471:        const existingIds = new Set(collectedInfluencers.map(i => (i as any).channelId || i.name.toLowerCase().trim()));
+src/components/JarvisApp.tsx:3472:        collected = collected.filter(i => {
+src/components/JarvisApp.tsx:3477:        collected = collected.slice(0, count);
+src/components/JarvisApp.tsx:3480:        setCollectedInfluencers(prev => [...prev, ...collected]);
+src/components/JarvisApp.tsx:3482:        emitNodeState('influencer', 'done');
+src/components/JarvisApp.tsx:3485:        if (collected.length > 0) {
+src/components/JarvisApp.tsx:3486:          appendInfluencersToSheet(collected as any).then(r => {
+src/components/JarvisApp.tsx:3488:            saveMemory('마지막 수집', `${keyword} ${collected.length}명 수집 (${new Date().toLocaleDateString('ko-KR')})`);
+src/components/JarvisApp.tsx:3499:                action: 'save_influencers',
+src/components/JarvisApp.tsx:3501:                influencers: collected.map(c => ({
+src/components/JarvisApp.tsx:3522:        const emailCount = collected.filter(i => i.email).length;
+src/components/JarvisApp.tsx:3523:        const noEmailCount = collected.filter(i => !i.email).length;
+src/components/JarvisApp.tsx:3524:        const doneText = collected.length > 0
+src/components/JarvisApp.tsx:3525:          ? `${platform} 인플루언서 ${collected.length}명을 수집 완료했습니다. 모두 이메일이 있는 채널입니다, 선생님.`
+src/components/JarvisApp.tsx:3528:        // OUTREACH 패널 자동 활성화
+src/components/JarvisApp.tsx:3529:        if (collected.length > 0) setOutreachVisible(true);
+src/components/JarvisApp.tsx:3530:        const cardList = collected.slice(0, 5).map((c, i) => `${i + 1}. ${c.name} (${c.followers}) ${c.email ? `✉ ${c.email}` : ''}`).join('\n');
+src/components/JarvisApp.tsx:3531:        addMessage('jarvis', `**${platform} 인플루언서 분석 완료** - ${collected.length}명 수집 (이메일 보유)\n\n` +
+src/components/JarvisApp.tsx:3533:          `| 총 수집 | ${collected.length}명 |\n` +
+src/components/JarvisApp.tsx:3535:          `${cardList}${collected.length > 5 ? `\n... 외 ${collected.length - 5}명` : ''}\n\n` +
+src/components/JarvisApp.tsx:3536:          `**저장 위치**: Google Sheets (influencer_candidates 탭) + localStorage`, true);
+src/components/JarvisApp.tsx:3542:        if (collected.length > 0) {
+src/components/JarvisApp.tsx:3544:            type: 'outreach_collect',
+src/components/JarvisApp.tsx:3546:            collectedCount: collected.length,
+src/components/JarvisApp.tsx:3549:            label: `${keyword} ${collected.length}명 수집 완료`,
+src/components/JarvisApp.tsx:3551:            savedTo: 'Google Sheets (influencer_candidates)',
+src/components/JarvisApp.tsx:3555:          setWorkflowSteps(buildWorkflowSteps({ type: 'outreach_collect', label: '후보 수집', description: '', locked: false }));
+src/components/JarvisApp.tsx:3561:        emitNodeState('influencer', 'error');
+src/components/JarvisApp.tsx:3576:      const queryType = String(action.params?.query_type || 'influencers');
+src/components/JarvisApp.tsx:3591:          case 'influencers':
+src/components/JarvisApp.tsx:3592:            apiAction = 'query_influencers';
+src/components/JarvisApp.tsx:3599:          case 'collection_history':
+src/components/JarvisApp.tsx:3600:            apiAction = 'collection_history';
+src/components/JarvisApp.tsx:3606:            apiAction = 'query_influencers';
+src/components/JarvisApp.tsx:3617:        if (queryType === 'influencers' && dbData.influencers?.length > 0) {
+src/components/JarvisApp.tsx:3618:          const dbInfluencers: InfluencerData[] = dbData.influencers.map((inf: any) => ({
+src/components/JarvisApp.tsx:3621:            platform: inf.platform || 'YouTube',
+src/components/JarvisApp.tsx:3627:            collectedAt: inf.collected_at || '',
+src/components/JarvisApp.tsx:3640:          const statsText = `현재 DB 통계: 인플루언서 ${s.total_influencers}명, 이메일 보유 ${s.with_email}명, 바이럴 영상 ${s.total_viral_videos}건, 수집 횟수 ${s.total_collections}회`;
+src/components/JarvisApp.tsx:3641:          addMessage('jarvis', `**데이터베이스 통계**\n\n| 항목 | 수치 |\n|------|------|\n| 총 인플루언서 | ${s.total_influencers}명 |\n| 이메일 보유 | ${s.with_email}명 |\n| 바이럴 영상 | ${s.total_viral_videos}건 |\n| 수집 횟수 | ${s.total_collections}회 |`, true);
+src/components/JarvisApp.tsx:3645:        } else if (queryType === 'collection_history' && dbData.history?.length > 0) {
+src/components/JarvisApp.tsx:3646:          const histList = dbData.history.slice(0, 5).map((h: any, i: number) => `${i + 1}. ${h.keyword} - ${h.new_collected}명 수집 (${h.collected_at})`).join('\n');
+src/components/JarvisApp.tsx:4050:    const outreachCollectMatch = text.match(/(캠핑|옥수수|복숭아|제철|농산물|먹방|집밥|간식|요리|육아|가족|[가-힣]+)\s*(유튜버|블로거|인플루언서|유튜브|네이버)\s*(\d+)?\s*명?\s*(수집|찾아|검색|모아)/);
+src/components/JarvisApp.tsx:4051:    const outreachCollectMatch2 = text.match(/(유튜버|블로거|인플루언서|유튜브|네이버).*?(캠핑|옥수수|복숭아|제철|농산물|먹방|집밥|간식|요리|육아|가족|[가-힣]+).*?(\d+)?\s*명?\s*(수집|찾아|검색|모아)/);
+src/components/JarvisApp.tsx:4052:    const outreachCollectMatch3 = text.match(/(캠핑|옥수수|복숭아|제철|농산물|먹방|집밥|간식|요리|육아|가족|[가-힣]+).*?(관련|키워드)?\s*(유튜버|블로거|인플루언서)\s*(\d+)?\s*명?\s*(수집|찾아|검색|모아)/);
+src/components/JarvisApp.tsx:4054:    const outreachCollectMatch4 = text.match(/([가-힣]+)\s*(공동구매|PPL|협찬)\s*(후보|파트너)?\s*(\d+)?\s*명?\s*(수집|찾아|검색|모아)/);
+src/components/JarvisApp.tsx:4056:    const outreachCollectMatch5 = text.match(/([가-힣]{2,})\s+(\d+)\s*명\s*(수집|찾아|검색|모아)/);
+src/components/JarvisApp.tsx:4058:    const outreachCollectMatch6 = text.match(/(카테고리|전체).*?([가-힣]{2,}).*?(\d+)?\s*명?\s*(수집|찾아|검색|모아)/);
+src/components/JarvisApp.tsx:4060:    const outreachCollectMatchGeneric = text.match(/([가-힣]+).*?(\d+)\s*명.*?(찾아|수집|모아|검색)/);
+src/components/JarvisApp.tsx:4062:    const outreachCollectFinal = outreachCollectMatch || outreachCollectMatch2 || outreachCollectMatch3 || outreachCollectMatch4 || outreachCollectMatch5 || outreachCollectMatch6;
+src/components/JarvisApp.tsx:4063:    const outreachListMatch = text.match(/(수집한|오늘|저장된).*?(후보|인플루언서|유튜버|블로거).*?(보여|조회|목록|리스트)/);
+src/components/JarvisApp.tsx:4064:    const outreachHighMatch = text.match(/(적합도|점수).*?(높은|상위).*?(후보|보여|조회)/);
+src/components/JarvisApp.tsx:4065:    const outreachEmailMatch = text.match(/(메일|이메일).*?(초안|보여|확인)/);
+src/components/JarvisApp.tsx:4066:    const outreachFollowUpMatch = text.match(/(미응답|follow.?up|팔로우업|재발송).*?(초안|만들어|보여)/);
+src/components/JarvisApp.tsx:4068:    if (outreachCollectFinal || outreachCollectMatchGeneric) {
+src/components/JarvisApp.tsx:4069:      const match = outreachCollectFinal || outreachCollectMatchGeneric;
+src/components/JarvisApp.tsx:4094:        if (fullText.includes('유튜버') || fullText.includes('유튜브') || fullText.includes('YouTube')) platform = 'youtube';
+src/components/JarvisApp.tsx:4105:      emitMissionLog('🔍', 'OUTREACH', `${keyword} ${platform} 후보 수집 시작 (${count}명${requireEmail ? ', 이메일 필수' : ''})`, 'thinking');
+src/components/JarvisApp.tsx:4106:      addMessage('jarvis', `${keyword} 관련 ${platform === 'youtube' ? 'YouTube' : platform === 'naver' ? 'Naver Blog' : 'YouTube + Naver Blog'} 후보를 수집합니다.${requireEmail ? ' 공개 이메일이 있는 후보만 필터링합니다.' : ''} 최대 ${count}명까지 분석합니다.`, true);
+src/components/JarvisApp.tsx:4114:          body: JSON.stringify({ taskType: 'outreach-collect', params: { keyword, product: keyword, maxCandidates: requestCount, platform, requireEmail } }),
+src/components/JarvisApp.tsx:4120:          emitMissionLog('⚠️', 'OUTREACH', 'YouTube API 할당량 초과', 'warning');
+src/components/JarvisApp.tsx:4121:          addMessage('jarvis', '⚠️ YouTube API 할당량 초과로 오늘은 소량/수동 검증 모드로 진행합니다. Naver Blog 후보만 수집되었습니다.', true);
+src/components/JarvisApp.tsx:4124:        if (data.success && data.candidates && data.candidates.length > 0) {
+src/components/JarvisApp.tsx:4126:          let finalCandidates = data.candidates.slice(0, count);
+src/components/JarvisApp.tsx:4133:          emitMissionLog('✅', 'OUTREACH', `${finalCandidates.length}명 수집 완료${requireEmail ? ` (이메일 확인)` : ''}`, 'success');
+src/components/JarvisApp.tsx:4137:          const contactable = finalCandidates.filter((c: any) => c.publicContactStatus === 'email_public').length;
+src/components/JarvisApp.tsx:4147:            reportMsg = `**${keyword} 후보 수집 완료** (YouTube 공식 카테고리 전체 탐색, 이메일 조건 적용)\n\n` +
+src/components/JarvisApp.tsx:4159:              `**저장 위치**: Google Sheets (influencer_candidates 탭) + OUTREACH Workspace\n` +
+src/components/JarvisApp.tsx:4163:            reportMsg = `**${keyword} 후보 ${finalCandidates.length}명 수집 완료** (YouTube 공식 카테고리 전체 탐색, 공개 이메일 확인)\n\n` +
+src/components/JarvisApp.tsx:4172:              `**저장 위치**: Google Sheets (influencer_candidates 탭) + OUTREACH Workspace\n` +
+src/components/JarvisApp.tsx:4176:            reportMsg = `**공동구매 후보 ${finalCandidates.length}명 수집 완료** (YouTube 공식 카테고리 전체 탐색)\n\n` +
+src/components/JarvisApp.tsx:4183:              `**저장 위치**: Google Sheets (influencer_candidates 탭) + OUTREACH Workspace\n` +
+src/components/JarvisApp.tsx:4195:            type: 'outreach_collect',
+src/components/JarvisApp.tsx:4197:            collectedCount: finalCandidates.length,
+src/components/JarvisApp.tsx:4202:            savedTo: 'Google Sheets (influencer_candidates)',
+src/components/JarvisApp.tsx:4206:          setWorkflowSteps(buildWorkflowSteps({ type: 'outreach_collect', label: '후보 수집', description: '', locked: false }));
+src/components/JarvisApp.tsx:4213:              body: JSON.stringify({ taskType: 'outreach-save-candidates', params: { candidates: finalCandidates } }),
+src/components/JarvisApp.tsx:4216:                emitMissionLog('💾', 'OUTREACH', `Google Sheets 저장 완료 (${saveResult.saved || finalCandidates.length}건)`, 'success');
+src/components/JarvisApp.tsx:4219:              emitMissionLog('⚠️', 'OUTREACH', 'Google Sheets 저장 실패 (로컬 보관 중)', 'warning');
+src/components/JarvisApp.tsx:4223:          emitMissionLog('ℹ️', 'OUTREACH', '후보 없음', 'info');
+src/components/JarvisApp.tsx:4228:        emitMissionLog('❌', 'OUTREACH', `수집 실패: ${e.message}`, 'error');
+src/components/JarvisApp.tsx:4235:    if (outreachListMatch) {
+src/components/JarvisApp.tsx:4237:      if (outreachCandidates.length > 0) {
+src/components/JarvisApp.tsx:4238:        addMessage('jarvis', `현재 수집된 후보 ${outreachCandidates.length}명입니다. 우측 패널에서 확인하세요.`, true);
+src/components/JarvisApp.tsx:4245:            body: JSON.stringify({ taskType: 'outreach-list', params: { limit: 20 } }),
+src/components/JarvisApp.tsx:4249:          if (data.success && data.candidates?.length > 0) {
+src/components/JarvisApp.tsx:4250:            setOutreachCandidates(data.candidates);
+src/components/JarvisApp.tsx:4251:            addMessage('jarvis', `Google Sheets에서 ${data.candidates.length}명의 후보를 불러왔습니다.`, true);
+src/components/JarvisApp.tsx:4264:    if (outreachHighMatch) {
+src/components/JarvisApp.tsx:4266:      const highCandidates = outreachCandidates.filter(c => c.productFitScore >= 60);
+src/components/JarvisApp.tsx:4276:    if (outreachEmailMatch) {
+src/components/JarvisApp.tsx:4278:      const withEmail = outreachCandidates.filter(c => c.firstEmailDraft);
+src/components/JarvisApp.tsx:4288:    if (outreachFollowUpMatch) {
+src/components/JarvisApp.tsx:4290:      const withFollowUp = outreachCandidates.filter(c => c.followUpDraft);
+src/components/JarvisApp.tsx:4313:        influencerName: '테스트 수신자',
+src/components/JarvisApp.tsx:4314:        platform: 'YouTube',
+src/components/JarvisApp.tsx:4424:            template: 'outreach_proposal',
+src/components/JarvisApp.tsx:4957:              onClick={() => setOutreachVisible(!outreachVisible)}
+src/components/JarvisApp.tsx:4959:                background: outreachVisible ? 'rgba(0,255,136,0.15)' : 'rgba(0,255,136,0.05)',
+src/components/JarvisApp.tsx:4960:                border: `1px solid ${outreachVisible ? 'rgba(0,255,136,0.5)' : 'rgba(0,255,136,0.2)'}`,
+src/components/JarvisApp.tsx:4968:              <span style={{ color: '#00ff88', fontSize: '0.42rem', letterSpacing: '0.15em' }}>OUTREACH</span>
+src/components/JarvisApp.tsx:5005:      {/* ── 좌측 통계 패널 (OUTREACH 활성화 시에만 표시) ── */}
+src/components/JarvisApp.tsx:5006:      {outreachVisible && (
+src/components/JarvisApp.tsx:5027:            { label: 'COLLECTED', value: stats.collected, unit: '명', color: THEME.gold },
+src/components/JarvisApp.tsx:5374:        influencers={collectedInfluencers}
+src/components/JarvisApp.tsx:5375:        visible={influencerCardsVisible}
+src/components/JarvisApp.tsx:5385:                influencers: emailTargets.map(inf => ({
+src/components/JarvisApp.tsx:5405:                influencers: targets.map(inf => ({
+src/components/JarvisApp.tsx:5421:        {businessCardsVisible && collectedBusinesses.length > 0 && (
+src/components/JarvisApp.tsx:5450:              businesses={collectedBusinesses}
+src/components/JarvisApp.tsx:5459:                const lastKeyword = collectedBusinesses[0]?.keyword || '병원';
+src/components/JarvisApp.tsx:6283:                  const collectedAt = new Date().toLocaleString('ko-KR');
+src/components/JarvisApp.tsx:6291:                    collectedAt,
+src/components/JarvisApp.tsx:7012:        visible={outreachVisible}
+src/components/JarvisApp.tsx:7013:        candidates={outreachCandidates}
+src/components/JarvisApp.tsx:7014:        loading={outreachLoading}
+src/components/JarvisApp.tsx:7016:        onSave={async (candidates) => {
+src/components/JarvisApp.tsx:7021:              body: JSON.stringify({ taskType: 'outreach-save', params: { candidates } }),
+src/components/JarvisApp.tsx:7025:              emitMissionLog('📥', 'OUTREACH', `${candidates.length}명 Google Sheets 저장 완료`, 'success');
+src/components/JarvisApp.tsx:7026:              addMessage('jarvis', `✅ ${candidates.length}명의 후보를 Google Sheets에 저장했습니다.`, true);
+src/components/JarvisApp.tsx:7028:              emitMissionLog('❌', 'OUTREACH', '저장 실패', 'error');
+src/components/JarvisApp.tsx:7032:            emitMissionLog('❌', 'OUTREACH', `저장 실패: ${e.message}`, 'error');
+src/components/JarvisApp.tsx:7061:                influencer_hunt: '무인 인플루언서 협상',
+src/components/LocalBusinessCards.tsx:18:  collectedAt?: string;
+src/components/ManusStrategyDashboard.tsx:28:    id: 'influencer_hunt',
+src/components/NeuralMissionMap.tsx:72:  { id: 'youtube',      label: 'YOUTUBE',       sublabel: 'Data API v3',        icon: '▶️', state: 'idle', detail: 'Search standby',             x: 22,  y: 14,   z: -8,  baseColor: '#FF0000' },
+src/components/NeuralMissionMap.tsx:81:  { id: 'influencer',   label: 'INFLUENCER',    sublabel: 'Agent Scanner',      icon: '🎯', state: 'idle', detail: 'Influencer agent ready',     x: 32,  y: 6,    z: -10, baseColor: '#9C27B0' },
+src/components/NeuralMissionMap.tsx:87:  ['jarvis_brain', 'smartstore'], ['jarvis_brain', 'youtube'], ['jarvis_brain', 'naver'],
+src/components/NeuralMissionMap.tsx:90:  ['manus_agent', 'youtube'], ['manus_agent', 'naver'],
+src/components/NeuralMissionMap.tsx:93:  ['jarvis_brain', 'market_intel'], ['jarvis_brain', 'influencer'],
+src/components/NeuralMissionMap.tsx:95:  ['market_intel', 'sheets'], ['influencer', 'youtube'], ['influencer', 'email'],
+src/components/NeuralMissionMap.tsx:306:    const sequence = ['smartstore', 'sheets', 'youtube', 'naver', 'instagram', 'email', 'manus_agent'];
+src/components/PlatformDataCards.tsx:29:  { id: 'youtube',      label: 'YOUTUBE', icon: '▶️', primary: '#FF3333', secondary: '#FF8C00', glow: 'rgba(255,51,51,0.6)',   bg: 'linear-gradient(160deg, #1a0000 0%, #2a0500 100%)' },
+src/components/PlatformDataCards_Enhanced.tsx:32:  { id: 'youtube',      label: 'YOUTUBE', icon: '▶️', primary: '#FF3333', secondary: '#FF8C00', glow: 'rgba(255,51,51,0.6)',   bg: 'linear-gradient(160deg, #1a0000 0%, #2a0500 100%)' },
+src/components/StatusPanel.tsx:10:    collected: number;
+src/components/StatusPanel.tsx:40:  const collectedCount = useCountUp(stats.collected);
+src/components/StatusPanel.tsx:126:              { label: 'INFLUENCERS', value: collectedCount, unit: '', color: '#00F5FF' },
+src/components/ActionCard.tsx:26:  type: 'smartstore' | 'creative' | 'growth_link' | 'briefing' | 'general' | 'outreach_result' | 'outreach_collect' | 'market_price_result';
+src/components/ActionCard.tsx:33:  // OUTREACH 전용 필드
+src/components/ActionCard.tsx:38:  collectedCount?: number;
+src/components/ActionCard.tsx:142:  if (type === 'outreach_result' || type === 'outreach_collect') {
+src/components/ActionCard.tsx:144:      { id: 'view_outreach', label: 'OUTREACH 패널 보기', icon: '📋', mode: 'observe', command: '수집한 후보 보여줘' },
+src/components/ActionCard.tsx:150:      actions.push({ id: 'collect_more', label: '부족한 후보 추가 수집', icon: '🔍', mode: 'observe', command: `${(context as any).keyword || ''} 유튜버 추가 수집해줘` });
+src/components/ActionCard.tsx:731:      { id: 'collect', label: '데이터 수집 완료', status: 'completed', timestamp: now },
+src/components/ActionCard.tsx:737:  if (context.type === 'outreach_result' || context.type === 'outreach_collect') {
+src/components/ActionCard.tsx:741:      { id: 'search', label: 'YouTube/Naver 검색 완료', status: 'completed', timestamp: now },
+src/components/InfluencerOutreachPanel.tsx:5:  candidateId: string;
+src/components/InfluencerOutreachPanel.tsx:6:  collectedAt: string;
+src/components/InfluencerOutreachPanel.tsx:21:  outreachStatus: string;
+src/components/InfluencerOutreachPanel.tsx:30:  candidates: InfluencerCandidate[];
+src/components/InfluencerOutreachPanel.tsx:33:  onSave: (candidates: InfluencerCandidate[]) => void;
+src/components/InfluencerOutreachPanel.tsx:34:  onViewEmail?: (candidate: InfluencerCandidate) => void;
+src/components/InfluencerOutreachPanel.tsx:35:  onViewFollowUp?: (candidate: InfluencerCandidate) => void;
+src/components/InfluencerOutreachPanel.tsx:38:export default function InfluencerOutreachPanel({ visible, candidates, loading, onClose, onSave, onViewEmail, onViewFollowUp }: Props) {
+src/components/InfluencerOutreachPanel.tsx:39:  const [filter, setFilter] = useState<'all' | 'high' | 'youtube' | 'naver'>('all');
+src/components/InfluencerOutreachPanel.tsx:53:  const filtered = candidates.filter(c => {
+src/components/InfluencerOutreachPanel.tsx:55:    if (filter === 'youtube') return c.platform.toLowerCase().includes('youtube');
+src/components/InfluencerOutreachPanel.tsx:61:    total: candidates.length,
+src/components/InfluencerOutreachPanel.tsx:62:    contactable: candidates.filter(c => c.publicContactStatus === 'email_public' || c.publicContactStatus === 'form_available').length,
+src/components/InfluencerOutreachPanel.tsx:63:    highFit: candidates.filter(c => c.productFitScore >= 60).length,
+src/components/InfluencerOutreachPanel.tsx:64:    emailDraft: candidates.filter(c => c.firstEmailDraft).length,
+src/components/InfluencerOutreachPanel.tsx:74:    if (platform.toLowerCase().includes('youtube')) return '▶';
+src/components/InfluencerOutreachPanel.tsx:103:              INFLUENCER OUTREACH
+src/components/InfluencerOutreachPanel.tsx:139:            { key: 'youtube', label: 'YouTube' },
+src/components/InfluencerOutreachPanel.tsx:170:                key={c.candidateId}
+src/components/InfluencerOutreachPanel.tsx:196:                    background: c.platform.includes('YouTube') ? 'rgba(255,0,0,0.2)' : 'rgba(0,200,0,0.2)',
+src/components/InfluencerOutreachPanel.tsx:197:                    color: c.platform.includes('YouTube') ? '#ff4444' : '#00cc66',
+src/components/InfluencerOutreachPanel.tsx:214:                  <span style={{ color: c.publicContactStatus === 'email_public' ? '#00ff88' : 'rgba(255,255,255,0.3)' }}>
+src/components/InfluencerOutreachPanel.tsx:215:                    {c.publicContactStatus === 'email_public' ? '✉ 연락가능' : c.publicContactStatus === 'form_available' ? '📋 폼' : '⚪ 미확인'}
+src/components/InfluencerOutreachPanel.tsx:236:        {candidates.length > 0 && (
+src/components/InfluencerOutreachPanel.tsx:241:            <button onClick={() => onSave(candidates)} style={{
+src/components/JarvisApp.tsx_fix:7:          influencerTotal: outreach.total || 0,
+src/components/JarvisApp.tsx_fix:17:          '인플루언서총계': outreach.total || 0,
+src/components/JarvisApp.tsx_fix:18:          '어제신규': outreach.newYesterday || 0,
+src/lib/google-sheets.ts:30:  collectedAt: string;
+src/lib/google-sheets.ts:34:  influencerName: string;
+src/lib/google-sheets.ts:53:  collectedAt: string;
+src/lib/google-sheets.ts:80:  influencers: InfluencerData[],
+src/lib/google-sheets.ts:83:  if (!influencers.length) return { success: true, count: 0, message: '저장할 데이터 없음' };
+src/lib/google-sheets.ts:85:  // YouTube 채널이면 youtube 타입, 인스타그램이면 instagram 타입, 나머지는 influencer
+src/lib/google-sheets.ts:86:  const firstPlatform = influencers[0]?.platform?.toLowerCase() || '';
+src/lib/google-sheets.ts:87:  let type = 'influencer';
+src/lib/google-sheets.ts:88:  if (firstPlatform.includes('youtube') || firstPlatform.includes('유튜브')) type = 'youtube';
+src/lib/google-sheets.ts:91:  const mapped = influencers.map((inf: any) => ({
+src/lib/google-sheets.ts:108:    collectedAt: inf.collectedAt || new Date().toISOString(),
+src/lib/google-sheets.ts:189:    { name: '박명정', platform: 'YouTube', followers: '28.5K', url: 'https://www.youtube.com/@박명정', email: 'contact@박명정.com' },
+src/lib/google-sheets.ts:190:    { name: '미식여행자', platform: 'YouTube', followers: '234K', url: 'https://www.youtube.com/@미식여행자', email: 'business@미식여행자.com' },
+src/lib/google-sheets.ts:191:    { name: '쿠킹마스터', platform: 'YouTube', followers: '45.2K', url: 'https://www.youtube.com/@쿠킹마스터', email: 'inquiry@쿠킹마스터.com' },
+src/lib/google-sheets.ts:195:    { name: '세계여행가', platform: 'YouTube', followers: '456K', url: 'https://www.youtube.com/@세계여행가', email: 'business@세계여행가.com' },
+src/lib/google-sheets.ts:196:    { name: '헬스트레이너', platform: 'YouTube', followers: '1.2M', url: 'https://www.youtube.com/@헬스트레이너', email: 'contact@헬스트레이너.com' },
+src/lib/google-sheets.ts:198:    { name: '테크리뷰어', platform: 'YouTube', followers: '567K', url: 'https://www.youtube.com/@테크리뷰어', email: 'pr@테크리뷰어.com' },
+src/lib/google-sheets.ts:200:    { name: '캠핑러버', platform: 'YouTube', followers: '345K', url: 'https://www.youtube.com/@캠핑러버', email: 'contact@캠핑러버.com' },
+src/lib/google-sheets.ts:202:    { name: '푸드크리에이터', platform: 'YouTube', followers: '678K', url: 'https://www.youtube.com/@푸드크리에이터', email: 'pr@푸드크리에이터.com' },
+src/lib/google-sheets.ts:209:    const influencer = realInfluencers[i % realInfluencers.length];
+src/lib/google-sheets.ts:210:    if (platform && influencer.platform !== platform) continue;
+src/lib/google-sheets.ts:212:      name: influencer.name,
+src/lib/google-sheets.ts:213:      platform: influencer.platform,
+src/lib/google-sheets.ts:214:      followers: influencer.followers,
+src/lib/google-sheets.ts:216:      email: influencer.email,
+src/lib/google-sheets.ts:217:      channelUrl: influencer.url,
+src/lib/google-sheets.ts:219:      collectedAt: now,
+src/lib/google-sheets.ts:227:export function generateEmailLogs(influencers: InfluencerData[], template: string): EmailLogData[] {
+src/lib/google-sheets.ts:229:  return influencers.map(inf => ({
+src/lib/google-sheets.ts:230:    influencerName: inf.name,
+src/lib/google-sheets.ts:290:  influencerName: string;
+src/lib/google-sheets.ts:297:  const { influencerName, platform, category, senderName = 'MAWINPAY', productName = '저희 제품', customMessage } = opts;
+src/lib/google-sheets.ts:299:  const subject = `[협업 제안] ${influencerName}님, ${productName} 콜라보레이션 제안드립니다`;
+src/lib/google-sheets.ts:336:      <div class="greeting">안녕하세요, <span class="highlight">${influencerName}</span>님 👋</div>
+src/lib/google-sheets.ts:344:        ${influencerName}님의 채널과 <strong style="color:#fff">${productName}</strong>의 가치가 
+src/lib/jarvis-brain-openai.ts.bak:23:  | 'collect' | 'send_email' | 'create_banner' | 'report'
+src/lib/jarvis-brain-openai.ts.bak:107:    name: 'collect_influencers',
+src/lib/jarvis-brain-openai.ts.bak:114:        platform: { type: 'string', description: '단일 플랫폼 (YouTube, Naver Blog, Instagram). platforms 배열이 우선.' },
+src/lib/jarvis-brain-openai.ts.bak:115:        platforms: { type: 'string', description: '복수 플랫폼 JSON 배열 문자열. 예: [{"platform":"YouTube","count":5},{"platform":"Naver Blog","count":5}]' },
+src/lib/jarvis-brain-openai.ts.bak:326:        mission_type: { type: 'string', enum: ['research', 'collect', 'create', 'analyze', 'automate', 'complex'], description: 'research=조사/리서치, collect=데이터수집, create=문서/파일생성, analyze=분석, automate=자동화, complex=복합미션' },
+src/lib/jarvis-brain-openai.ts.bak:358:    name: 'generate_influencer_content',
+src/lib/jarvis-brain-openai.ts.bak:373:        influencer_name: { type: 'string', description: '대상 인플루언서/채널명' },
+src/lib/jarvis-brain-openai.ts.bak:374:        influencer_category: { type: 'string', description: '인플루언서 카테고리 (예: 라이프스타일, 푸드, 뷰티)' },
+src/lib/jarvis-brain-openai.ts.bak:386:      required: ['content_type', 'category', 'influencer_name', 'business_name', 'product_name', 'response'],
+src/lib/jarvis-brain-openai.ts.bak:390:    name: 'youtube_trending',
+src/lib/jarvis-brain-openai.ts.bak:455:- **유튜브 트렌딩/분석** → youtube_trending (경로 B/C)
+src/lib/jarvis-brain-openai.ts.bak:456:- **인플루언서 수집/분석** → collect_influencers / generate_influencer_content (경로 C)
+src/lib/jarvis-brain-openai.ts.bak:470:- 유튜버 5명 네이버 5명 → platforms: [{"platform":"YouTube","count":5},{"platform":"Naver Blog","count":5}]
+src/lib/jarvis-brain-openai.ts.bak:471:- 인스타 3명 유튜브 3명 → platforms: [{"platform":"Instagram","count":3},{"platform":"YouTube","count":3}]
+src/lib/jarvis-brain-openai.ts.bak:508:- "~수집해줘" → collect_influencers 호출
+src/lib/jarvis-brain-openai.ts.bak:578:- "~인플루언서 찾아줘" → collect_influencers 또는 naver_search
+src/lib/jarvis-brain-openai.ts.bak:798:    case 'collect_influencers': {
+src/lib/jarvis-brain-openai.ts.bak:808:        type: 'collect',
+src/lib/jarvis-brain-openai.ts.bak:942:    case 'generate_influencer_content': {
+src/lib/jarvis-brain-openai.ts.bak:944:        type: 'generate_influencer_content',
+src/lib/jarvis-brain-openai.ts.bak:948:          influencer_name: String(args.influencer_name || ''),
+src/lib/jarvis-brain-openai.ts.bak:949:          influencer_category: String(args.influencer_category || ''),
+src/lib/jarvis-brain-openai.ts.bak:959:        workingMessage: `${args.influencer_name || '인플루언서'} 맞춤 ${args.content_type === 'email' ? '이메일' : args.content_type === 'script' ? '스크립트' : '제안서'} 생성 중...`,
+src/lib/jarvis-brain-openai.ts.bak:964:    case 'youtube_trending': {
+src/lib/jarvis-brain-openai.ts.bak:975:        type: 'youtube_trending',
+src/lib/jarvis-brain-openai.ts.bak:1079:  const fullPrompt = `Professional marketing banner for influencer campaign. ${prompt}. Style: ${style}, clean modern design, Korean market, high quality, vibrant colors, no text overlay`;
+src/lib/jarvis-brain-openai.ts.bak:1150:// ── YouTube Data API 검색 ──
+src/lib/jarvis-brain-openai.ts.bak:1151:export interface YouTubeChannel {
+src/lib/jarvis-brain-openai.ts.bak:1165:export async function searchYouTubeAPI(
+src/lib/jarvis-brain-openai.ts.bak:1168:): Promise<{ total: number; keyword: string; items: YouTubeChannel[] }> {
+src/lib/jarvis-brain-openai.ts.bak:1173:  const url = `${apiBase}/api/youtube-search?keyword=${encodeURIComponent(keyword)}&maxResults=${maxResults}`;
+src/lib/jarvis-brain-openai.ts.bak:1177:    throw new Error(err.message || `YouTube API 오류: ${res.status}`);
+src/lib/jarvis-brain-openai.ts.bak:1308:      type: 'collect',
+src/lib/jarvis-brain-openai.ts.bak:1340:      params: { prompt: `${keyword} influencer marketing campaign banner`, style: 'modern' },
+src/lib/jarvis-brain.ts:5: * 모든 기능 100% 포팅 (SmartStore, YouTube, Instagram, Sheets, Manus)
+src/lib/jarvis-brain.ts:42:  | 'collect' | 'send_email' | 'create_banner' | 'report'
+src/lib/jarvis-brain.ts:49:  | 'manus_task' | 'manus_status' | 'morning_briefing' | 'analyze_influencers_smart'
+src/lib/jarvis-brain.ts:125:      const data = { influencers: [], emails: [], naver: [] };
+src/lib/jarvis-brain.ts:133:      influencers: result.summary?.influencers || [],
+src/lib/jarvis-brain.ts:149:  if (data.influencers?.length) {
+src/lib/jarvis-brain.ts:150:    lines.push(`인플루언서 누적: ${data.influencers.length}명`);
+src/lib/jarvis-brain.ts:192:6번: 지능형 인플루언서 → analyze_influencers_smart (경로 C)
+src/lib/jarvis-brain.ts:239:      name: 'analyze_influencers_smart',
+src/lib/jarvis-brain.ts:244:          platform: { type: 'string', enum: ['YouTube', 'Instagram', 'TikTok', 'Naver Blog'], description: '플랫폼' },
+src/lib/jarvis-brain.ts:257:      name: 'search_youtube',
+src/lib/jarvis-brain.ts:258:      description: 'YouTube 채널 검색 및 분석. "유튜브에서 OO 검색해줘" 등.',
+src/lib/jarvis-brain.ts:657:    case 'analyze_influencers_smart':
+src/lib/jarvis-brain.ts:659:        type: 'analyze_influencers_smart',
+src/lib/jarvis-brain.ts:661:          platform: String(args.platform || 'YouTube'),
+src/lib/jarvis-brain.ts:670:    case 'search_youtube':
+src/lib/jarvis-brain.ts:672:        type: 'collect',
+src/lib/jarvis-brain.ts:674:        workingMessage: `YouTube 검색 중: ${args.keyword}`,
+src/lib/jarvis-brain.ts:675:        response: String(args.response || 'YouTube를 검색하겠습니다, 선생님.'),
+src/lib/jarvis-brain.ts:693:        type: 'collect',
+src/lib/jarvis-brain.ts:809:// ── YouTube Data API 검색 ──
+src/lib/jarvis-brain.ts:810:export interface YouTubeChannel {
+src/lib/jarvis-brain.ts:825:export async function searchYouTubeAPI(
+src/lib/jarvis-brain.ts:828:): Promise<{ total: number; keyword: string; items: YouTubeChannel[] }> {
+src/lib/jarvis-brain.ts:830:  // 클라우드 서버 프록시를 통해 YouTube 검색 실행
+src/lib/jarvis-brain.ts:832:  console.log('[JARVIS] YouTube 검색 (Cloud Proxy):', keyword, maxResults);
+src/lib/jarvis-brain.ts:838:      taskType: 'youtube-search',
+src/lib/jarvis-brain.ts:844:    throw new Error((err as any).message || `YouTube API 오류: ${res.status}`);
+src/lib/jarvis-brain.ts:847:  // 클라우드 서버 응답을 YouTubeChannel 형식으로 변환
+src/lib/jarvis-brain.ts:991:  if (/수집|찾아|인플루언서|블로거|유튜버|크리에이터|유튜브|인스타|instagram|youtube/.test(lower)) {
+src/lib/jarvis-brain.ts:997:    const hasYouTube = /유튜브|유튜버|youtube|yt|영상/.test(lower);
+src/lib/jarvis-brain.ts:1005:    if ((hasYouTube && hasInstagram) || (hasYouTube && hasNaver) || (hasInstagram && hasNaver)) {
+src/lib/jarvis-brain.ts:1007:      if (hasYouTube) platforms.push({ platform: 'YouTube', count: Math.ceil(count / 2) });
+src/lib/jarvis-brain.ts:1010:    } else if (hasYouTube) {
+src/lib/jarvis-brain.ts:1011:      platform = 'YouTube';
+src/lib/jarvis-brain.ts:1020:        { platform: 'YouTube', count: Math.ceil(count / 2) },
+src/lib/jarvis-brain.ts:1027:      type: 'collect',
+src/lib/jarvis-brain.ts:1071:      params: { prompt: `${keyword} influencer marketing campaign banner`, style: 'modern' },
+src/lib/jarvis-memory.ts:390:  if (activePanel === 'influencers' && panelData.influencers) {
+src/lib/jarvis-memory.ts:391:    const inf = panelData.influencers;
+src/lib/jarvis-telemetry.ts:57:  'morning_briefing':         { nodes: ['smartstore', 'email', 'sheets', 'youtube'], speed: 'normal', icon: '☀️' },
+src/lib/jarvis-telemetry.ts:58:  'search_youtube':           { nodes: ['youtube'],                   speed: 'normal',  icon: '🔍' },
+src/lib/jarvis-telemetry.ts:61:  'analyze_influencers_smart':{ nodes: ['manus_agent', 'youtube'],    speed: 'intense', icon: '🧠' },
+src/lib/jarvis-telemetry.ts:71:  'influencer_agent':         { nodes: ['influencer', 'youtube', 'email'], speed: 'intense', icon: '🎯' },
+src/lib/jarvis-telemetry.ts:77:  'outreach_collect':          { nodes: ['influencer', 'youtube'],     speed: 'intense', icon: '🔍' },
+src/lib/jarvis-telemetry.ts:78:  'outreach_save':             { nodes: ['influencer', 'sheets'],      speed: 'normal',  icon: '📥' },
+api/_archive/morning-briefing-v2.js:181:    influencers: null,
+api/_archive/morning-briefing-v2.js:275:      const influencers = rowsToObjects(rows);
+api/_archive/morning-briefing-v2.js:279:      influencers.forEach(inf => {
+api/_archive/morning-briefing-v2.js:289:      const newYesterday = influencers.filter(inf => {
+api/_archive/morning-briefing-v2.js:294:      addLog('SHEETS', 'success', `인플루언서 총 ${influencers.length}명, 어제 신규 ${newYesterday.length}명`);
+api/_archive/morning-briefing-v2.js:296:      result.influencers = {
+api/_archive/morning-briefing-v2.js:297:        total: influencers.length,
+api/_archive/morning-briefing-v2.js:304:      result.influencers = { error: err.message, total: 0, newYesterday: 0, byPlatform: {} };
+api/_archive/morning-briefing-v2.js:323:    const inf = result.influencers;
+api/_archive/morning-briefing.js:162:    influencers: null,
+api/_archive/morning-briefing.js:255:      const influencers = rowsToObjects(rows);
+api/_archive/morning-briefing.js:259:      influencers.forEach(inf => {
+api/_archive/morning-briefing.js:269:      const newYesterday = influencers.filter(inf => {
+api/_archive/morning-briefing.js:274:      addLog('SHEETS', 'success', `인플루언서 총 ${influencers.length}명, 어제 신규 ${newYesterday.length}명`);
+api/_archive/morning-briefing.js:276:      result.influencers = {
+api/_archive/morning-briefing.js:277:        total: influencers.length,
+api/_archive/morning-briefing.js:284:      result.influencers = { error: err.message, total: 0, newYesterday: 0, byPlatform: {} };
+api/_archive/morning-briefing.js:302:    const inf = result.influencers;
+api/_archive/naver-place-hours.js:171:      collected: rawItems.length,
+api/_archive/sheets-read.js:83:    const [influencerRows, naverRows, localRows] = await Promise.all([
+api/_archive/sheets-read.js:89:    const influencers = rowsToObjects(influencerRows || []);
+api/_archive/sheets-read.js:95:      totalInfluencers: influencers.length,
+api/_archive/sheets-read.js:99:      platformStats: influencers.reduce((acc, inf) => {
+api/_archive/sheets-read.js:105:      categoryStats: influencers.reduce((acc, inf) => {
+api/_archive/sheets-read.js:111:      statusStats: influencers.reduce((acc, inf) => {
+api/_archive/sheets-read.js:117:      lastCollected: influencers.length > 0 ? influencers[influencers.length - 1]['수집일시'] : null,
+api/_archive/sheets-read.js:136:    if (influencers.length > 0) {
+api/_archive/sheets-read.js:137:      contextText += `[인플루언서/유튜버 목록] 총 ${influencers.length}명\n`;
+api/_archive/sheets-read.js:142:      const recent10 = influencers.slice(-10);
+api/_archive/sheets-read.js:174:    if (influencers.length === 0 && naverData.length === 0 && localData.length === 0) {
+api/_archive/sheets-read.js:183:      influencers: influencers.slice(-100), // 최근 100개
+api/_archive/sheets-save.js:155:        if (type === 'influencer' || type === 'instagram') {
+api/_archive/sheets-save.js:202:        else if (type === 'youtube') {
+api/_archive/sheets-save.js:210:                'YouTube',
+api/_archive/youtube-analyze.js:1:// youtube-analyze.js
+api/_archive/youtube-analyze.js:3:// 1단계: YouTube API로 영상 데이터 수집
+api/_archive/youtube-analyze.js:7:const YT_VIDEOS_URL = 'https://www.googleapis.com/youtube/v3/videos';
+api/_archive/youtube-analyze.js:8:const YT_SEARCH_URL = 'https://www.googleapis.com/youtube/v3/search';
+api/_archive/youtube-analyze.js:9:const YT_COMMENTS_URL = 'https://www.googleapis.com/youtube/v3/commentThreads';
+api/_archive/youtube-analyze.js:30:// ── YouTube API: 키워드 인기 영상 수집 ──
+api/_archive/youtube-analyze.js:45:  if (!searchRes.ok) throw new Error(`YouTube Search API 오류: ${searchRes.status}`);
+api/_archive/youtube-analyze.js:58:  if (!detailRes.ok) throw new Error(`YouTube Videos API 오류: ${detailRes.status}`);
+api/_archive/youtube-analyze.js:74:    url: `https://www.youtube.com/watch?v=${item.id}`,
+api/_archive/youtube-analyze.js:79:// ── YouTube API: 영상 댓글 수집 ──
+api/_archive/youtube-analyze.js:282:    // ── Step 1: YouTube 데이터 수집 ──
+api/_archive/youtube-analyze.js:379:    console.error('[youtube-analyze] Error:', error);
+api/_archive/youtube-search.js:3:const YT_SEARCH_URL = 'https://www.googleapis.com/youtube/v3/search';
+api/_archive/youtube-search.js:4:const YT_CHANNELS_URL = 'https://www.googleapis.com/youtube/v3/channels';
+api/_archive/youtube-search.js:41:    const urlMatch = allText.match(/https?:\/\/(?!(?:www\.)?(?:instagram|tiktok|twitter|x|youtube|facebook|threads|naver|blog)\.)[^\s"'<>]+/);
+api/_archive/youtube-search.js:81:            error: 'YouTube API key not configured',
+api/_archive/youtube-search.js:160:                    profileUrl: `https://youtube.com/channel/${ch.id}`,
+api/_archive/youtube-search.js:161:                    customUrl: snippet.customUrl ? `https://youtube.com/@${snippet.customUrl.replace('@', '')}` : `https://youtube.com/channel/${ch.id}`,
+api/_archive/youtube-search.js:180:        console.error('[YouTube API] Error:', error);
+api/_archive/youtube-search.js:181:        return res.status(500).json({ error: 'Failed to fetch from YouTube API', message: String(error) });
+api/_archive/youtube-trending.js:1:// youtube-trending.js
+api/_archive/youtube-trending.js:2:// YouTube 인기 영상 추천 API - 트렌딩, 키워드별 인기, 채널별 인기 영상 조회
+api/_archive/youtube-trending.js:3:// YouTube Data API v3 사용
+api/_archive/youtube-trending.js:5:const YT_VIDEOS_URL = 'https://www.googleapis.com/youtube/v3/videos';
+api/_archive/youtube-trending.js:6:const YT_SEARCH_URL = 'https://www.googleapis.com/youtube/v3/search';
+api/_archive/youtube-trending.js:7:const YT_CHANNELS_URL = 'https://www.googleapis.com/youtube/v3/channels';
+api/_archive/youtube-trending.js:85:    throw new Error(`YouTube API 오류: ${res.status} - ${err.error?.message || '알 수 없는 오류'}`);
+api/_archive/youtube-trending.js:103:    url: `https://www.youtube.com/watch?v=${item.id}`,
+api/_archive/youtube-trending.js:133:    throw new Error(`YouTube Search API 오류: ${searchRes.status} - ${err.error?.message || '알 수 없는 오류'}`);
+api/_archive/youtube-trending.js:151:    throw new Error(`YouTube Videos API 오류: ${detailRes.status} - ${err.error?.message || '알 수 없는 오류'}`);
+api/_archive/youtube-trending.js:170:      url: `https://www.youtube.com/watch?v=${item.id}`,
+api/_archive/youtube-trending.js:240:    throw new Error(`YouTube Search API 오류: ${searchRes.status} - ${err.error?.message || '알 수 없는 오류'}`);
+api/_archive/youtube-trending.js:271:      url: `https://www.youtube.com/watch?v=${item.id}`,
+api/_archive/youtube-trending.js:310:        logs.push({ step: 2, status: 'running', message: 'YouTube Data API v3 mostPopular 호출 중...' });
+api/_archive/youtube-trending.js:351:        logs.push({ step: 2, status: 'running', message: `YouTube Search API 조회수순 검색 중... (기간: ${period || '전체'})` });
+api/_archive/youtube-trending.js:423:    console.error('[youtube-trending] Error:', error);
+api/cloud-proxy.ts:671:  let outreachSummary = { total: 0, contactable: 0, highFit: 0, drafts: 0 };
+api/cloud-proxy.ts:673:    const outreachRes = await handleOutreachList({ limit: 100 });
+api/cloud-proxy.ts:674:    if (outreachRes.success && outreachRes.candidates) {
+api/cloud-proxy.ts:675:      const list = outreachRes.candidates;
+api/cloud-proxy.ts:676:      outreachSummary = {
+api/cloud-proxy.ts:678:        contactable: list.filter((c: any) => c.publicContactStatus === 'email_public' || c.publicContactStatus === 'form_available').length,
+api/cloud-proxy.ts:737:    outreach: outreachSummary,
+api/cloud-proxy.ts:871:// ── YouTube 관련 유틸 ──
+api/cloud-proxy.ts:915:async function searchYouTubeDirect(keyword: string, maxResults: number = 10) {
+api/cloud-proxy.ts:923:    const searchUrl = `https://www.googleapis.com/youtube/v3/search?part=snippet&type=channel&q=${encodeURIComponent(kw)}&maxResults=50&regionCode=KR&hl=ko&key=${YOUTUBE_API_KEY}`;
+api/cloud-proxy.ts:930:    const channelsUrl = `https://www.googleapis.com/youtube/v3/channels?part=snippet,statistics,brandingSettings&id=${channelIds}&key=${YOUTUBE_API_KEY}`;
+api/cloud-proxy.ts:953:        channelUrl: `https://www.youtube.com/channel/${ch.id}`,
+api/cloud-proxy.ts:955:        category: keyword, source: 'YouTube Data API v3',
+api/cloud-proxy.ts:971:  let searchUrl = `https://www.googleapis.com/youtube/v3/search?part=snippet&type=video&q=${encodeURIComponent(keyword)}&order=viewCount&maxResults=${count}&regionCode=KR&hl=ko&key=${YOUTUBE_API_KEY}`;
+api/cloud-proxy.ts:975:  if (!searchRes.ok) throw new Error(`YouTube Search API 오류: ${searchRes.status}`);
+api/cloud-proxy.ts:980:  const videosUrl = `https://www.googleapis.com/youtube/v3/videos?part=snippet,statistics,contentDetails&id=${videoIds}&key=${YOUTUBE_API_KEY}`;
+api/cloud-proxy.ts:982:  if (!videosRes.ok) throw new Error(`YouTube Videos API 오류: ${videosRes.status}`);
+api/cloud-proxy.ts:996:      url: `https://www.youtube.com/watch?v=${v.id}`,
+api/cloud-proxy.ts:1067:  influencer_candidates: ['candidateId','collectedAt','platform','keyword','name','channelOrBlogUrl','recentContentTitle','recentContentUrl','subscriberOrVisitor','viewCount','publicContactStatus','publicEmailMasked','emailSource','productFitScore','productFitReason','suggestedProduct','suggestedOfferAngle','practicalSegment','outreachStatus','firstEmailDraft','followUpDraft','lastContactedAt','responseStatus','notes'],
+api/cloud-proxy.ts:1179:    } else if (type === 'influencer_candidate' && data) {
+api/cloud-proxy.ts:1180:      await ensureHeaders('influencer_candidates');
+api/cloud-proxy.ts:1181:      await sheetsAppend('influencer_candidates', [[
+api/cloud-proxy.ts:1189:        data.outreachStatus || 'pending', data.firstEmailDraft || '',
+api/cloud-proxy.ts:1205:      type === 'influencer_candidate' ? 'influencer_candidates' : 'jarvis_records',
+api/cloud-proxy.ts:1270:// ── OUTREACH ENGINE LITE ──
+api/cloud-proxy.ts:1362:  const candidates: any[] = [];
+api/cloud-proxy.ts:1447:  // ── YouTube 카테고리 기반 수집 ──
+api/cloud-proxy.ts:1448:  if (platform === 'all' || platform === 'youtube') {
+api/cloud-proxy.ts:1450:      if (!YOUTUBE_API_KEY) throw new Error('YouTube API 할당량 초과 또는 미설정');
+api/cloud-proxy.ts:1464:        const searchUrl = `https://www.googleapis.com/youtube/v3/search?part=snippet&type=channel&q=${encodeURIComponent(query)}&maxResults=${Math.min(perSearchMax, 15)}&regionCode=KR&hl=ko&key=${YOUTUBE_API_KEY}`;
+api/cloud-proxy.ts:1469:            return { success: true, candidates: [], quotaExceeded: true, message: 'YouTube API 할당량 초과로 오늘은 소량/수동 검증 모드로 진행합니다.' };
+api/cloud-proxy.ts:1484:        const channelsUrl = `https://www.googleapis.com/youtube/v3/channels?part=snippet,statistics,brandingSettings&id=${newChannelIds.join(',')}&key=${YOUTUBE_API_KEY}`;
+api/cloud-proxy.ts:1511:            publicContactStatus: hasEmail ? 'email_public' : 'unknown',
+api/cloud-proxy.ts:1515:          const candidate = {
+api/cloud-proxy.ts:1516:            candidateId: generateRecordId('inf'),
+api/cloud-proxy.ts:1517:            collectedAt: now,
+api/cloud-proxy.ts:1518:            platform: 'YouTube',
+api/cloud-proxy.ts:1524:            channelOrBlogUrl: `https://www.youtube.com/channel/${ch.id}`,
+api/cloud-proxy.ts:1526:            recentContentUrl: `https://www.youtube.com/channel/${ch.id}`,
+api/cloud-proxy.ts:1536:            outreachStatus: 'pending',
+api/cloud-proxy.ts:1546:            candidate.excludedReason = contact.email ? 'invalid_email_format' : 'no_public_email';
+api/cloud-proxy.ts:1547:            excludedCandidates.push(candidate);
+api/cloud-proxy.ts:1549:            candidates.push(candidate);
+api/cloud-proxy.ts:1555:        return { success: true, candidates: [], quotaExceeded: true, message: e.message };
+api/cloud-proxy.ts:1557:      // YouTube 실패해도 Naver로 계속 진행
+api/cloud-proxy.ts:1596:        const candidate = {
+api/cloud-proxy.ts:1597:          candidateId: generateRecordId('inf'),
+api/cloud-proxy.ts:1598:          collectedAt: now,
+api/cloud-proxy.ts:1617:          outreachStatus: 'pending',
+api/cloud-proxy.ts:1625:          candidate.excludedReason = 'no_public_email';
+api/cloud-proxy.ts:1626:          excludedCandidates.push(candidate);
+api/cloud-proxy.ts:1628:          candidates.push(candidate);
+api/cloud-proxy.ts:1637:  candidates.sort((a, b) => b.productFitScore - a.productFitScore);
+api/cloud-proxy.ts:1644:  const finalCandidates = candidates.slice(0, max);
+api/cloud-proxy.ts:1649:    candidates: finalCandidates,
+api/cloud-proxy.ts:1650:    total: candidates.length,
+api/cloud-proxy.ts:1664:      ? `YouTube 공식 카테고리 전체에서 ${productName} 공동구매와 맞는 이메일 확인 후보 ${finalCandidates.length}명을 수집했습니다.${shortfall > 0 ? ` (${shortfall}명 부족)` : ''}`
+api/cloud-proxy.ts:1665:      : `YouTube 공식 카테고리 전체에서 ${productName} 공동구매 후보 ${finalCandidates.length}명을 수집했습니다.`,
+api/cloud-proxy.ts:1670:  const { candidates } = params;
+api/cloud-proxy.ts:1671:  if (!candidates || !Array.isArray(candidates) || candidates.length === 0) {
+api/cloud-proxy.ts:1672:    return { success: false, error: 'candidates array required' };
+api/cloud-proxy.ts:1678:    await ensureHeaders('influencer_candidates');
+api/cloud-proxy.ts:1680:    for (const c of candidates) {
+api/cloud-proxy.ts:1681:      await sheetsAppend('influencer_candidates', [[
+api/cloud-proxy.ts:1682:        c.candidateId || generateRecordId('inf'), c.collectedAt || new Date().toISOString(),
+api/cloud-proxy.ts:1691:        c.outreachStatus || 'pending', c.firstEmailDraft || '',
+api/cloud-proxy.ts:1696:    return { success: true, saved, total: candidates.length, message: `${saved}명의 후보를 Google Sheets에 저장했습니다.` };
+api/cloud-proxy.ts:1707:    await ensureHeaders('influencer_candidates');
+api/cloud-proxy.ts:1708:    const result = await sheetsRead('influencer_candidates');
+api/cloud-proxy.ts:1710:    if (rows.length < 2) return { success: true, candidates: [], total: 0 };
+api/cloud-proxy.ts:1725:    return { success: true, candidates: records.slice(0, limit), total: records.length };
+api/cloud-proxy.ts:2132:      // YouTube analyze
+api/cloud-proxy.ts:2133:      if (endpoint === 'youtube-analyze') {
+api/cloud-proxy.ts:2142:      // YouTube trending
+api/cloud-proxy.ts:2143:      if (endpoint === 'youtube-trending') {
+api/cloud-proxy.ts:2182:      // ── YouTube 채널 검색 ──
+api/cloud-proxy.ts:2183:      if (resolvedTask === 'youtube-search') {
+api/cloud-proxy.ts:2184:        const result = await searchYouTubeDirect(params?.keyword || '', params?.maxResults || 10);
+api/cloud-proxy.ts:2188:      // ── YouTube 인기 영상 분석 ──
+api/cloud-proxy.ts:2189:      if (resolvedTask === 'youtube-viral') {
+api/cloud-proxy.ts:2201:            case 'save_influencers': {
+api/cloud-proxy.ts:2202:              const { influencers, keyword: sKeyword } = params || rest;
+api/cloud-proxy.ts:2203:              if (!influencers || !Array.isArray(influencers)) return res.status(400).json({ error: 'influencers array required' });
+api/cloud-proxy.ts:2205:              for (const inf of influencers) {
+api/cloud-proxy.ts:2208:                    `INSERT INTO influencers (channel_id, platform, name, email, subscribers, subscriber_text, views, description, profile_url, thumbnail, category, keyword, instagram)
+api/cloud-proxy.ts:2214:                    [inf.channelId||inf.channel_id||'', inf.platform||'YouTube', inf.name||'', inf.email||'',
+api/cloud-proxy.ts:2225:                `INSERT INTO collection_history (keyword, platform, total_found, with_email, new_collected, duplicates_skipped) VALUES (?, ?, ?, ?, ?, ?)`,
+api/cloud-proxy.ts:2226:                [sKeyword||'', 'YouTube', influencers.length, influencers.filter((i:any)=>i.email).length, saved, duplicates]
+api/cloud-proxy.ts:2228:              return res.json({ success: true, saved, duplicates, total: influencers.length });
+api/cloud-proxy.ts:2230:            case 'query_influencers': {
+api/cloud-proxy.ts:2232:              let sql = 'SELECT * FROM influencers WHERE 1=1';
+api/cloud-proxy.ts:2242:              return res.json({ success: true, total: (rows as any[]).length, influencers: rows });
+api/cloud-proxy.ts:2244:            case 'get_collected_ids': {
+api/cloud-proxy.ts:2245:              const [rows] = await conn.execute('SELECT channel_id FROM influencers');
+api/cloud-proxy.ts:2249:            case 'collection_history': {
+api/cloud-proxy.ts:2250:              const [rows] = await conn.execute('SELECT * FROM collection_history ORDER BY collected_at DESC LIMIT 50');
+api/cloud-proxy.ts:2300:              const [[totalInf]] = await conn.execute('SELECT COUNT(*) as cnt FROM influencers') as any;
+api/cloud-proxy.ts:2301:              const [[withEmail]] = await conn.execute("SELECT COUNT(*) as cnt FROM influencers WHERE email != ''") as any;
+api/cloud-proxy.ts:2303:              const [[totalCollections]] = await conn.execute('SELECT COUNT(*) as cnt FROM collection_history') as any;
+api/cloud-proxy.ts:2304:              const [topKeywords] = await conn.execute('SELECT keyword, COUNT(*) as cnt FROM influencers GROUP BY keyword ORDER BY cnt DESC LIMIT 10');
+api/cloud-proxy.ts:2305:              const [recentCollections] = await conn.execute('SELECT * FROM collection_history ORDER BY collected_at DESC LIMIT 5');
+api/cloud-proxy.ts:2306:              return res.json({ success: true, stats: { total_influencers: totalInf.cnt, with_email: withEmail.cnt, total_viral_videos: totalVideos.cnt, total_collections: totalCollections.cnt, top_keywords: topKeywords, recent_collections: recentCollections } });
+api/cloud-proxy.ts:2334:      if (resolvedTask === 'outreach-collect') {
+api/cloud-proxy.ts:2338:      if (resolvedTask === 'outreach-list') {
+api/cloud-proxy.ts:2342:      if (resolvedTask === 'outreach-save-candidates' || resolvedTask === 'outreach-save') {
+api/content-generator.js:56:    const influencerName = targetData.channelName || '인플루언서';
+api/content-generator.js:57:    const influencerCategory = targetData.category || '라이프스타일';
+api/content-generator.js:74:- 채널명: ${influencerName}
+api/content-generator.js:75:- 카테고리: ${influencerCategory}
+api/content-generator.js:102:- 채널명: ${influencerName}
+api/content-generator.js:132:- 타겟 채널: ${influencerName}
+api/content-generator.js:187:- 채널명: ${influencerName}
+api/content-generator.js:188:- 카테고리: ${influencerCategory}
+api/content-generator.js:268:- 채널명: ${influencerName}
+api/content-generator.js:339:        targetInfluencer: influencerName,
+api/cron/market-daily.js:45:      message: 'KAMIS_API_KEY not configured. Skipping daily collection.',
+api/cron/market-daily.js:64:  console.log(`[Cron/MarketDaily] Starting daily collection at ${new Date().toISOString()}`);
+api/cron/market-daily.js:153:    collectedAt: new Date().toISOString(),
+api/cron/market-daily.js:163:  console.log(`[Cron/MarketDaily] Completed: ${results.length}/${ITEMS.length} items collected`);
+api/influencer-agent.js:5: * YouTube 인플루언서 스캔 → 분석 → 제휴 이메일 자동 발송 파이프라인
+api/influencer-agent.js:8: * 엔드포인트: /api/influencer-agent
+api/influencer-agent.js:13:const YT_SEARCH_URL = 'https://www.googleapis.com/youtube/v3/search';
+api/influencer-agent.js:14:const YT_CHANNELS_URL = 'https://www.googleapis.com/youtube/v3/channels';
+api/influencer-agent.js:62:async function sendCollaborationEmail(influencer, template, senderInfo) {
+api/influencer-agent.js:66:    .replace('{{name}}', influencer.name)
+api/influencer-agent.js:67:    .replace('{{channel}}', influencer.customUrl || influencer.profileUrl)
+api/influencer-agent.js:68:    .replace('{{subscribers}}', influencer.subscribersFormatted)
+api/influencer-agent.js:69:    .replace('{{category}}', influencer.category);
+api/influencer-agent.js:74:    return { sent: false, reason: 'GMAIL_ACCESS_TOKEN not configured', email: influencer.email };
+api/influencer-agent.js:80:      `To: ${influencer.email}`,
+api/influencer-agent.js:81:      `Subject: [협업 제안] ${influencer.name}님, 함께 성장할 기회를 드립니다`,
+api/influencer-agent.js:99:      return { sent: true, email: influencer.email };
+api/influencer-agent.js:102:      return { sent: false, reason: err, email: influencer.email };
+api/influencer-agent.js:105:    return { sent: false, reason: error.message, email: influencer.email };
+api/influencer-agent.js:118:      error: 'YouTube API key not configured',
+api/influencer-agent.js:119:      telemetry: { nodeId: 'influencer', state: 'error', message: 'YOUTUBE_API_KEY 미설정' }
+api/influencer-agent.js:145:    // Phase 1: YouTube 채널 스캔
+api/influencer-agent.js:149:      nodeId: 'influencer',
+api/influencer-agent.js:215:          profileUrl: `https://youtube.com/channel/${ch.id}`,
+api/influencer-agent.js:216:          customUrl: snippet.customUrl ? `https://youtube.com/@${snippet.customUrl.replace('@', '')}` : '',
+api/influencer-agent.js:235:      nodeId: 'influencer',
+api/influencer-agent.js:251:        nodeId: 'influencer',
+api/influencer-agent.js:257:      for (const influencer of emailTargets) {
+api/influencer-agent.js:258:        const result = await sendCollaborationEmail(influencer, emailTemplate, {});
+api/influencer-agent.js:273:      nodeId: 'influencer',
+api/influencer-agent.js:299:      influencers: selected,
+api/influencer-agent.js:306:      nodeId: 'influencer',

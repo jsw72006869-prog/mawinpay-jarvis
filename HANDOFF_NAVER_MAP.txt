@@ -1,0 +1,283 @@
+src/api/manus-naver-booking.ts:7:    const response = await fetch('/api/manus-agent/naver-booking', {
+src/api/manus-naver-booking.ts:11:        action: 'automate_naver_booking',
+src/components/HologramWorkPanel.tsx:40:  'naver_booking': '네이버 예약',
+src/components/HologramWorkPanel.tsx:46:  'search_naver': '네이버 검색',
+src/components/InfluencerCards.tsx:99:    if (platform.includes('naver')) tags.push('네이버');
+src/components/InfluencerCards.tsx:559:                { key: 'naver', label: 'NAVER', color: '#03C75A' },
+src/components/JarvisApp.tsx:185:  const [naverResults, setNaverResults] = useState<NaverSearchItem[]>([]);
+src/components/JarvisApp.tsx:186:  const [naverPanelVisible, setNaverPanelVisible] = useState(false);
+src/components/JarvisApp.tsx:187:  const [naverKeyword, setNaverKeyword] = useState('');
+src/components/JarvisApp.tsx:236:  const [naverLoginStatus, setNaverLoginStatus] = useState<'idle' | 'waiting' | 'done' | 'error'>(() => {
+src/components/JarvisApp.tsx:240:  const [naverLoginPendingId, setNaverLoginPendingId] = useState<string | null>(null);
+src/components/JarvisApp.tsx:241:  const [naverLoginWebview, setNaverLoginWebview] = useState(false);
+src/components/JarvisApp.tsx:242:  const [naverLoginScreenshot, setNaverLoginScreenshot] = useState<string | null>(null);
+src/components/JarvisApp.tsx:320:  const [naverForm, setNaverForm] = useState(() => {
+src/components/JarvisApp.tsx:321:    const stored = JSON.parse(localStorage.getItem('jarvis_naver_creds') || '{}');
+src/components/JarvisApp.tsx:653:              telemetryFunctionStart('search_naver', `네이버 블로그 수집: "${keyword}" ${cnt}명`);
+src/components/JarvisApp.tsx:654:              const result = await searchNaverAPI(keyword, 'blog', Math.min(cnt * 3, 100), 'sim');
+src/components/JarvisApp.tsx:668:                title: item.title, author: item.creatorName, blogId: item.blogId,
+src/components/JarvisApp.tsx:671:                link: item.url, description: item.description, type: 'blog', keyword, collectedAt,
+src/components/JarvisApp.tsx:675:              telemetryFunctionSuccess('search_naver', `네이버 ${filtered.slice(0, cnt).length}명 수집 완료`, { count: filtered.slice(0, cnt).length, keyword: keyword });
+src/components/JarvisApp.tsx:679:              telemetryFunctionError('search_naver', `네이버 수집 실패: ${err}`);
+src/components/JarvisApp.tsx:941:    if (action?.type === 'naver_search') {
+src/components/JarvisApp.tsx:943:      const source = (action.params?.source as 'blog' | 'cafe') || 'blog';
+src/components/JarvisApp.tsx:949:      telemetryFunctionStart('search_naver', `네이버 ${source} 검색: "${keyword}" ${display}건`);
+src/components/JarvisApp.tsx:968:          blogId: item.blogId,
+src/components/JarvisApp.tsx:1002:        const errMsg = `네이버 검색 중 오류가 발생했습니다, 토니. ${String(err).includes('credentials') ? 'NAVER API 키가 설정되지 않았습니다. Vercel 환경변수에 NAVER_CLIENT_ID와 NAVER_CLIENT_SECRET을 설정해주세요.' : String(err)}`;
+src/components/JarvisApp.tsx:1036:        const proxyEndpoint = useHoursApi ? 'naver-place-hours' : 'naver-local-search';
+src/components/JarvisApp.tsx:1354:        const naverCreds = JSON.parse(localStorage.getItem('jarvis_naver_creds') || '{}');
+src/components/JarvisApp.tsx:1355:        const savedUserName = naverCreds.userName || '';
+src/components/JarvisApp.tsx:1356:        const savedUserPhone = naverCreds.userPhone || '';
+src/components/JarvisApp.tsx:1370:                taskType: 'naver_reservation_scan',
+src/components/JarvisApp.tsx:1814:        const naverCreds = JSON.parse(localStorage.getItem('jarvis_naver_creds') || '{}');
+src/components/JarvisApp.tsx:1815:        const naverUsername = naverCreds.username || '';
+src/components/JarvisApp.tsx:1816:        const naverPassword = naverCreds.password || '';
+src/components/JarvisApp.tsx:1823:        const savedUserName = naverCreds.userName || '';
+src/components/JarvisApp.tsx:1824:        const savedUserPhone = naverCreds.userPhone || '';
+src/components/JarvisApp.tsx:1871:          if (!naverUsername && !naverPassword && !activeSessionId) {
+src/components/JarvisApp.tsx:1885:          } else if (!naverUsername && !naverPassword) {
+src/components/JarvisApp.tsx:1907:          if (!activeSessionId && naverUsername && naverPassword) {
+src/components/JarvisApp.tsx:1909:            addMessage('jarvis', `[LOCK] 네이버 로그인 중... (${naverUsername})`);
+src/components/JarvisApp.tsx:1914:                body: JSON.stringify({ naverID: naverUsername, naverPW: naverPassword }),
+src/components/JarvisApp.tsx:1960:                    body: JSON.stringify({ naverID: naverUsername, naverPW: naverPassword, captchaAnswer }),
+src/components/JarvisApp.tsx:2037:                        body: JSON.stringify({ pendingSessionId: loginData.pendingSessionId, code: userInput, naverID: naverUsername }),
+src/components/JarvisApp.tsx:2177:          if (!activeSessionId && naverUsername && naverPassword) {
+src/components/JarvisApp.tsx:2179:            addMessage('jarvis', `[LOCK] 네이버 로그인 중... (${naverUsername})`);
+src/components/JarvisApp.tsx:2184:                body: JSON.stringify({ naverID: naverUsername, naverPW: naverPassword }),
+src/components/JarvisApp.tsx:2207:                  body: JSON.stringify({ naverID: naverUsername, naverPW: naverPassword, captchaAnswer: userCaptcha }),
+src/components/JarvisApp.tsx:2361:              email: naverUsername,
+src/components/JarvisApp.tsx:2596:              ssCountsCacheRef.current = { data: { newOrders: c2.newOrders ?? raw.newOrders ?? 0, pendingShipping: c2.pendingShipping ?? raw.pendingShipping ?? 0, preShipTotal: c2.preShipTotal ?? raw.preShipTotal ?? 0, shipping: c2.shipping ?? raw.shipping ?? 0, delivered: c2.delivered ?? raw.delivered ?? 0, purchaseConfirmed: c2.purchaseConfirmed ?? raw.purchaseConfirmed ?? 0, totalAmount: raw.totalAmount ?? 0, revenueChangePercent: raw.revenueChangePercent ?? 0, source: raw.source || 'naver-commerce-api', fetchedAt: raw.fetchedAt || null, isCached: false }, fetchedAt: Date.now() };
+src/components/JarvisApp.tsx:2635:                source: rawSS.source || 'naver-commerce-api',
+src/components/JarvisApp.tsx:2792:        briefingDisplay += `- API: **${health.naverApi || 'NORMAL'}**\n`;
+src/components/JarvisApp.tsx:3192:              source: 'naver-commerce-api',
+src/components/JarvisApp.tsx:3209:              source: rawData.source || 'naver-commerce-api',
+src/components/JarvisApp.tsx:3312:            if (data.totalSales) resultMsg += `총 매출: ${Number(data.totalSales).toLocaleString('ko-KR')}원\n총 주문: ${data.totalOrders}건\n네이버 수수료: ${Number(data.naverFee).toLocaleString('ko-KR')}원\n실수령: ${Number(data.netSales).toLocaleString('ko-KR')}원`;
+src/components/JarvisApp.tsx:3433:          const result = await searchNaverAPI(keyword || '인플루언서', 'blog', Math.min(count * 3, 100), 'sim');
+src/components/JarvisApp.tsx:3435:            id: `naver-${Date.now()}-${Math.random()}`,
+src/components/JarvisApp.tsx:3436:            name: item.bloggername?.replace(/<[^>]*>/g, '') || '',
+src/components/JarvisApp.tsx:3440:            profileUrl: item.bloggerlink || '',
+src/components/JarvisApp.tsx:4095:        else if (fullText.includes('블로거') || fullText.includes('네이버') || fullText.includes('Naver')) platform = 'naver';
+src/components/JarvisApp.tsx:4106:      addMessage('jarvis', `${keyword} 관련 ${platform === 'youtube' ? 'YouTube' : platform === 'naver' ? 'Naver Blog' : 'YouTube + Naver Blog'} 후보를 수집합니다.${requireEmail ? ' 공개 이메일이 있는 후보만 필터링합니다.' : ''} 최대 ${count}명까지 분석합니다.`, true);
+src/components/JarvisApp.tsx:4319:      setEmailDraftData({ subject, html, to: 'jungsng805@naver.com', toName: '테스트 수신자', product: emailProduct });
+src/components/JarvisApp.tsx:4321:      addMessage('jarvis', `📧 이메일 발송 준비 완료\n\n**상태:** draft_created\n**제목:** ${subject}\n**수신자:** jungsng805@naver.com (테스트 수신자 1명)\n\n⚠️ 실제 유튜버에게는 발송하지 않습니다.\n⚠️ 발송 전 초안을 먼저 확인하세요.\n\n💡 "발송 전 초안 먼저 보여줘"로 미리보기 가능`, true);
+src/components/JarvisApp.tsx:4331:      addMessage('jarvis', `📋 **이메일 초안 미리보기**\n\n**제목:** ${draftData.subject}\n**수신자:** ${draftData.to} (${draftData.toName})\n**상품:** ${draftData.product} 공동구매\n**상태:** approval_required\n\n---\n\n이메일 본문은 JARVIS 시그니처 디자인 HTML 템플릿입니다.\n\n⚠️ **보호 조건:**\n• 수신자: jungsng805@naver.com 1명만\n• 실제 유튜버 발송: 0건\n• 실제 거래처 발송: 0건\n• 승인 전 발송: 차단\n\n💡 "테스트 수신자에게만 제안 메일 보내줘"로 발송 요청 가능`, true);
+src/components/JarvisApp.tsx:4343:        description: `jungsng805@naver.com 1명에게만 발송합니다.\n실제 유튜버/거래처 발송 0건.`,
+src/components/JarvisApp.tsx:4345:          { label: '수신자', value: 'jungsng805@naver.com' },
+src/components/JarvisApp.tsx:4354:      addMessage('jarvis', `🔐 **승인 필요**\n\n테스트 수신자 jungsng805@naver.com 1명에게만 발송합니다.\n\n"확인" 또는 승인 버튼을 눌러주세요.\n\n⚠️ 승인 전까지 발송되지 않습니다.`, true);
+src/components/JarvisApp.tsx:4365:        const TEST_RECIPIENT = 'jungsng805@naver.com';
+src/components/JarvisApp.tsx:4368:          addMessage('jarvis', '❌ 보호 조건 위반: 테스트 수신자(jungsng805@naver.com)가 아닌 주소로는 발송할 수 없습니다.', true);
+src/components/JarvisApp.tsx:5779:                    value={naverForm.username}
+src/components/JarvisApp.tsx:5798:                    value={naverForm.password}
+src/components/JarvisApp.tsx:5822:                        window.postMessage({ source: 'JARVIS_APP', type: 'GET_NAVER_COOKIES', payload: { naverID: naverForm.username } }, '*');
+src/components/JarvisApp.tsx:5840:                              body: JSON.stringify({ naverID: result.naverID || naverForm.username || 'chrome_user', cookies: result.cookies }),
+src/components/JarvisApp.tsx:5911:                      if (naverLoginStatus === 'waiting') return;
+src/components/JarvisApp.tsx:5912:                      const id = naverForm.username;
+src/components/JarvisApp.tsx:5913:                      const pw = naverForm.password;
+src/components/JarvisApp.tsx:5923:                          body: JSON.stringify({ naverID: id, naverPW: pw }),
+src/components/JarvisApp.tsx:5976:                      background: naverLoginStatus === 'done' ? 'rgba(34,197,94,0.15)' : 'rgba(74,144,226,0.15)',
+src/components/JarvisApp.tsx:5977:                      border: `1px solid ${naverLoginStatus === 'done' ? '#22C55E' : '#4A90E2'}55`,
+src/components/JarvisApp.tsx:5979:                      color: naverLoginStatus === 'done' ? '#22C55E' : '#4A90E2',
+src/components/JarvisApp.tsx:5983:                    {naverLoginStatus === 'done' ? '[OK] NAVER LOGGED IN' :
+src/components/JarvisApp.tsx:5984:                     naverLoginStatus === 'waiting' ? '\u23F3 로그인 진행 중...' :
+src/components/JarvisApp.tsx:5985:                     naverLoginStatus === 'error' ? '[X] 로그인 실패 - 재시도' :
+src/components/JarvisApp.tsx:5988:                  {naverLoginStatus === 'done' && bookingSessionId && (
+src/components/JarvisApp.tsx:6004:                    value={naverForm.userName}
+src/components/JarvisApp.tsx:6023:                    value={naverForm.userPhone}
+src/components/JarvisApp.tsx:6053:      }             localStorage.setItem('jarvis_naver_creds', JSON.stringify({
+src/components/JarvisApp.tsx:6054:                      username: naverForm.username,
+src/components/JarvisApp.tsx:6055:                      password: naverForm.password,
+src/components/JarvisApp.tsx:6056:                      userName: naverForm.userName,
+src/components/JarvisApp.tsx:6057:                      userPhone: naverForm.userPhone,
+src/components/JarvisApp.tsx:6061:                    const savedMsg = naverForm.username
+src/components/JarvisApp.tsx:6062:                      ? `설정이 저장되었습니다, 토니. 네이버 아이디 ${naverForm.username}으로 로그인 정보가 등록되었습니다. 이제 예약 자동화를 사용할 수 있습니다.`
+src/components/JarvisApp.tsx:6226:        {naverPanelVisible && naverResults.length > 0 && (
+src/components/JarvisApp.tsx:6246:                <div style={{ color: THEME.text, fontSize: '0.55rem', marginTop: 2 }}>'{naverKeyword}' — {naverResults.length}건</div>
+src/components/JarvisApp.tsx:6256:              {naverResults.map((item, i) => (
+src/components/JarvisApp.tsx:6284:                  const sheetData: NaverCollectedData[] = naverResults.map(item => ({
+src/components/JarvisApp.tsx:6289:                    type: 'blog',
+src/components/JarvisApp.tsx:6290:                    keyword: naverKeyword,
+src/components/JarvisApp.tsx:6310:                    ...naverResults.map(r => [
+src/components/JarvisApp.tsx:6321:                  a.download = `naver-${naverKeyword}-${new Date().toISOString().split('T')[0]}.csv`;
+src/components/JarvisApp.tsx:6528:        {naverLoginWebview && (
+src/components/JarvisApp.tsx:6530:            key="naver-webview-modal"
+src/components/JarvisApp.tsx:6562:              {naverLoginScreenshot ? (
+src/components/JarvisApp.tsx:6566:                    if (!naverLoginPendingId) return;
+src/components/JarvisApp.tsx:6575:                    await fetch(`${BOOKING_SERVER}/api/booking/manual-login/click/${naverLoginPendingId}`, {
+src/components/JarvisApp.tsx:6583:                    src={naverLoginScreenshot}
+src/components/JarvisApp.tsx:6602:                    id="naver-pw-input"
+src/components/JarvisApp.tsx:6608:                        if (!pw || !naverLoginPendingId) return;
+src/components/JarvisApp.tsx:6611:                          await fetch(`${BOOKING_SERVER}/api/booking/manual-login/fill-password/${naverLoginPendingId}`, {
+src/components/JarvisApp.tsx:6632:                      const input = document.getElementById('naver-pw-input') as HTMLInputElement;
+src/components/JarvisApp.tsx:6634:                      if (!pw || !naverLoginPendingId) return;
+src/components/JarvisApp.tsx:6637:                        await fetch(`${BOOKING_SERVER}/api/booking/manual-login/fill-password/${naverLoginPendingId}`, {
+src/components/NeuralMissionMap.tsx:73:  { id: 'naver',        label: 'NAVER',         sublabel: 'Search API',         icon: '🔍', state: 'idle', detail: 'Blog/Cafe scanner ready',    x: -28, y: -6,   z: -5,  baseColor: '#1EC800' },
+src/components/NeuralMissionMap.tsx:87:  ['jarvis_brain', 'smartstore'], ['jarvis_brain', 'youtube'], ['jarvis_brain', 'naver'],
+src/components/NeuralMissionMap.tsx:90:  ['manus_agent', 'youtube'], ['manus_agent', 'naver'],
+src/components/NeuralMissionMap.tsx:306:    const sequence = ['smartstore', 'sheets', 'youtube', 'naver', 'instagram', 'email', 'manus_agent'];
+src/components/PlatformDataCards.tsx:30:  { id: 'naver',        label: 'NAVER',  icon: '🔍', primary: '#03C75A', secondary: '#1EC800', glow: 'rgba(3,199,90,0.6)',    bg: 'linear-gradient(160deg, #000a03 0%, #001a08 100%)' },
+src/components/PlatformDataCards_Enhanced.tsx:33:  { id: 'naver',        label: 'NAVER',  icon: '🔍', primary: '#03C75A', secondary: '#1EC800', glow: 'rgba(3,199,90,0.6)',    bg: 'linear-gradient(160deg, #000a03 0%, #001a08 100%)' },
+src/components/InfluencerOutreachPanel.tsx:39:  const [filter, setFilter] = useState<'all' | 'high' | 'youtube' | 'naver'>('all');
+src/components/InfluencerOutreachPanel.tsx:56:    if (filter === 'naver') return c.platform.toLowerCase().includes('naver');
+src/components/InfluencerOutreachPanel.tsx:75:    if (platform.toLowerCase().includes('naver')) return 'N';
+src/components/InfluencerOutreachPanel.tsx:140:            { key: 'naver', label: 'Naver' },
+src/lib/cloud-api.ts:11: * @param endpoint - 서버 API 엔드포인트 (예: 'naver-local-search')
+src/lib/google-sheets.ts:44:  blogId?: string;
+src/lib/google-sheets.ts:134:    blogId: r.blogId || '',
+src/lib/google-sheets.ts:145:  return saveToSheets('naver', mapped);
+src/lib/google-sheets.ts:194:    { name: '여행블로거', platform: 'Naver Blog', followers: '312K', url: 'https://blog.naver.com/여행블로거', email: 'travel@여행블로거.com' },
+src/lib/google-sheets.ts:197:    { name: '육아맘', platform: 'Naver Blog', followers: '234K', url: 'https://blog.naver.com/육아맘', email: 'inquiry@육아맘.com' },
+src/lib/jarvis-brain-openai.ts.bak:25:  | 'change_voice' | 'list_voices' | 'naver_search' | 'local_search' | 'book_restaurant'
+src/lib/jarvis-brain-openai.ts.bak:181:    name: 'naver_search',
+src/lib/jarvis-brain-openai.ts.bak:187:        source: { type: 'string', enum: ['blog', 'cafe'], description: 'blog=네이버 블로그, cafe=네이버 카페' },
+src/lib/jarvis-brain-openai.ts.bak:507:- "~검색해줘" → local_search 또는 naver_search 호출
+src/lib/jarvis-brain-openai.ts.bak:578:- "~인플루언서 찾아줘" → collect_influencers 또는 naver_search
+src/lib/jarvis-brain-openai.ts.bak:861:    case 'naver_search':
+src/lib/jarvis-brain-openai.ts.bak:863:        type: 'naver_search',
+src/lib/jarvis-brain-openai.ts.bak:866:          source: String(args.source || 'blog'),
+src/lib/jarvis-brain-openai.ts.bak:1113:  source: 'blog' | 'cafe';
+src/lib/jarvis-brain-openai.ts.bak:1118:  blogId: string;
+src/lib/jarvis-brain-openai.ts.bak:1131:  source: 'blog' | 'cafe' = 'blog',
+src/lib/jarvis-brain-openai.ts.bak:1140:  const url = `${apiBase}/api/naver-search?keyword=${encodeURIComponent(keyword)}&source=${source}&display=${display}&sort=${sort}`;
+src/lib/jarvis-brain-openai.ts.bak:1318:      type: 'naver_search',
+src/lib/jarvis-brain-openai.ts.bak:1319:      params: { keyword: keyword || text, source: 'blog', display: 30, sort: 'sim' },
+src/lib/jarvis-brain.ts:44:  | 'change_voice' | 'list_voices' | 'naver_search' | 'local_search' | 'book_restaurant'
+src/lib/jarvis-brain.ts:125:      const data = { influencers: [], emails: [], naver: [] };
+src/lib/jarvis-brain.ts:135:      naver: result.summary?.naver || [],
+src/lib/jarvis-brain.ts:155:  if (data.naver?.length) {
+src/lib/jarvis-brain.ts:156:    lines.push(`네이버 검색 결과: ${data.naver.length}건`);
+src/lib/jarvis-brain.ts:272:      name: 'search_naver',
+src/lib/jarvis-brain.ts:278:          source: { type: 'string', enum: ['blog', 'cafe'] },
+src/lib/jarvis-brain.ts:679:    case 'search_naver':
+src/lib/jarvis-brain.ts:681:        type: 'naver_search',
+src/lib/jarvis-brain.ts:684:          source: String(args.source || 'blog'),
+src/lib/jarvis-brain.ts:776:  source: 'blog' | 'cafe';
+src/lib/jarvis-brain.ts:781:  blogId: string;
+src/lib/jarvis-brain.ts:794:  source: 'blog' | 'cafe' = 'blog',
+src/lib/jarvis-brain.ts:799:  const url = `${apiBase}/api/naver-search?keyword=${encodeURIComponent(keyword)}&source=${source}&display=${display}&sort=${sort}`;
+src/lib/jarvis-brain.ts:999:    const hasNaver = /네이버|블로거|블로그|naver/.test(lower);
+src/lib/jarvis-brain.ts:1045:      type: 'naver_search',
+src/lib/jarvis-brain.ts:1046:      params: { keyword: keyword || text, source: 'blog', display: 30, sort: 'sim' },
+src/lib/jarvis-telemetry.ts:59:  'search_naver':             { nodes: ['naver'],                     speed: 'normal',  icon: '🔍' },
+src/lib/jarvis-telemetry.ts:73:  'naver_booking':            { nodes: ['booking'],                   speed: 'intense', icon: '📅' },
+src/lib/jarvis-telemetry.ts:263:  const knownNodes = ['jarvis_brain', 'smartstore', 'naver_api', 'tts_engine', 'stt_engine', 'cloud_server', 'gpt_api'];
+src/vite-env.d.ts:8:  readonly VITE_NAVER_CLIENT_ID: string;
+src/vite-env.d.ts:9:  readonly VITE_NAVER_CLIENT_SECRET: string;
+api/_archive/_smartstore-auth.js:10:const API_BASE = 'https://api.commerce.naver.com/external';
+api/_archive/debug-token.js:70:      const tokenRes = await fetch(`https://api.commerce.naver.com/external/v1/oauth2/token?${params.toString()}`, {
+api/_archive/instagram-search.js:6:const NAVER_WEB_API = 'https://openapi.naver.com/v1/search/webkr.json';
+api/_archive/instagram-search.js:7:const NAVER_BLOG_API = 'https://openapi.naver.com/v1/search/blog.json';
+api/_archive/instagram-search.js:12:  'ar', 'challenge', 'create', 'press', 'blog', 'help',
+api/_archive/instagram-search.js:60:              source: 'naver-web',
+api/_archive/instagram-search.js:101:              source: 'naver-blog',
+api/_archive/instagram-search.js:108:    console.error('[Instagram] Naver blog search error:', e);
+api/_archive/instagram-search.js:130:  const clientId = process.env.NAVER_CLIENT_ID;
+api/_archive/instagram-search.js:131:  const clientSecret = process.env.NAVER_CLIENT_SECRET;
+api/_archive/instagram-search.js:135:      message: 'NAVER_CLIENT_ID와 NAVER_CLIENT_SECRET 환경변수를 Vercel에 설정해주세요.',
+api/_archive/naver-local-search.js:11:  const clientId = process.env.NAVER_CLIENT_ID;
+api/_archive/naver-local-search.js:12:  const clientSecret = process.env.NAVER_CLIENT_SECRET;
+api/_archive/naver-local-search.js:17:      message: 'NAVER_CLIENT_ID, NAVER_CLIENT_SECRET 환경변수를 설정해주세요.',
+api/_archive/naver-local-search.js:38:      const url = `https://openapi.naver.com/v1/search/local.json?query=${encodeURIComponent(query)}&display=${maxDisplay}&start=${startIdx}&sort=random`;
+api/_archive/naver-place-hours.js:1:// api/naver-place-hours.js
+api/_archive/naver-place-hours.js:19:  const clientId = process.env.NAVER_CLIENT_ID;
+api/_archive/naver-place-hours.js:20:  const clientSecret = process.env.NAVER_CLIENT_SECRET;
+api/_archive/naver-place-hours.js:29:      `https://openapi.naver.com/v1/search/local.json?query=${encodeURIComponent(query)}&display=${Math.min(Number(display), 100)}&start=1&sort=comment`,
+api/_archive/naver-place-hours.js:73:            const placeSearchUrl = `https://map.naver.com/v5/api/search?caller=pcweb&query=${searchQuery}&type=all&page=1&displayCount=1&isPlaceRecommendation=true&lang=ko`;
+api/_archive/naver-place-hours.js:78:                'Referer': 'https://map.naver.com/',
+api/_archive/naver-place-hours.js:94:            const placeApiUrl = `https://map.naver.com/v5/api/sites/summary/${placeId}?lang=ko`;
+api/_archive/naver-place-hours.js:98:                'Referer': `https://map.naver.com/v5/entry/place/${placeId}`,
+api/_archive/naver-place-hours.js:184:    console.error('[naver-place-hours] 오류:', err);
+api/_archive/rank-tracker.js:23:  const url = `https://search.shopping.naver.com/search/all?query=${encodeURIComponent(keyword)}&pagingIndex=${page}&pagingSize=40&sort=rel`;
+api/_archive/sheets-read.js:83:    const [influencerRows, naverRows, localRows] = await Promise.all([
+api/_archive/sheets-read.js:90:    const naverData = rowsToObjects(naverRows || []);
+api/_archive/sheets-read.js:96:      totalNaverData: naverData.length,
+api/_archive/sheets-read.js:119:      naverKeywords: naverData.reduce((acc, item) => {
+api/_archive/sheets-read.js:151:    if (naverData.length > 0) {
+api/_archive/sheets-read.js:152:      contextText += `[네이버 블로거/카페] 총 ${naverData.length}명\n`;
+api/_archive/sheets-read.js:153:      contextText += `키워드별: ${Object.entries(summary.naverKeywords).slice(0, 10).map(([k,v]) => `${k}(${v}개)`).join(', ')}\n`;
+api/_archive/sheets-read.js:154:      const recent5Naver = naverData.slice(-5);
+api/_archive/sheets-read.js:174:    if (influencers.length === 0 && naverData.length === 0 && localData.length === 0) {
+api/_archive/sheets-read.js:184:      naverData: naverData.slice(-100),
+api/_archive/sheets-save.js:229:        else if (type === 'naver') {
+api/_archive/sheets-save.js:237:                item.blogId || '',
+api/_archive/sheets-save.js:244:                item.source || 'blog',
+api/_archive/smartstore-automation.js:507:      const naverFee = Math.round(totalSales * 0.034);
+api/_archive/smartstore-automation.js:508:      const netSales = totalSales - naverFee;
+api/_archive/smartstore-automation.js:526:        naverFee,
+api/_archive/smartstore-automation.js:561:        preview += `수신: ${supplierEmail || 'jungsng805@naver.com'}\n`;
+api/_archive/smartstore-automation.js:645:          const targetEmail = supplierEmail || 'jungsng805@naver.com';
+api/_archive/smartstore-process-order.js:11:const SUPPLY_EMAIL = process.env.SUPPLY_EMAIL || 'jungsng805@naver.com';
+api/_archive/smartstore-scheduler.js:13:const SUPPLY_EMAIL = process.env.SUPPLY_EMAIL || 'jungsng805@naver.com';
+api/_archive/smartstore-scheduler.js:90:    const tokenRes = await fetch('https://api.commerce.naver.com/external/v1/oauth2/token', {
+api/_archive/smartstore-scheduler.js:112:      `https://api.commerce.naver.com/external/v1/pay-order/seller/product-orders/query-by-time?from=${from}&to=${to}&limitCount=300`,
+api/_archive/youtube-search.js:41:    const urlMatch = allText.match(/https?:\/\/(?!(?:www\.)?(?:instagram|tiktok|twitter|x|youtube|facebook|threads|naver|blog)\.)[^\s"'<>]+/);
+api/booking-enhanced.js:20:const NAVER_BOOKING_BASE = 'https://booking.naver.com';
+api/browser-agent.js:161:    const bizRes = await fetch('https://m.booking.naver.com/graphql', {
+api/browser-agent.js:166:        'Referer': `https://m.booking.naver.com/booking/13/bizes/${targetBizId}`,
+api/browser-agent.js:195:    const calendarRes = await fetch('https://m.booking.naver.com/graphql', {
+api/browser-agent.js:200:        'Referer': `https://m.booking.naver.com/booking/13/bizes/${targetBizId}/items/${targetItemId}`,
+api/browser-agent.js:270:      bookingUrl: `https://m.booking.naver.com/booking/13/bizes/${targetBizId}/items/${targetItemId}`,
+api/browser-agent.js:317:    bookingUrl: `https://m.booking.naver.com/booking/13/bizes/${bizId || '379909'}/items/${itemId || '3506026'}`,
+api/browser-agent.js:329:    const searchUrl = `https://m.search.naver.com/search.naver?query=${encodeURIComponent(query)}`;
+api/browser-agent.js:339:    const bookingMatch = html.match(/booking\.naver\.com\/booking\/\d+\/bizes\/(\d+)/);
+api/browser-agent.js:340:    const placeMatch = html.match(/place\.naver\.com\/\w+\/(\d+)/);
+api/browser-agent.js:349:      bookingUrl: bookingMatch ? `https://m.booking.naver.com/booking/13/bizes/${bookingMatch[1]}` : null,
+api/cloud-proxy.ts:37:const NAVER_API_BASE = 'https://api.commerce.naver.com/external';
+api/cloud-proxy.ts:430:      source: 'naver-commerce-api',
+api/cloud-proxy.ts:466:      source: 'naver-commerce-api',
+api/cloud-proxy.ts:493:      source: 'naver-commerce-api',
+api/cloud-proxy.ts:530:    source: 'naver-commerce-api',
+api/cloud-proxy.ts:698:    naverApi: 'NORMAL',
+api/cloud-proxy.ts:851:    naverClientConfigured: !!(SMARTSTORE_CLIENT_ID && SMARTSTORE_CLIENT_SECRET),
+api/cloud-proxy.ts:1562:  if (platform === 'all' || platform === 'naver') {
+api/cloud-proxy.ts:1564:      const NAVER_CLIENT_ID = process.env.NAVER_CLIENT_ID || '';
+api/cloud-proxy.ts:1565:      const NAVER_CLIENT_SECRET = process.env.NAVER_CLIENT_SECRET || '';
+api/cloud-proxy.ts:1566:      if (!NAVER_CLIENT_ID) throw new Error('Naver API 미설정');
+api/cloud-proxy.ts:1568:      const naverQuery = `${productName} 공동구매 리뷰`;
+api/cloud-proxy.ts:1569:      const naverUrl = `https://openapi.naver.com/v1/search/blog.json?query=${encodeURIComponent(naverQuery)}&display=${max * 2}&sort=sim`;
+api/cloud-proxy.ts:1570:      const naverRes = await fetch(naverUrl, {
+api/cloud-proxy.ts:1571:        headers: { 'X-Naver-Client-Id': NAVER_CLIENT_ID, 'X-Naver-Client-Secret': NAVER_CLIENT_SECRET },
+api/cloud-proxy.ts:1573:      if (!naverRes.ok) throw new Error(`Naver API error: ${naverRes.status}`);
+api/cloud-proxy.ts:1574:      const naverData = await naverRes.json() as any;
+api/cloud-proxy.ts:1575:      const blogItems = (naverData.items || []).slice(0, max);
+api/cloud-proxy.ts:1576:      for (const item of blogItems) {
+api/cloud-proxy.ts:1577:        const bloggerlink = item.bloggerlink || '';
+api/cloud-proxy.ts:1578:        const blogIdMatch = bloggerlink.match(/blog\.naver\.com\/([a-zA-Z0-9_]+)/);
+api/cloud-proxy.ts:1579:        const blogId = blogIdMatch ? blogIdMatch[1] : '';
+api/cloud-proxy.ts:1580:        const blogUrl = blogId ? `https://blog.naver.com/${blogId}` : bloggerlink;
+api/cloud-proxy.ts:1583:        const practicalSegment = tagPracticalSegment(cleanDesc + ' ' + cleanTitle, item.bloggername || '');
+api/cloud-proxy.ts:1586:          name: item.bloggername || blogId,
+api/cloud-proxy.ts:1587:          title: item.bloggername || blogId,
+api/cloud-proxy.ts:1600:          keyword: naverQuery,
+api/cloud-proxy.ts:1604:          name: item.bloggername || blogId || '블로거',
+api/cloud-proxy.ts:1605:          channelOrBlogUrl: blogUrl,
+api/cloud-proxy.ts:2110:      if (endpoint === 'naver-auth-test') {
+api/naver-search.js:3:const NAVER_BLOG_API = 'https://openapi.naver.com/v1/search/blog.json';
+api/naver-search.js:4:const NAVER_CAFE_API = 'https://openapi.naver.com/v1/search/cafearticle.json';
+api/naver-search.js:6:async function fetchNaverBlogProfile(blogId) {
+api/naver-search.js:10:        const profileUrl = `https://blog.naver.com/NoteIntro.naver?blogId=${blogId}`;
+api/naver-search.js:51:function extractBlogId(bloggerlink) {
+api/naver-search.js:52:    if (!bloggerlink)
+api/naver-search.js:54:    // https://blog.naver.com/blogId 형태
+api/naver-search.js:55:    const match = bloggerlink.match(/blog\.naver\.com\/([a-zA-Z0-9_]+)/);
+api/naver-search.js:59:    const idMatch = bloggerlink.match(/\/([a-zA-Z0-9_]+)\/?$/);
+api/naver-search.js:65:function guessEmail(blogId) {
+api/naver-search.js:66:    if (!blogId)
+api/naver-search.js:69:    // 가장 흔한 패턴: blogId@naver.com
+api/naver-search.js:70:    return `${blogId}@naver.com`;
+api/naver-search.js:81:    const clientId = process.env.NAVER_CLIENT_ID;
+api/naver-search.js:82:    const clientSecret = process.env.NAVER_CLIENT_SECRET;
+api/naver-search.js:86:            message: 'NAVER_CLIENT_ID와 NAVER_CLIENT_SECRET 환경변수를 Vercel에 설정해주세요.',
+api/naver-search.js:89:    const { keyword, source = 'blog', display = '100', sort = 'sim', fetchProfile = 'false', // 프로필 크롤링 여부 (느리므로 선택적)
+api/naver-search.js:121:            const blogItem = item;
+api/naver-search.js:123:            const creatorName = isBlog ? (blogItem.bloggername || '알 수 없음') : (cafeItem.cafename || '알 수 없음');
+api/naver-search.js:124:            const creatorUrl = isBlog ? (blogItem.bloggerlink || '') : (cafeItem.cafeurl || '');
+api/naver-search.js:126:            const blogId = isBlog ? extractBlogId(creatorUrl) : '';
+api/naver-search.js:127:            // 추정 이메일 (블로그 ID + @naver.com)
+api/naver-search.js:128:            const guessedEmail = blogId ? guessEmail(blogId) : '';
+api/naver-search.js:131:            if (shouldFetchProfile && blogId && isBlog) {
+api/naver-search.js:132:                profileData = await fetchNaverBlogProfile(blogId);
+api/naver-search.js:142:                blogId,
+api/real-action-agent.js:76:    const url = `https://booking.naver.com/booking/13/bizes/${businessId}/items?startDate=${date}&endDate=${date}`;
+api/real-action-agent.js:79:      'Referer': 'https://booking.naver.com/',
+api/real-action-agent.js:176:    const bookingUrl = `https://booking.naver.com/booking/13/bizes/${businessId}/reserve`;
+api/send-email.js:9:const ALLOWED_TEST_RECIPIENTS = ['jungsng805@naver.com'];

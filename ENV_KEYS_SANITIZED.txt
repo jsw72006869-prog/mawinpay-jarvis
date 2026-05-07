@@ -1,0 +1,12 @@
+ENV KEYS SANITIZED
+
+GMAIL_ADDRESS configured=unknown
+GMAIL_APP_PASSWORD configured=unknown
+YOUTUBE_API_KEY configured=unknown
+NAVER_CLIENT_ID configured=unknown
+NAVER_CLIENT_SECRET configured=unknown
+SMARTSTORE_CLIENT_ID configured=unknown
+SMARTSTORE_CLIENT_SECRET configured=unknown
+GOOGLE_SHEETS configured=unknown
+
+No raw values included.

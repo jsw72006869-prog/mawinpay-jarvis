@@ -1,0 +1,197 @@
+src/components/ConversationPanel.tsx:304:function getMessageType(text: string): 'smartstore' | 'briefing' | 'normal' {
+src/components/ConversationPanel.tsx:306:  if (text.startsWith('[LIST]') && text.includes('브리핑')) return 'briefing';
+src/components/ConversationPanel.tsx:558:                      {msgType === 'briefing' && <BriefingCard text={msg.text} />}
+src/components/HologramWorkPanel.tsx:42:  'morning_briefing': '모닝 브리핑',
+src/components/JarvisApp.tsx:88:    query_pending_shipping: '배송준비 조회',
+src/components/JarvisApp.tsx:90:    query_pre_shipping_total: '배송 전 처리 대상 전체 조회',
+src/components/JarvisApp.tsx:120:    process_shipping: '발송 처리',
+src/components/JarvisApp.tsx:472:          shippingCost: inputData.shippingCost,
+src/components/JarvisApp.tsx:2535:    if (action?.type === 'morning_briefing') {
+src/components/JarvisApp.tsx:2553:      telemetryFunctionStart('morning_briefing');
+src/components/JarvisApp.tsx:2596:              ssCountsCacheRef.current = { data: { newOrders: c2.newOrders ?? raw.newOrders ?? 0, pendingShipping: c2.pendingShipping ?? raw.pendingShipping ?? 0, preShipTotal: c2.preShipTotal ?? raw.preShipTotal ?? 0, shipping: c2.shipping ?? raw.shipping ?? 0, delivered: c2.delivered ?? raw.delivered ?? 0, purchaseConfirmed: c2.purchaseConfirmed ?? raw.purchaseConfirmed ?? 0, totalAmount: raw.totalAmount ?? 0, revenueChangePercent: raw.revenueChangePercent ?? 0, source: raw.source || 'naver-commerce-api', fetchedAt: raw.fetchedAt || null, isCached: false }, fetchedAt: Date.now() };
+src/components/JarvisApp.tsx:2630:                shipping: c.shipping ?? rawSS.shipping ?? 0,
+src/components/JarvisApp.tsx:2675:            smartstoreData = { smartstore: { _error: true, errorMessage: '최신 주문 데이터를 불러오지 못했습니다', newOrders: null, pendingShipping: null, preShipTotal: null, shipping: null, delivered: null, purchaseConfirmed: null, totalAmount: 0, revenueChangePercent: 0, error: String(ssErr) }, influencers: { total: 0, newYesterday: 0, byPlatform: {} } };
+src/components/JarvisApp.tsx:2759:        let briefingDisplay = `[LIST] **자비스 일일 커맨드 리포트 v2.0**\n\n`;
+src/components/JarvisApp.tsx:2761:        briefingDisplay += `**[1. 스마트스토어 현황]**\n`;
+src/components/JarvisApp.tsx:2763:          briefingDisplay += `- ⚠️ ${ss.errorMessage || '주문 데이터 조회 실패'}\n`;
+src/components/JarvisApp.tsx:2765:          briefingDisplay += `- 신규주문: **${counts.newOrders ?? '확인필요'}건**\n`;
+src/components/JarvisApp.tsx:2766:          briefingDisplay += `- 배송준비: **${counts.pendingShipping ?? '확인필요'}건**\n`;
+src/components/JarvisApp.tsx:2767:          briefingDisplay += `- 배송중: **${counts.shipping ?? '확인필요'}건**\n`;
+src/components/JarvisApp.tsx:2768:          briefingDisplay += `- 배송완료: **${counts.delivered ?? '확인필요'}건**\n`;
+src/components/JarvisApp.tsx:2769:          briefingDisplay += `- 구매확정: **${counts.purchaseConfirmed ?? '확인필요'}건** (최근 7일)\n`;
+src/components/JarvisApp.tsx:2771:        briefingDisplay += `\n`;
+src/components/JarvisApp.tsx:2773:        briefingDisplay += `**[2. 시장 가격 정보 (KAMIS)]**\n`;
+src/components/JarvisApp.tsx:2774:        briefingDisplay += `- 품목: **${market.item || '배추'}**\n`;
+src/components/JarvisApp.tsx:2776:          briefingDisplay += `- 당일: **${market.prices.today || '-'}** | 1일전: **${market.prices.dayBefore || '-'}**\n`;
+src/components/JarvisApp.tsx:2777:          briefingDisplay += `- 전월대비: **${market.direction || 'N/A'}**\n`;
+src/components/JarvisApp.tsx:2779:          briefingDisplay += `- 정보: ${market.message || '데이터 수집 중'}\n`;
+src/components/JarvisApp.tsx:2781:        briefingDisplay += `\n`;
+src/components/JarvisApp.tsx:2783:        briefingDisplay += `**[3. 바이럴 마케팅 (Outreach)]**\n`;
+src/components/JarvisApp.tsx:2784:        briefingDisplay += `- 총 후보: **${outreach.total || 0}명**\n`;
+src/components/JarvisApp.tsx:2785:        briefingDisplay += `- 연락가능: **${outreach.contactable || 0}명**\n`;
+src/components/JarvisApp.tsx:2786:        briefingDisplay += `- 고적합도: **${outreach.highFit || 0}명**\n`;
+src/components/JarvisApp.tsx:2787:        briefingDisplay += `\n`;
+src/components/JarvisApp.tsx:2789:        briefingDisplay += `**[4. 시스템 상태]**\n`;
+src/components/JarvisApp.tsx:2790:        briefingDisplay += `- UPTIME: **${health.uptime || 'READY'}**\n`;
+src/components/JarvisApp.tsx:2791:        briefingDisplay += `- EXECUTE: **${health.executeMode || 'LOCKED'}**\n`;
+src/components/JarvisApp.tsx:2792:        briefingDisplay += `- API: **${health.naverApi || 'NORMAL'}**\n`;
+src/components/JarvisApp.tsx:2816:        telemetryFunctionSuccess('morning_briefing', '모닝 브리핑 완료', {
+src/components/JarvisApp.tsx:2836:        addMessage('jarvis', briefingDisplay, true);
+src/components/JarvisApp.tsx:2846:        telemetryFunctionError('morning_briefing', `모닝 브리핑 실패: ${err}`);
+src/components/JarvisApp.tsx:2868:      const briefCtx: ActionContext = { type: 'briefing' };
+src/components/JarvisApp.tsx:2874:      saveToWorkspace('morning_briefing_v2', {
+src/components/JarvisApp.tsx:2880:        briefingText: briefingDisplay,
+src/components/JarvisApp.tsx:2954:      'current_new_orders', 'query_orders_today', 'query_pending_shipping', 'query_pre_shipping_total', 'query_order_status',
+src/components/JarvisApp.tsx:2964:      'process_shipping', 'get_products',
+src/components/JarvisApp.tsx:2970:      action?.type === 'smartstore_orders' || action?.type === 'smartstore_shipping' ||
+src/components/JarvisApp.tsx:2979:      if (ssAction === 'ship_order') ssAction = 'process_shipping';
+src/components/JarvisApp.tsx:3189:              shipping: ss.shipping ?? 0,
+src/components/JarvisApp.tsx:3206:              shipping: c.shipping ?? 0,
+src/components/JarvisApp.tsx:3234:            data: { newOrders: data.newOrders, pendingShipping: data.pendingShipping, preShipTotal: data.preShipTotal, shipping: data.shipping, delivered: data.delivered, purchaseConfirmed: data.purchaseConfirmed, source: data.source, fetchedAt: data.fetchedAt, isCached: false },
+src/components/JarvisApp.tsx:3247:          const ship = safeNum(data.shipping);
+src/components/JarvisApp.tsx:3255:            resultMsg = `[PKG] **전체 주문/발주 현황** ${srcLabel}\n\n신규주문: ${nO}건\n배송준비: ${pS}건\n배송 전 처리 대상 전체: ${preT}건\n배송중: ${ship}건\n배송완료: ${dlvd}건\n구매확정: ${pConf}건 (최근 7일 기준)\n\n현황: OBSERVE 조회 완료`;
+src/components/JarvisApp.tsx:3257:            doneText = `신규주문 ${nO}건, 배송중 ${ship}건입니다, 선생님.`;
+src/components/JarvisApp.tsx:3259:            resultMsg = `[PKG] **현재 주문 현황** ${srcLabel}\n\n현재 신규주문: ${nO}건\n배송준비: ${pS}건\n배송 전 처리 대상 전체: ${preT}건\n배송중: ${ship}건\n배송완료: ${dlvd}건\n구매확정: ${pConf}건 (최근 7일 기준)`;
+src/components/JarvisApp.tsx:3262:          } else if (ssAction === 'query_pending_shipping') {
+src/components/JarvisApp.tsx:3266:          } else if (ssAction === 'query_pre_shipping_total') {
+src/components/JarvisApp.tsx:3278:                shipping: safeNum(data.counts.shipping ?? data.shipping),
+src/components/JarvisApp.tsx:3287:              resultMsg += `신규 주문: ${nO}건\n취소 요청: ${safeNum(data.cancelOrders)}건\n발송 대기: ${pS}건\n배송중: ${ship}건\n배송완료: ${dlvd}건\n구매확정: ${pConf}건 (최근 7일 기준)`;
+src/components/JarvisApp.tsx:3329:          } else if (ssAction === 'process_shipping') {
+src/components/JarvisApp.tsx:3347:          emitMissionLog('📦', 'SMARTSTORE', `신규 ${nO}건 / 배송준비 ${pS}건 / 배송중 ${ship}건`, 'info');
+src/components/NeuralMissionMap.tsx:243:  const [briefingActive, setBriefingActive] = useState(false);
+src/components/NeuralMissionMap.tsx:356:        case 'briefing_sequence': {
+src/components/NeuralMissionMap.tsx:413:            {briefingActive && <span style={{ marginLeft: 12, color: T.gold }}>☀️ BRIEFING IN PROGRESS</span>}
+src/components/OrderDashboard.tsx:12:  status: 'new' | 'confirmed' | 'preparing' | 'shipping' | 'delivered' | 'completed' | 'cancelled' | 'return';
+src/components/OrderDashboard.tsx:24:    shipping: number;
+src/components/OrderDashboard.tsx:43:  shipping: { label: '배송중', color: '#69f0ae', bg: 'rgba(105,240,174,0.15)' },
+src/components/OrderDashboard.tsx:71:  DELIVERING: 'shipping',
+src/components/OrderDashboard.tsx:128:    shipping: orders.filter(o => o.status === 'shipping').length,
+src/components/OrderDashboard.tsx:144:    { key: 'shipping', icon: '🚚', label: '배송중', count: summary.shipping, color: '#69f0ae' },
+src/components/OrderDashboard.tsx:308:          {['신규주문', '발주확인', '배송준비', '배송중', '배송완료', '구매확정'].map((step, i) => (
+src/components/PlatformDataCards.tsx:59:  const [briefingActive, setBriefingActive] = useState(false);
+src/components/PlatformDataCards.tsx:103:        case 'briefing_sequence': {
+src/components/PlatformDataCards.tsx:142:      {briefingActive && !activeNodeId && (
+src/components/PlatformDataCards_Enhanced.tsx:62:  const [briefingActive, setBriefingActive] = useState(false);
+src/components/PlatformDataCards_Enhanced.tsx:110:        case 'briefing_sequence': {
+src/components/PlatformDataCards_Enhanced.tsx:150:      {briefingActive && !activeNodeId && (
+src/components/ActionCard.tsx:26:  type: 'smartstore' | 'creative' | 'growth_link' | 'briefing' | 'general' | 'outreach_result' | 'outreach_collect' | 'market_price_result';
+src/components/ActionCard.tsx:100:        { id: 'save_briefing', label: '오늘 브리핑 저장', icon: '💾', mode: 'observe', command: '오늘 브리핑 저장해줘' },
+src/components/ActionCard.tsx:115:      { id: 'briefing', label: '오늘 브리핑', icon: '📊', mode: 'observe', command: '오늘 브리핑 해줘' },
+src/components/ActionCard.tsx:156:  if (type === 'briefing') {
+src/components/ActionCard.tsx:167:    { id: 'briefing', label: '오늘 브리핑', icon: '📊', mode: 'observe', command: '오늘 브리핑 해줘' },
+src/components/ActionCard.tsx:450:    if (type === 'briefing') return '브리핑이 완료되었습니다. 다음 업무를 선택해 주세요.';
+src/components/ActionCard.tsx:595:              const saveType = context.type === 'smartstore' ? 'briefing' :
+src/components/ActionCard.tsx:597:                               context.type === 'growth_link' ? 'growth_campaign' : 'briefing';
+src/components/ActionCard.tsx:727:  if (context.type === 'briefing') {
+src/components/ActionCard.tsx:732:      { id: 'briefing', label: '브리핑 보고 완료', status: 'completed', timestamp: now },
+src/components/FileWorkspacePanel.tsx:27:  briefing: '📊',
+src/components/FileWorkspacePanel.tsx:35:  briefing: '브리핑',
+src/components/FileWorkspacePanel.tsx:111:        {['all', 'briefing', 'creative_script', 'growth_campaign', 'purchase_order_draft'].map(t => (
+src/components/MarketPricePanel.tsx:10:    shippingCost: number;
+src/components/MarketPricePanel.tsx:32:  shippingCost: number;
+src/components/MarketPricePanel.tsx:74:    shippingCost: 3000,
+src/components/MarketPricePanel.tsx:182:              <InputField label="택배비 (원)" value={String(form.shippingCost || '')} onChange={v => handleChange('shippingCost', v)} placeholder="3000" type="number" />
+src/components/MarketPricePanel.tsx:293:                  <CostRow label="택배비" value={`${fmt(result.calculation.shippingCost)}원`} color="#ffaa66" />
+src/components/JarvisApp.tsx_fix:3:        telemetryFunctionSuccess('morning_briefing', '모닝 브리핑 완료', {
+src/components/JarvisApp.tsx_fix:23:        addMessage('jarvis', briefingDisplay, true);
+src/lib/jarvis-brain-openai.ts.bak:27:  | 'smartstore_orders' | 'smartstore_shipping' | 'smartstore_products'
+src/lib/jarvis-brain-openai.ts.bak:281:            'process_shipping', 'get_products',
+src/lib/jarvis-brain-openai.ts.bak:289:발송처리: process_shipping(발송처리)
+src/lib/jarvis-brain-openai.ts.bak:626:- "운송장 입력", "발송 처리", "배송 등록" → smartstore_action (process_shipping, tracking_number, delivery_company)
+src/lib/jarvis-brain-openai.ts.bak:1038:      } else if (ssAction === 'process_shipping') {
+src/lib/jarvis-brain-openai.ts.bak:1039:        ssType = 'smartstore_shipping';
+src/lib/jarvis-brain.ts:46:  | 'smartstore_orders' | 'smartstore_shipping' | 'smartstore_products'
+src/lib/jarvis-brain.ts:49:  | 'manus_task' | 'manus_status' | 'morning_briefing' | 'analyze_influencers_smart'
+src/lib/jarvis-brain.ts:191:5번: 모닝 브리핑 → morning_briefing (경로 A)
+src/lib/jarvis-brain.ts:210:      description: '스마트스토어 주문/배송/정산 조회 전용. "신규주문", "배송준비", "배송 전 처리", "오늘 주문", "오늘 매출", "주문 현황" 키워드가 있을 때만 사용. 주의: "복숭아", "옥수수", "한우" 같은 상품명은 smartstore 근거가 아니다. 상품명+마케팅/문구/카피/릴스/스레드/콘텐츠/광고/후킹/대본/공지문 조합은 generate_content로 보내라. action 구분: current_new_orders(현재 신규주문), query_orders_today(오늘 신규주문), query_pending_shipping(배송준비), query_pre_shipping_total(배송 전 처리 대상 전체).',
+src/lib/jarvis-brain.ts:214:          action: { type: 'string', description: '작업 종류: current_new_orders(현재 신규주문, 대시보드 기준), query_orders_today(오늘 신규주문, KST 오늘), query_pending_shipping(배송준비), query_pre_shipping_total(배송 전 처리 대상 전체), query_order_status(전체 주문 현황 5개 상태: 신규/배송준비/배송중/배송완료/구매확정), query_orders_week, process_shipping, morning_report 등' },
+src/lib/jarvis-brain.ts:225:      name: 'morning_briefing',
+src/lib/jarvis-brain.ts:426:        params: { type: 'morning_briefing_v2', userMessage: text },
+src/lib/jarvis-brain.ts:431:      type: 'morning_briefing',
+src/lib/jarvis-brain.ts:438:  // 주문현황 / 전체 주문현황 / 스마트스토어 현황 → 5개 상태 전체 조회
+src/lib/jarvis-brain.ts:448:  // 전체 발주현황 / 발주현황 → OBSERVE 조회 (배송 전 처리보다 먼저 매칭)
+src/lib/jarvis-brain.ts:453:      workingMessage: '전체 발주현황 조회 중...',
+src/lib/jarvis-brain.ts:462:      params: { action: 'query_pre_shipping_total', userMessage: text },
+src/lib/jarvis-brain.ts:468:  // 배송중
+src/lib/jarvis-brain.ts:473:      workingMessage: '배송중 조회 중...',
+src/lib/jarvis-brain.ts:482:      params: { action: 'query_pending_shipping', userMessage: text },
+src/lib/jarvis-brain.ts:649:    case 'morning_briefing':
+src/lib/jarvis-brain.ts:651:        type: 'morning_briefing',
+src/lib/jarvis-brain.ts:931:      type: 'morning_briefing',
+src/lib/jarvis-brain.ts:937:  // [B-2] 주문현황/전체현황 → 5개 상태 전체 조회 (GPT fallback에서도 매칭)
+src/lib/jarvis-brain.ts:1077:  // [L] 통계/리포트 (현황은 [B-2]에서 주문현황으로 매칭)
+src/lib/jarvis-memory.ts:375:    const shipping = orders.filter((o: any) => o.status === 'shipping').length;
+src/lib/jarvis-memory.ts:380:    context += `- 배송중: ${shipping}건\n`;
+src/lib/jarvis-telemetry.ts:14:  type: 'node_state' | 'pulse_line' | 'mission_log' | 'node_data' | 'briefing_sequence' | 'system_status';
+src/lib/jarvis-telemetry.ts:57:  'morning_briefing':         { nodes: ['smartstore', 'email', 'sheets', 'youtube'], speed: 'normal', icon: '☀️' },
+src/lib/jarvis-telemetry.ts:170:    type: 'briefing_sequence',
+api/_archive/_telegram.js:113:  shipping: (count, courier) =>
+api/_archive/morning-briefing-v2.js:3: * GET /api/morning-briefing-v2
+api/_archive/morning-briefing-v2.js:84:        console.warn(`[morning-briefing-v2] 주문 조회 재시도 ${attempt + 1}/${maxRetries}:`, err.message);
+api/_archive/morning-briefing-v2.js:130:      console.warn(`[morning-briefing-v2] 주문 조회 실패 (${formatNaverDate(currentFrom)}):`, err.message);
+api/_archive/morning-briefing-v2.js:153:      console.warn(`[morning-briefing-v2] 상세 조회 실패:`, err.message);
+api/_archive/morning-briefing-v2.js:176:    console.log(`[morning-briefing-v2] [${step}] ${status}: ${detail} (${elapsed}s)`);
+api/_archive/morning-briefing-v2.js:183:    briefing_text: null,
+api/_archive/morning-briefing-v2.js:325:    result.briefing_text = [
+api/_archive/morning-briefing.js:3: * GET /api/morning-briefing
+api/_archive/morning-briefing.js:112:      console.warn(`[morning-briefing] 주문 조회 실패:`, err.message);
+api/_archive/morning-briefing.js:135:      console.warn(`[morning-briefing] 상세 조회 실패:`, err.message);
+api/_archive/morning-briefing.js:164:    briefing_text: null,
+api/_archive/morning-briefing.js:304:    result.briefing_text = [
+api/_archive/smartstore-automation.js:164:      receiverName: po.shippingAddress?.name || '',
+api/_archive/smartstore-automation.js:165:      receiverTel1: po.shippingAddress?.tel1 || '',
+api/_archive/smartstore-automation.js:166:      receiverTel2: po.shippingAddress?.tel2 || '',
+api/_archive/smartstore-automation.js:167:      receiverAddress: `${po.shippingAddress?.baseAddress || ''} ${po.shippingAddress?.detailedAddress || ''}`.trim(),
+api/_archive/smartstore-automation.js:168:      receiverZipCode: po.shippingAddress?.zipCode || '',
+api/_archive/smartstore-automation.js:169:      deliveryMemo: po.shippingMemo || '',
+api/_archive/smartstore-automation.js:680:    if (action === 'process_shipping') {
+api/_archive/smartstore-orders.js:155:        receiverName: po.shippingAddress?.name,
+api/_archive/smartstore-orders.js:156:        receiverPhone1: po.shippingAddress?.tel1,
+api/_archive/smartstore-orders.js:157:        receiverPhone2: po.shippingAddress?.tel2,
+api/_archive/smartstore-orders.js:158:        receiverAddress: `${po.shippingAddress?.baseAddress || ''} ${po.shippingAddress?.detailedAddress || ''}`.trim(),
+api/_archive/smartstore-orders.js:159:        receiverZipCode: po.shippingAddress?.zipCode,
+api/_archive/smartstore-orders.js:160:        deliveryMemo: po.shippingMemo || '',
+api/_archive/smartstore-orders.js:197:    DELIVERING: '배송중',
+api/_archive/smartstore-scheduler.js:145:      recipientName: o.shippingAddress?.name || '',
+api/_archive/smartstore-scheduler.js:148:      recipientPhone: o.shippingAddress?.tel1 || o.shippingAddress?.tel2 || '',
+api/_archive/smartstore-scheduler.js:150:        o.shippingAddress?.baseAddress,
+api/_archive/smartstore-scheduler.js:151:        o.shippingAddress?.detailAddress,
+api/_archive/smartstore-shipping.js:2:// POST /api/smartstore-shipping
+api/_archive/smartstore-shipping.js:86:    console.error('[smartstore-shipping] 오류:', err);
+api/cloud-proxy.ts:153:    PAYMENT_WAITING: '입금대기', PAYED: '결제완료', DELIVERING: '배송중',
+api/cloud-proxy.ts:162:  PAYED: '결제완료', DELIVERING: '배송중', DELIVERED: '배송완료',
+api/cloud-proxy.ts:257:// 모든 핸들러(주문현황, 브리핑, 대시보드)가 이 함수만 호출해야 함
+api/cloud-proxy.ts:280:  // 2) 배송중/배송완료: 45일 확대 조회
+api/cloud-proxy.ts:281:  const shippingDeliveredOrders = await fetchOrders(['DELIVERING', 'DELIVERED'], 45);
+api/cloud-proxy.ts:282:  let shippingCount = 0;
+api/cloud-proxy.ts:284:  for (const o of shippingDeliveredOrders) {
+api/cloud-proxy.ts:287:    if (status === 'DELIVERING') shippingCount++;
+api/cloud-proxy.ts:310:    shipping: shippingCount,
+api/cloud-proxy.ts:424:  // ── current_new_orders / query_pending_shipping / query_pre_shipping_total ──
+api/cloud-proxy.ts:425:  if (action === 'current_new_orders' || action === 'query_pending_shipping' || action === 'query_pre_shipping_total') {
+api/cloud-proxy.ts:438:        shipping: counts.shipping,
+api/cloud-proxy.ts:447:      shipping: counts.shipping,
+api/cloud-proxy.ts:474:        shipping: 0,
+api/cloud-proxy.ts:501:        shipping: counts.shipping,
+api/cloud-proxy.ts:510:      shipping: counts.shipping,
+api/cloud-proxy.ts:538:      shipping: 0,
+api/cloud-proxy.ts:661:    shipping: rawCounts.shipping,
+api/cloud-proxy.ts:706:  if (counts.shipping > 0) jarvisSummary += `배송중 ${counts.shipping}건은 추적 중이며, `;
+api/cloud-proxy.ts:719:        shipping: counts.shipping,
+api/cloud-proxy.ts:1063:  briefings: ['briefingId','createdAt','todayOrders','currentNewOrders','pendingShipping','preShipTotal','todaySales','recommendedActions','briefingText'],
+api/cloud-proxy.ts:1068:  market_price_checks: ['checkId','createdAt','productName','rawMaterialCost','currentPrice','shippingCost','packagingCost','platformFeeRate','otherCosts','competitorPrices','competitorMinPrice','competitorAvgPrice','netSalesAmount','estimatedMargin','estimatedMarginRate','jarvisDecision','recommendedAction','sourceCommand'],
+api/cloud-proxy.ts:1131:    const targetTab = type === 'briefing' ? 'briefings' :
+api/cloud-proxy.ts:1140:    if (type === 'briefing' && data) {
+api/cloud-proxy.ts:1141:      await sheetsAppend('briefings', [[
+api/cloud-proxy.ts:1146:        data.briefingText || ''
+api/cloud-proxy.ts:1171:        String(data.currentPrice || 0), String(data.shippingCost || 0),
+api/cloud-proxy.ts:1200:      type === 'briefing' ? 'briefings' :
+api/cloud-proxy.ts:1221:    const tab = type === 'briefing' ? 'briefings' :
+api/cloud-proxy.ts:1235:    if (recordId) records = records.filter((r: any) => r.recordId === recordId || r.briefingId === recordId || r.scriptId === recordId || r.campaignId === recordId || r.draftId === recordId);
+api/cloud-proxy.ts:1738:  const shippingCost = Number(params.shippingCost) || 0;
+api/cloud-proxy.ts:1759:  const totalCost = rawMaterialCost + shippingCost + packagingCost + otherCosts;
+api/cloud-proxy.ts:1770:    shippingCost,
+api/cloud-proxy.ts:1850:  const { productName, rawMaterialCost, currentPrice, shippingCost, packagingCost, platformFeeRate, otherCosts, competitorPrices, sourceCommand } = params;
+api/cloud-proxy.ts:1871:        String(calc.currentPrice), String(calc.shippingCost),
+api/cloud-proxy.ts:1891:      shippingCost: calc.shippingCost,
+api/cloud-proxy.ts:2165:      if (resolvedTask === 'daily-briefing') {

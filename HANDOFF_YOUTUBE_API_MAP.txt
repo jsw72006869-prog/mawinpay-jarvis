@@ -1,0 +1,88 @@
+src/components/JarvisApp.tsx:1933:                    const apiKey = import.meta.env.VITE_OPENAI_API_KEY;
+src/components/JarvisApp.tsx:1934:                    if (!apiKey) return '';
+src/components/JarvisApp.tsx:1937:                      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
+src/components/JarvisApp.tsx:4119:        if (data.quotaExceeded) {
+src/components/SpeechEngine.tsx:391:  apiKey: string,
+src/components/SpeechEngine.tsx:403:          'xi-api-key': apiKey,
+src/components/SpeechEngine.tsx:627:    const apiKey = import.meta.env.VITE_ELEVENLABS_API_KEY;
+src/components/SpeechEngine.tsx:639:        if (apiKey) {
+src/components/SpeechEngine.tsx:640:          await speakElevenLabs(trimmed, apiKey, voiceIdOverride);
+src/lib/jarvis-brain-openai.ts.bak:670:  const apiKey = import.meta.env.VITE_OPENAI_API_KEY;
+src/lib/jarvis-brain-openai.ts.bak:671:  if (!apiKey) return parseCommand(userMessage);
+src/lib/jarvis-brain-openai.ts.bak:727:        Authorization: `Bearer ${apiKey}`,
+src/lib/jarvis-brain-openai.ts.bak:1076:  const apiKey = import.meta.env.VITE_OPENAI_API_KEY;
+src/lib/jarvis-brain-openai.ts.bak:1077:  if (!apiKey) return null;
+src/lib/jarvis-brain-openai.ts.bak:1084:      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
+src/lib/jarvis-brain.ts:383:export function initializeGemini(apiKey: string) {
+src/lib/jarvis-brain.ts:385:  openaiClient = new OpenAI({ apiKey, dangerouslyAllowBrowser: true });
+api/_archive/_smartstore-auth.js:9:const PROXY_URL = process.env.QUOTAGUARDSTATIC_URL || 'http://6ddy9l3zmc2hbj:oso2bxcjx009edn2v7yu7k7u0hs3z@us-east-static-02.quotaguard.com:9293';
+api/_archive/debug-token.js:7:const PROXY_URL = process.env.QUOTAGUARDSTATIC_URL || 'http://6ddy9l3zmc2hbj:oso2bxcjx009edn2v7yu7k7u0hs3z@us-east-static-02.quotaguard.com:9293';
+api/_archive/manus-task-confirm.js:12:  const apiKey = process.env.MANUS_API_KEY;
+api/_archive/manus-task-confirm.js:13:  if (!apiKey) {
+api/_archive/manus-task-confirm.js:32:        'x-manus-api-key': apiKey,
+api/_archive/manus-task-create.js:12:  const apiKey = process.env.MANUS_API_KEY;
+api/_archive/manus-task-create.js:13:  if (!apiKey) {
+api/_archive/manus-task-create.js:49:        'x-manus-api-key': apiKey,
+api/_archive/manus-task-send.js:12:  const apiKey = process.env.MANUS_API_KEY;
+api/_archive/manus-task-send.js:13:  if (!apiKey) {
+api/_archive/manus-task-send.js:32:        'x-manus-api-key': apiKey,
+api/_archive/manus-task-status.js:12:  const apiKey = process.env.MANUS_API_KEY;
+api/_archive/manus-task-status.js:13:  if (!apiKey) {
+api/_archive/manus-task-status.js:32:        'x-manus-api-key': apiKey,
+api/_archive/smartstore-scheduler.js:7:const PROXY_URL = process.env.QUOTAGUARDSTATIC_URL || 'http://6ddy9l3zmc2hbj:oso2bxcjx009edn2v7yu7k7u0hs3z@us-east-static-02.quotaguard.com:9293';
+api/_archive/youtube-analyze.js:31:async function fetchPopularVideos(apiKey, keyword, maxResults = 10, publishedAfter = '') {
+api/_archive/youtube-analyze.js:40:    key: apiKey,
+api/_archive/youtube-analyze.js:55:    key: apiKey,
+api/_archive/youtube-analyze.js:80:async function fetchTopComments(apiKey, videoId, maxResults = 10) {
+api/_archive/youtube-analyze.js:87:      key: apiKey,
+api/_archive/youtube-analyze.js:260:    const ytApiKey = process.env.YOUTUBE_API_KEY;
+api/_archive/youtube-analyze.js:265:      return res.status(500).json({ success: false, error: 'YOUTUBE_API_KEY가 설정되지 않았습니다.' });
+api/_archive/youtube-search.js:78:    const apiKey = process.env.YOUTUBE_API_KEY;
+api/_archive/youtube-search.js:79:    if (!apiKey) {
+api/_archive/youtube-search.js:82:            message: 'YOUTUBE_API_KEY 환경변수를 Vercel에 설정해주세요.',
+api/_archive/youtube-search.js:108:            const searchUrl = `${YT_SEARCH_URL}?part=snippet&q=${encodeURIComponent(kw)}&type=channel&maxResults=50&regionCode=KR&hl=ko&key=${apiKey}`;
+api/_archive/youtube-search.js:119:            const channelsUrl = `${YT_CHANNELS_URL}?part=snippet,statistics,brandingSettings&id=${channelIds.join(',')}&key=${apiKey}`;
+api/_archive/youtube-trending.js:69:async function getTrending(apiKey, { category = '', maxResults = 5 } = {}) {
+api/_archive/youtube-trending.js:76:    key: apiKey,
+api/_archive/youtube-trending.js:110:async function searchPopularByKeyword(apiKey, { keyword, maxResults = 5, publishedAfter = '' } = {}) {
+api/_archive/youtube-trending.js:122:    key: apiKey,
+api/_archive/youtube-trending.js:145:    key: apiKey,
+api/_archive/youtube-trending.js:178:async function getChannelPopularVideos(apiKey, { channelId, channelName, maxResults = 5 } = {}) {
+api/_archive/youtube-trending.js:189:      key: apiKey,
+api/_archive/youtube-trending.js:207:    key: apiKey,
+api/_archive/youtube-trending.js:234:    key: apiKey,
+api/_archive/youtube-trending.js:252:    key: apiKey,
+api/_archive/youtube-trending.js:288:    const apiKey = process.env.YOUTUBE_API_KEY;
+api/_archive/youtube-trending.js:289:    if (!apiKey) {
+api/_archive/youtube-trending.js:292:        error: 'YOUTUBE_API_KEY 환경변수가 설정되지 않았습니다.',
+api/_archive/youtube-trending.js:312:        const videos = await getTrending(apiKey, { category, maxResults });
+api/_archive/youtube-trending.js:353:        const videos = await searchPopularByKeyword(apiKey, { keyword, maxResults, publishedAfter });
+api/_archive/youtube-trending.js:383:        const { channel, videos } = await getChannelPopularVideos(apiKey, { channelId, channelName, maxResults });
+api/booking-enhanced.js:71:  const apiKey = process.env.OPENAI_API_KEY;
+api/booking-enhanced.js:72:  if (!apiKey) return { success: false, error: 'OPENAI_API_KEY not set' };
+api/booking-enhanced.js:79:        'Authorization': `Bearer ${apiKey}`,
+api/chat-proxy.ts:21:  const apiKey = process.env.OPENAI_API_KEY;
+api/chat-proxy.ts:22:  if (!apiKey) {
+api/chat-proxy.ts:33:        'Authorization': `Bearer ${apiKey}`,
+api/cloud-proxy.ts:36:const YOUTUBE_API_KEY = process.env.YOUTUBE_API_KEY || '';
+api/cloud-proxy.ts:916:  if (!YOUTUBE_API_KEY) throw new Error('YOUTUBE_API_KEY 환경변수가 설정되지 않았습니다.');
+api/cloud-proxy.ts:923:    const searchUrl = `https://www.googleapis.com/youtube/v3/search?part=snippet&type=channel&q=${encodeURIComponent(kw)}&maxResults=50&regionCode=KR&hl=ko&key=${YOUTUBE_API_KEY}`;
+api/cloud-proxy.ts:930:    const channelsUrl = `https://www.googleapis.com/youtube/v3/channels?part=snippet,statistics,brandingSettings&id=${channelIds}&key=${YOUTUBE_API_KEY}`;
+api/cloud-proxy.ts:963:  if (!YOUTUBE_API_KEY) throw new Error('YOUTUBE_API_KEY 환경변수가 설정되지 않았습니다.');
+api/cloud-proxy.ts:971:  let searchUrl = `https://www.googleapis.com/youtube/v3/search?part=snippet&type=video&q=${encodeURIComponent(keyword)}&order=viewCount&maxResults=${count}&regionCode=KR&hl=ko&key=${YOUTUBE_API_KEY}`;
+api/cloud-proxy.ts:980:  const videosUrl = `https://www.googleapis.com/youtube/v3/videos?part=snippet,statistics,contentDetails&id=${videoIds}&key=${YOUTUBE_API_KEY}`;
+api/cloud-proxy.ts:1450:      if (!YOUTUBE_API_KEY) throw new Error('YouTube API 할당량 초과 또는 미설정');
+api/cloud-proxy.ts:1457:      // 2단계: 세그먼트별 채널 검색 (quota 관리: 최대 5개 검색)
+api/cloud-proxy.ts:1464:        const searchUrl = `https://www.googleapis.com/youtube/v3/search?part=snippet&type=channel&q=${encodeURIComponent(query)}&maxResults=${Math.min(perSearchMax, 15)}&regionCode=KR&hl=ko&key=${YOUTUBE_API_KEY}`;
+api/cloud-proxy.ts:1468:          if (errData.error?.errors?.[0]?.reason === 'quotaExceeded') {
+api/cloud-proxy.ts:1469:            return { success: true, candidates: [], quotaExceeded: true, message: 'YouTube API 할당량 초과로 오늘은 소량/수동 검증 모드로 진행합니다.' };
+api/cloud-proxy.ts:1484:        const channelsUrl = `https://www.googleapis.com/youtube/v3/channels?part=snippet,statistics,brandingSettings&id=${newChannelIds.join(',')}&key=${YOUTUBE_API_KEY}`;
+api/cloud-proxy.ts:1555:        return { success: true, candidates: [], quotaExceeded: true, message: e.message };
+api/influencer-agent.js:115:  const apiKey = process.env.YOUTUBE_API_KEY;
+api/influencer-agent.js:116:  if (!apiKey) {
+api/influencer-agent.js:119:      telemetry: { nodeId: 'influencer', state: 'error', message: 'YOUTUBE_API_KEY 미설정' }
+api/influencer-agent.js:167:      const searchUrl = `${YT_SEARCH_URL}?part=snippet&q=${encodeURIComponent(kw)}&type=channel&maxResults=50&regionCode=KR&hl=ko&key=${apiKey}`;
+api/influencer-agent.js:179:      const channelsUrl = `${YT_CHANNELS_URL}?part=snippet,statistics,brandingSettings&id=${channelIds.join(',')}&key=${apiKey}`;
+api/whisper-proxy.ts:24:  const apiKey = process.env.OPENAI_API_KEY;
+api/whisper-proxy.ts:25:  if (!apiKey) {
+api/whisper-proxy.ts:45:        'Authorization': `Bearer ${apiKey}`,

@@ -1,0 +1,20 @@
+JARVIS HANDOFF PACKAGE
+
+Purpose:
+Current source handoff for ChatGPT code analysis.
+
+Do not include secrets.
+Do not include env raw values.
+Do not include node_modules/build artifacts.
+
+Analysis focus:
+- Command Router
+- GPT fallback / pseudo-code output
+- Safety Gate
+- Smartstore route
+- Morning Briefing smartStoreData
+- OUTREACH actual API usage
+- YouTube/Naver collection
+- dedupe / append / platform separation
+- Google Sheets / Workspace persistence
+- Gmail send-email attachments and test recipient protection

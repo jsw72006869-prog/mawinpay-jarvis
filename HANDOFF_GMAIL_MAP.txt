@@ -1,0 +1,43 @@
+api/_archive/manus-task-status.js:60:        attachments: e.assistant_message?.attachments || [],
+api/_archive/morning-briefing-v2.js:311:    addLog('GMAIL', 'info', 'Gmail 데이터는 프론트엔드 MCP를 통해 수집됩니다');
+api/_archive/morning-briefing.js:290:    addLog('GMAIL', 'info', 'Gmail 데이터는 프론트엔드 MCP를 통해 수집됩니다');
+api/_archive/smartstore-automation.js:3:const nodemailer = require('nodemailer');
+api/_archive/smartstore-automation.js:456:          csvRows.push(`"${o.optionContent || o.productName}",${o.quantity},"MAWINPAY","${process.env.GMAIL_SENDER_TEL || ''}","${o.receiverName}","${o.receiverTel1}","${o.receiverTel2 || o.receiverTel1}","${o.receiverAddress}","${o.productOrderId || o.orderId}"`);
+api/_archive/smartstore-automation.js:624:                senderTel: process.env.GMAIL_SENDER_TEL || '',
+api/_archive/smartstore-automation.js:648:          const transporter = nodemailer.createTransport({
+api/_archive/smartstore-automation.js:650:            auth: { user: process.env.GMAIL_ADDRESS, pass: process.env.GMAIL_APP_PASSWORD },
+api/_archive/smartstore-automation.js:653:          await transporter.sendMail({
+api/_archive/smartstore-automation.js:654:            from: `"자비스 자동화" <${process.env.GMAIL_ADDRESS}>`,
+api/_archive/smartstore-automation.js:658:            attachments: [{ filename: excelFileName, content: buffer }],
+api/_archive/smartstore-process-order.js:4:const nodemailer = require('nodemailer');
+api/_archive/smartstore-process-order.js:259:async function sendEmail(to, subject, html, attachments) {
+api/_archive/smartstore-process-order.js:260:  const transporter = nodemailer.createTransport({
+api/_archive/smartstore-process-order.js:263:      user: process.env.GMAIL_ADDRESS,
+api/_archive/smartstore-process-order.js:264:      pass: process.env.GMAIL_APP_PASSWORD,
+api/_archive/smartstore-process-order.js:267:  return await transporter.sendMail({
+api/_archive/smartstore-process-order.js:268:    from: `새벽장터 셀렌 <${process.env.GMAIL_ADDRESS}>`,
+api/_archive/smartstore-process-order.js:269:    to, subject, html, attachments,
+api/_archive/smartstore-scheduler.js:9:const nodemailer = require('nodemailer');
+api/influencer-agent.js:64:  // 실제 구현 시 GMAIL_ACCESS_TOKEN 또는 SMTP 설정 필요
+api/influencer-agent.js:72:  const gmailToken = process.env.GMAIL_ACCESS_TOKEN;
+api/influencer-agent.js:74:    return { sent: false, reason: 'GMAIL_ACCESS_TOKEN not configured', email: influencer.email };
+api/send-email.js:3:// 이메일 전송 API - Gmail SMTP (nodemailer)
+api/send-email.js:4:// attachments 지원 + 테스트 수신자 보호 조건
+api/send-email.js:6:const nodemailer = require('nodemailer');
+api/send-email.js:21:  const gmailUser = process.env.GMAIL_ADDRESS;
+api/send-email.js:22:  const gmailPass = process.env.GMAIL_APP_PASSWORD;
+api/send-email.js:23:  const senderName = process.env.GMAIL_SENDER_NAME || 'MAWINPAY JARVIS';
+api/send-email.js:28:      message: 'GMAIL_ADDRESS, GMAIL_APP_PASSWORD 환경변수를 Vercel에 설정해주세요.',
+api/send-email.js:33:  const transporter = nodemailer.createTransport({
+api/send-email.js:41:  const { to, subject, body, html, recipients, attachments, testMode } = req.body || {};
+api/send-email.js:55:  // attachments 처리: [{filename, content(base64), contentType}] 형식
+api/send-email.js:57:  if (attachments && Array.isArray(attachments)) {
+api/send-email.js:58:    for (const att of attachments) {
+api/send-email.js:107:        mailOptions.attachments = mailAttachments;
+api/send-email.js:110:      const info = await transporter.sendMail(mailOptions);
+src/components/JarvisApp.tsx:4401:        const sendResult = await fetch('/api/send-email', {
+src/components/JarvisApp.tsx:4408:            attachments: testAttachments.length > 0 ? testAttachments : undefined,
+src/lib/google-sheets.ts:263:    const res = await fetch(`${apiBase}/api/send-email`, {
+src/lib/manus-client.ts:18:  attachments: ManusAttachment[];
+src/lib/manus-client.ts:107:        messages: [{ content: data.error || '상태 조회 실패', attachments: [] }],
+src/lib/manus-client.ts:123:      messages: [{ content: error instanceof Error ? error.message : '연결 실패', attachments: [] }],
