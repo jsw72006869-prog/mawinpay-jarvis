@@ -7273,6 +7273,16 @@ export default function JarvisApp() {
         onClose={() => setLiveViewerVisible(false)}
         taskInfo={liveViewerTask || undefined}
       />
+      <button
+        type="button"
+        className="jarvis-data-wall-launch"
+        onClick={() => {
+          const url = `${window.location.origin}${window.location.pathname}?view=data-wall`;
+          window.open(url, 'jarvis-data-wall', 'noopener,noreferrer,width=1600,height=900');
+        }}
+      >
+        DATA WALL
+      </button>
     </main>
   );
 }
