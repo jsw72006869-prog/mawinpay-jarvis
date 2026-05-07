@@ -142,6 +142,7 @@ function getRecommendedActions(context: ActionContext): ActionButton[] {
   if (type === 'outreach_result' || type === 'outreach_collect') {
     const actions: ActionButton[] = [
       { id: 'view_outreach', label: 'OUTREACH 패널 보기', icon: '📋', mode: 'observe', command: '수집한 후보 보여줘' },
+      { id: 'view_segment', label: '세그먼트별 보기', icon: '🎯', mode: 'observe', command: '세그먼트별 후보 보여줘' },
       { id: 'draft_email', label: '제안 메일 초안 만들기', icon: '✉️', mode: 'draft', command: '메일 초안 보여줘' },
       { id: 'save_sheets', label: 'Google Sheets 저장', icon: '💾', mode: 'observe', command: '후보 시트에 저장해줘' },
     ];

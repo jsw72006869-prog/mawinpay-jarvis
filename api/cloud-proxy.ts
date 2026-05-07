@@ -1064,7 +1064,7 @@ const SHEET_HEADERS: Record<string, string[]> = {
   creative_scripts: ['scriptId','createdAt','product','platform','hook','caption','threadPost','kakaoMessage','reelsScript','recommendedGrowthLink','status','sourceCommand'],
   growth_campaigns: ['campaignId','createdAt','product','source','targetUrl','directUrl','couponCode','campaignMemo','status'],
   purchase_order_drafts: ['draftId','createdAt','supplier','productSummary','totalQuantity','totalAmountIfAvailable','status','safePreview'],
-  influencer_candidates: ['candidateId','collectedAt','platform','keyword','name','channelOrBlogUrl','recentContentTitle','recentContentUrl','subscriberOrVisitor','viewCount','publicContactStatus','publicEmailMasked','productFitScore','productFitReason','suggestedProduct','suggestedOfferAngle','outreachStatus','firstEmailDraft','followUpDraft','lastContactedAt','responseStatus','notes'],
+  influencer_candidates: ['candidateId','collectedAt','platform','keyword','name','channelOrBlogUrl','recentContentTitle','recentContentUrl','subscriberOrVisitor','viewCount','publicContactStatus','publicEmailMasked','emailSource','productFitScore','productFitReason','suggestedProduct','suggestedOfferAngle','practicalSegment','outreachStatus','firstEmailDraft','followUpDraft','lastContactedAt','responseStatus','notes'],
   market_price_checks: ['checkId','createdAt','productName','rawMaterialCost','currentPrice','shippingCost','packagingCost','platformFeeRate','otherCosts','competitorPrices','competitorMinPrice','competitorAvgPrice','netSalesAmount','estimatedMargin','estimatedMarginRate','jarvisDecision','recommendedAction','sourceCommand'],
 };
 
@@ -1356,72 +1356,197 @@ function generateFollowUpDraft(channel: any, keyword: string, product: string): 
 }
 
 async function handleOutreachCollect(params: any) {
-  const { keyword, product, maxCandidates = 10, platform = 'all' } = params;
+  const { keyword, product, maxCandidates = 10, platform = 'all', requireEmail = false } = params;
   if (!keyword) return { success: false, error: 'keyword required' };
 
   const candidates: any[] = [];
+  const excludedCandidates: any[] = [];
   const now = new Date().toISOString();
-  const max = Math.min(maxCandidates, 10); // Lite: 최대 10명
+  const max = Math.min(maxCandidates, 30); // 카테고리 기반: 최대 30명
+  const productName = product || keyword;
 
-  // YouTube 수집
+  // ── 실전 세그먼트 정의 ──
+  const PRACTICAL_SEGMENTS: Record<string, string[]> = {
+    '먹방': ['먹방', '대식가', 'mukbang', '맛집 리뷰', '음식 리뷰'],
+    '캠핑': ['캠핑', '차박', '캠핑요리', '캠핑장 추천', '캠핑 브이로그'],
+    '요리': ['요리', '레시피', '집밥', '쿠킹', '자취요리', '간단 요리'],
+    '주부살림': ['살림', '주부', '육아맘', '가족일상', '장보기', '살림팁'],
+    '건강식': ['건강', '다이어트', '식단', '건강식', '클린이팅'],
+    '지역여행': ['여행', '지역 맛집', '로컬', '산지 방문', '시골 브이로그'],
+    '제철먹거리': ['제철', '농산물', '산지직송', '로컬푸드', '과일 리뷰', '간식 리뷰'],
+    '공동구매': ['공동구매', '공구', '소비자 리뷰', '체험단', '협찬 리뷰'],
+  };
+
+  // ── 상품명 → 적합 세그먼트 매핑 ──
+  function getRelevantSegments(productName: string): string[] {
+    const pLower = productName.toLowerCase();
+    // 상품에 따라 적합한 세그먼트 우선순위 결정
+    const segmentScores: Record<string, number> = {};
+    // 농산물/식품 키워드
+    const foodKws = ['옥수수','복숭아','사과','배','감','딸기','수박','참외','토마토','고구마','감자','절임배추','김치','떡','한과','꿀','잼','과일','채소','농산물'];
+    const campKws = ['캠핑','차박','아웃도어','바베큐'];
+    const cookKws = ['요리','레시피','집밥','간식'];
+    
+    if (foodKws.some(k => pLower.includes(k))) {
+      segmentScores['먹방'] = 5;
+      segmentScores['요리'] = 5;
+      segmentScores['제철먹거리'] = 5;
+      segmentScores['캠핑'] = 4;
+      segmentScores['주부살림'] = 4;
+      segmentScores['건강식'] = 3;
+      segmentScores['공동구매'] = 4;
+      segmentScores['지역여행'] = 3;
+    } else if (campKws.some(k => pLower.includes(k))) {
+      segmentScores['캠핑'] = 5;
+      segmentScores['먹방'] = 3;
+      segmentScores['요리'] = 3;
+    } else if (cookKws.some(k => pLower.includes(k))) {
+      segmentScores['요리'] = 5;
+      segmentScores['먹방'] = 4;
+      segmentScores['주부살림'] = 4;
+    } else {
+      // 기본: 모든 세그먼트 동일 가중치
+      Object.keys(PRACTICAL_SEGMENTS).forEach(s => { segmentScores[s] = 3; });
+    }
+    // 점수 높은 순으로 정렬, 상위 5개 선택
+    return Object.entries(segmentScores)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 5)
+      .map(([seg]) => seg);
+  }
+
+  // ── 세그먼트별 검색어 생성 ──
+  function getSearchQueries(segments: string[]): { segment: string; query: string }[] {
+    const queries: { segment: string; query: string }[] = [];
+    for (const seg of segments) {
+      const kws = PRACTICAL_SEGMENTS[seg];
+      if (kws && kws.length > 0) {
+        // 각 세그먼트에서 대표 검색어 1~2개 선택
+        queries.push({ segment: seg, query: kws[0] });
+        if (kws.length > 2) queries.push({ segment: seg, query: kws[2] });
+      }
+    }
+    return queries;
+  }
+
+  // ── 실전 세그먼트 태깅 ──
+  function tagPracticalSegment(channelDesc: string, channelTitle: string): string {
+    const text = `${channelDesc} ${channelTitle}`.toLowerCase();
+    const scores: Record<string, number> = {};
+    for (const [seg, kws] of Object.entries(PRACTICAL_SEGMENTS)) {
+      const matches = kws.filter(kw => text.includes(kw.toLowerCase()));
+      if (matches.length > 0) scores[seg] = matches.length;
+    }
+    if (Object.keys(scores).length === 0) return '기타';
+    return Object.entries(scores).sort((a, b) => b[1] - a[1])[0][0];
+  }
+
+  const segmentStats: Record<string, number> = {};
+  const searchedSegments: string[] = [];
+
+  // ── YouTube 카테고리 기반 수집 ──
   if (platform === 'all' || platform === 'youtube') {
     try {
       if (!YOUTUBE_API_KEY) throw new Error('YouTube API 할당량 초과 또는 미설정');
-      const searchUrl = `https://www.googleapis.com/youtube/v3/search?part=snippet&type=channel&q=${encodeURIComponent(keyword)}&maxResults=${max * 3}&regionCode=KR&hl=ko&key=${YOUTUBE_API_KEY}`;
-      const searchRes = await fetch(searchUrl);
-      if (!searchRes.ok) {
-        const errData = await searchRes.json() as any;
-        if (errData.error?.errors?.[0]?.reason === 'quotaExceeded') {
-          return { success: true, candidates: [], quotaExceeded: true, message: 'YouTube API 할당량 초과로 오늘은 소량/수동 검증 모드로 진행합니다.' };
+
+      // 1단계: 상품에 적합한 세그먼트 결정
+      const relevantSegments = getRelevantSegments(productName);
+      const searchQueries = getSearchQueries(relevantSegments);
+      searchedSegments.push(...relevantSegments);
+
+      // 2단계: 세그먼트별 채널 검색 (quota 관리: 최대 5개 검색)
+      const maxSearches = Math.min(searchQueries.length, 5);
+      const perSearchMax = Math.ceil((max * 2) / maxSearches); // 넉넉하게 수집
+      const seenChannelIds = new Set<string>();
+
+      for (let i = 0; i < maxSearches; i++) {
+        const { segment, query } = searchQueries[i];
+        const searchUrl = `https://www.googleapis.com/youtube/v3/search?part=snippet&type=channel&q=${encodeURIComponent(query)}&maxResults=${Math.min(perSearchMax, 15)}&regionCode=KR&hl=ko&key=${YOUTUBE_API_KEY}`;
+        const searchRes = await fetch(searchUrl);
+        if (!searchRes.ok) {
+          const errData = await searchRes.json() as any;
+          if (errData.error?.errors?.[0]?.reason === 'quotaExceeded') {
+            return { success: true, candidates: [], quotaExceeded: true, message: 'YouTube API 할당량 초과로 오늘은 소량/수동 검증 모드로 진행합니다.' };
+          }
+          continue;
         }
-        throw new Error(`YouTube API error: ${searchRes.status}`);
-      }
-      const searchData = await searchRes.json() as any;
-      if (searchData.items && searchData.items.length > 0) {
-        const channelIds = searchData.items.map((item: any) => item.snippet.channelId || item.id.channelId).join(',');
-        const channelsUrl = `https://www.googleapis.com/youtube/v3/channels?part=snippet,statistics,brandingSettings&id=${channelIds}&key=${YOUTUBE_API_KEY}`;
+        const searchData = await searchRes.json() as any;
+        if (!searchData.items || searchData.items.length === 0) continue;
+
+        // 중복 제거
+        const newChannelIds = searchData.items
+          .map((item: any) => item.snippet.channelId || item.id?.channelId)
+          .filter((id: string) => id && !seenChannelIds.has(id));
+        newChannelIds.forEach((id: string) => seenChannelIds.add(id));
+        if (newChannelIds.length === 0) continue;
+
+        // 3단계: 채널 상세 정보 조회
+        const channelsUrl = `https://www.googleapis.com/youtube/v3/channels?part=snippet,statistics,brandingSettings&id=${newChannelIds.join(',')}&key=${YOUTUBE_API_KEY}`;
         const channelsRes = await fetch(channelsUrl);
-        if (channelsRes.ok) {
-          const channelsData = await channelsRes.json() as any;
-          for (const ch of (channelsData.items || []).slice(0, max)) {
-            const snippet = ch.snippet || {};
-            const stats = ch.statistics || {};
-            const branding = ch.brandingSettings?.channel || {};
-            const subs = parseInt(stats.subscriberCount || '0', 10);
-            const views = parseInt(stats.viewCount || '0', 10);
-            const contact = extractContactInfo(snippet.description || '', branding.description || '');
-            const channelData = {
-              name: snippet.title, title: snippet.title,
-              description: (snippet.description || '').substring(0, 300),
-              subscriberCount: subs, viewCount: views,
-              email: contact.email,
-              recentContentTitle: snippet.title,
-              publicContactStatus: contact.email ? 'email_public' : 'unknown',
-            };
-            const fit = calculateProductFitScore(channelData, keyword, product || keyword);
-            candidates.push({
-              candidateId: generateRecordId('inf'),
-              collectedAt: now,
-              platform: 'YouTube',
-              keyword,
-              name: snippet.title,
-              channelOrBlogUrl: `https://www.youtube.com/channel/${ch.id}`,
-              recentContentTitle: (snippet.description || '').substring(0, 60),
-              recentContentUrl: `https://www.youtube.com/channel/${ch.id}`,
-              subscriberOrVisitor: subs > 0 ? (subs >= 10000 ? `${(subs/10000).toFixed(1)}만` : `${subs.toLocaleString()}`) : '-',
-              viewCount: views > 0 ? (views >= 100000000 ? `${(views/100000000).toFixed(1)}억` : views >= 10000 ? `${(views/10000).toFixed(0)}만` : views.toLocaleString()) : '-',
-              publicContactStatus: channelData.publicContactStatus,
-              publicEmailMasked: contact.email ? maskEmail(contact.email) : '',
-              productFitScore: fit.score,
-              productFitReason: fit.reason,
-              suggestedProduct: product || keyword,
-              suggestedOfferAngle: generateOfferAngle(channelData, keyword, product || keyword),
-              outreachStatus: 'pending',
-              firstEmailDraft: contact.email ? generateFirstEmailDraft(channelData, keyword, product || keyword) : '',
-              followUpDraft: contact.email ? generateFollowUpDraft(channelData, keyword, product || keyword) : '',
-              responseStatus: 'none',
-              notes: '',
-            });
+        if (!channelsRes.ok) continue;
+        const channelsData = await channelsRes.json() as any;
+
+        for (const ch of (channelsData.items || [])) {
+          const snippet = ch.snippet || {};
+          const stats = ch.statistics || {};
+          const branding = ch.brandingSettings?.channel || {};
+          const subs = parseInt(stats.subscriberCount || '0', 10);
+          const views = parseInt(stats.viewCount || '0', 10);
+          const contact = extractContactInfo(snippet.description || '', branding.description || '');
+          const hasEmail = !!(contact.email && contact.email.includes('@'));
+          const practicalSegment = tagPracticalSegment(
+            (snippet.description || '') + ' ' + (branding.description || ''),
+            snippet.title || ''
+          );
+
+          // 세그먼트 통계
+          segmentStats[practicalSegment] = (segmentStats[practicalSegment] || 0) + 1;
+
+          const channelData = {
+            name: snippet.title, title: snippet.title,
+            description: (snippet.description || '').substring(0, 300),
+            subscriberCount: subs, viewCount: views,
+            email: contact.email,
+            recentContentTitle: snippet.title,
+            publicContactStatus: hasEmail ? 'email_public' : 'unknown',
+          };
+          const fit = calculateProductFitScore(channelData, keyword, productName);
+
+          const candidate = {
+            candidateId: generateRecordId('inf'),
+            collectedAt: now,
+            platform: 'YouTube',
+            keyword: query,
+            seedKeyword: keyword,
+            productName,
+            practicalSegment,
+            name: snippet.title,
+            channelOrBlogUrl: `https://www.youtube.com/channel/${ch.id}`,
+            recentContentTitle: (snippet.description || '').substring(0, 60),
+            recentContentUrl: `https://www.youtube.com/channel/${ch.id}`,
+            subscriberOrVisitor: subs > 0 ? (subs >= 10000 ? `${(subs/10000).toFixed(1)}만` : `${subs.toLocaleString()}`) : '-',
+            viewCount: views > 0 ? (views >= 100000000 ? `${(views/100000000).toFixed(1)}억` : views >= 10000 ? `${(views/10000).toFixed(0)}만` : views.toLocaleString()) : '-',
+            publicContactStatus: channelData.publicContactStatus,
+            publicEmailMasked: contact.email ? maskEmail(contact.email) : '',
+            emailSource: hasEmail ? 'channel_description' : '',
+            productFitScore: fit.score,
+            productFitReason: fit.reason,
+            suggestedProduct: productName,
+            suggestedOfferAngle: generateOfferAngle(channelData, keyword, productName),
+            outreachStatus: 'pending',
+            firstEmailDraft: hasEmail ? generateFirstEmailDraft(channelData, keyword, productName) : '',
+            followUpDraft: hasEmail ? generateFollowUpDraft(channelData, keyword, productName) : '',
+            responseStatus: 'none',
+            notes: '',
+            excludedReason: '',
+          };
+
+          // 이메일 필수 조건 처리
+          if (requireEmail && !hasEmail) {
+            candidate.excludedReason = contact.email ? 'invalid_email_format' : 'no_public_email';
+            excludedCandidates.push(candidate);
+          } else {
+            candidates.push(candidate);
           }
         }
       }
@@ -1433,13 +1558,15 @@ async function handleOutreachCollect(params: any) {
     }
   }
 
-  // Naver Blog 수집
+  // ── Naver Blog 수집 ──
   if (platform === 'all' || platform === 'naver') {
     try {
       const NAVER_CLIENT_ID = process.env.NAVER_CLIENT_ID || '';
       const NAVER_CLIENT_SECRET = process.env.NAVER_CLIENT_SECRET || '';
       if (!NAVER_CLIENT_ID) throw new Error('Naver API 미설정');
-      const naverUrl = `https://openapi.naver.com/v1/search/blog.json?query=${encodeURIComponent(keyword)}&display=${max * 3}&sort=sim`;
+      // 세그먼트 기반 검색어 사용
+      const naverQuery = `${productName} 공동구매 리뷰`;
+      const naverUrl = `https://openapi.naver.com/v1/search/blog.json?query=${encodeURIComponent(naverQuery)}&display=${max * 2}&sort=sim`;
       const naverRes = await fetch(naverUrl, {
         headers: { 'X-Naver-Client-Id': NAVER_CLIENT_ID, 'X-Naver-Client-Secret': NAVER_CLIENT_SECRET },
       });
@@ -1453,6 +1580,8 @@ async function handleOutreachCollect(params: any) {
         const blogUrl = blogId ? `https://blog.naver.com/${blogId}` : bloggerlink;
         const cleanTitle = (item.title || '').replace(/<[^>]*>/g, '');
         const cleanDesc = (item.description || '').replace(/<[^>]*>/g, '').substring(0, 100);
+        const practicalSegment = tagPracticalSegment(cleanDesc + ' ' + cleanTitle, item.bloggername || '');
+        segmentStats[practicalSegment] = (segmentStats[practicalSegment] || 0) + 1;
         const channelData = {
           name: item.bloggername || blogId,
           title: item.bloggername || blogId,
@@ -1463,12 +1592,15 @@ async function handleOutreachCollect(params: any) {
           subscriberCount: 0,
           viewCount: 0,
         };
-        const fit = calculateProductFitScore(channelData, keyword, product || keyword);
-        candidates.push({
+        const fit = calculateProductFitScore(channelData, keyword, productName);
+        const candidate = {
           candidateId: generateRecordId('inf'),
           collectedAt: now,
           platform: 'Naver Blog',
-          keyword,
+          keyword: naverQuery,
+          seedKeyword: keyword,
+          productName,
+          practicalSegment,
           name: item.bloggername || blogId || '블로거',
           channelOrBlogUrl: blogUrl,
           recentContentTitle: cleanTitle.substring(0, 60),
@@ -1477,32 +1609,60 @@ async function handleOutreachCollect(params: any) {
           viewCount: '-',
           publicContactStatus: 'unknown',
           publicEmailMasked: '',
+          emailSource: '',
           productFitScore: fit.score,
           productFitReason: fit.reason,
-          suggestedProduct: product || keyword,
-          suggestedOfferAngle: generateOfferAngle(channelData, keyword, product || keyword),
+          suggestedProduct: productName,
+          suggestedOfferAngle: generateOfferAngle(channelData, keyword, productName),
           outreachStatus: 'pending',
           firstEmailDraft: '',
           followUpDraft: '',
           responseStatus: 'none',
           notes: `최근 글: ${cleanTitle.substring(0, 40)}`,
-        });
+          excludedReason: '',
+        };
+        if (requireEmail) {
+          candidate.excludedReason = 'no_public_email';
+          excludedCandidates.push(candidate);
+        } else {
+          candidates.push(candidate);
+        }
       }
     } catch (e: any) {
       // Naver 실패 시 무시
     }
   }
 
-  // 적합도 점수 내림차순 정렬
+  // ── 적합도 점수 내림차순 정렬 ──
   candidates.sort((a, b) => b.productFitScore - a.productFitScore);
+
+  // ── 제외 사유 집계 ──
+  const excludedNoEmail = excludedCandidates.filter(c => c.excludedReason === 'no_public_email').length;
+  const excludedInvalidEmail = excludedCandidates.filter(c => c.excludedReason === 'invalid_email_format').length;
+  const excludedContactOnly = excludedCandidates.filter(c => c.excludedReason === 'contact_link_only').length;
+
+  const finalCandidates = candidates.slice(0, max);
+  const shortfall = requireEmail ? Math.max(0, max - finalCandidates.length) : 0;
 
   return {
     success: true,
-    candidates: candidates.slice(0, max),
+    candidates: finalCandidates,
     total: candidates.length,
     keyword,
-    product: product || keyword,
-    message: `${keyword} 관련 공동구매 후보 ${candidates.slice(0, max).length}명을 수집했습니다.`,
+    product: productName,
+    requireEmail,
+    searchedSegments,
+    segmentStats,
+    excluded: {
+      total: excludedCandidates.length,
+      noEmail: excludedNoEmail,
+      invalidEmail: excludedInvalidEmail,
+      contactLinkOnly: excludedContactOnly,
+    },
+    shortfall,
+    message: requireEmail
+      ? `YouTube 공식 카테고리 전체에서 ${productName} 공동구매와 맞는 이메일 확인 후보 ${finalCandidates.length}명을 수집했습니다.${shortfall > 0 ? ` (${shortfall}명 부족)` : ''}`
+      : `YouTube 공식 카테고리 전체에서 ${productName} 공동구매 후보 ${finalCandidates.length}명을 수집했습니다.`,
   };
 }
 
@@ -1520,12 +1680,14 @@ async function handleOutreachSaveCandidates(params: any) {
     for (const c of candidates) {
       await sheetsAppend('influencer_candidates', [[
         c.candidateId || generateRecordId('inf'), c.collectedAt || new Date().toISOString(),
-        c.platform || '', c.keyword || '', c.name || '',
+        c.platform || '', c.seedKeyword || c.keyword || '', c.name || '',
         c.channelOrBlogUrl || '', c.recentContentTitle || '', c.recentContentUrl || '',
         String(c.subscriberOrVisitor || ''), String(c.viewCount || ''),
         c.publicContactStatus || 'unknown', c.publicEmailMasked || '',
+        c.emailSource || '',
         String(c.productFitScore || 0), c.productFitReason || '',
-        c.suggestedProduct || '', c.suggestedOfferAngle || '',
+        c.suggestedProduct || c.productName || '', c.suggestedOfferAngle || '',
+        c.practicalSegment || '',
         c.outreachStatus || 'pending', c.firstEmailDraft || '',
         c.followUpDraft || '', '', 'none', c.notes || ''
       ]]);
