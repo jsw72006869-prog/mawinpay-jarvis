@@ -445,12 +445,32 @@ function deterministicMatch(text: string): JarvisAction | null {
     };
   }
 
+  // 전체 발주현황 / 발주현황 → OBSERVE 조회 (배송 전 처리보다 먼저 매칭)
+  if (/발주.?현황|발주.?상태/.test(lower) && /알려|보여|조회|확인|어때|전체/.test(lower)) {
+    return {
+      type: 'smartstore_orders',
+      params: { action: 'query_order_status', userMessage: text },
+      workingMessage: '전체 발주현황 조회 중...',
+      response: '__SKIP_TTS__',
+    };
+  }
+
   // 배송 전 처리 대상 전체 (배송준비보다 먼저 매칭해야 함)
   if (/배송.?전.?처리|처리.?대상.?전체|전체.?몇.?개/.test(lower) && /배송|처리|전체/.test(lower)) {
     return {
       type: 'smartstore_orders',
       params: { action: 'query_pre_shipping_total', userMessage: text },
       workingMessage: '배송 전 처리 대상 전체 조회 중...',
+      response: '__SKIP_TTS__',
+    };
+  }
+
+  // 배송중
+  if (/배송.?중/.test(lower) && /몇|개|조회|확인|알려|어때/.test(lower)) {
+    return {
+      type: 'smartstore_orders',
+      params: { action: 'query_order_status', userMessage: text },
+      workingMessage: '배송중 조회 중...',
       response: '__SKIP_TTS__',
     };
   }
@@ -575,7 +595,12 @@ export async function askGPT(userMessage: string): Promise<JarvisAction> {
       const fnName = toolCall.function.name;
       const fnArgs = JSON.parse(toolCall.function.arguments || '{}');
       console.log('[JARVIS] Function call:', fnName, fnArgs);
-      const responseText = String(fnArgs.response || '');
+      let responseText = String(fnArgs.response || '');
+      // pseudo-code / 코드 블록 차단 (function calling response 필드)
+      if (/```/.test(responseText) || /function\s*\(|=>|import\s|const\s|let\s|var\s/.test(responseText)) {
+        console.warn('[JARVIS] FC pseudo-code 차단:', responseText.substring(0, 80));
+        responseText = '작업을 시작하겠습니다, 선생님.';
+      }
       conversationHistory.push({ role: 'assistant', content: responseText });
       saveConversationEntry('assistant', responseText);
       autoExtractAndSave(userMessage, responseText);
@@ -584,8 +609,13 @@ export async function askGPT(userMessage: string): Promise<JarvisAction> {
       return action;
     }
 
-    // 일반 텍스트 응답
-    const reply = message?.content ?? '죄송합니다, 잠시 연결이 불안정합니다.';
+    // 일반 텍스트 응답 (코드 블록 / pseudo-code 필터링)
+    let reply = message?.content ?? '죄송합니다, 잠시 연결이 불안정합니다.';
+    // pseudo-code / 코드 블록 차단: GPT가 코드를 반환하면 사용자에게 노출하지 않음
+    if (/```/.test(reply) || /function\s*\(|=>|import\s|const\s|let\s|var\s/.test(reply)) {
+      console.warn('[JARVIS] pseudo-code 차단:', reply.substring(0, 100));
+      reply = '네, 선생님. 해당 작업을 진행하겠습니다. 구체적인 내용을 말씀해 주시면 도와드리겠습니다.';
+    }
     conversationHistory.push({ role: 'assistant', content: reply });
     saveConversationEntry('assistant', reply);
     autoExtractAndSave(userMessage, reply);

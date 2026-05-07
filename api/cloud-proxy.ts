@@ -2454,7 +2454,7 @@ interface OrderItem {
 }
 
 async function createOrderExcelBuffer(orders: OrderItem[], productType: 'bam' | 'oksu', templateType: 'logen' | 'lotte'): Promise<Buffer> {
-  const ExcelJS = require('exceljs');
+  const ExcelJS = (await import('exceljs')).default;
   const wb = new ExcelJS.Workbook();
   const ws = wb.addWorksheet('발주서');
   const COLOR = productType === 'bam' ? 'FFD4A017' : 'FF1E90FF';
@@ -2513,7 +2513,7 @@ async function createOrderExcelBuffer(orders: OrderItem[], productType: 'bam' | 
 }
 
 async function createSettlementBuffer(qtyMap: Record<string, number>, supplyMap: Record<string, number>, saleMap: Record<string, number>, productType: 'bam' | 'oksu', today: string) {
-  const ExcelJS = require('exceljs');
+  const ExcelJS = (await import('exceljs')).default;
   const wb = new ExcelJS.Workbook();
   const GOLD = 'FFD4A017';
   const typeName = productType === 'bam' ? '밤' : '옥수수';
@@ -2702,7 +2702,7 @@ async function handleSmartstoreProcessOrder(params: any) {
     // dryRun이 true면 실제 이메일 발송 차단
     const isDryRun = dryRun !== false;
 
-    const ExcelJS = require('exceljs');
+    const ExcelJS = (await import('exceljs')).default;
     const fileBuffer = Buffer.from(fileBase64, 'base64');
     const wb = new ExcelJS.Workbook();
     try {

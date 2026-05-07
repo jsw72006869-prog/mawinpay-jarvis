@@ -86,6 +86,7 @@ function getActionLabel(action: string): string {
     current_new_orders: '현재 신규주문 조회',
     query_orders_today: '오늘 신규주문 조회',
     query_pending_shipping: '배송준비 조회',
+    query_order_status: '전체 주문/발주 현황 조회',
     query_pre_shipping_total: '배송 전 처리 대상 전체 조회',
     query_orders_week: '이번 주 주문 조회',
     query_orders_month: '이번 달 주문 조회',
@@ -3246,7 +3247,11 @@ export default function JarvisApp() {
           const srcLabel = data.isCached ? '(캐시)' : '(실시간)';
           const timeLabel = data.fetchedAt ? new Date(data.fetchedAt).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' }) : '';
 
-          if (ssAction === 'current_new_orders') {
+          if (ssAction === 'query_order_status') {
+            resultMsg = `[PKG] **전체 주문/발주 현황** ${srcLabel}\n\n신규주문: ${nO}건\n배송준비: ${pS}건\n배송 전 처리 대상 전체: ${preT}건\n배송중: ${ship}건\n배송완료: ${dlvd}건\n구매확정: ${pConf}건 (최근 7일 기준)\n\n현황: OBSERVE 조회 완료`;
+            if (timeLabel) resultMsg += `\n조회 시각: ${timeLabel}`;
+            doneText = `신규주문 ${nO}건, 배송중 ${ship}건입니다, 선생님.`;
+          } else if (ssAction === 'current_new_orders') {
             resultMsg = `[PKG] **현재 주문 현황** ${srcLabel}\n\n현재 신규주문: ${nO}건\n배송준비: ${pS}건\n배송 전 처리 대상 전체: ${preT}건\n배송중: ${ship}건\n배송완료: ${dlvd}건\n구매확정: ${pConf}건 (최근 7일 기준)`;
             if (timeLabel) resultMsg += `\n\n조회 시각: ${timeLabel}`;
             doneText = `현재 신규주문 ${nO}건, 배송준비 ${pS}건입니다, 선생님.`;
@@ -4362,10 +4367,10 @@ export default function JarvisApp() {
         const testAttachments: Array<{filename: string; content: string; contentType: string}> = [];
         try {
           const fileRequests = [
-            { task: 'smartstore_process_order', action: 'create_test_order', templateType: 'lotte', productType: 'oksu' },
-            { task: 'smartstore_process_order', action: 'create_test_order', templateType: 'logen', productType: 'oksu' },
-            { task: 'smartstore_process_order', action: 'create_test_settlement', productType: 'oksu' },
-            { task: 'smartstore_process_order', action: 'create_test_settlement', productType: 'bam' },
+            { endpoint: 'smartstore-process-order', params: { action: 'create_test_order', templateType: 'lotte', productType: 'oksu' } },
+            { endpoint: 'smartstore-process-order', params: { action: 'create_test_order', templateType: 'logen', productType: 'oksu' } },
+            { endpoint: 'smartstore-process-order', params: { action: 'create_test_settlement', productType: 'oksu' } },
+            { endpoint: 'smartstore-process-order', params: { action: 'create_test_settlement', productType: 'bam' } },
           ];
           for (const reqBody of fileRequests) {
             const res = await fetch('/api/cloud-proxy', {
