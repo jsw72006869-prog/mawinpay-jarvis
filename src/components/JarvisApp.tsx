@@ -2498,13 +2498,13 @@ export default function JarvisApp() {
         });
       }
 
-      // Phase UI-C-Final: Mission Log 강화
+      // Phase UI-C-Final: Mission Log 강화 (dedup: 각 메시지 1회만 발행)
       emitMissionLog('🎤', 'COMMANDER', '음성 명령 인식 완료', 'info');
       emitMissionLog('🧠', 'JARVIS', '의도 판단 완료: Morning Briefing', 'success');
       emitMissionLog('📊', 'BRIEFING', '모닝 브리핑 데이터 수집 시작', 'info');
-      // 텔레메트리: 모닝 브리핑 시퀀스 시작
+      // 텔레메트리: 모닝 브리핑 시퀀스 시작 (노드 애니메이션만, Mission Log 발행 안 함)
       emitBriefingSequence('start', undefined, '모닝 브리핑 프로토콜 가동');
-      telemetryFunctionStart('morning_briefing', '모닝 브리핑 데이터 수집 시작');
+      telemetryFunctionStart('morning_briefing');
       // Agent Console 자동 활성화 (v4.2)
       setAgentConsoleVisible(true);
 

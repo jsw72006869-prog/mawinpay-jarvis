@@ -185,7 +185,9 @@ export function telemetryFunctionStart(functionName: string, detail?: string) {
     emitPulseLine('jarvis_brain', nodeId, mapping.speed);
   });
 
-  emitMissionLog(mapping.icon, 'System', detail || `${functionName} 시작`, 'info');
+  // Mission Log는 함수 시작 시 1회만 기록 (nodes.forEach와 별개)
+  // JarvisApp에서 이미 emitMissionLog를 호출한 경우 중복 방지를 위해 제거
+  // emitMissionLog(mapping.icon, 'System', detail || `${functionName} 시작`, 'info');
 }
 
 /** 함수 실행 성공 */
