@@ -34,6 +34,7 @@ import MarketPricePanel, { type MarketPriceResult, type MarketPriceInputData } f
 import CloudStatusOverlay from './CloudStatusOverlay';
 import LiveBrowserViewer from './LiveBrowserViewer';
 import MissionControlDeck from './MissionControlDeck';
+import DataWallView from './DataWallView';
 
 // ── 시그니처 응답 목록 (GPT 대기 없이 즉시 재생) ──
 const SIGNATURE_RESPONSES = [
@@ -345,6 +346,9 @@ export default function JarvisApp() {
   // ─── Agent Console & HUD 상태 (v4.2) ───
   const [agentConsoleVisible, setAgentConsoleVisible] = useState(false);
   const [coreDimLevel, setCoreDimLevel] = useState(0); // 0=정상, 1=최대감소
+  const isDataWallView =
+    typeof window !== 'undefined' &&
+    new URLSearchParams(window.location.search).get('view') === 'data-wall';
   const [marketIntelVisible, setMarketIntelVisible] = useState(false);
   const [marketChartVisible, setMarketChartVisible] = useState(false);
   const [marketChartData, setMarketChartData] = useState<any>(null);
@@ -369,6 +373,45 @@ export default function JarvisApp() {
     setShowGoldenFlare(true);
     setTimeout(() => setShowGoldenFlare(false), 2000);
   }, []);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    if (isDataWallView) return;
+
+    const wallPayload = {
+      scene: activeScene,
+      state,
+      currentTime,
+      workspaceCount: workspaceRecords.length,
+      outreachCount: outreachCandidates.length,
+      actionType: actionContext?.type,
+      updatedAt: Date.now(),
+    };
+
+    try {
+      window.localStorage.setItem('jarvis.dualWall.latest', JSON.stringify(wallPayload));
+    } catch {
+      // ignore storage errors
+    }
+
+    try {
+      if ('BroadcastChannel' in window) {
+        const channel = new BroadcastChannel('jarvis-dual-command-wall');
+        channel.postMessage(wallPayload);
+        channel.close();
+      }
+    } catch {
+      // ignore broadcast errors
+    }
+  }, [
+    isDataWallView,
+    activeScene,
+    state,
+    currentTime,
+    workspaceRecords.length,
+    outreachCandidates.length,
+    actionContext?.type,
+  ]);
 
   const [settingsForm, setSettingsForm] = useState(() => {
     const stored = JSON.parse(localStorage.getItem('jarvis_api_keys') || '{}');
@@ -3345,6 +3388,25 @@ export default function JarvisApp() {
           const srcLabel = data.isCached ? '(캐시)' : '(실시간)';
           const timeLabel = data.fetchedAt ? new Date(data.fetchedAt).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' }) : '';
 
+          if (ssAction === 'query_order_status' || ssAction === 'current_new_orders' || ssAction === 'query_pending_shipping' || ssAction === 'query_pre_shipping_total') {
+            try {
+              const snapshot = {
+                newOrders: nO,
+                pendingShipping: pS,
+                preShipTotal: preT,
+                shipping: ship,
+                delivered: dlvd,
+                purchaseConfirmed: pConf,
+                source: srcLabel,
+                fetchedAt: data.fetchedAt,
+                savedAt: Date.now(),
+              };
+              localStorage.setItem('jarvis.smartstore.lastStatusSnapshot', JSON.stringify(snapshot));
+            } catch (e) {
+              console.warn('[JARVIS] Smartstore snapshot 저장 실패:', e);
+            }
+          }
+
           if (ssAction === 'query_order_status') {
             resultMsg = `[PKG] **전체 주문/발주 현황** ${srcLabel}\n\n신규주문: ${nO}건\n배송준비: ${pS}건\n배송 전 처리 대상 전체: ${preT}건\n배송중: ${ship}건\n배송완료: ${dlvd}건\n구매확정: ${pConf}건 (최근 7일 기준)\n\n현황: OBSERVE 조회 완료`;
             if (timeLabel) resultMsg += `\n조회 시각: ${timeLabel}`;
@@ -4850,6 +4912,10 @@ export default function JarvisApp() {
   }, [addMessage, speak, startSpeakingLevel, stopSpeakingLevel]);
 
   const accent = STATE_COLOR[state];
+
+  if (isDataWallView) {
+    return <DataWallView />;
+  }
 
   return (
     <main
@@ -7267,8 +7333,7 @@ export default function JarvisApp() {
         )}
       </AnimatePresence>
 
-      {/* ── 라이브 브라우저 뷰어 (실시간 크롤링 화면) ── */}
-      <LiveBrowserViewer
+      {/* ── 라이브 브라우저 뷰어 (실시간 크롤링 화면) ── */}      <LiveBrowserViewer
         visible={liveViewerVisible}
         onClose={() => setLiveViewerVisible(false)}
         taskInfo={liveViewerTask || undefined}
