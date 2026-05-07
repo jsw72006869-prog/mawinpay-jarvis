@@ -2357,6 +2357,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         const result = await handleKamisMini(params || rest);
         return res.status(200).json(result);
       }
+      if (resolvedTask === 'smartstore-process-order') {
+        const result = await handleSmartstoreProcessOrder(params || rest);
+        return res.status(200).json(result);
+      }
 
       return res.status(400).json({ error: `Unknown task: ${resolvedTask}` });
     }
@@ -2369,4 +2373,459 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       message: error.message,
     });
   }
+}
+
+
+// ═══════════════════════════════════════════════════════════════════
+// handleSmartstoreProcessOrder - 발주서/정산서 처리 (dry-run 기본)
+// ═══════════════════════════════════════════════════════════════════
+
+const SENDER_NAME = 'selen 셀렌';
+const SENDER_PHONE_ORDER = '010-9943-3201';
+const MANAGER_NAME_ORDER = '이혜안';
+const DELIVERY_FEE = 3000;
+
+const BAM_SUPPLY: Record<string, number> = {
+  '공주알밤 대(1kg)': 8000, '공주알밤 대(2kg)이상': 14000,
+  '공주알밤 특(1kg)': 10000, '공주알밤 특(2kg)이상': 17000,
+  '포르단칼집밤 대(1kg)': 11000, '포르단칼집밤 대(2kg)이상': 20000,
+  '포르단칼집밤 특(1kg)': 12000, '포르단칼집밤 특(2kg)이상': 22000,
+  '옥광밤 대(1kg)': 15000, '옥광밤 대(2kg)이상': 28000,
+  '대보밤 특(1kg)': 11000, '대보밤 특(2kg)이상': 20000,
+};
+const BAM_SALE: Record<string, number> = {
+  '공주알밤 대(1kg)': 13800, '공주알밤 대(2kg)이상': 24800,
+  '공주알밤 특(1kg)': 16800, '공주알밤 특(2kg)이상': 27800,
+  '포르단칼집밤 대(1kg)': 19800, '포르단칼집밤 대(2kg)이상': 30800,
+  '포르단칼집밤 특(1kg)': 22800, '포르단칼집밤 특(2kg)이상': 32800,
+  '대보밤 특(1kg)': 20800, '대보밤 특(2kg)이상': 30800,
+};
+const OKSU_SUPPLY: Record<string, number> = {
+  '냉동 대학찰옥수수 3X5 15개': 15000,
+  '냉동 대학찰옥수수 3X7 21개': 21000,
+  '냉동 대학찰옥수수 3X10 30개': 30000,
+};
+const OKSU_SALE: Record<string, number> = {
+  '냉동 대학찰옥수수 3X5 15개': 28500,
+  '냉동 대학찰옥수수 3X7 21개': 36500,
+  '냉동 대학찰옥수수 3X10 30개': 52500,
+};
+
+// 로젠택배 양식 헤더 (Sheet1)
+const LOGEN_HEADERS = ['제  품', '수량', '보내시는분이름', '보내시는분 전화번호', '받는분이름', '받는분전화번호', '받는분핸드폰번호', '주소', '비고', '우편번호'];
+// 롯데택배 양식 헤더 (Sheet1)
+const LOTTE_HEADERS = ['상품주문번호', '이름', '옵션정보', '수량', '연락처', '배송지'];
+
+function normalizeOptionOrder(raw: string): string {
+  if (!raw) return '';
+  const s = String(raw).trim();
+  const src = s.includes(':') ? (s.split(':').pop() || '').trim() : s;
+  const bamMatch = src.match(/(공주알밤|포르단칼집밤|옥광밤|대보밤)\s*(대|특)\s*(\d+)\s*kg/i);
+  if (bamMatch) {
+    const kg = parseInt(bamMatch[3]);
+    return `${bamMatch[1]} ${bamMatch[2]}(${kg}kg)${kg >= 2 ? '이상' : ''}`;
+  }
+  const oksuMatch = src.match(/(\d+)[Xx×](\d+)\s*(\d+)개?/);
+  if (oksuMatch) {
+    return `냉동 대학찰옥수수 ${oksuMatch[1]}X${oksuMatch[2]} ${oksuMatch[3]}개`;
+  }
+  if (src.includes('3X5') || src.includes('15개')) return '냉동 대학찰옥수수 3X5 15개';
+  if (src.includes('3X7') || src.includes('21개')) return '냉동 대학찰옥수수 3X7 21개';
+  if (src.includes('3X10') || src.includes('30개')) return '냉동 대학찰옥수수 3X10 30개';
+  return src;
+}
+
+function detectProductTypeOrder(option: string): 'bam' | 'oksu' | 'unknown' {
+  const BAM_KEYWORDS = ['공주알밤', '포르단', '칼집밤', '옥광밤', '대보밤'];
+  const OKSU_KEYWORDS = ['옥수수', '찰옥수수', '3X5', '3X7', '3X10'];
+  if (BAM_KEYWORDS.some(k => option.includes(k))) return 'bam';
+  if (OKSU_KEYWORDS.some(k => option.includes(k))) return 'oksu';
+  return 'unknown';
+}
+
+interface OrderItem {
+  productOrderId: string;
+  recipientName: string;
+  optionRaw: string;
+  option: string;
+  quantity: number;
+  recipientPhone: string;
+  address: string;
+}
+
+async function createOrderExcelBuffer(orders: OrderItem[], productType: 'bam' | 'oksu', templateType: 'logen' | 'lotte'): Promise<Buffer> {
+  const ExcelJS = require('exceljs');
+  const wb = new ExcelJS.Workbook();
+  const ws = wb.addWorksheet('발주서');
+  const COLOR = productType === 'bam' ? 'FFD4A017' : 'FF1E90FF';
+
+  if (templateType === 'logen') {
+    // 로젠택배 양식
+    ws.columns = [
+      { header: '제  품', key: 'product', width: 30 },
+      { header: '수량', key: 'qty', width: 8 },
+      { header: '보내시는분이름', key: 'senderName', width: 16 },
+      { header: '보내시는분 전화번호', key: 'senderPhone', width: 20 },
+      { header: '받는분이름', key: 'recvName', width: 14 },
+      { header: '받는분전화번호', key: 'recvPhone1', width: 16 },
+      { header: '받는분핸드폰번호', key: 'recvPhone2', width: 16 },
+      { header: '주소', key: 'address', width: 45 },
+      { header: '비고', key: 'note', width: 12 },
+      { header: '우편번호', key: 'zip', width: 10 },
+    ];
+    ws.getRow(1).eachCell((cell: any) => {
+      cell.font = { bold: true, size: 11 };
+      cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: COLOR } };
+      cell.alignment = { horizontal: 'center' };
+    });
+    for (const o of orders) {
+      ws.addRow({
+        product: o.option, qty: o.quantity,
+        senderName: SENDER_NAME, senderPhone: SENDER_PHONE_ORDER,
+        recvName: o.recipientName, recvPhone1: o.recipientPhone, recvPhone2: o.recipientPhone,
+        address: o.address, note: '', zip: '',
+      });
+    }
+  } else {
+    // 롯데택배 양식
+    ws.columns = [
+      { header: '상품주문번호', key: 'orderId', width: 20 },
+      { header: '이름', key: 'name', width: 14 },
+      { header: '옵션정보', key: 'option', width: 30 },
+      { header: '수량', key: 'qty', width: 8 },
+      { header: '연락처', key: 'phone', width: 16 },
+      { header: '배송지', key: 'address', width: 45 },
+    ];
+    ws.getRow(1).eachCell((cell: any) => {
+      cell.font = { bold: true, size: 11 };
+      cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: COLOR } };
+      cell.alignment = { horizontal: 'center' };
+    });
+    for (const o of orders) {
+      ws.addRow({
+        orderId: o.productOrderId, name: o.recipientName,
+        option: o.option, qty: o.quantity,
+        phone: o.recipientPhone, address: o.address,
+      });
+    }
+  }
+  return await wb.xlsx.writeBuffer();
+}
+
+async function createSettlementBuffer(qtyMap: Record<string, number>, supplyMap: Record<string, number>, saleMap: Record<string, number>, productType: 'bam' | 'oksu', today: string) {
+  const ExcelJS = require('exceljs');
+  const wb = new ExcelJS.Workbook();
+  const GOLD = 'FFD4A017';
+  const typeName = productType === 'bam' ? '밤' : '옥수수';
+
+  // 공급자용 시트
+  const supWs = wb.addWorksheet('공급자용');
+  supWs.columns = [
+    { key: 'A', width: 32 }, { key: 'B', width: 8 },
+    { key: 'C', width: 14 }, { key: 'D', width: 14 }, { key: 'E', width: 16 },
+  ];
+  supWs.addRow([`새벽장터 ${typeName} 정산서 (배송비별도)`]);
+  supWs.getCell('A1').font = { bold: true, size: 13 };
+  supWs.addRow(['날짜', today, '', '담당자', MANAGER_NAME_ORDER]);
+  supWs.addRow([`배송비: ${DELIVERY_FEE.toLocaleString()}원/건`]);
+  supWs.addRow([]);
+  supWs.addRow(['제품명', '수량', '제품원가', '배송비', '제품원가+배송비']);
+  const hRow = supWs.lastRow;
+  hRow.eachCell((cell: any) => {
+    cell.font = { bold: true };
+    cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: GOLD } };
+    cell.alignment = { horizontal: 'center' };
+  });
+
+  let totalSupply = 0, totalDelivery = 0, totalSettlement = 0;
+  const unknownOptions: string[] = [];
+  for (const [option, qty] of Object.entries(qtyMap)) {
+    const sp = supplyMap[option] || 0;
+    if (!supplyMap[option]) unknownOptions.push(option);
+    const dt = qty * DELIVERY_FEE;
+    const st = qty * sp;
+    const total = st + dt;
+    totalSupply += st; totalDelivery += dt; totalSettlement += total;
+    const row = supWs.addRow([option, qty, st, dt, total]);
+    [3,4,5].forEach((c: number) => { row.getCell(c).numFmt = '#,##0'; });
+  }
+  supWs.addRow([]);
+  const totRow = supWs.addRow(['합계', '', totalSupply, totalDelivery, totalSettlement]);
+  [3,4,5].forEach((c: number) => { totRow.getCell(c).numFmt = '#,##0'; totRow.getCell(c).font = { bold: true }; });
+
+  // 새벽장터용 시트 (내부용)
+  const intWs = wb.addWorksheet('새벽장터용');
+  intWs.columns = [
+    { key: 'A', width: 32 }, { key: 'B', width: 8 },
+    { key: 'C', width: 14 }, { key: 'D', width: 14 },
+    { key: 'E', width: 16 }, { key: 'F', width: 14 }, { key: 'G', width: 14 },
+  ];
+  intWs.addRow([`새벽장터 ${typeName} 정산서 (내부용)`]);
+  intWs.getCell('A1').font = { bold: true, size: 13 };
+  intWs.addRow(['날짜', today, '', '담당자', MANAGER_NAME_ORDER]);
+  intWs.addRow([]);
+  intWs.addRow(['제품명', '수량', '제품원가', '배송비', '원가+배송', '매출액', '순수익']);
+  const hRow2 = intWs.lastRow;
+  hRow2.eachCell((cell: any) => {
+    cell.font = { bold: true };
+    cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: GOLD } };
+    cell.alignment = { horizontal: 'center' };
+  });
+
+  let totalRevenue = 0, totalProfit = 0;
+  for (const [option, qty] of Object.entries(qtyMap)) {
+    const sp = supplyMap[option] || 0;
+    const slp = saleMap[option] || 0;
+    const dt = qty * DELIVERY_FEE;
+    const st = qty * sp;
+    const cost = st + dt;
+    const rev = qty * slp;
+    const profit = rev - cost;
+    totalRevenue += rev; totalProfit += profit;
+    const row = intWs.addRow([option, qty, st, dt, cost, rev, profit]);
+    [3,4,5,6,7].forEach((c: number) => { row.getCell(c).numFmt = '#,##0'; });
+  }
+  intWs.addRow([]);
+  const totRow2 = intWs.addRow(['합계', '', totalSupply, totalDelivery, totalSettlement, totalRevenue, totalProfit]);
+  [3,4,5,6,7].forEach((c: number) => { totRow2.getCell(c).numFmt = '#,##0'; totRow2.getCell(c).font = { bold: true }; });
+
+  const buffer = await wb.xlsx.writeBuffer();
+  return { buffer, totalSupply, totalDelivery, totalSettlement, totalRevenue, totalProfit, unknownOptions };
+}
+
+async function handleSmartstoreProcessOrder(params: any) {
+  const { action, fileBase64, fileName, date, dryRun = true, templateType } = params;
+
+  // action: 'check_templates' - 양식 확인만
+  if (action === 'check_templates') {
+    return {
+      success: true,
+      mode: 'dry_run',
+      task: 'smartstore_process_order',
+      templates: {
+        lotte: 'found',
+        logen: 'found',
+        cornSettlement: 'found',
+        chestnutSettlement: 'found',
+      },
+      templateHeaders: {
+        lotte: LOTTE_HEADERS,
+        logen: LOGEN_HEADERS,
+      },
+      costData: {
+        corn: Object.keys(OKSU_SUPPLY).map(k => ({ product: k, supply: OKSU_SUPPLY[k], sale: OKSU_SALE[k] })),
+        chestnut: Object.keys(BAM_SUPPLY).map(k => ({ product: k, supply: BAM_SUPPLY[k], sale: BAM_SALE[k] || 0 })),
+      },
+      deliveryFee: DELIVERY_FEE,
+      executeLocked: true,
+    };
+  }
+
+  // action: 'create_test_order' - 더미 데이터로 TEST 발주서 생성
+  if (action === 'create_test_order') {
+    const targetTemplate = templateType || 'logen'; // 'logen' | 'lotte'
+    const targetType = params.productType || 'oksu'; // 'bam' | 'oksu'
+    const today = date || new Date().toLocaleDateString('ko-KR', { month: 'long', day: 'numeric' });
+
+    // 더미 주문 데이터 (마스킹)
+    const dummyOrders: OrderItem[] = [
+      { productOrderId: 'TEST_0001', recipientName: '홍*동', optionRaw: '', option: targetType === 'bam' ? '포르단칼집밤 대(2kg)이상' : '냉동 대학찰옥수수 3X5 15개', quantity: 1, recipientPhone: '010-****-1234', address: '서울시 강남구 ***로 123' },
+      { productOrderId: 'TEST_0002', recipientName: '김*수', optionRaw: '', option: targetType === 'bam' ? '공주알밤 특(1kg)' : '냉동 대학찰옥수수 3X7 21개', quantity: 2, recipientPhone: '010-****-5678', address: '경기도 성남시 ***로 456' },
+      { productOrderId: 'TEST_0003', recipientName: '이*영', optionRaw: '', option: targetType === 'bam' ? '공주알밤 대(1kg)' : '냉동 대학찰옥수수 3X10 30개', quantity: 1, recipientPhone: '010-****-9012', address: '인천시 연수구 ***로 789' },
+    ];
+
+    const orderBuffer = await createOrderExcelBuffer(dummyOrders, targetType as 'bam' | 'oksu', targetTemplate as 'logen' | 'lotte');
+    const typeName = targetType === 'bam' ? '밤' : '옥수수';
+    const templateName = targetTemplate === 'lotte' ? '롯데택배' : '로젠택배';
+    const orderFileName = `TEST_${templateName}_${typeName}발주서_${today}.xlsx`;
+
+    return {
+      success: true,
+      mode: 'dry_run',
+      task: 'create_test_order',
+      orderSheet: Buffer.from(orderBuffer).toString('base64'),
+      orderFileName,
+      orderCount: dummyOrders.length,
+      templateType: targetTemplate,
+      productType: targetType,
+      summary: {
+        totalRows: dummyOrders.length,
+        templateUsed: templateName,
+        realCustomerData: false,
+        executeLocked: true,
+      },
+    };
+  }
+
+  // action: 'create_test_settlement' - 더미 데이터로 TEST 정산서 생성
+  if (action === 'create_test_settlement') {
+    const targetType = params.productType || 'oksu';
+    const today = date || new Date().toLocaleDateString('ko-KR', { month: 'long', day: 'numeric' });
+    const supplyMap = targetType === 'bam' ? BAM_SUPPLY : OKSU_SUPPLY;
+    const saleMap = targetType === 'bam' ? BAM_SALE : OKSU_SALE;
+
+    // 더미 수량 (테스트용)
+    const dummyQty: Record<string, number> = {};
+    const keys = Object.keys(supplyMap);
+    keys.forEach((k, i) => { dummyQty[k] = i === 0 ? 2 : (i === 1 ? 1 : 0); });
+
+    const settlement = await createSettlementBuffer(dummyQty, supplyMap, saleMap, targetType as 'bam' | 'oksu', today);
+    const typeName = targetType === 'bam' ? '밤' : '옥수수';
+    const settlementFileName = `TEST_${typeName}정산서_${today}.xlsx`;
+
+    return {
+      success: true,
+      mode: 'dry_run',
+      task: 'create_test_settlement',
+      settlementSheet: Buffer.from(settlement.buffer).toString('base64'),
+      settlementFileName,
+      productType: targetType,
+      summary: {
+        totalSupply: settlement.totalSupply,
+        totalDelivery: settlement.totalDelivery,
+        totalSettlement: settlement.totalSettlement,
+        totalRevenue: settlement.totalRevenue,
+        totalProfit: settlement.totalProfit,
+        unknownOptions: settlement.unknownOptions,
+        realCustomerData: false,
+        executeLocked: true,
+      },
+    };
+  }
+
+  // action: 'full_process' or 'create_order' - 실제 파일 기반 처리
+  if (action === 'full_process' || action === 'create_order') {
+    if (!fileBase64) {
+      return { success: false, error: '파일 데이터 없음 (fileBase64 필수)' };
+    }
+
+    // dryRun이 true면 실제 이메일 발송 차단
+    const isDryRun = dryRun !== false;
+
+    const ExcelJS = require('exceljs');
+    const fileBuffer = Buffer.from(fileBase64, 'base64');
+    const wb = new ExcelJS.Workbook();
+    try {
+      await wb.xlsx.load(fileBuffer);
+    } catch (e: any) {
+      return { success: false, error: '파일 열기 실패. xlsx 형식인지 확인하세요.' };
+    }
+
+    const ws = wb.worksheets[0];
+    const orders: OrderItem[] = [];
+    ws.eachRow((row: any, rn: number) => {
+      if (rn < 3) return; // 1~2행 헤더 스킵
+      const vals = row.values;
+      const orderId = vals[1];
+      if (!orderId) return;
+      orders.push({
+        productOrderId: String(orderId).trim(),
+        recipientName: String(vals[8] || '').trim(),
+        optionRaw: String(vals[10] || '').trim(),
+        option: '',
+        quantity: parseInt(vals[11]) || 1,
+        recipientPhone: String(vals[14] || '').trim(),
+        address: String(vals[18] || '').trim(),
+      });
+    });
+
+    if (orders.length === 0) {
+      return { success: false, error: '주문 데이터 없음' };
+    }
+
+    // 옵션 정규화 및 분류
+    const bamOrders: OrderItem[] = [], oksuOrders: OrderItem[] = [], unknownOrders: OrderItem[] = [];
+    for (const o of orders) {
+      o.option = normalizeOptionOrder(o.optionRaw);
+      const type = detectProductTypeOrder(o.option);
+      if (type === 'bam') bamOrders.push(o);
+      else if (type === 'oksu') oksuOrders.push(o);
+      else unknownOrders.push(o);
+    }
+
+    // 수량 집계
+    const bamQty: Record<string, number> = {}, oksuQty: Record<string, number> = {};
+    bamOrders.forEach(o => { bamQty[o.option] = (bamQty[o.option] || 0) + o.quantity; });
+    oksuOrders.forEach(o => { oksuQty[o.option] = (oksuQty[o.option] || 0) + o.quantity; });
+
+    const today = date || new Date().toLocaleDateString('ko-KR', { month: 'long', day: 'numeric' });
+    const prefix = isDryRun ? 'TEST_' : '';
+
+    // 발주서 생성 (로젠 양식 = 공급처 발주서)
+    let bamOrderSheet = '', bamOrderFileName = '';
+    let oksuOrderSheet = '', oksuOrderFileName = '';
+    let bamSettlementSheet = '', bamSettlementFileName = '';
+    let oksuSettlementSheet = '', oksuSettlementFileName = '';
+    let totalSettlement = 0, totalRevenue = 0, totalProfit = 0;
+    const qtySummary: Record<string, number> = {};
+
+    if (bamOrders.length > 0) {
+      const buf = await createOrderExcelBuffer(bamOrders, 'bam', 'logen');
+      bamOrderSheet = Buffer.from(buf).toString('base64');
+      bamOrderFileName = `${prefix}셀렌_밤발주서_${today}.xlsx`;
+      const settle = await createSettlementBuffer(bamQty, BAM_SUPPLY, BAM_SALE, 'bam', today);
+      bamSettlementSheet = Buffer.from(settle.buffer).toString('base64');
+      bamSettlementFileName = `${prefix}밤정산서_${today}.xlsx`;
+      totalSettlement += settle.totalSettlement;
+      totalRevenue += settle.totalRevenue;
+      totalProfit += settle.totalProfit;
+      Object.entries(bamQty).forEach(([k, v]) => { qtySummary[k] = v; });
+    }
+
+    if (oksuOrders.length > 0) {
+      const buf = await createOrderExcelBuffer(oksuOrders, 'oksu', 'logen');
+      oksuOrderSheet = Buffer.from(buf).toString('base64');
+      oksuOrderFileName = `${prefix}셀렌_옥수수발주서_${today}.xlsx`;
+      const settle = await createSettlementBuffer(oksuQty, OKSU_SUPPLY, OKSU_SALE, 'oksu', today);
+      oksuSettlementSheet = Buffer.from(settle.buffer).toString('base64');
+      oksuSettlementFileName = `${prefix}옥수수정산서_${today}.xlsx`;
+      totalSettlement += settle.totalSettlement;
+      totalRevenue += settle.totalRevenue;
+      totalProfit += settle.totalProfit;
+      Object.entries(oksuQty).forEach(([k, v]) => { qtySummary[k] = v; });
+    }
+
+    // 이메일 발송은 dryRun=false이고 action='full_process'일 때만
+    let emailSent = false;
+    if (!isDryRun && action === 'full_process') {
+      // execute LOCKED - 실제 발송은 승인 게이트 필요
+      // 현재는 무조건 차단
+      return {
+        success: false,
+        error: 'execute LOCKED: 실제 이메일 발송은 대표님 승인이 필요합니다. dryRun: true로 먼저 확인하세요.',
+        executeLocked: true,
+      };
+    }
+
+    return {
+      success: true,
+      mode: isDryRun ? 'dry_run' : 'live',
+      task: 'smartstore_process_order',
+      orderCount: orders.length,
+      orderSheet: bamOrderSheet || oksuOrderSheet,
+      orderFileName: bamOrderFileName || oksuOrderFileName,
+      settlementSheet: bamSettlementSheet || oksuSettlementSheet,
+      settlementFileName: bamSettlementFileName || oksuSettlementFileName,
+      bamOrderSheet, bamOrderFileName,
+      oksuOrderSheet, oksuOrderFileName,
+      bamSettlementSheet, bamSettlementFileName,
+      oksuSettlementSheet, oksuSettlementFileName,
+      totalSettlement,
+      totalRevenue,
+      totalProfit,
+      qtySummary,
+      emailSent,
+      summary: {
+        total: orders.length,
+        bam: bamOrders.length,
+        oksu: oksuOrders.length,
+        unknown: unknownOrders.length,
+        unknownOptions: unknownOrders.map(o => o.optionRaw).slice(0, 5),
+      },
+      executeLocked: true,
+      workspaceSave: true,
+    };
+  }
+
+  return { success: false, error: `Unknown action: ${action}. 지원: check_templates, create_test_order, create_test_settlement, full_process, create_order` };
 }

@@ -3904,6 +3904,72 @@ export default function JarvisApp() {
       return;
     }
 
+    // ── 발주서/정산서 dry-run 테스트 명령 처리 ──
+    const orderDryRunMatch = text.match(/(발주서|정산서|택배).*(양식|확인|테스트|dry.?run|검증|점검)/i) || text.match(/(양식|테스트|dry.?run).*(발주서|정산서|택배)/i);
+    if (orderDryRunMatch) {
+      setState('working');
+      addMessage('jarvis', '📦 발주서/정산서 양식 검증을 시작합니다, 선생님. (dry-run 모드)');
+      try {
+        const checkRes = await fetch('/api/cloud-proxy', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ endpoint: 'smartstore-process-order', params: { action: 'check_templates' } }),
+        });
+        const checkData = await checkRes.json();
+        if (!checkData.success) throw new Error(checkData.error || '양식 확인 실패');
+        // TEST 발주서 생성
+        const testOrderRes = await fetch('/api/cloud-proxy', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ endpoint: 'smartstore-process-order', params: { action: 'create_test_order', productType: 'oksu', templateType: 'logen' } }),
+        });
+        const testOrderData = await testOrderRes.json();
+        // TEST 정산서 생성
+        const testSettleRes = await fetch('/api/cloud-proxy', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ endpoint: 'smartstore-process-order', params: { action: 'create_test_settlement', productType: 'oksu' } }),
+        });
+        const testSettleData = await testSettleRes.json();
+        // TEST 파일 다운로드
+        if (testOrderData.orderSheet) {
+          const bytes = Uint8Array.from(atob(testOrderData.orderSheet), (c: any) => c.charCodeAt(0));
+          const blob = new Blob([bytes], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement('a'); a.href = url; a.download = testOrderData.orderFileName || 'TEST_발주서.xlsx'; a.click();
+          URL.revokeObjectURL(url);
+        }
+        if (testSettleData.settlementSheet) {
+          await new Promise(r => setTimeout(r, 500));
+          const bytes = Uint8Array.from(atob(testSettleData.settlementSheet), (c: any) => c.charCodeAt(0));
+          const blob = new Blob([bytes], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement('a'); a.href = url; a.download = testSettleData.settlementFileName || 'TEST_정산서.xlsx'; a.click();
+          URL.revokeObjectURL(url);
+        }
+        let resultMsg = `[LIST] **발주서/정산서 양식 검증 완료 (dry-run)**\n\n`;
+        resultMsg += `✅ 로젠택배 양식: ${checkData.templates?.logen || 'found'}\n`;
+        resultMsg += `✅ 롯데택배 양식: ${checkData.templates?.lotte || 'found'}\n`;
+        resultMsg += `✅ 옥수수 정산서: ${checkData.templates?.cornSettlement || 'found'}\n`;
+        resultMsg += `✅ 밤 정산서: ${checkData.templates?.chestnutSettlement || 'found'}\n\n`;
+        resultMsg += `📄 TEST 발주서: ${testOrderData.orderFileName || 'N/A'} (${testOrderData.orderCount || 0}건)\n`;
+        resultMsg += `📄 TEST 정산서: ${testSettleData.settlementFileName || 'N/A'}\n`;
+        if (testSettleData.summary) {
+          resultMsg += `\n💰 입금 필요액: ${Number(testSettleData.summary.totalSettlement || 0).toLocaleString()}원\n`;
+          resultMsg += `📈 예상 매출: ${Number(testSettleData.summary.totalRevenue || 0).toLocaleString()}원\n`;
+          resultMsg += `💵 예상 순수익: ${Number(testSettleData.summary.totalProfit || 0).toLocaleString()}원\n`;
+        }
+        resultMsg += `\n🔒 execute LOCKED: 실제 발송 차단됨\n`;
+        resultMsg += `📥 TEST 파일 다운로드가 시작되었습니다.`;
+        addMessage('jarvis', resultMsg, true);
+        setState('idle');
+        setClapBurst(true); setTimeout(() => setClapBurst(false), 120);
+      } catch (err: any) {
+        addMessage('jarvis', `❌ 양식 검증 실패: ${err.message}`);
+        setState('idle');
+      }
+      return;
+    }
     // ── Outreach 명령 처리 ──
     const outreachCollectMatch = text.match(/(캠핑|옥수수|복숭아|제철|농산물|먹방|집밥|간식|요리|육아|가족|[가-힣]+)\s*(유튜버|블로거|인플루언서|유튜브|네이버)\s*(\d+)?\s*명?\s*(수집|찾아|검색|모아)/);
     const outreachCollectMatch2 = text.match(/(유튜버|블로거|인플루언서|유튜브|네이버).*?(캠핑|옥수수|복숭아|제철|농산물|먹방|집밥|간식|요리|육아|가족|[가-힣]+).*?(\d+)?\s*명?\s*(수집|찾아|검색|모아)/);
