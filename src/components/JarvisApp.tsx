@@ -3860,11 +3860,13 @@ export default function JarvisApp() {
       emitPulseLine('user', 'jarvis_brain', 'fast');
       emitMissionLog('🧠', 'GPT', '사용자 명령 분석 중...', 'thinking');
       const action = await askGPT(transcript).catch(() => parseCommand(transcript));
+      emitNodeState('jarvis_brain', 'success', '명령 분석 완료');
       console.log('[JARVIS] GPT 응답 액션:', action.type, action.response.substring(0, 60));
       // 5. 응답 처리 (TTS 재생 + 후속 처리)
       await jarvisRespond(action.response, action);
     } catch (err) {
       console.error('[JARVIS] handleSpeechResult 오류:', err);
+      emitNodeState('jarvis_brain', 'error', '명령 분석 실패');
       // 오류 시에도 반드시 listening 상태로 복구
       await new Promise(r => setTimeout(r, 500));
       setState('listening');
@@ -4557,9 +4559,11 @@ export default function JarvisApp() {
       emitPulseLine('user', 'jarvis_brain', 'fast');
       emitMissionLog('🧠', 'GPT', '사용자 명령 분석 중...', 'thinking');
       const action = await askGPT(text).catch(() => parseCommand(text));
+      emitNodeState('jarvis_brain', 'success', '명령 분석 완료');
       await jarvisRespond(action.response, action);
     } catch (err) {
       console.error('[JARVIS] handleTextSubmit 오류:', err);
+      emitNodeState('jarvis_brain', 'error', '명령 분석 실패');
       await new Promise(r => setTimeout(r, 300));
       setState(stateRef.current === 'idle' ? 'idle' : 'listening');
     }
