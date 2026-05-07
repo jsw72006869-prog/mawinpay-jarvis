@@ -4047,17 +4047,17 @@ export default function JarvisApp() {
       return;
     }
     // ── Outreach 명령 처리 ──
-    const outreachCollectMatch = text.match(/(캠핑|옥수수|복숭아|제철|농산물|먹방|집밥|간식|요리|육아|가족|[가-힣]+)\s*(유튜버|블로거|인플루언서|유튜브|네이버)\s*(\d+)?\s*명?\s*(수집|찾아|검색|모아)/);
-    const outreachCollectMatch2 = text.match(/(유튜버|블로거|인플루언서|유튜브|네이버).*?(캠핑|옥수수|복숭아|제철|농산물|먹방|집밥|간식|요리|육아|가족|[가-힣]+).*?(\d+)?\s*명?\s*(수집|찾아|검색|모아)/);
-    const outreachCollectMatch3 = text.match(/(캠핑|옥수수|복숭아|제철|농산물|먹방|집밥|간식|요리|육아|가족|[가-힣]+).*?(관련|키워드)?\s*(유튜버|블로거|인플루언서)\s*(\d+)?\s*명?\s*(수집|찾아|검색|모아)/);
+    const outreachCollectMatch = text.match(/(캠핑|옥수수|복숭아|제철|농산물|먹방|집밥|간식|요리|육아|가족|[가-힣]+)\s*(유튜버|블로거|인플루언서|유튜브|네이버)\s*(\d+)?\s*명?\s*(수집|찾아|검색|모아|모집)/);
+    const outreachCollectMatch2 = text.match(/(유튜버|블로거|인플루언서|유튜브|네이버).*?(캠핑|옥수수|복숭아|제철|농산물|먹방|집밥|간식|요리|육아|가족|[가-힣]+).*?(\d+)?\s*명?\s*(수집|찾아|검색|모아|모집)/);
+    const outreachCollectMatch3 = text.match(/(캠핑|옥수수|복숭아|제철|농산물|먹방|집밥|간식|요리|육아|가족|[가-힣]+).*?(관련|키워드)?\s*(유튜버|블로거|인플루언서)\s*(\d+)?\s*명?\s*(수집|찾아|검색|모아|모집)/);
     // ── 추가 패턴: "공동구매 후보 N명 찾아줘" ──
-    const outreachCollectMatch4 = text.match(/([가-힣]+)\s*(공동구매|PPL|협찬)\s*(후보|파트너)?\s*(\d+)?\s*명?\s*(수집|찾아|검색|모아)/);
+    const outreachCollectMatch4 = text.match(/([가-힣]+)\s*(공동구매|PPL|협찬)\s*(후보|파트너)?\s*(\d+)?\s*명?\s*(수집|찾아|검색|모아|모집)/);
     // ── 추가 패턴: "상품명 + N명 + 찾아줘" (유튜버/블로거 없이도 매칭) ──
-    const outreachCollectMatch5 = text.match(/([가-힣]{2,})\s+(\d+)\s*명\s*(수집|찾아|검색|모아)/);
+    const outreachCollectMatch5 = text.match(/([가-힣]{2,})\s+(\d+)\s*명\s*(수집|찾아|검색|모아|모집)/);
     // ── 추가 패턴: "유튜브 카테고리 전체에서 ... 찾아줘" ──
-    const outreachCollectMatch6 = text.match(/(카테고리|전체).*?([가-힣]{2,}).*?(\d+)?\s*명?\s*(수집|찾아|검색|모아)/);
+    const outreachCollectMatch6 = text.match(/(카테고리|전체).*?([가-힣]{2,}).*?(\d+)?\s*명?\s*(수집|찾아|검색|모아|모집)/);
     // ── 추가 패턴: "N명 찾아줘" (상품명이 앞에 없을 때 문장 전체에서 키워드 추출) ──
-    const outreachCollectMatchGeneric = text.match(/([가-힣]+).*?(\d+)\s*명.*?(찾아|수집|모아|검색)/);
+    const outreachCollectMatchGeneric = text.match(/([가-힣]+).*?(\d+)\s*명.*?(찾아|수집|모아|검색|모집)/);
     // 우선순위별 매칭 결정
     const outreachCollectFinal = outreachCollectMatch || outreachCollectMatch2 || outreachCollectMatch3 || outreachCollectMatch4 || outreachCollectMatch5 || outreachCollectMatch6;
     const outreachListMatch = text.match(/(수집한|오늘|저장된).*?(후보|인플루언서|유튜버|블로거).*?(보여|조회|목록|리스트)/);
@@ -4112,12 +4112,32 @@ export default function JarvisApp() {
         const requestCount = Math.min(count, 50);
         // Append 모드: 기존 후보 ID 전달하여 중복 제거
         const existingIds = (outreachCandidates || []).map((c: any) => c.channelId || c.channelOrBlogUrl).filter(Boolean);
-        const res = await fetch('/api/cloud-proxy', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ taskType: 'outreach-collect', params: { keyword, product: keyword, maxCandidates: requestCount, platform, requireEmail, existingCandidateIds: existingIds } }),
-        });
-        const data = await res.json();
+        // ── 45초 타임아웃 guard: 무한대기 방지 ──
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 45000);
+        let data: any;
+        try {
+          const res = await fetch('/api/cloud-proxy', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ taskType: 'outreach-collect', params: { keyword, product: keyword, maxCandidates: requestCount, platform, requireEmail, existingCandidateIds: existingIds } }),
+            signal: controller.signal,
+          });
+          data = await res.json();
+        } catch (fetchErr: any) {
+          clearTimeout(timeoutId);
+          if (fetchErr.name === 'AbortError') {
+            setOutreachLoading(false);
+            emitMissionLog('⚠️', 'OUTREACH', '수집 타임아웃 (45초 초과)', 'warning');
+            emitNodeState('jarvis_brain', 'error', '수집 타임아웃');
+            addMessage('jarvis', `⚠️ ${keyword} 후보 수집이 제한 시간(45초) 안에 완료되지 않았습니다. 다시 시도하거나 수량을 줄여서 요청해주세요.`, true);
+            setState('idle');
+            return;
+          }
+          throw fetchErr;
+        } finally {
+          clearTimeout(timeoutId);
+        }
         setOutreachLoading(false);
 
         if (data.quotaExceeded) {

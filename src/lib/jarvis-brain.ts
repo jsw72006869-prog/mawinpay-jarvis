@@ -576,14 +576,22 @@ export async function askGPT(userMessage: string): Promise<JarvisAction> {
   ];
 
   try {
-    const completion = await openaiClient.chat.completions.create({
-      model: 'gpt-4.1-mini',
-      messages,
-      tools: OPENAI_TOOLS,
-      tool_choice: 'auto',
-      max_tokens: 800,
-      temperature: 0.72,
-    });
+    // ── 30초 타임아웃 guard: GPT 응답 지연 시 무한대기 방지 ──
+    const GPT_TIMEOUT_MS = 30000;
+    const timeoutPromise = new Promise<never>((_, reject) =>
+      setTimeout(() => reject(new Error('GPT_TIMEOUT: 30초 초과')), GPT_TIMEOUT_MS)
+    );
+    const completion = await Promise.race([
+      openaiClient.chat.completions.create({
+        model: 'gpt-4.1-mini',
+        messages,
+        tools: OPENAI_TOOLS,
+        tool_choice: 'auto',
+        max_tokens: 800,
+        temperature: 0.72,
+      }),
+      timeoutPromise,
+    ]);
 
     const choice = completion.choices?.[0];
     const message = choice?.message;
@@ -622,8 +630,12 @@ export async function askGPT(userMessage: string): Promise<JarvisAction> {
     lastActionType = 'chat';
     return { type: 'chat', response: reply };
 
-  } catch (error) {
-    console.error('[JARVIS] GPT 오류:', error);
+  } catch (error: any) {
+    if (error?.message?.includes('GPT_TIMEOUT')) {
+      console.warn('[JARVIS] GPT 30초 타임아웃 - parseCommand 폴백');
+    } else {
+      console.error('[JARVIS] GPT 오류:', error);
+    }
     return parseCommand(userMessage);
   }
 }
@@ -988,7 +1000,7 @@ export function parseCommand(text: string): JarvisAction {
   }
 
   // [H] 인플루언서 수집 (유튜브/인스타/네이버 자동 감지)
-  if (/수집|찾아|인플루언서|블로거|유튜버|크리에이터|유튜브|인스타|instagram|youtube/.test(lower)) {
+  if (/수집|찾아|모집|인플루언서|블로거|유튜버|크리에이터|유튜브|인스타|instagram|youtube/.test(lower)) {
     const countMatch = lower.match(/(\d+)\s*명/);
     const count = countMatch ? parseInt(countMatch[1]) : 50;
     const keyword = lower.match(/(맛집|뷰티|여행|패션|육아|운동|헬스|요리|게임|음악|캠핑|농산물|밤|먹방|리뷰|테크|IT|푸드|라이프)/)?.[1] || '';
