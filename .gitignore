@@ -4,3 +4,6 @@ dist/
 *.local
 .vercel
 .env*.local
+
+# OAuth credentials (보안)
+credentials/
