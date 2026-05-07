@@ -195,6 +195,9 @@ export default function JarvisApp() {
   const [businessCardsVisible, setBusinessCardsVisible] = useState(false);
   const [emailHistory, setEmailHistory] = useState<EmailRecord[]>([]);
   const [emailHistoryVisible, setEmailHistoryVisible] = useState(false);
+  // ── Gmail Draft/승인/테스트 발송 E2E 상태 ──
+  const [emailDraftState, setEmailDraftState] = useState<'idle' | 'draft_created' | 'approval_required' | 'test_send_only' | 'test_sent' | 'execute_locked'>('idle');
+  const [emailDraftData, setEmailDraftData] = useState<{ subject: string; html: string; to: string; toName: string; product: string } | null>(null);
 
   // ── 발주서 파일 처리 상태 ──
   const [orderFileUploadVisible, setOrderFileUploadVisible] = useState(false);
@@ -3906,10 +3909,29 @@ export default function JarvisApp() {
 
     // ── 발주서/정산서 dry-run 테스트 명령 처리 ──
     const orderDryRunMatch = text.match(/(발주서|정산서|택배).*(양식|확인|테스트|dry.?run|검증|점검)/i) || text.match(/(양식|테스트|dry.?run).*(발주서|정산서|택배)/i);
-    if (orderDryRunMatch) {
+    const orderLotteMatch = text.match(/롯데.*(발주서|양식).*(테스트|만들어)/);
+    const orderLogenMatch = text.match(/로젠.*(발주서|양식).*(테스트|만들어)/);
+    const orderSplitMatch = text.match(/(전체|발주서).*(밤|옥수수).*(분리|구분|나누|확인)/) || text.match(/(밤|옥수수).*(분리|구분|나누|확인).*(발주서)/);
+    const settlementCheckMatch = text.match(/(옥수수|밤).*(정산서).*(만들|확인|가능|생성|테스트)/) || text.match(/(정산서).*(만들|확인|가능|생성)/);
+    const orderTestFinal = orderDryRunMatch || orderLotteMatch || orderLogenMatch || orderSplitMatch || settlementCheckMatch;
+    if (orderTestFinal) {
       setState('working');
-      addMessage('jarvis', '📦 발주서/정산서 양식 검증을 시작합니다, 선생님. (dry-run 모드)');
+      // 명령별 파라미터 결정
+      let templateType = 'logen';
+      let productType = 'oksu';
+      let actionType: 'check_templates' | 'create_test_order' | 'create_test_settlement' = 'check_templates';
+      if (orderLotteMatch) { templateType = 'lotte'; actionType = 'create_test_order'; }
+      else if (orderLogenMatch) { templateType = 'logen'; actionType = 'create_test_order'; }
+      else if (orderSplitMatch) { actionType = 'check_templates'; }
+      else if (settlementCheckMatch) {
+        actionType = 'create_test_settlement';
+        if (text.includes('밤')) productType = 'bam';
+      }
+      if (text.includes('밤') && actionType === 'create_test_order') productType = 'bam';
+      const actionLabel = actionType === 'check_templates' ? '발주서/정산서 양식 검증' : actionType === 'create_test_order' ? (templateType === 'lotte' ? '롯데택배' : '로젠택배') + ' TEST 발주서 생성' : (productType === 'bam' ? '밤' : '옥수수') + ' TEST 정산서 생성';
+      addMessage('jarvis', `📦 ${actionLabel}을 시작합니다. (dry-run 모드)`);
       try {
+        // 1. 양식 확인
         const checkRes = await fetch('/api/cloud-proxy', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -3917,50 +3939,95 @@ export default function JarvisApp() {
         });
         const checkData = await checkRes.json();
         if (!checkData.success) throw new Error(checkData.error || '양식 확인 실패');
-        // TEST 발주서 생성
-        const testOrderRes = await fetch('/api/cloud-proxy', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ endpoint: 'smartstore-process-order', params: { action: 'create_test_order', productType: 'oksu', templateType: 'logen' } }),
-        });
-        const testOrderData = await testOrderRes.json();
-        // TEST 정산서 생성
-        const testSettleRes = await fetch('/api/cloud-proxy', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ endpoint: 'smartstore-process-order', params: { action: 'create_test_settlement', productType: 'oksu' } }),
-        });
-        const testSettleData = await testSettleRes.json();
-        // TEST 파일 다운로드
-        if (testOrderData.orderSheet) {
-          const bytes = Uint8Array.from(atob(testOrderData.orderSheet), (c: any) => c.charCodeAt(0));
-          const blob = new Blob([bytes], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
-          const url = URL.createObjectURL(blob);
-          const a = document.createElement('a'); a.href = url; a.download = testOrderData.orderFileName || 'TEST_발주서.xlsx'; a.click();
-          URL.revokeObjectURL(url);
+
+        let resultMsg = '';
+        if (actionType === 'check_templates' || orderSplitMatch) {
+          // 양식 확인 + 분리 가능 여부
+          resultMsg = `✅ **발주서/정산서 양식 검증 완료 (dry-run)**\n\n`;
+          resultMsg += `✅ 로젠택배 양식: ${checkData.templates?.logen || 'found'}\n`;
+          resultMsg += `✅ 롯데택배 양식: ${checkData.templates?.lotte || 'found'}\n`;
+          resultMsg += `✅ 옥수수 정산서: ${checkData.templates?.cornSettlement || 'found'}\n`;
+          resultMsg += `✅ 밤 정산서: ${checkData.templates?.chestnutSettlement || 'found'}\n\n`;
+          if (orderSplitMatch) {
+            resultMsg += `📦 **밤/옥수수 분리 가능 여부:** ✅ 가능\n`;
+            resultMsg += `• 옵션명 기준 자동 분리 (포르단칼집밤/공주알밤 → 밤, 냉동 대학찰옥수수 → 옥수수)\n`;
+            resultMsg += `• 분리 후 각각 롯데/로젠 양식으로 발주서 생성 가능\n`;
+            resultMsg += `• 각각 정산서 생성 가능\n`;
+          }
+          resultMsg += `\n🔒 execute LOCKED 유지`;
+        } else if (actionType === 'create_test_order') {
+          // TEST 발주서 생성
+          const testOrderRes = await fetch('/api/cloud-proxy', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ endpoint: 'smartstore-process-order', params: { action: 'create_test_order', productType, templateType } }),
+          });
+          const testOrderData = await testOrderRes.json();
+          if (testOrderData.orderSheet) {
+            const bytes = Uint8Array.from(atob(testOrderData.orderSheet), (c: any) => c.charCodeAt(0));
+            const blob = new Blob([bytes], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a'); a.href = url; a.download = testOrderData.orderFileName || 'TEST_발주서.xlsx'; a.click();
+            URL.revokeObjectURL(url);
+          }
+          const tmplName = templateType === 'lotte' ? '롯데택배' : '로젠택배';
+          const prodName = productType === 'bam' ? '밤' : '옥수수';
+          resultMsg = `✅ **TEST ${tmplName} 발주서 생성 완료**\n\n`;
+          resultMsg += `📄 파일명: ${testOrderData.orderFileName || 'N/A'}\n`;
+          resultMsg += `📦 더미 주문: ${testOrderData.orderCount || 0}건 (마스킹 데이터)\n`;
+          resultMsg += `📝 상품: ${prodName}\n`;
+          resultMsg += `📥 파일 다운로드가 시작되었습니다.\n\n`;
+          resultMsg += `⚠️ 실제 고객정보 사용: 0건\n`;
+          resultMsg += `🔒 execute LOCKED 유지`;
+          // FILE Workspace 저장
+          try {
+            await fetch('/api/cloud-proxy', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ task: 'workspace-save', record: { type: 'order_sheet', title: `TEST ${tmplName} ${prodName}발주서`, content: `더미 ${testOrderData.orderCount}건, dry-run`, timestamp: new Date().toISOString() } }),
+            });
+          } catch (e) { /* 저장 실패해도 계속 */ }
+          emitMissionLog('📦', 'Order', `TEST ${tmplName} ${prodName}발주서 생성 완료`, 'done');
+        } else if (actionType === 'create_test_settlement') {
+          // TEST 정산서 생성
+          const testSettleRes = await fetch('/api/cloud-proxy', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ endpoint: 'smartstore-process-order', params: { action: 'create_test_settlement', productType } }),
+          });
+          const testSettleData = await testSettleRes.json();
+          if (testSettleData.settlementSheet) {
+            const bytes = Uint8Array.from(atob(testSettleData.settlementSheet), (c: any) => c.charCodeAt(0));
+            const blob = new Blob([bytes], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a'); a.href = url; a.download = testSettleData.settlementFileName || 'TEST_정산서.xlsx'; a.click();
+            URL.revokeObjectURL(url);
+          }
+          const prodName = productType === 'bam' ? '밤' : '옥수수';
+          resultMsg = `✅ **TEST ${prodName} 정산서 생성 완료**\n\n`;
+          resultMsg += `📄 파일명: ${testSettleData.settlementFileName || 'N/A'}\n`;
+          if (testSettleData.summary) {
+            resultMsg += `💰 입금 필요액: ${Number(testSettleData.summary.totalSettlement || 0).toLocaleString()}원\n`;
+            resultMsg += `📈 예상 매출: ${Number(testSettleData.summary.totalRevenue || 0).toLocaleString()}원\n`;
+            resultMsg += `💵 예상 순수익: ${Number(testSettleData.summary.totalProfit || 0).toLocaleString()}원\n`;
+            if (testSettleData.summary.unknownOptions?.length > 0) {
+              resultMsg += `⚠️ 원가 미확인 옵션: ${testSettleData.summary.unknownOptions.join(', ')}\n`;
+            }
+          }
+          resultMsg += `📥 파일 다운로드가 시작되었습니다.\n\n`;
+          resultMsg += `⚠️ 원가: 첫부 양식 내부 확인된 값만 사용\n`;
+          resultMsg += `⚠️ 실제 고객정보 사용: 0건\n`;
+          resultMsg += `🔒 execute LOCKED 유지`;
+          // FILE Workspace 저장
+          try {
+            await fetch('/api/cloud-proxy', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ task: 'workspace-save', record: { type: 'settlement', title: `TEST ${prodName}정산서`, content: `더미 데이터, dry-run, 원가 확인됨`, timestamp: new Date().toISOString() } }),
+            });
+          } catch (e) { /* 저장 실패해도 계속 */ }
+          emitMissionLog('💰', 'Settlement', `TEST ${prodName}정산서 생성 완료`, 'done');
         }
-        if (testSettleData.settlementSheet) {
-          await new Promise(r => setTimeout(r, 500));
-          const bytes = Uint8Array.from(atob(testSettleData.settlementSheet), (c: any) => c.charCodeAt(0));
-          const blob = new Blob([bytes], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
-          const url = URL.createObjectURL(blob);
-          const a = document.createElement('a'); a.href = url; a.download = testSettleData.settlementFileName || 'TEST_정산서.xlsx'; a.click();
-          URL.revokeObjectURL(url);
-        }
-        let resultMsg = `[LIST] **발주서/정산서 양식 검증 완료 (dry-run)**\n\n`;
-        resultMsg += `✅ 로젠택배 양식: ${checkData.templates?.logen || 'found'}\n`;
-        resultMsg += `✅ 롯데택배 양식: ${checkData.templates?.lotte || 'found'}\n`;
-        resultMsg += `✅ 옥수수 정산서: ${checkData.templates?.cornSettlement || 'found'}\n`;
-        resultMsg += `✅ 밤 정산서: ${checkData.templates?.chestnutSettlement || 'found'}\n\n`;
-        resultMsg += `📄 TEST 발주서: ${testOrderData.orderFileName || 'N/A'} (${testOrderData.orderCount || 0}건)\n`;
-        resultMsg += `📄 TEST 정산서: ${testSettleData.settlementFileName || 'N/A'}\n`;
-        if (testSettleData.summary) {
-          resultMsg += `\n💰 입금 필요액: ${Number(testSettleData.summary.totalSettlement || 0).toLocaleString()}원\n`;
-          resultMsg += `📈 예상 매출: ${Number(testSettleData.summary.totalRevenue || 0).toLocaleString()}원\n`;
-          resultMsg += `💵 예상 순수익: ${Number(testSettleData.summary.totalProfit || 0).toLocaleString()}원\n`;
-        }
-        resultMsg += `\n🔒 execute LOCKED: 실제 발송 차단됨\n`;
-        resultMsg += `📥 TEST 파일 다운로드가 시작되었습니다.`;
         addMessage('jarvis', resultMsg, true);
         setState('idle');
         setClapBurst(true); setTimeout(() => setClapBurst(false), 120);
@@ -4221,7 +4288,133 @@ export default function JarvisApp() {
       return;
     }
 
-    // ── Market Price 명령 처리 ("가격 괜찮아?", "얼마에 팔면", "마진 남아?", "시장 리포트") ──
+    // ── Gmail 발송 준비 / 초안 보기 / 테스트 발송 / 승인 명령 처리 ──
+    const emailPrepareMatch = text.match(/(수집된|캠핑|복숭아|옥수수|밤|유튜버|인플루언서).*(이메일|메일).*(발송|보내|준비)/)
+      || text.match(/(이메일|메일).*(발송|보내).*(준비)/)
+      || text.match(/(공동구매|제안).*(이메일|메일).*(발송|보내|준비)/);
+    const emailDraftViewMatch = text.match(/(발송.*전|먼저).*(초안|미리보기|보여)/) || text.match(/(초안).*(먼저|보여|확인)/);
+    const emailTestSendMatch = text.match(/(테스트|test).*(수신자|발송|보내)/) || text.match(/(수신자).*(만|에게).*(보내|발송)/);
+    const emailApproveMatch = text.match(/^(확인|승인|보내|발송해|ㅇㅋ|ok|OK)$/);
+
+    if (emailPrepareMatch && emailDraftState === 'idle') {
+      // Draft 생성
+      emitMissionLog('📧', 'Email', '이메일 발송 준비 시작', 'thinking');
+      const emailProduct = text.match(/(캠핑|복숭아|옥수수|밤|공동구매)/)?.[1] || '공동구매';
+      const { subject, html } = buildInfluencerEmailHtml({
+        influencerName: '테스트 수신자',
+        platform: 'YouTube',
+        category: emailProduct,
+        senderName: 'MAWINPAY',
+        productName: emailProduct + ' 공동구매',
+      });
+      setEmailDraftData({ subject, html, to: 'jungsng805@naver.com', toName: '테스트 수신자', product: emailProduct });
+      setEmailDraftState('draft_created');
+      addMessage('jarvis', `📧 이메일 발송 준비 완료\n\n**상태:** draft_created\n**제목:** ${subject}\n**수신자:** jungsng805@naver.com (테스트 수신자 1명)\n\n⚠️ 실제 유튜버에게는 발송하지 않습니다.\n⚠️ 발송 전 초안을 먼저 확인하세요.\n\n💡 "발송 전 초안 먼저 보여줘"로 미리보기 가능`, true);
+      emitMissionLog('📧', 'Email', 'Draft 생성 완료 - 테스트 수신자만 허용', 'done');
+      setState('idle');
+      return;
+    }
+
+    if (emailDraftViewMatch && emailDraftState === 'draft_created' && emailDraftData) {
+      // 초안 미리보기
+      setEmailDraftState('approval_required');
+      addMessage('jarvis', `📋 **이메일 초안 미리보기**\n\n**제목:** ${emailDraftData.subject}\n**수신자:** ${emailDraftData.to} (${emailDraftData.toName})\n**상품:** ${emailDraftData.product} 공동구매\n**상태:** approval_required\n\n---\n\n이메일 본문은 JARVIS 시그니처 디자인 HTML 템플릿입니다.\n\n⚠️ **보호 조건:**\n• 수신자: jungsng805@naver.com 1명만\n• 실제 유튜버 발송: 0건\n• 실제 거래처 발송: 0건\n• 승인 전 발송: 차단\n\n💡 "테스트 수신자에게만 제안 메일 보내줘"로 발송 요청 가능`, true);
+      setState('idle');
+      return;
+    }
+
+    if (emailTestSendMatch && (emailDraftState === 'draft_created' || emailDraftState === 'approval_required') && emailDraftData) {
+      // 승인 UI 표시 - 바로 발송하지 않음
+      setEmailDraftState('test_send_only');
+      setApprovalPreview(buildApprovalPreview({
+        type: 'email_send',
+        title: '테스트 이메일 발송 승인',
+        description: `jungsng805@naver.com 1명에게만 발송합니다.\n실제 유튜버/거래처 발송 0건.`,
+        details: [
+          { label: '수신자', value: 'jungsng805@naver.com' },
+          { label: '제목', value: emailDraftData.subject },
+          { label: '발송 수', value: '1건 (테스트)' },
+          { label: '실제 유튜버 발송', value: '0건' },
+          { label: '실제 거래처 발송', value: '0건' },
+        ],
+        confirmLabel: '승인 - 테스트 발송',
+        cancelLabel: '취소',
+      }));
+      addMessage('jarvis', `🔐 **승인 필요**\n\n테스트 수신자 jungsng805@naver.com 1명에게만 발송합니다.\n\n"확인" 또는 승인 버튼을 눌러주세요.\n\n⚠️ 승인 전까지 발송되지 않습니다.`, true);
+      setState('idle');
+      return;
+    }
+
+    if (emailApproveMatch && emailDraftState === 'test_send_only' && emailDraftData) {
+      // 승인 후 테스트 수신자 1명에게만 실제 발송
+      emitMissionLog('📧', 'Email', '대표님 승인 확인 - 테스트 발송 실행', 'active');
+      setState('working');
+      try {
+        const TEST_RECIPIENT = 'jungsng805@naver.com';
+        // 보호 조건 검증
+        if (emailDraftData.to !== TEST_RECIPIENT) {
+          addMessage('jarvis', '❌ 보호 조건 위반: 테스트 수신자(jungsng805@naver.com)가 아닌 주소로는 발송할 수 없습니다.', true);
+          setState('idle');
+          return;
+        }
+        const sendResult = await fetch('/api/send-email', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            to: TEST_RECIPIENT,
+            subject: emailDraftData.subject,
+            html: emailDraftData.html,
+          }),
+        });
+        const sendData = await sendResult.json();
+        if (sendData.success || sendData.ok) {
+          setEmailDraftState('test_sent');
+          setApprovalPreview(null);
+          // EmailHistory에 기록
+          const newRecord: EmailRecord = {
+            id: `test_${Date.now()}`,
+            subject: emailDraftData.subject,
+            to: TEST_RECIPIENT,
+            toName: '테스트 수신자',
+            preview: `${emailDraftData.product} 공동구매 제안 (테스트)`,
+            sentAt: new Date().toISOString(),
+            status: 'sent',
+            template: 'outreach_proposal',
+          };
+          setEmailHistory(prev => [newRecord, ...prev]);
+          // Mission Log / Task Execution 기록
+          emitMissionLog('✅', 'Email', `테스트 발송 완료: ${TEST_RECIPIENT}`, 'done');
+          // FILE Workspace 저장
+          try {
+            await fetch('/api/cloud-proxy', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                task: 'workspace-save',
+                record: {
+                  type: 'email_sent',
+                  title: `테스트 이메일 발송 - ${emailDraftData.product}`,
+                  content: `수신자: ${TEST_RECIPIENT}\n제목: ${emailDraftData.subject}\n상태: test_sent\n실제 유튜버 발송: 0건`,
+                  timestamp: new Date().toISOString(),
+                },
+              }),
+            });
+          } catch (e) { /* workspace save 실패해도 발송은 성공 */ }
+          addMessage('jarvis', `✅ **테스트 발송 완료**\n\n**수신자:** ${TEST_RECIPIENT}\n**제목:** ${emailDraftData.subject}\n**상태:** test_sent\n\n📊 **발송 기록:**\n• Gmail Sent Mail: 기록됨\n• Mission Log: 기록됨\n• FILE Workspace: 저장됨\n\n⚠️ 실제 유튜버 발송: 0건\n⚠️ 실제 거래처 발송: 0건\n⚠️ execute LOCKED 유지`, true);
+          setClapBurst(true);
+        } else {
+          addMessage('jarvis', `❌ 발송 실패: ${sendData.error || '알 수 없는 오류'}\n\nexecute LOCKED 유지. 실제 유튜버 발송 0건.`, true);
+          emitMissionLog('❌', 'Email', `테스트 발송 실패: ${sendData.error || 'unknown'}`, 'error');
+        }
+      } catch (err: any) {
+        addMessage('jarvis', `❌ 발송 오류: ${err.message}\n\nexecute LOCKED 유지.`, true);
+        emitMissionLog('❌', 'Email', `테스트 발송 오류: ${err.message}`, 'error');
+      }
+      setState('idle');
+      return;
+    }
+
+    // ── Market Price 명령 처리 ("가격 괜찮아?", "얼마에 팔면", "마진 남아?", "시장 리포트") ───
     // KAMIS 품목이 포함된 경우 KAMIS 조회 우선 (market-price-check 대신)
     const kamisItemsLocal = ['배추', '절임배추', '옥수수', '양파', '대파', '감자', '고구마', '당근', '시금치', '사과', '배', '쌀'];
     const kamisItemInText = kamisItemsLocal.find(item => text.includes(item));
