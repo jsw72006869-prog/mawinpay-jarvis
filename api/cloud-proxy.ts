@@ -255,7 +255,16 @@ async function getLastChangedItems(lastChangedType: string, days: number, useKST
 
 // ── Single Source of Truth: 스마트스토어 전체 건수 조회 (top-level) ──
 // 모든 핸들러(주문현황, 브리핑, 대시보드)가 이 함수만 호출해야 함
+// 서버 인메모리 캐시 (3분 유효 - Vercel cold start 대응)
+let _ssCountsCache: { data: any; fetchedAt: number; queryDays: number } | null = null;
+const SS_CACHE_TTL = 3 * 60 * 1000; // 3분
+
 async function getSmartstoreStatusCounts(queryDays: number = 30) {
+  // 캐시가 유효하면 즉시 반환 (동일 queryDays일 때만)
+  if (_ssCountsCache && _ssCountsCache.queryDays === queryDays && (Date.now() - _ssCountsCache.fetchedAt) < SS_CACHE_TTL) {
+    return _ssCountsCache.data;
+  }
+
   // 1) PAYED: 결제일 기준 조회 (신규주문 + 배송준비)
   const payedOrders = await fetchOrders(['PAYED'], queryDays);
 
@@ -293,7 +302,7 @@ async function getSmartstoreStatusCounts(queryDays: number = 30) {
     settlementExpectationAmount += Number(item.settlementExpectationAmount || 0);
   }
 
-  return {
+  const result = {
     allOrders: payedOrders,
     payed: payedOrders,
     newOrders,
@@ -303,6 +312,11 @@ async function getSmartstoreStatusCounts(queryDays: number = 30) {
     purchaseConfirmed: decidedCount,
     settlementExpectationAmount,
   };
+
+  // 캐시 저장 (3분 유효)
+  _ssCountsCache = { data: result, fetchedAt: Date.now(), queryDays };
+
+  return result;
 }
 
 // ── 스마트스토어 주문 조회 핸들러 (통일 응답 구조 v3) ──

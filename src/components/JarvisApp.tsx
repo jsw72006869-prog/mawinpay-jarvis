@@ -2552,10 +2552,10 @@ export default function JarvisApp() {
           }).catch(() => {});
         } else {
         try {
-          // 클라우드 서버를 통해 스마트스토어 직접 접속 (30초 timeout + 1회 재시도)
+          // 클라우드 서버를 통해 스마트스토어 직접 접속 (55초 timeout + 1회 재시도)
           const fetchSS = async (timeoutMs: number) => {
             const ctrl = new AbortController();
-            const tid = setTimeout(() => ctrl.abort(), timeoutMs);
+            const tid = setTimeout(() => ctrl.abort(), timeoutMs);  // timeoutMs: 55000
             const r = await fetch('/api/cloud-proxy', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
@@ -2567,10 +2567,10 @@ export default function JarvisApp() {
           };
           let ssJson: any;
           try {
-            ssJson = await fetchSS(30000);
+            ssJson = await fetchSS(55000);
           } catch (firstErr) {
-            // 1회 재시도 (20초)
-            ssJson = await fetchSS(20000);
+            // 1회 재시도 (55초)
+            ssJson = await fetchSS(55000);
           }
           if (ssJson.success || ssJson.result) {
             const rawSS = ssJson.result || ssJson;
