@@ -2256,3 +2256,193 @@ html, body {
   border-color: rgba(0, 245, 255, 0.46);
   box-shadow: 0 0 18px rgba(0, 245, 255, 0.14);
 }
+
+/* ═══ UI-J v1.3 System Map Wall (n8n-style) ═══ */
+.jarvis-system-map-wall {
+  display: flex;
+  flex-direction: column;
+  height: calc(100vh - 24px);
+  padding: 16px 20px;
+  border: 1px solid rgba(0, 245, 255, 0.08);
+  border-radius: 20px;
+  background:
+    radial-gradient(ellipse at 50% 30%, rgba(0, 245, 255, 0.06), transparent 60%),
+    rgba(2, 6, 23, 0.92);
+  overflow: hidden;
+}
+
+.jarvis-system-map-wall.is-armed {
+  border-color: rgba(0, 245, 255, 0.18);
+  box-shadow: 0 0 40px rgba(0, 245, 255, 0.06);
+}
+
+.jarvis-system-map-wall.is-opening {
+  animation: systemMapWallBoot 4200ms cubic-bezier(0.19, 1, 0.22, 1) both;
+}
+
+.system-map-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 16px;
+}
+
+.system-map-title {
+  color: rgba(255, 255, 255, 0.88);
+  font-size: 11px;
+  font-weight: 900;
+  letter-spacing: 0.18em;
+}
+
+.system-map-status {
+  padding: 4px 12px;
+  border: 1px solid rgba(0, 245, 255, 0.22);
+  border-radius: 999px;
+  background: rgba(0, 245, 255, 0.06);
+  color: rgba(103, 232, 249, 0.88);
+  font-size: 9px;
+  font-weight: 900;
+  letter-spacing: 0.14em;
+}
+
+/* 4-column flow grid */
+.system-map-flow {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 12px;
+  flex: 1;
+  align-content: start;
+  padding: 12px 0;
+}
+
+.system-map-layer {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.system-map-layer-label {
+  color: rgba(148, 163, 184, 0.68);
+  font-size: 8px;
+  font-weight: 900;
+  letter-spacing: 0.22em;
+  text-align: center;
+  padding-bottom: 6px;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.12);
+  margin-bottom: 4px;
+}
+
+/* Node cards */
+.system-flow-node {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  border: 1px solid rgba(148, 163, 184, 0.12);
+  border-radius: 12px;
+  background: rgba(3, 10, 22, 0.62);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  opacity: 0.72;
+  transition: opacity 0.4s, border-color 0.4s, box-shadow 0.4s;
+}
+
+.system-flow-node .node-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: currentColor;
+  opacity: 0.6;
+  flex-shrink: 0;
+}
+
+.system-flow-node .node-label {
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.10em;
+  color: rgba(226, 232, 240, 0.82);
+}
+
+/* Tone colors */
+.tone-core { color: rgba(255, 215, 0, 0.90); border-color: rgba(255, 215, 0, 0.22); }
+.tone-gold { color: rgba(255, 215, 0, 0.90); border-color: rgba(255, 215, 0, 0.22); }
+.tone-cyan { color: rgba(103, 232, 249, 0.90); border-color: rgba(0, 245, 255, 0.22); }
+.tone-amber { color: rgba(251, 191, 36, 0.90); border-color: rgba(251, 191, 36, 0.22); }
+.tone-green { color: rgba(74, 222, 128, 0.90); border-color: rgba(74, 222, 128, 0.22); }
+.tone-purple { color: rgba(192, 132, 252, 0.90); border-color: rgba(192, 132, 252, 0.22); }
+.tone-dim { color: rgba(148, 163, 184, 0.60); border-color: rgba(148, 163, 184, 0.10); }
+
+/* Opening boot animation */
+.jarvis-system-map-wall.is-opening .system-flow-node.is-booting {
+  animation: systemFlowNodeBoot 600ms ease-out both;
+}
+
+@keyframes systemFlowNodeBoot {
+  0% {
+    opacity: 0;
+    transform: translateY(12px) scale(0.88);
+    border-color: transparent;
+    box-shadow: none;
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+    border-color: currentColor;
+    box-shadow: 0 0 16px rgba(0, 245, 255, 0.12);
+  }
+}
+
+@keyframes systemMapWallBoot {
+  0% {
+    opacity: 0.2;
+    filter: blur(6px);
+  }
+  40% {
+    opacity: 1;
+    filter: blur(0);
+  }
+  100% {
+    opacity: 1;
+  }
+}
+
+/* Briefing strip */
+.data-wall-briefing-strip {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 10px;
+  padding-top: 14px;
+  border-top: 1px solid rgba(148, 163, 184, 0.10);
+  margin-top: auto;
+}
+
+.briefing-card {
+  padding: 12px 14px;
+  border: 1px solid rgba(148, 163, 184, 0.12);
+  border-radius: 12px;
+  background: rgba(3, 10, 22, 0.52);
+}
+
+.briefing-card-title {
+  display: block;
+  font-size: 8px;
+  font-weight: 900;
+  letter-spacing: 0.16em;
+  color: currentColor;
+  opacity: 0.72;
+  margin-bottom: 6px;
+}
+
+.briefing-card-value {
+  display: block;
+  font-size: 11px;
+  font-weight: 800;
+  color: rgba(226, 232, 240, 0.88);
+  letter-spacing: 0.06em;
+}
+
+/* Hide old data-wall-grid and data-wall-hero (deprecated) */
+.data-wall-grid { display: none !important; }
+.data-wall-hero { display: none !important; }
+/* Hide old small system map (deprecated - replaced by jarvis-system-map-wall) */
+.data-wall-system-map { display: none !important; }
