@@ -2829,11 +2829,12 @@ html, body {
   border-radius: 2px;
 }
 
+
 /* ═══════════════════════════════════════════════════════════════
-   UI-L v2 Cinematic Data Wall Rebuild
+   UI-L v3 Cinematic Director Cut
    ═══════════════════════════════════════════════════════════════ */
 
-/* ─── Data Wall Shell ─── */
+/* ─── Shell ─── */
 .data-wall-shell {
   position: fixed;
   inset: 0;
@@ -2843,10 +2844,11 @@ html, body {
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  perspective: 1200px;
+  perspective: 1600px;
+  transform-style: preserve-3d;
 }
 
-/* ─── Background Layer ─── */
+/* ─── Background ─── */
 .data-wall-bg {
   position: absolute;
   inset: 0;
@@ -2858,66 +2860,63 @@ html, body {
   position: absolute;
   inset: 0;
   background-image:
-    linear-gradient(rgba(0, 245, 255, 0.03) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(0, 245, 255, 0.03) 1px, transparent 1px);
+    linear-gradient(rgba(0, 245, 255, 0.025) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(0, 245, 255, 0.025) 1px, transparent 1px);
   background-size: 60px 60px;
-  transform: perspective(800px) rotateX(25deg);
-  transform-origin: center 120%;
-  opacity: 0.6;
+  transform: perspective(800px) rotateX(30deg);
+  transform-origin: center 130%;
+  opacity: 0.5;
 }
 
 .bg-vignette {
   position: absolute;
   inset: 0;
-  background: radial-gradient(ellipse at center, transparent 40%, rgba(2, 6, 23, 0.8) 100%);
+  background: radial-gradient(ellipse at center, transparent 30%, rgba(2, 6, 23, 0.85) 100%);
 }
 
 /* ─── Header ─── */
 .data-wall-header {
   position: relative;
-  z-index: 3;
+  z-index: 5;
   display: flex;
   justify-content: space-between;
   align-items: flex-start;
-  padding: 28px 40px 18px;
-  border-bottom: 1px solid rgba(0, 245, 255, 0.1);
+  padding: 24px 40px 14px;
+  border-bottom: 1px solid rgba(0, 245, 255, 0.08);
 }
 
 .dw-greeting {
   display: block;
-  font-size: 0.7rem;
-  letter-spacing: 0.25em;
-  color: rgba(255, 235, 170, 0.55);
-  margin-bottom: 4px;
+  font-size: 0.62rem;
+  letter-spacing: 0.3em;
+  color: rgba(255, 235, 170, 0.5);
+  margin-bottom: 3px;
 }
 
 .dw-title {
-  font-size: 1.5rem;
+  font-size: 1.3rem;
   font-weight: 800;
-  letter-spacing: 0.08em;
-  text-shadow: 0 0 20px rgba(0, 245, 255, 0.25);
+  letter-spacing: 0.06em;
+  text-shadow: 0 0 20px rgba(0, 245, 255, 0.2);
 }
 
-.dw-header-right {
-  text-align: right;
-}
+.dw-header-right { text-align: right; }
 
 .dw-status-badge {
   display: inline-flex;
   align-items: center;
   gap: 7px;
-  background: rgba(0, 245, 255, 0.06);
-  padding: 5px 12px;
+  background: rgba(0, 245, 255, 0.05);
+  padding: 4px 11px;
   border-radius: 999px;
-  border: 1px solid rgba(0, 245, 255, 0.18);
-  font-size: 0.65rem;
+  border: 1px solid rgba(0, 245, 255, 0.15);
+  font-size: 0.6rem;
   letter-spacing: 0.1em;
-  margin-bottom: 8px;
+  margin-bottom: 6px;
 }
 
 .dw-status-dot {
-  width: 7px;
-  height: 7px;
+  width: 6px; height: 6px;
   background: #00F5FF;
   border-radius: 50%;
   box-shadow: 0 0 8px #00F5FF;
@@ -2925,47 +2924,48 @@ html, body {
 }
 
 .dw-time {
-  font-size: 1.2rem;
+  font-size: 1.1rem;
   font-weight: 600;
-  color: rgba(255, 255, 255, 0.85);
+  color: rgba(255, 255, 255, 0.8);
 }
 
-/* ─── Main Grid ─── */
-.data-wall-main-grid {
+/* ─── Main Grid v3 ─── */
+.data-wall-main-grid.v3 {
   position: relative;
   z-index: 2;
   flex: 1;
   display: grid;
-  grid-template-columns: 280px 1fr 380px;
-  gap: 24px;
-  padding: 24px 40px;
+  grid-template-columns: 240px 1fr 320px;
+  gap: 20px;
+  padding: 20px 32px;
   min-height: 0;
+  transform-style: preserve-3d;
 }
 
 .dw-col {
   display: flex;
   flex-direction: column;
-  gap: 20px;
+  gap: 16px;
   min-height: 0;
 }
 
 /* ─── Panel Base ─── */
 .dw-panel {
-  background: rgba(2, 6, 23, 0.6);
-  border: 1px solid rgba(0, 245, 255, 0.1);
-  border-radius: 12px;
-  padding: 18px;
-  backdrop-filter: blur(8px);
+  background: rgba(2, 6, 23, 0.55);
+  border: 1px solid rgba(0, 245, 255, 0.08);
+  border-radius: 14px;
+  padding: 16px;
+  backdrop-filter: blur(10px);
 }
 
 .dw-panel-label {
-  font-size: 0.65rem;
+  font-size: 0.58rem;
   font-weight: 700;
-  letter-spacing: 0.15em;
+  letter-spacing: 0.18em;
   color: #00F5FF;
-  margin-bottom: 14px;
-  padding-bottom: 8px;
-  border-bottom: 1px solid rgba(0, 245, 255, 0.08);
+  margin-bottom: 12px;
+  padding-bottom: 7px;
+  border-bottom: 1px solid rgba(0, 245, 255, 0.06);
 }
 
 /* ─── Brief Panel ─── */
@@ -2973,28 +2973,24 @@ html, body {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 6px 0;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+  padding: 5px 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.03);
 }
 
 .dw-brief-key {
-  font-size: 0.65rem;
-  color: rgba(255, 255, 255, 0.45);
+  font-size: 0.58rem;
+  color: rgba(255, 255, 255, 0.4);
   letter-spacing: 0.05em;
 }
 
 .dw-brief-val {
-  font-size: 0.8rem;
+  font-size: 0.72rem;
   font-weight: 700;
   color: #FFB800;
 }
 
 /* ─── Radar Panel ─── */
-.dw-radar-panel {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-}
+.dw-radar-panel { flex: 1; display: flex; flex-direction: column; }
 
 .dw-radar-container {
   flex: 1;
@@ -3002,20 +2998,20 @@ html, body {
   display: flex;
   align-items: center;
   justify-content: center;
-  min-height: 180px;
+  min-height: 160px;
 }
 
 .dw-radar-ring {
   position: absolute;
-  border: 1px solid rgba(0, 245, 255, 0.12);
+  border: 1px solid rgba(0, 245, 255, 0.1);
   border-radius: 50%;
   top: 50%; left: 50%;
   transform: translate(-50%, -50%);
 }
 
-.dw-radar-ring.r1 { width: 60px; height: 60px; }
-.dw-radar-ring.r2 { width: 120px; height: 120px; }
-.dw-radar-ring.r3 { width: 180px; height: 180px; }
+.dw-radar-ring.r1 { width: 50px; height: 50px; }
+.dw-radar-ring.r2 { width: 100px; height: 100px; }
+.dw-radar-ring.r3 { width: 150px; height: 150px; }
 
 .dw-radar-sweep-arm {
   position: absolute;
@@ -3036,102 +3032,225 @@ html, body {
 
 .dw-radar-dot {
   display: block;
-  width: 6px;
-  height: 6px;
+  width: 5px; height: 5px;
   background: #FFB800;
   border-radius: 50%;
-  box-shadow: 0 0 8px #FFB800;
+  box-shadow: 0 0 6px #FFB800;
 }
 
 .dw-radar-label {
   position: absolute;
-  left: 12px;
-  top: -4px;
-  font-size: 0.6rem;
+  left: 10px; top: -3px;
+  font-size: 0.55rem;
   white-space: nowrap;
-  color: rgba(255, 255, 255, 0.6);
+  color: rgba(255, 255, 255, 0.55);
   transform: rotate(calc(-1 * var(--angle)));
 }
 
-/* ─── Strategic Stage (Center) ─── */
+/* ═══════════════════════════════════════════════════════════════
+   CENTER: Hero Stage
+   ═══════════════════════════════════════════════════════════════ */
 .dw-col-center {
   align-items: center;
   justify-content: center;
   position: relative;
 }
 
-.dw-stage {
+.dw-hero-stage {
   position: relative;
-  width: 280px;
-  height: 280px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.dw-stage-core {
-  position: relative;
+  display: grid;
+  place-items: center;
   width: 100%;
-  height: 100%;
+  min-height: 58vh;
+  transform-style: preserve-3d;
+  overflow: visible;
 }
 
-.dw-core-pulse {
-  position: absolute;
-  top: 50%; left: 50%;
-  width: 80px; height: 80px;
-  transform: translate(-50%, -50%);
-  background: radial-gradient(circle, rgba(0, 245, 255, 0.35), transparent 70%);
-  filter: blur(15px);
-  animation: dwCorePulse 4s ease-in-out infinite;
-}
-
-.dw-core-ring {
-  position: absolute;
-  top: 50%; left: 50%;
-  transform: translate(-50%, -50%);
-  border: 1px solid rgba(0, 245, 255, 0.12);
-  border-radius: 50%;
-}
-
-.dw-core-ring.cr1 { width: 120px; height: 120px; animation: dwRingSpin 12s linear infinite; }
-.dw-core-ring.cr2 { width: 200px; height: 200px; animation: dwRingSpin 18s linear infinite reverse; border-style: dashed; }
-.dw-core-ring.cr3 { width: 270px; height: 270px; animation: dwRingSpin 25s linear infinite; opacity: 0.5; }
-
-.dw-stage-label {
-  position: absolute;
-  bottom: -30px; left: 50%;
-  transform: translateX(-50%);
-  font-size: 0.7rem;
-  letter-spacing: 0.3em;
-  color: rgba(0, 245, 255, 0.35);
-}
-
-/* ─── Floating Signals ─── */
-.dw-floating-signals {
+/* Camera Depth Rings */
+.dw-camera-depth {
   position: absolute;
   inset: 0;
   pointer-events: none;
-  display: flex;
-  flex-wrap: wrap;
-  align-content: flex-end;
-  justify-content: center;
-  gap: 8px;
-  padding: 0 20px 20px;
 }
 
-.dw-signal-chip {
-  padding: 5px 10px;
+.dw-depth-ring {
+  position: absolute;
+  left: 50%; top: 50%;
   border-radius: 999px;
-  border: 1px solid rgba(0, 245, 255, 0.12);
-  background: rgba(0, 245, 255, 0.04);
-  font-size: 0.55rem;
-  letter-spacing: 0.08em;
-  color: rgba(0, 245, 255, 0.55);
-  animation: dwSignalPulse 5s ease-in-out infinite;
-  animation-delay: calc(var(--i) * 0.6s);
+  border: 1px solid rgba(103, 232, 249, 0.08);
+  transform: translate(-50%, -50%);
+  animation: dwDepthBreath 6s ease-in-out infinite;
 }
 
-/* ─── Video Intel Panel (Right) ─── */
+.dw-depth-ring.ring-1 { width: 260px; height: 260px; }
+.dw-depth-ring.ring-2 { width: 420px; height: 420px; animation-delay: 300ms; }
+.dw-depth-ring.ring-3 { width: 620px; height: 620px; animation-delay: 600ms; }
+
+.dw-horizon-beam {
+  position: absolute;
+  top: 50%; left: 0; right: 0;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(0, 245, 255, 0.15) 30%, rgba(0, 245, 255, 0.15) 70%, transparent);
+}
+
+/* ─── Hero Intel Card ─── */
+.dw-hero-intel-card {
+  position: relative;
+  width: min(560px, 82%);
+  border-radius: 28px;
+  border: 1px solid rgba(103, 232, 249, 0.22);
+  background: rgba(3, 10, 24, 0.72);
+  backdrop-filter: blur(22px);
+  box-shadow:
+    0 0 60px rgba(0, 245, 255, 0.1),
+    inset 0 0 50px rgba(255, 235, 170, 0.03);
+  transform-style: preserve-3d;
+  overflow: hidden;
+  z-index: 3;
+}
+
+/* Hero Thumbnail */
+.dw-hero-thumb {
+  position: relative;
+  width: 100%;
+  height: 220px;
+  overflow: hidden;
+  border-radius: 28px 28px 0 0;
+}
+
+.dw-hero-thumb.thumb-corn {
+  background:
+    radial-gradient(circle at 30% 25%, rgba(255, 235, 170, 0.5), transparent 35%),
+    radial-gradient(circle at 75% 70%, rgba(76, 175, 80, 0.3), transparent 40%),
+    linear-gradient(135deg, rgba(255, 198, 41, 0.35), rgba(0, 245, 255, 0.08) 55%, rgba(3, 7, 18, 0.92));
+}
+
+.dw-thumb-scan {
+  position: absolute;
+  inset: 0;
+  background:
+    linear-gradient(180deg, transparent 30%, rgba(255, 255, 255, 0.08) 50%, transparent 70%),
+    repeating-linear-gradient(0deg, rgba(255, 255, 255, 0.03) 0 1px, transparent 1px 4px);
+  mix-blend-mode: screen;
+  animation: dwThumbScan 3.8s ease-in-out infinite;
+}
+
+.dw-thumb-play {
+  position: absolute;
+  top: 50%; left: 50%;
+  transform: translate(-50%, -50%);
+  width: 52px; height: 52px;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.45);
+  border: 2px solid rgba(255, 255, 255, 0.4);
+  backdrop-filter: blur(4px);
+}
+
+.dw-thumb-play::after {
+  content: '';
+  position: absolute;
+  top: 50%; left: 54%;
+  transform: translate(-50%, -50%);
+  width: 0; height: 0;
+  border-style: solid;
+  border-width: 10px 0 10px 18px;
+  border-color: transparent transparent transparent rgba(255, 255, 255, 0.85);
+}
+
+.dw-thumb-caption {
+  position: absolute;
+  bottom: 12px; left: 16px;
+  font-size: 0.55rem;
+  letter-spacing: 0.2em;
+  color: rgba(0, 245, 255, 0.7);
+  background: rgba(0, 0, 0, 0.4);
+  padding: 3px 8px;
+  border-radius: 4px;
+}
+
+/* Hero Meta */
+.dw-hero-meta {
+  padding: 22px 26px 26px;
+}
+
+.dw-channel-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.dw-channel-avatar {
+  width: 38px; height: 38px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, rgba(0, 245, 255, 0.2), rgba(255, 184, 0, 0.15));
+  border: 1.5px solid rgba(0, 245, 255, 0.3);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.9rem;
+  font-weight: 800;
+  color: #00F5FF;
+  box-shadow: 0 0 12px rgba(0, 245, 255, 0.15);
+}
+
+.dw-channel-info strong {
+  display: block;
+  font-size: 0.8rem;
+  color: rgba(255, 255, 255, 0.9);
+}
+
+.dw-channel-info em {
+  font-style: normal;
+  font-size: 0.6rem;
+  color: rgba(255, 255, 255, 0.4);
+}
+
+.dw-hero-title {
+  font-size: 1.2rem;
+  font-weight: 800;
+  margin-bottom: 8px;
+  line-height: 1.3;
+}
+
+.dw-hero-signal {
+  font-size: 0.72rem;
+  color: rgba(0, 245, 255, 0.7);
+  margin-bottom: 6px;
+}
+
+.dw-hero-reason {
+  font-size: 0.65rem;
+  color: rgba(255, 255, 255, 0.45);
+  margin-bottom: 16px;
+  line-height: 1.5;
+}
+
+.dw-hero-action-bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 14px;
+  border-radius: 10px;
+  background: rgba(0, 245, 255, 0.04);
+  border: 1px solid rgba(0, 245, 255, 0.1);
+}
+
+.dw-hero-action-label {
+  font-size: 0.5rem;
+  letter-spacing: 0.15em;
+  color: rgba(0, 245, 255, 0.5);
+}
+
+.dw-hero-action-text {
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: #FFB800;
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   RIGHT: Video Intel Queue
+   ═══════════════════════════════════════════════════════════════ */
 .dw-video-intel-panel {
   flex: 1;
   overflow-y: auto;
@@ -3142,7 +3261,7 @@ html, body {
 .dw-intel-cards {
   display: flex;
   flex-direction: column;
-  gap: 14px;
+  gap: 16px;
   flex: 1;
 }
 
@@ -3151,91 +3270,123 @@ html, body {
   gap: 12px;
   padding: 14px;
   background: rgba(6, 10, 18, 0.7);
-  border: 1px solid rgba(0, 245, 255, 0.08);
-  border-radius: 10px;
+  border: 1px solid rgba(0, 245, 255, 0.06);
+  border-radius: 14px;
   transition: all 0.4s cubic-bezier(0.19, 1, 0.22, 1);
   transform: translateZ(0);
+  transform-style: preserve-3d;
 }
 
 .dw-intel-card:hover {
-  border-color: rgba(0, 245, 255, 0.3);
-  box-shadow: 0 4px 30px rgba(0, 245, 255, 0.08), inset 0 0 20px rgba(0, 245, 255, 0.03);
-  transform: translateZ(10px) scale(1.02);
+  border-color: rgba(0, 245, 255, 0.25);
+  box-shadow: 0 4px 30px rgba(0, 245, 255, 0.06), inset 0 0 20px rgba(0, 245, 255, 0.02);
+  transform: translateZ(14px) scale(1.02);
 }
 
+/* Intel Thumbnail */
 .dw-intel-thumb {
-  width: 48px;
-  height: 48px;
-  border-radius: 8px;
-  background: linear-gradient(135deg, rgba(0, 245, 255, 0.12), rgba(255, 184, 0, 0.08));
+  width: 52px; height: 52px;
+  border-radius: 10px;
+  flex-shrink: 0;
+  position: relative;
+  overflow: hidden;
   display: flex;
   align-items: center;
   justify-content: center;
-  flex-shrink: 0;
-  border: 1px solid rgba(0, 245, 255, 0.1);
 }
 
-.dw-intel-avatar {
-  font-size: 1.4rem;
+.dw-intel-thumb.thumb-camping {
+  background: radial-gradient(circle at 40% 30%, rgba(255, 152, 0, 0.4), transparent 50%),
+    linear-gradient(135deg, rgba(76, 175, 80, 0.25), rgba(3, 7, 18, 0.9));
 }
 
-.dw-intel-body {
-  flex: 1;
-  min-width: 0;
+.dw-intel-thumb.thumb-plum {
+  background: radial-gradient(circle at 40% 30%, rgba(156, 39, 176, 0.4), transparent 50%),
+    linear-gradient(135deg, rgba(233, 30, 99, 0.2), rgba(3, 7, 18, 0.9));
 }
+
+.dw-intel-thumb.thumb-blueberry {
+  background: radial-gradient(circle at 40% 30%, rgba(63, 81, 181, 0.4), transparent 50%),
+    linear-gradient(135deg, rgba(103, 58, 183, 0.2), rgba(3, 7, 18, 0.9));
+}
+
+.dw-intel-thumb.thumb-peach {
+  background: radial-gradient(circle at 40% 30%, rgba(255, 183, 77, 0.4), transparent 50%),
+    linear-gradient(135deg, rgba(255, 138, 101, 0.2), rgba(3, 7, 18, 0.9));
+}
+
+.dw-intel-thumb.thumb-farm {
+  background: radial-gradient(circle at 40% 30%, rgba(139, 195, 74, 0.4), transparent 50%),
+    linear-gradient(135deg, rgba(76, 175, 80, 0.2), rgba(3, 7, 18, 0.9));
+}
+
+.dw-intel-thumb-avatar {
+  font-size: 1.1rem;
+  font-weight: 800;
+  color: rgba(255, 255, 255, 0.85);
+  z-index: 1;
+}
+
+.dw-intel-thumb-scan {
+  position: absolute;
+  inset: 0;
+  background: repeating-linear-gradient(0deg, rgba(255, 255, 255, 0.03) 0 1px, transparent 1px 3px);
+  mix-blend-mode: screen;
+}
+
+/* Intel Body */
+.dw-intel-body { flex: 1; min-width: 0; }
 
 .dw-intel-title {
-  font-size: 0.8rem;
+  font-size: 0.72rem;
   font-weight: 700;
-  margin-bottom: 3px;
+  margin-bottom: 2px;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
 .dw-intel-channel {
-  font-size: 0.6rem;
-  color: rgba(255, 255, 255, 0.4);
-  margin-bottom: 5px;
+  font-size: 0.55rem;
+  color: rgba(255, 255, 255, 0.35);
+  margin-bottom: 4px;
 }
 
 .dw-intel-reason {
-  font-size: 0.6rem;
-  color: rgba(0, 245, 255, 0.6);
+  font-size: 0.55rem;
+  color: rgba(0, 245, 255, 0.55);
   line-height: 1.4;
-  margin-bottom: 8px;
+  margin-bottom: 7px;
 }
 
 .dw-intel-footer {
   display: flex;
-  gap: 8px;
+  gap: 6px;
   align-items: center;
-  flex-wrap: wrap;
 }
 
-.dw-intel-category,
-.dw-intel-type {
-  font-size: 0.55rem;
-  padding: 2px 7px;
+.dw-intel-category {
+  font-size: 0.5rem;
+  padding: 2px 6px;
   border-radius: 4px;
-  background: rgba(255, 255, 255, 0.05);
-  color: rgba(255, 255, 255, 0.5);
+  background: rgba(255, 255, 255, 0.04);
+  color: rgba(255, 255, 255, 0.45);
 }
 
 .dw-intel-status {
-  font-size: 0.55rem;
-  padding: 2px 7px;
+  font-size: 0.5rem;
+  padding: 2px 6px;
   border-radius: 4px;
   font-weight: 800;
 }
 
 .dw-intel-status.st-ready {
-  background: rgba(0, 245, 255, 0.12);
+  background: rgba(0, 245, 255, 0.1);
   color: #00F5FF;
 }
 
 .dw-intel-status.st-analyzing {
-  background: rgba(255, 184, 0, 0.12);
+  background: rgba(255, 184, 0, 0.1);
   color: #FFB800;
   animation: dwBlink 1.2s infinite;
 }
@@ -3243,65 +3394,87 @@ html, body {
 /* ─── Live Feed Strip ─── */
 .dw-live-feed {
   position: relative;
-  z-index: 3;
+  z-index: 5;
   display: flex;
   gap: 40px;
-  padding: 12px 40px;
-  border-top: 1px solid rgba(0, 245, 255, 0.08);
+  padding: 10px 40px;
+  border-top: 1px solid rgba(0, 245, 255, 0.06);
   overflow: hidden;
   white-space: nowrap;
 }
 
 .dw-feed-line {
-  font-size: 0.6rem;
-  letter-spacing: 0.05em;
-  color: rgba(0, 245, 255, 0.45);
-  animation: dwFeedScroll 20s linear infinite;
-  animation-delay: calc(var(--i) * -5s);
+  font-size: 0.55rem;
+  letter-spacing: 0.04em;
+  color: rgba(0, 245, 255, 0.4);
+  animation: dwFeedScroll 22s linear infinite;
+  animation-delay: calc(var(--i) * -5.5s);
 }
 
 /* ═══════════════════════════════════════════════════════════════
-   UI-L v2 Opening Animations (Z-axis / Docking / Frame Expand)
+   UI-L v3 Opening Sequence (Cinematic Director Cut)
    ═══════════════════════════════════════════════════════════════ */
 
-/* Card docking effect */
-.dw-intel-card.is-docking {
-  animation: dwCardDock 1200ms cubic-bezier(0.19, 1, 0.22, 1) both;
-  animation-delay: calc(var(--i) * 180ms + 400ms);
+/* 0.0s — Shell starts dark */
+.is-cinematic-opening .data-wall-bg {
+  animation: dwBgWake 1200ms cubic-bezier(0.19, 1, 0.22, 1) both;
 }
 
-/* Panel deploy on opening */
-.is-cinematic-opening .dw-panel {
-  animation: dwPanelDeploy 1000ms cubic-bezier(0.19, 1, 0.22, 1) both;
+/* 0.2s — Header slides in */
+.is-cinematic-opening .data-wall-header {
+  animation: dwHeaderSlide 700ms cubic-bezier(0.19, 1, 0.22, 1) both;
+  animation-delay: 200ms;
 }
 
-.is-cinematic-opening .dw-brief-panel { animation-delay: 200ms; }
-.is-cinematic-opening .dw-radar-panel { animation-delay: 400ms; }
-.is-cinematic-opening .dw-video-intel-panel { animation-delay: 600ms; }
+/* 0.5s — Depth rings & horizon beam */
+.is-cinematic-opening .dw-depth-ring {
+  animation: dwDepthRingReveal 1200ms cubic-bezier(0.19, 1, 0.22, 1) both;
+}
+.is-cinematic-opening .dw-depth-ring.ring-1 { animation-delay: 500ms; }
+.is-cinematic-opening .dw-depth-ring.ring-2 { animation-delay: 650ms; }
+.is-cinematic-opening .dw-depth-ring.ring-3 { animation-delay: 800ms; }
 
-.is-cinematic-opening .dw-stage {
-  animation: dwStageReveal 1400ms cubic-bezier(0.19, 1, 0.22, 1) both;
-  animation-delay: 300ms;
+.is-cinematic-opening .dw-horizon-beam {
+  animation: dwHorizonFlash 1000ms cubic-bezier(0.19, 1, 0.22, 1) both;
+  animation-delay: 500ms;
 }
 
-.is-cinematic-opening .dw-signal-chip {
-  animation: dwChipDock 800ms cubic-bezier(0.19, 1, 0.22, 1) both;
-  animation-delay: calc(var(--i) * 120ms + 800ms);
+/* 0.8s — Hero Card docks from Z-depth */
+.is-cinematic-opening .dw-hero-intel-card {
+  animation: dwHeroDock 1600ms cubic-bezier(0.19, 1, 0.22, 1) both;
+  animation-delay: 800ms;
 }
 
+/* 1.5s — Left panels frame trace */
+.is-cinematic-opening .dw-brief-panel {
+  animation: dwPanelDeploy 900ms cubic-bezier(0.19, 1, 0.22, 1) both;
+  animation-delay: 1500ms;
+}
+
+.is-cinematic-opening .dw-radar-panel {
+  animation: dwPanelDeploy 900ms cubic-bezier(0.19, 1, 0.22, 1) both;
+  animation-delay: 1700ms;
+}
+
+/* 1.9s — Right intel cards dock sequentially */
+.is-cinematic-opening .dw-intel-card {
+  animation: dwIntelQueueDock 900ms cubic-bezier(0.19, 1, 0.22, 1) both;
+  animation-delay: calc(1900ms + var(--i) * 180ms);
+}
+
+/* 2.4s — Feed strip */
 .is-cinematic-opening .dw-feed-line {
   animation: dwFeedReveal 600ms cubic-bezier(0.19, 1, 0.22, 1) both;
-  animation-delay: calc(var(--i) * 150ms + 1200ms);
+  animation-delay: calc(2400ms + var(--i) * 150ms);
 }
 
-.is-cinematic-opening .data-wall-header {
-  animation: dwHeaderSlide 800ms cubic-bezier(0.19, 1, 0.22, 1) both;
-}
+/* ═══════════════════════════════════════════════════════════════
+   Keyframes
+   ═══════════════════════════════════════════════════════════════ */
 
-/* ─── Keyframes ─── */
 @keyframes dwPulse {
   0%, 100% { opacity: 1; box-shadow: 0 0 8px #00F5FF; }
-  50% { opacity: 0.5; box-shadow: 0 0 3px #00F5FF; }
+  50% { opacity: 0.4; box-shadow: 0 0 3px #00F5FF; }
 }
 
 @keyframes dwRadarSweep {
@@ -3309,24 +3482,9 @@ html, body {
   to { transform: rotate(360deg); }
 }
 
-@keyframes dwCorePulse {
-  0%, 100% { transform: translate(-50%, -50%) scale(1); opacity: 0.35; }
-  50% { transform: translate(-50%, -50%) scale(1.3); opacity: 0.6; }
-}
-
-@keyframes dwRingSpin {
-  from { transform: translate(-50%, -50%) rotate(0deg); }
-  to { transform: translate(-50%, -50%) rotate(360deg); }
-}
-
-@keyframes dwSignalPulse {
-  0%, 100% { opacity: 0.4; transform: scale(1); }
-  50% { opacity: 0.9; transform: scale(1.04); }
-}
-
 @keyframes dwBlink {
   0%, 100% { opacity: 1; }
-  50% { opacity: 0.4; }
+  50% { opacity: 0.35; }
 }
 
 @keyframes dwFeedScroll {
@@ -3334,32 +3492,69 @@ html, body {
   100% { transform: translateX(-200%); }
 }
 
-@keyframes dwCardDock {
+@keyframes dwDepthBreath {
+  0%, 100% { opacity: 0.4; transform: translate(-50%, -50%) scale(1); }
+  50% { opacity: 0.8; transform: translate(-50%, -50%) scale(1.04); }
+}
+
+@keyframes dwThumbScan {
+  0% { transform: translateY(-100%); }
+  100% { transform: translateY(100%); }
+}
+
+/* Opening keyframes */
+@keyframes dwBgWake {
+  0% { opacity: 0; }
+  100% { opacity: 1; }
+}
+
+@keyframes dwHeaderSlide {
+  0% { opacity: 0; transform: translateY(-25px); }
+  100% { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes dwDepthRingReveal {
+  0% { opacity: 0; transform: translate(-50%, -50%) scale(0.3); }
+  100% { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+}
+
+@keyframes dwHorizonFlash {
+  0% { opacity: 0; transform: scaleX(0); }
+  50% { opacity: 1; transform: scaleX(1.1); }
+  100% { opacity: 1; transform: scaleX(1); }
+}
+
+@keyframes dwHeroDock {
   0% {
     opacity: 0;
-    transform: translate3d(0, 0, -200px) scale(0.7) rotateX(15deg);
-    filter: blur(8px);
+    transform: translate3d(0, 90px, -520px) scale(0.42) rotateX(18deg) rotateY(-24deg);
+    filter: blur(22px);
   }
-  60% {
+  48% {
     opacity: 1;
-    transform: translate3d(0, -8px, 20px) scale(1.03) rotateX(-2deg);
+    transform: translate3d(0, -14px, 60px) scale(1.04) rotateX(0deg) rotateY(4deg);
+    filter: blur(2px);
+  }
+  72% {
+    transform: translate3d(0, 4px, 0) scale(0.99) rotateX(0deg) rotateY(0deg);
     filter: blur(0);
   }
   100% {
     opacity: 1;
-    transform: translate3d(0, 0, 0) scale(1) rotateX(0);
+    transform: translate3d(0, 0, 0) scale(1);
+    filter: blur(0);
   }
 }
 
 @keyframes dwPanelDeploy {
   0% {
     opacity: 0;
-    transform: translate3d(0, 40px, -150px) scale(0.85);
-    filter: blur(12px);
+    transform: translate3d(-40px, 30px, -180px) scale(0.8);
+    filter: blur(14px);
   }
-  55% {
+  60% {
     opacity: 1;
-    transform: translate3d(0, -5px, 10px) scale(1.02);
+    transform: translate3d(4px, -4px, 12px) scale(1.02);
     filter: blur(0);
   }
   100% {
@@ -3368,62 +3563,48 @@ html, body {
   }
 }
 
-@keyframes dwStageReveal {
+@keyframes dwIntelQueueDock {
   0% {
     opacity: 0;
-    transform: scale(0.4) rotateY(30deg);
-    filter: blur(20px);
+    transform: translate3d(90px, 26px, -260px) scale(0.74) rotateY(-22deg);
+    filter: blur(12px);
   }
-  50% {
-    opacity: 0.8;
-    transform: scale(1.05) rotateY(-3deg);
-    filter: blur(2px);
-  }
-  100% {
+  70% {
     opacity: 1;
-    transform: scale(1) rotateY(0);
+    transform: translate3d(-6px, 0, 18px) scale(1.02) rotateY(2deg);
     filter: blur(0);
   }
-}
-
-@keyframes dwChipDock {
-  0% {
-    opacity: 0;
-    transform: translateY(30px) scale(0.6);
-  }
   100% {
     opacity: 1;
-    transform: translateY(0) scale(1);
+    transform: translate3d(0, 0, 0) scale(1) rotateY(0deg);
   }
 }
 
 @keyframes dwFeedReveal {
-  0% { opacity: 0; transform: translateX(60px); }
+  0% { opacity: 0; transform: translateX(50px); }
   100% { opacity: 1; transform: translateX(0); }
-}
-
-@keyframes dwHeaderSlide {
-  0% { opacity: 0; transform: translateY(-30px); }
-  100% { opacity: 1; transform: translateY(0); }
 }
 
 /* ─── Responsive ─── */
 @media (max-width: 1200px) {
-  .data-wall-main-grid {
+  .data-wall-main-grid.v3 {
     grid-template-columns: 1fr;
-    padding: 16px;
+    padding: 14px;
   }
   .dw-col-center { order: -1; }
+  .dw-hero-stage { min-height: 40vh; }
 }
 
 /* ─── Reduced Motion ─── */
 @media (prefers-reduced-motion: reduce) {
-  .dw-intel-card.is-docking,
+  .is-cinematic-opening .dw-hero-intel-card,
+  .is-cinematic-opening .dw-intel-card,
   .is-cinematic-opening .dw-panel,
-  .is-cinematic-opening .dw-stage,
-  .is-cinematic-opening .dw-signal-chip,
+  .is-cinematic-opening .data-wall-header,
+  .is-cinematic-opening .dw-depth-ring,
+  .is-cinematic-opening .dw-horizon-beam,
   .is-cinematic-opening .dw-feed-line,
-  .is-cinematic-opening .data-wall-header {
+  .is-cinematic-opening .data-wall-bg {
     animation: none !important;
     opacity: 1 !important;
     transform: none !important;

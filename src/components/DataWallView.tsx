@@ -38,37 +38,44 @@ function readJson<T>(key: string): T | null {
   }
 }
 
-/* ─── Video Intel Cards (소재/유형/자비스 판단 중심) ─── */
+/* ─── Hero Intel Card ─── */
+const heroIntelCard = {
+  id: 'hero-corn-field-asmr',
+  title: '초당옥수수 수확 현장 ASMR',
+  channelName: '옥수수농장TV',
+  category: '농산물 · ASMR · 현장감',
+  signal: '수확 시즌 진입 · 현장감 콘텐츠 적합',
+  action: '첫 3초 사운드 후킹',
+  reason: '산지 신뢰와 먹고 싶은 감각을 동시에 보여줄 수 있음',
+  mood: 'corn',
+};
+
+/* ─── Video Intel Cards (후보 대기열) ─── */
 const videoIntelCards = [
   {
-    id: 'v1', category: '농산물', title: '초당옥수수 수확 현장 ASMR',
-    type: 'ASMR/현장감', channel: '옥수수농장TV', avatar: '🌽',
-    reason: '수확 시즌 진입 — 현장감 콘텐츠 적합', status: 'READY',
-  },
-  {
     id: 'v2', category: '캠핑', title: '우중 캠핑 삼겹살 먹방',
-    type: '감성/힐링', channel: '캠핑요리왕', avatar: '⛺',
-    reason: '비 오는 날 감성 + 먹방 조합 바이럴 가능', status: 'ANALYZING',
+    type: '감성/힐링', channel: '캠핑요리왕', avatar: 'C',
+    reason: '비 오는 날 감성 + 먹방 조합 바이럴 가능', status: 'ANALYZING', mood: 'camping',
   },
   {
     id: 'v3', category: '먹방', title: '매실청 담그기 1분 숏폼',
-    type: '정보/숏폼', channel: '살림의여왕', avatar: '🫙',
-    reason: '매실 시즌 도래 — 숏폼 레시피 수요 급증', status: 'READY',
+    type: '정보/숏폼', channel: '살림의여왕', avatar: 'S',
+    reason: '매실 시즌 도래 — 숏폼 레시피 수요 급증', status: 'READY', mood: 'plum',
   },
   {
     id: 'v4', category: '살림', title: '블루베리 세척 & 보관 꿀팁',
-    type: '생활정보', channel: '깔끔살림', avatar: '🫐',
-    reason: '블루베리 출하 시작 — 보관법 검색량 증가', status: 'READY',
+    type: '생활정보', channel: '깔끔살림', avatar: 'K',
+    reason: '블루베리 출하 시작 — 보관법 검색량 증가', status: 'READY', mood: 'blueberry',
   },
   {
     id: 'v5', category: '건강', title: '복숭아 다이어트 레시피',
-    type: '건강/미용', channel: '헬시라이프', avatar: '🍑',
-    reason: '여름 다이어트 시즌 — 과일 레시피 관심 상승', status: 'READY',
+    type: '건강/미용', channel: '헬시라이프', avatar: 'H',
+    reason: '여름 다이어트 시즌 — 과일 레시피 관심 상승', status: 'READY', mood: 'peach',
   },
   {
     id: 'v6', category: '여행', title: '주말 농장 체험 브이로그',
-    type: '브이로그', channel: '시골여행자', avatar: '🚜',
-    reason: '체험형 콘텐츠 — 가족 단위 유입 기대', status: 'READY',
+    type: '브이로그', channel: '시골여행자', avatar: 'T',
+    reason: '체험형 콘텐츠 — 가족 단위 유입 기대', status: 'READY', mood: 'farm',
   },
 ];
 
@@ -77,15 +84,6 @@ const seasonPoints = [
   { label: '매실', angle: 120, distance: 55 },
   { label: '블루베리', angle: 210, distance: 72 },
   { label: '복숭아', angle: 300, distance: 60 },
-];
-
-const floatingSignals = [
-  'SMARTSTORE SYNC',
-  'MARKET BRAIN SCAN',
-  'OUTREACH DETECT',
-  'WORKSPACE INDEX',
-  'NEURAL NET OK',
-  'DEPLOY READY',
 ];
 
 const liveFeedLines = [
@@ -178,7 +176,7 @@ const DataWallView: React.FC = () => {
       <header className="data-wall-header">
         <div className="dw-header-left">
           <span className="dw-greeting">GOOD MORNING, SIR</span>
-          <h1 className="dw-title">STRATEGIC DATA WALL</h1>
+          <h1 className="dw-title">STRATEGIC HOLOGRAM STAGE</h1>
         </div>
         <div className="dw-header-right">
           <div className="dw-status-badge">
@@ -189,8 +187,8 @@ const DataWallView: React.FC = () => {
         </div>
       </header>
 
-      {/* ─── Main Grid ─── */}
-      <div className="data-wall-main-grid">
+      {/* ─── Main Grid: Left / Center Hero / Right ─── */}
+      <div className="data-wall-main-grid v3">
 
         {/* LEFT: Brief + Season Radar */}
         <aside className="dw-col dw-col-left">
@@ -234,41 +232,62 @@ const DataWallView: React.FC = () => {
           </div>
         </aside>
 
-        {/* CENTER: Strategic Stage */}
+        {/* CENTER: Hero Stage */}
         <main className="dw-col dw-col-center">
-          <div className="dw-stage">
-            <div className="dw-stage-core">
-              <div className="dw-core-pulse" />
-              <div className="dw-core-ring cr1" />
-              <div className="dw-core-ring cr2" />
-              <div className="dw-core-ring cr3" />
+          <section className="dw-hero-stage">
+            {/* Depth Rings (camera push-in feel) */}
+            <div className="dw-camera-depth" aria-hidden="true">
+              <span className="dw-depth-ring ring-1" />
+              <span className="dw-depth-ring ring-2" />
+              <span className="dw-depth-ring ring-3" />
+              <span className="dw-horizon-beam" />
             </div>
-            <span className="dw-stage-label">STRATEGIC STAGE</span>
-          </div>
 
-          {/* Floating Signal Chips */}
-          <div className="dw-floating-signals">
-            {floatingSignals.map((sig, idx) => (
-              <span key={idx} className="dw-signal-chip" style={{ '--i': idx } as React.CSSProperties}>
-                {sig}
-              </span>
-            ))}
-          </div>
+            {/* Hero Intel Card */}
+            <article className="dw-hero-intel-card" data-context-id={heroIntelCard.id}>
+              <div className={`dw-hero-thumb thumb-${heroIntelCard.mood}`}>
+                <div className="dw-thumb-scan" />
+                <div className="dw-thumb-play" />
+                <div className="dw-thumb-caption">FIELD SIGNAL</div>
+              </div>
+
+              <div className="dw-hero-meta">
+                <div className="dw-channel-row">
+                  <span className="dw-channel-avatar">U</span>
+                  <div className="dw-channel-info">
+                    <strong>{heroIntelCard.channelName}</strong>
+                    <em>{heroIntelCard.category}</em>
+                  </div>
+                </div>
+
+                <h2 className="dw-hero-title">{heroIntelCard.title}</h2>
+                <p className="dw-hero-signal">{heroIntelCard.signal}</p>
+                <p className="dw-hero-reason">{heroIntelCard.reason}</p>
+
+                <div className="dw-hero-action-bar">
+                  <span className="dw-hero-action-label">RECOMMENDED ACTION</span>
+                  <span className="dw-hero-action-text">{heroIntelCard.action}</span>
+                </div>
+              </div>
+            </article>
+          </section>
         </main>
 
-        {/* RIGHT: Video Intel Wall */}
+        {/* RIGHT: Video Intel Queue */}
         <aside className="dw-col dw-col-right">
           <div className="dw-panel dw-video-intel-panel">
-            <div className="dw-panel-label">VIDEO INTEL WALL</div>
+            <div className="dw-panel-label">INTEL QUEUE</div>
             <div className="dw-intel-cards">
               {videoIntelCards.map((card, idx) => (
                 <div
                   key={card.id}
                   className={`dw-intel-card ${openingActive ? 'is-docking' : ''}`}
                   style={{ '--i': idx } as React.CSSProperties}
+                  data-context-id={card.id}
                 >
-                  <div className="dw-intel-thumb">
-                    <span className="dw-intel-avatar">{card.avatar}</span>
+                  <div className={`dw-intel-thumb thumb-${card.mood}`}>
+                    <span className="dw-intel-thumb-avatar">{card.avatar}</span>
+                    <div className="dw-intel-thumb-scan" />
                   </div>
                   <div className="dw-intel-body">
                     <div className="dw-intel-title">{card.title}</div>
@@ -276,7 +295,6 @@ const DataWallView: React.FC = () => {
                     <div className="dw-intel-reason">{card.reason}</div>
                     <div className="dw-intel-footer">
                       <span className="dw-intel-category">{card.category}</span>
-                      <span className="dw-intel-type">{card.type}</span>
                       <span className={`dw-intel-status st-${card.status.toLowerCase()}`}>{card.status}</span>
                     </div>
                   </div>
