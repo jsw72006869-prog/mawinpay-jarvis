@@ -4335,6 +4335,7 @@ export default function JarvisApp() {
 
     if (emailTestSendMatch && (emailDraftStateRef.current === 'draft_created' || emailDraftStateRef.current === 'approval_required') && emailDraftDataRef.current) {
       // 승인 UI 표시 - 바로 발송하지 않음
+      const draftForApproval = emailDraftDataRef.current;
       setEmailDraftState('test_send_only');
       setApprovalPreview(buildApprovalPreview({
         type: 'email_send',
@@ -4342,7 +4343,7 @@ export default function JarvisApp() {
         description: `jungsng805@naver.com 1명에게만 발송합니다.\n실제 유튜버/거래처 발송 0건.`,
         details: [
           { label: '수신자', value: 'jungsng805@naver.com' },
-          { label: '제목', value: emailDraftData.subject },
+          { label: '제목', value: draftForApproval.subject },
           { label: '발송 수', value: '1건 (테스트)' },
           { label: '실제 유튜버 발송', value: '0건' },
           { label: '실제 거래처 발송', value: '0건' },
@@ -4357,12 +4358,13 @@ export default function JarvisApp() {
 
     if (emailApproveMatch && emailDraftStateRef.current === 'test_send_only' && emailDraftDataRef.current) {
       // 승인 후 테스트 수신자 1명에게만 실제 발송
+      const draftForSend = emailDraftDataRef.current;
       emitMissionLog('📧', 'Email', '대표님 승인 확인 - 테스트 발송 실행', 'active');
       setState('working');
       try {
         const TEST_RECIPIENT = 'jungsng805@naver.com';
         // 보호 조건 검증
-        if (emailDraftData.to !== TEST_RECIPIENT) {
+        if (draftForSend.to !== TEST_RECIPIENT) {
           addMessage('jarvis', '❌ 보호 조건 위반: 테스트 수신자(jungsng805@naver.com)가 아닌 주소로는 발송할 수 없습니다.', true);
           setState('idle');
           return;
@@ -4401,8 +4403,8 @@ export default function JarvisApp() {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             to: TEST_RECIPIENT,
-            subject: emailDraftData.subject,
-            html: emailDraftData.html,
+            subject: draftForSend.subject,
+            html: draftForSend.html,
             attachments: testAttachments.length > 0 ? testAttachments : undefined,
           }),
         });
@@ -4413,10 +4415,10 @@ export default function JarvisApp() {
           // EmailHistory에 기록
           const newRecord: EmailRecord = {
             id: `test_${Date.now()}`,
-            subject: emailDraftData.subject,
+            subject: draftForSend.subject,
             to: TEST_RECIPIENT,
             toName: '테스트 수신자',
-            preview: `${emailDraftData.product} 공동구매 제안 (테스트)`,
+            preview: `${draftForSend.product} 공동구매 제안 (테스트)`,
             sentAt: new Date().toISOString(),
             status: 'sent',
             template: 'outreach_proposal',
@@ -4433,14 +4435,14 @@ export default function JarvisApp() {
                 task: 'workspace-save',
                 record: {
                   type: 'email_sent',
-                  title: `테스트 이메일 발송 - ${emailDraftData.product}`,
-                  content: `수신자: ${TEST_RECIPIENT}\n제목: ${emailDraftData.subject}\n상태: test_sent\n실제 유튜버 발송: 0건`,
+                  title: `테스트 이메일 발송 - ${draftForSend.product}`,
+                  content: `수신자: ${TEST_RECIPIENT}\n제목: ${draftForSend.subject}\n상태: test_sent\n실제 유튜버 발송: 0건`,
                   timestamp: new Date().toISOString(),
                 },
               }),
             });
           } catch (e) { /* workspace save 실패해도 발송은 성공 */ }
-          addMessage('jarvis', `✅ **테스트 발송 완료**\n\n**수신자:** ${TEST_RECIPIENT}\n**제목:** ${emailDraftData.subject}\n**첨부파일:** ${testAttachments.length}개 (TEST 발주서/정산서)\n**상태:** test_sent\n\n📊 **발송 기록:**\n• Gmail Sent Mail: 기록됨\n• Mission Log: 기록됨\n• FILE Workspace: 저장됨\n• 첨부파일: ${testAttachments.map(a => a.filename).join(', ')}\n\n⚠️ 실제 유튜버 발송: 0건\n⚠️ 실제 거래처 발송: 0건\n⚠️ execute LOCKED 유지`, true);
+          addMessage('jarvis', `✅ **테스트 발송 완료**\n\n**수신자:** ${TEST_RECIPIENT}\n**제목:** ${draftForSend.subject}\n**첨부파일:** ${testAttachments.length}개 (TEST 발주서/정산서)\n**상태:** test_sent\n\n📊 **발송 기록:**\n• Gmail Sent Mail: 기록됨\n• Mission Log: 기록됨\n• FILE Workspace: 저장됨\n• 첨부파일: ${testAttachments.map(a => a.filename).join(', ')}\n\n⚠️ 실제 유튜버 발송: 0건\n⚠️ 실제 거래처 발송: 0건\n⚠️ execute LOCKED 유지`, true);
           setClapBurst(true);
         } else {
           addMessage('jarvis', `❌ 발송 실패: ${sendData.error || '알 수 없는 오류'}\n\nexecute LOCKED 유지. 실제 유튜버 발송 0건.`, true);
