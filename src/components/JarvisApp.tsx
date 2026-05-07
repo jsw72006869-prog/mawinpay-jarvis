@@ -382,48 +382,134 @@ export default function JarvisApp() {
   }, []);
 
   // ── UI-J Dual Screen Helper Functions ──
-  const openDataWallWindow = async () => {
-    const url = `${window.location.origin}${window.location.pathname}?view=data-wall`;
-    let features = 'width=1680,height=945,left=80,top=60,resizable=yes,scrollbars=no';
-
+  const openDataWallOnKnownLeftMonitor = (url: string) => {
     try {
-      // Window Management API 사용 시도
-      if ('getScreenDetails' in window) {
-        const screenDetails = await (window as any).getScreenDetails();
-        console.log('[DUAL] screen.isExtended', screenDetails.isExtended);
-        console.log('[DUAL] screens', screenDetails.screens);
+      const currentLeft = typeof window.screenX === 'number' ? window.screenX : (window as any).screenLeft || 0;
+      const currentTop = typeof window.screenY === 'number' ? window.screenY : (window as any).screenTop || 0;
 
-        if (screenDetails.screens.length > 1) {
-          const currentScreen = screenDetails.currentScreen;
-          console.log('[DUAL] currentScreen', currentScreen);
+      const width = Math.max(1280, Math.round(window.screen.availWidth || 1680));
+      const height = Math.max(720, Math.round(window.screen.availHeight || 945));
 
-          // 현재 화면이 아닌 다른 화면(2번 모니터) 찾기
-          // 대표님 환경: 1번(우측, 현재), 2번(좌측, 타겟)
-          const targetScreen = screenDetails.screens.find((s: any) => s !== currentScreen) || screenDetails.screens[0];
-          console.log('[DUAL] targetScreen', targetScreen);
+      // 대표님 PC 기준: 2번 모니터는 현재 1번 모니터의 왼쪽.
+      // 현재 창이 1번 오른쪽 모니터에 있으므로, 현재 screenX에서 화면 폭만큼 왼쪽으로 보낸다.
+      const left = Math.round(currentLeft - width);
+      const top = Math.max(0, Math.round(currentTop));
 
-          if (targetScreen) {
-            const { availLeft, availTop, availWidth, availHeight } = targetScreen;
-            // 타겟 모니터의 중앙 또는 전체에 가깝게 배치 (1680x945)
-            const left = availLeft + Math.max(0, (availWidth - 1680) / 2);
-            const top = availTop + Math.max(0, (availHeight - 945) / 2);
-            features = `width=1680,height=945,left=${left},top=${top},resizable=yes,scrollbars=no`;
-            console.log('[DUAL] opening Data Wall with features', features);
-          }
-        }
+      const features = [
+        `left=${left}`,
+        `top=${top}`,
+        `width=${width}`,
+        `height=${height}`,
+        'resizable=yes',
+        'scrollbars=no',
+      ].join(',');
+
+      console.log('[DUAL] no-permission left monitor attempt:', features);
+
+      const popup = window.open(url, 'jarvis-data-wall', features);
+
+      if (popup) {
+        popup.focus();
+        setDualArmStatus('opened');
+        return true;
       }
-    } catch (err) {
-      console.error('[DUAL] Window Management API error, falling back', err);
-    }
 
-    const popup = window.open(url, 'jarvis-data-wall', features);
-    if (popup) {
-      popup.focus();
-      setDualArmStatus('opened');
+      return false;
+    } catch (error) {
+      console.warn('[DUAL] no-permission left monitor failed:', error);
+      return false;
+    }
+  };
+
+  const openDataWallWindow = async () => {
+    const url = `${window.location.origin}${window.location.pathname}?view=data-wall&mode=secondary`;
+
+    const fallbackOpen = (reason: string) => {
+      console.warn('[DUAL] fallback open:', reason);
+
+      const popup = window.open(
+        url,
+        'jarvis-data-wall',
+        'width=1680,height=945,left=80,top=60,resizable=yes,scrollbars=no'
+      );
+
+      if (popup) {
+        popup.focus();
+        setDualArmStatus('opened');
+        return true;
+      }
+
+      setDualArmStatus('blocked');
+      return false;
+    };
+
+    // 1순위: 권한 없이 대표님 PC 기준 왼쪽 2번 모니터로 먼저 열기
+    const openedOnKnownLeftMonitor = openDataWallOnKnownLeftMonitor(url);
+
+    if (openedOnKnownLeftMonitor) {
+      console.log('[DUAL] opened by no-permission left monitor strategy');
       return true;
     }
-    setDualArmStatus('blocked');
-    return false;
+
+    // 2순위: 실패 시에만 Window Management API 시도
+    try {
+      const isExtended = Boolean((window.screen as any)?.isExtended);
+      console.log('[DUAL] screen.isExtended:', isExtended);
+
+      if (!('getScreenDetails' in window)) {
+        return fallbackOpen('getScreenDetails unavailable');
+      }
+
+      const getScreenDetails = (window as any).getScreenDetails;
+
+      if (!getScreenDetails) {
+        return fallbackOpen('getScreenDetails missing');
+      }
+
+      const details = await getScreenDetails();
+
+      console.log('[DUAL] screens:', details.screens);
+      console.log('[DUAL] currentScreen:', details.currentScreen);
+
+      // 현재 화면이 아닌 다른 화면 찾기
+      const targetScreen = details.screens.find((s: any) => s !== details.currentScreen) || details.screens[0];
+
+      console.log('[DUAL] targetScreen:', targetScreen);
+
+      if (!targetScreen) {
+        return fallbackOpen('secondary screen not found');
+      }
+
+      const left = Math.round(targetScreen.availLeft);
+      const top = Math.round(targetScreen.availTop);
+      const width = Math.round(targetScreen.availWidth);
+      const height = Math.round(targetScreen.availHeight);
+
+      const features = [
+        `left=${left}`,
+        `top=${top}`,
+        `width=${width}`,
+        `height=${height}`,
+        'resizable=yes',
+        'scrollbars=no',
+      ].join(',');
+
+      console.log('[DUAL] opening Data Wall with window-management features:', features);
+
+      const popup = window.open(url, 'jarvis-data-wall', features);
+
+      if (popup) {
+        popup.focus();
+        setDualArmStatus('opened');
+        return true;
+      }
+
+      setDualArmStatus('blocked');
+      return false;
+    } catch (error) {
+      console.warn('[DUAL] Window Management placement failed:', error);
+      return fallbackOpen('window management failed');
+    }
   };
 
   const publishDualWallPayload = (payload: any) => {
