@@ -4357,6 +4357,35 @@ export default function JarvisApp() {
           setState('idle');
           return;
         }
+        // TEST 파일 4개 생성 (롯데 발주서, 로젠 발주서, 옥수수 정산서, 밤 정산서)
+        addMessage('jarvis', '📎 TEST 발주서/정산서 4개 파일 생성 중...', true);
+        const testAttachments: Array<{filename: string; content: string; contentType: string}> = [];
+        try {
+          const fileRequests = [
+            { task: 'smartstore_process_order', action: 'create_test_order', templateType: 'lotte', productType: 'oksu' },
+            { task: 'smartstore_process_order', action: 'create_test_order', templateType: 'logen', productType: 'oksu' },
+            { task: 'smartstore_process_order', action: 'create_test_settlement', productType: 'oksu' },
+            { task: 'smartstore_process_order', action: 'create_test_settlement', productType: 'bam' },
+          ];
+          for (const reqBody of fileRequests) {
+            const res = await fetch('/api/cloud-proxy', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(reqBody),
+            });
+            const data = await res.json();
+            if (data.success) {
+              if (data.orderSheet) {
+                testAttachments.push({ filename: data.orderFileName || 'TEST_발주서.xlsx', content: data.orderSheet, contentType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+              }
+              if (data.settlementSheet) {
+                testAttachments.push({ filename: data.settlementFileName || 'TEST_정산서.xlsx', content: data.settlementSheet, contentType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+              }
+            }
+          }
+        } catch (attErr: any) {
+          console.warn('TEST 파일 생성 중 오류 (발송은 계속):', attErr.message);
+        }
         const sendResult = await fetch('/api/send-email', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -4364,6 +4393,7 @@ export default function JarvisApp() {
             to: TEST_RECIPIENT,
             subject: emailDraftData.subject,
             html: emailDraftData.html,
+            attachments: testAttachments.length > 0 ? testAttachments : undefined,
           }),
         });
         const sendData = await sendResult.json();
@@ -4400,7 +4430,7 @@ export default function JarvisApp() {
               }),
             });
           } catch (e) { /* workspace save 실패해도 발송은 성공 */ }
-          addMessage('jarvis', `✅ **테스트 발송 완료**\n\n**수신자:** ${TEST_RECIPIENT}\n**제목:** ${emailDraftData.subject}\n**상태:** test_sent\n\n📊 **발송 기록:**\n• Gmail Sent Mail: 기록됨\n• Mission Log: 기록됨\n• FILE Workspace: 저장됨\n\n⚠️ 실제 유튜버 발송: 0건\n⚠️ 실제 거래처 발송: 0건\n⚠️ execute LOCKED 유지`, true);
+          addMessage('jarvis', `✅ **테스트 발송 완료**\n\n**수신자:** ${TEST_RECIPIENT}\n**제목:** ${emailDraftData.subject}\n**첨부파일:** ${testAttachments.length}개 (TEST 발주서/정산서)\n**상태:** test_sent\n\n📊 **발송 기록:**\n• Gmail Sent Mail: 기록됨\n• Mission Log: 기록됨\n• FILE Workspace: 저장됨\n• 첨부파일: ${testAttachments.map(a => a.filename).join(', ')}\n\n⚠️ 실제 유튜버 발송: 0건\n⚠️ 실제 거래처 발송: 0건\n⚠️ execute LOCKED 유지`, true);
           setClapBurst(true);
         } else {
           addMessage('jarvis', `❌ 발송 실패: ${sendData.error || '알 수 없는 오류'}\n\nexecute LOCKED 유지. 실제 유튜버 발송 0건.`, true);
