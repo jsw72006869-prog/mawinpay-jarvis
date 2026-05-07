@@ -401,3 +401,229 @@ html, body {
     display: none !important;
   }
 }
+
+/* UI-E Mission Control Visual Deck Styles */
+.ui-e-mission-deck {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 5;
+  font-family: 'Orbitron', sans-serif;
+}
+
+.ui-e-left-stack {
+  position: absolute;
+  left: 40px;
+  top: 50%;
+  transform: translateY(-50%);
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.ui-e-right-stack {
+  position: absolute;
+  right: 420px; /* ActionCard 공간 확보 */
+  top: 50%;
+  transform: translateY(-50%);
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.ui-e-card {
+  width: 260px;
+  background: rgba(6, 10, 18, 0.45);
+  border: 1px solid rgba(0, 245, 255, 0.12);
+  border-radius: 4px;
+  padding: 12px;
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  animation: uiECardEnter 0.8s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  opacity: 0;
+}
+
+.ui-e-card:nth-child(2) {
+  animation-delay: 0.2s;
+}
+
+.ui-e-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 10px;
+  border-bottom: 1px solid rgba(0, 245, 255, 0.08);
+  padding-bottom: 6px;
+}
+
+.ui-e-card-title {
+  font-size: 10px;
+  font-weight: 700;
+  color: rgba(0, 245, 255, 0.85);
+  letter-spacing: 0.12em;
+}
+
+.ui-e-card-status {
+  font-size: 8px;
+  color: rgba(226, 232, 240, 0.45);
+  padding: 2px 6px;
+  border: 1px solid rgba(226, 232, 240, 0.1);
+  border-radius: 2px;
+}
+
+.ui-e-card-status.active {
+  color: #00f5ff;
+  border-color: rgba(0, 245, 255, 0.3);
+  text-shadow: 0 0 8px rgba(0, 245, 255, 0.5);
+}
+
+.ui-e-card-body {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.ui-e-intel-row {
+  display: flex;
+  justify-content: space-between;
+  font-size: 9px;
+}
+
+.ui-e-label {
+  color: rgba(226, 232, 240, 0.35);
+}
+
+.ui-e-value {
+  color: rgba(226, 232, 240, 0.85);
+  font-weight: 600;
+}
+
+.ui-e-card-footer {
+  margin-top: 10px;
+  height: 1px;
+  background: rgba(0, 245, 255, 0.05);
+  position: relative;
+  overflow: hidden;
+}
+
+.ui-e-scan-line {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 40%;
+  height: 100%;
+  background: linear-gradient(90deg, transparent, rgba(0, 245, 255, 0.5), transparent);
+  animation: uiEScan 3s infinite linear;
+}
+
+.ui-e-orbit-arc {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%) rotateX(68deg);
+  width: 800px;
+  height: 800px;
+  border: 1px solid rgba(0, 245, 255, 0.06);
+  border-radius: 50%;
+  animation: uiEOrbitDrift 12s infinite ease-in-out;
+}
+
+.ui-e-orbit-arc.right {
+  width: 840px;
+  height: 840px;
+  border-color: rgba(200, 169, 110, 0.04);
+  animation-delay: -6s;
+  transform: translate(-50%, -50%) rotateX(68deg) rotateY(-7deg);
+}
+
+.ui-e-bottom-ribbon {
+  position: absolute;
+  left: 50%;
+  bottom: 72px;
+  transform: translateX(-50%);
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  padding: 10px 16px;
+  border: 1px solid rgba(200, 169, 110, 0.18);
+  background: rgba(6, 10, 18, 0.45);
+  border-radius: 999px;
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+}
+
+.ui-e-ribbon-pill {
+  color: rgba(226, 232, 240, 0.78);
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  white-space: nowrap;
+}
+
+.ui-e-axis-line {
+  position: absolute;
+  left: 50%;
+  bottom: 34px;
+  transform: translateX(-50%);
+  color: rgba(0, 245, 255, 0.45);
+  font-family: Orbitron, monospace;
+  font-size: 10px;
+  letter-spacing: 0.35em;
+  white-space: nowrap;
+}
+
+@keyframes uiEScan {
+  0%, 55% {
+    transform: translateX(-120%);
+  }
+  75% {
+    transform: translateX(120%);
+  }
+  100% {
+    transform: translateX(120%);
+  }
+}
+
+@keyframes uiEOrbitDrift {
+  0%, 100% {
+    transform: translate(-50%, -50%) rotateX(68deg) rotateZ(-2deg) scale(1);
+    opacity: 0.45;
+  }
+  50% {
+    transform: translate(-50%, -50%) rotateX(68deg) rotateZ(2deg) scale(1.035);
+    opacity: 0.72;
+  }
+}
+
+@keyframes uiECardEnter {
+  from {
+    opacity: 0;
+    transform: translateY(18px) rotateX(8deg);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) rotateX(0deg);
+  }
+}
+
+@media (max-width: 1280px) {
+  .ui-e-right-stack {
+    right: 360px;
+  }
+  .ui-e-card {
+    width: 230px;
+  }
+}
+
+@media (max-width: 1100px) {
+  .ui-e-left-stack,
+  .ui-e-right-stack,
+  .ui-e-orbit-arc {
+    display: none;
+  }
+  .ui-e-bottom-ribbon {
+    bottom: 86px;
+    max-width: calc(100vw - 32px);
+    overflow: hidden;
+  }
+}

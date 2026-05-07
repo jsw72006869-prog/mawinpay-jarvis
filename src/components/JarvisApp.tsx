@@ -33,6 +33,7 @@ import InfluencerOutreachPanel, { type InfluencerCandidate } from './InfluencerO
 import MarketPricePanel, { type MarketPriceResult, type MarketPriceInputData } from './MarketPricePanel';
 import CloudStatusOverlay from './CloudStatusOverlay';
 import LiveBrowserViewer from './LiveBrowserViewer';
+import MissionControlDeck from './MissionControlDeck';
 
 // ── 시그니처 응답 목록 (GPT 대기 없이 즉시 재생) ──
 const SIGNATURE_RESPONSES = [
@@ -4725,6 +4726,9 @@ export default function JarvisApp() {
     >
       {/* ── Cloud Engine Status Overlay (v5.0) ── */}
       <CloudStatusOverlay />
+
+      {/* ── UI-E Mission Control Visual Deck (Lite) ── */}
+      <MissionControlDeck />
 
       {/* ── Three.js 파티클 배경 ── */}
       <SparkleParticles state={state} audioLevel={micLevel} speakingLevel={speakingLevel} clapBurst={clapBurst} freqData={micFreqData ?? undefined} />
