@@ -198,7 +198,11 @@ export default function JarvisApp() {
   const [emailHistoryVisible, setEmailHistoryVisible] = useState(false);
   // ── Gmail Draft/승인/테스트 발송 E2E 상태 ──
   const [emailDraftState, setEmailDraftState] = useState<'idle' | 'draft_created' | 'approval_required' | 'test_send_only' | 'test_sent' | 'execute_locked'>('idle');
+  const emailDraftStateRef = useRef(emailDraftState);
+  emailDraftStateRef.current = emailDraftState;
   const [emailDraftData, setEmailDraftData] = useState<{ subject: string; html: string; to: string; toName: string; product: string } | null>(null);
+  const emailDraftDataRef = useRef(emailDraftData);
+  emailDraftDataRef.current = emailDraftData;
 
   // ── 발주서 파일 처리 상태 ──
   const [orderFileUploadVisible, setOrderFileUploadVisible] = useState(false);
@@ -4301,7 +4305,7 @@ export default function JarvisApp() {
     const emailTestSendMatch = text.match(/(테스트|test).*(수신자|발송|보내)/) || text.match(/(수신자).*(만|에게).*(보내|발송)/);
     const emailApproveMatch = text.match(/^(확인|승인|보내|발송해|ㅇㅋ|ok|OK)$/);
 
-    if (emailPrepareMatch && emailDraftState === 'idle') {
+    if (emailPrepareMatch && emailDraftStateRef.current === 'idle') {
       // Draft 생성
       emitMissionLog('📧', 'Email', '이메일 발송 준비 시작', 'thinking');
       const emailProduct = text.match(/(캠핑|복숭아|옥수수|밤|공동구매)/)?.[1] || '공동구매';
@@ -4320,15 +4324,16 @@ export default function JarvisApp() {
       return;
     }
 
-    if (emailDraftViewMatch && emailDraftState !== 'idle' && emailDraftData) {
+    if (emailDraftViewMatch && emailDraftStateRef.current !== 'idle' && emailDraftDataRef.current) {
       // 초안 미리보기
+      const draftData = emailDraftDataRef.current;
       setEmailDraftState('approval_required');
-      addMessage('jarvis', `📋 **이메일 초안 미리보기**\n\n**제목:** ${emailDraftData.subject}\n**수신자:** ${emailDraftData.to} (${emailDraftData.toName})\n**상품:** ${emailDraftData.product} 공동구매\n**상태:** approval_required\n\n---\n\n이메일 본문은 JARVIS 시그니처 디자인 HTML 템플릿입니다.\n\n⚠️ **보호 조건:**\n• 수신자: jungsng805@naver.com 1명만\n• 실제 유튜버 발송: 0건\n• 실제 거래처 발송: 0건\n• 승인 전 발송: 차단\n\n💡 "테스트 수신자에게만 제안 메일 보내줘"로 발송 요청 가능`, true);
+      addMessage('jarvis', `📋 **이메일 초안 미리보기**\n\n**제목:** ${draftData.subject}\n**수신자:** ${draftData.to} (${draftData.toName})\n**상품:** ${draftData.product} 공동구매\n**상태:** approval_required\n\n---\n\n이메일 본문은 JARVIS 시그니처 디자인 HTML 템플릿입니다.\n\n⚠️ **보호 조건:**\n• 수신자: jungsng805@naver.com 1명만\n• 실제 유튜버 발송: 0건\n• 실제 거래처 발송: 0건\n• 승인 전 발송: 차단\n\n💡 "테스트 수신자에게만 제안 메일 보내줘"로 발송 요청 가능`, true);
       setState('idle');
       return;
     }
 
-    if (emailTestSendMatch && (emailDraftState === 'draft_created' || emailDraftState === 'approval_required') && emailDraftData) {
+    if (emailTestSendMatch && (emailDraftStateRef.current === 'draft_created' || emailDraftStateRef.current === 'approval_required') && emailDraftDataRef.current) {
       // 승인 UI 표시 - 바로 발송하지 않음
       setEmailDraftState('test_send_only');
       setApprovalPreview(buildApprovalPreview({
@@ -4350,7 +4355,7 @@ export default function JarvisApp() {
       return;
     }
 
-    if (emailApproveMatch && emailDraftState === 'test_send_only' && emailDraftData) {
+    if (emailApproveMatch && emailDraftStateRef.current === 'test_send_only' && emailDraftDataRef.current) {
       // 승인 후 테스트 수신자 1명에게만 실제 발송
       emitMissionLog('📧', 'Email', '대표님 승인 확인 - 테스트 발송 실행', 'active');
       setState('working');
