@@ -303,7 +303,8 @@ export default function JarvisApp() {
   const DUAL_OPENING_STORAGE_KEY = 'jarvis.dualWall.opening';
   const [dualScreenArmed, setDualScreenArmed] = useState(false);
   const [dualOpeningActive, setDualOpeningActive] = useState(false);
-  const [dualArmStatus, setDualArmStatus] = useState<'idle' | 'armed' | 'opened' | 'blocked'>('idle');
+  const [dualArmStatus, setDualArmStatus] = useState<'idle' | 'armed' | 'opened' | 'blocked' | 'linked'>('idle');
+  const dataWallPopupRef = useRef<Window | null>(null);
   const [currentTime, setCurrentTime] = useState('');
   const [currentDate, setCurrentDate] = useState('');
   const [voiceListVisible, setVoiceListVisible] = useState(false);
@@ -428,6 +429,12 @@ export default function JarvisApp() {
 
   // ── UI-J Dual Screen Helper Functions ──
   const openDataWallOnKnownLeftMonitor = (url: string) => {
+    // UI-P: 중복 방지 — 기존 창이 열려있으면 focus만
+    if (dataWallPopupRef.current && !dataWallPopupRef.current.closed) {
+      dataWallPopupRef.current.focus();
+      setDualArmStatus('linked');
+      return true;
+    }
     try {
       const currentLeft = typeof window.screenX === 'number' ? window.screenX : (window as any).screenLeft || 0;
       const currentTop = typeof window.screenY === 'number' ? window.screenY : (window as any).screenTop || 0;
@@ -454,8 +461,9 @@ export default function JarvisApp() {
       const popup = window.open(url, 'jarvis-data-wall', features);
 
       if (popup) {
+        dataWallPopupRef.current = popup;
         popup.focus();
-        setDualArmStatus('opened');
+        setDualArmStatus('linked');
         return true;
       }
 
@@ -471,7 +479,12 @@ export default function JarvisApp() {
 
     const fallbackOpen = (reason: string) => {
       console.warn('[DUAL] fallback open:', reason);
-
+      // UI-P: 중복 방지
+      if (dataWallPopupRef.current && !dataWallPopupRef.current.closed) {
+        dataWallPopupRef.current.focus();
+        setDualArmStatus('linked');
+        return true;
+      }
       const popup = window.open(
         url,
         'jarvis-data-wall',
@@ -479,8 +492,9 @@ export default function JarvisApp() {
       );
 
       if (popup) {
+        dataWallPopupRef.current = popup;
         popup.focus();
-        setDualArmStatus('opened');
+        setDualArmStatus('linked');
         return true;
       }
 
@@ -544,8 +558,9 @@ export default function JarvisApp() {
       const popup = window.open(url, 'jarvis-data-wall', features);
 
       if (popup) {
+        dataWallPopupRef.current = popup;
         popup.focus();
-        setDualArmStatus('opened');
+        setDualArmStatus('linked');
         return true;
       }
 
@@ -590,7 +605,7 @@ export default function JarvisApp() {
     if (!opened) {
       setDualArmStatus('blocked');
     } else {
-      setDualArmStatus('armed');
+      setDualArmStatus('linked');
     }
   };
 
@@ -7731,6 +7746,7 @@ export default function JarvisApp() {
         {dualArmStatus !== 'idle' && (
           <span className={`jarvis-dual-arm-status status-${dualArmStatus}`}>
             {dualArmStatus === 'armed' && '2ND SCREEN READY'}
+            {dualArmStatus === 'linked' && 'LINKED'}
             {dualArmStatus === 'opened' && 'WINDOW OPENED'}
             {dualArmStatus === 'blocked' && 'POPUP BLOCKED'}
           </span>

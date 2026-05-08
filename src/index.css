@@ -1908,6 +1908,34 @@ html, body {
   font-weight: 900;
   letter-spacing: 0.12em;
 }
+.jarvis-dual-arm-status.status-linked {
+  border-color: rgba(0, 255, 170, 0.4);
+  color: rgba(0, 255, 170, 0.95);
+  box-shadow: 0 0 12px rgba(0, 255, 170, 0.2);
+}
+
+/* UI-P: 2번 화면 Linked 상태 */
+.dw-header-status.is-linked {
+  color: rgba(0, 255, 170, 0.95);
+  text-shadow: 0 0 8px rgba(0, 255, 170, 0.4);
+}
+
+/* UI-P: Top 5 Queue 강조 */
+.dw-intel-card.is-top5 {
+  border-color: rgba(0, 245, 255, 0.3);
+  box-shadow: 0 0 8px rgba(0, 245, 255, 0.1);
+}
+
+/* UI-P: Queue 카드 클릭 커서 */
+.dw-intel-card {
+  cursor: pointer;
+  transition: border-color 0.3s, box-shadow 0.3s, transform 0.2s;
+}
+.dw-intel-card:hover {
+  border-color: rgba(0, 255, 170, 0.5);
+  box-shadow: 0 0 14px rgba(0, 255, 170, 0.15);
+  transform: translateX(-2px);
+}
 
 /* UI-J main monitor split opening */
 .jarvis-dual-opening-overlay {

@@ -154,6 +154,7 @@ const DataWallView: React.FC = () => {
   const [openingActive, setOpeningActive] = useState(false);
   const [systemArmed, setSystemArmed] = useState(false);
   const [realCandidates, setRealCandidates] = useState<RealIntelCandidate[]>([]);
+  const [heroIndex, setHeroIndex] = useState(0); // UI-P: Hero 승격용 인덱스
   const openingTimerRef = useRef<number | null>(null);
 
   /* ─── Read real candidates from localStorage ─── */
@@ -236,10 +237,14 @@ const DataWallView: React.FC = () => {
     };
   }, []);
 
-  /* ─── Derived data ─── */
+  /* ─── Derived data (UI-P: Top 5 + Queue 정렬) ─── */
   const hasRealData = realCandidates.length > 0;
-  const heroCandidate = hasRealData ? realCandidates[0] : null;
-  const queueCandidates = hasRealData ? realCandidates.slice(1, 11) : [];
+  // UI-P: heroIndex로 선택된 후보가 Hero, 나머지가 Queue
+  const safeHeroIndex = hasRealData ? Math.min(heroIndex, realCandidates.length - 1) : 0;
+  const heroCandidate = hasRealData ? realCandidates[safeHeroIndex] : null;
+  const queueCandidates = hasRealData
+    ? realCandidates.filter((_, idx) => idx !== safeHeroIndex).slice(0, 10)
+    : [];
 
   /* ─── Category distribution for radar ─── */
   const categoryMap: Record<string, number> = {};
@@ -274,8 +279,8 @@ const DataWallView: React.FC = () => {
           <h1 className="dw-header-title">STRATEGIC HOLOGRAM STAGE</h1>
         </div>
         <div className="dw-header-right">
-          <span className="dw-header-status">JARVIS ONLINE</span>
-          <span className="dw-header-sub">SYSTEM AWAKENING</span>
+          <span className={`dw-header-status ${systemArmed ? 'is-linked' : ''}`}>{systemArmed ? 'LINKED' : 'JARVIS ONLINE'}</span>
+          <span className="dw-header-sub">{systemArmed ? 'DUAL SCREEN ACTIVE' : 'SYSTEM AWAKENING'}</span>
         </div>
       </header>
       {/* ─── Main Grid ─── */}
@@ -408,21 +413,21 @@ const DataWallView: React.FC = () => {
                 </div>
               </div>
             ) : (
-              /* ─── Empty State: No Real Candidates ─── */
+              /* ─── Empty State: UI-P 정리 ─── */
               <div className="dw-hero-intel-card dw-empty-intel-state v2-upgrade">
                 <div className="dw-hero-thumb-wrap">
                   <div className="dw-hero-thumb">
                     <div className="dw-cinematic-thumb-fallback" />
-                    <span className="dw-hero-thumb-caption">AWAITING DATA</span>
+                    <span className="dw-hero-thumb-caption">AWAITING INTEL</span>
                   </div>
                 </div>
                 <div className="dw-hero-body">
-                  <h2 className="dw-hero-title">후보 데이터 대기 중</h2>
-                  <p className="dw-hero-reason">OUTREACH에서 후보를 수집하면 이 영역에 실제 채널/영상 후보가 표시됩니다.</p>
+                  <h2 className="dw-hero-title">INTEL STANDBY</h2>
+                  <p className="dw-hero-reason">수집된 후보가 없습니다. 1번 화면에서 OUTREACH 수집을 실행하세요.</p>
                   <div className="dw-hero-stats-grid">
                     <div className="dw-hero-stat">
                       <span className="dw-stat-key">STATUS</span>
-                      <span className="dw-stat-val">STANDBY</span>
+                      <span className="dw-stat-val">{systemArmed ? 'LINKED' : 'STANDBY'}</span>
                     </div>
                   </div>
                 </div>
@@ -439,9 +444,14 @@ const DataWallView: React.FC = () => {
                 queueCandidates.map((card, idx) => (
                   <div
                     key={card.contextId}
-                    className={`dw-intel-card ${openingActive ? 'is-docking' : ''}`}
+                    className={`dw-intel-card ${openingActive ? 'is-docking' : ''} ${idx < 4 ? 'is-top5' : ''}`}
                     style={{ '--i': idx } as React.CSSProperties}
                     data-context-id={card.contextId}
+                    onClick={() => {
+                      // UI-P: 클릭 시 Hero 승격
+                      const realIdx = realCandidates.findIndex(c => c.contextId === card.contextId);
+                      if (realIdx >= 0) setHeroIndex(realIdx);
+                    }}
                   >
                     <div className="dw-intel-thumb">
                       {card.channelAvatarUrl ? (
@@ -466,8 +476,8 @@ const DataWallView: React.FC = () => {
                 ))
               ) : (
                 <div className="dw-empty-intel-state">
-                  <p>수집된 후보가 없습니다.</p>
-                  <p style={{ fontSize: '11px', opacity: 0.6 }}>키워드 기반 수집을 실행하면 실제 후보가 이곳에 표시됩니다.</p>
+                  <p>AWAITING INTEL</p>
+                  <p style={{ fontSize: '11px', opacity: 0.6 }}>1번 화면에서 수집 실행 시 표시됩니다.</p>
                 </div>
               )}
             </div>
