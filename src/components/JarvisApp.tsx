@@ -395,7 +395,8 @@ export default function JarvisApp() {
   const [coreDimLevel, setCoreDimLevel] = useState(0); // 0=정상, 1=최대감소
   const isDataWallView =
     typeof window !== 'undefined' &&
-    new URLSearchParams(window.location.search).get('view') === 'data-wall';
+    (new URLSearchParams(window.location.search).get('view') === 'data-wall' || 
+     new URLSearchParams(window.location.search).get('view') === 'datawall');
   const [marketIntelVisible, setMarketIntelVisible] = useState(false);
   const [marketChartVisible, setMarketChartVisible] = useState(false);
   const [marketChartData, setMarketChartData] = useState<any>(null);

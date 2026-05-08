@@ -118,6 +118,39 @@ function normalizeIntelCandidate(item: any, index: number): RealIntelCandidate {
     if (match) videoId = match[1];
   }
 
+  // Enhanced Image Mapping
+  const profileImage =
+    item.profileImageUrl ||
+    item.profileImage ||
+    item.avatarUrl ||
+    item.avatar ||
+    item.channelAvatarUrl ||
+    item.channelAvatar ||
+    item.channelThumbnailUrl ||
+    item.channelThumbnail ||
+    item.profileUrl ||
+    item.snippet?.thumbnails?.default?.url ||
+    item.snippet?.thumbnails?.medium?.url ||
+    item.thumbnails?.default?.url ||
+    item.thumbnails?.medium?.url ||
+    undefined;
+
+  const youtubeThumbnailFromId = videoId ? `https://img.youtube.com/vi/${videoId}/hqdefault.jpg` : undefined;
+
+  const thumbnailUrl =
+    item.thumbnailUrl ||
+    item.thumbnail ||
+    item.imageUrl ||
+    item.videoThumbnailUrl ||
+    item.videoThumbnail ||
+    youtubeThumbnailFromId ||
+    item.snippet?.thumbnails?.high?.url ||
+    item.snippet?.thumbnails?.medium?.url ||
+    item.thumbnails?.high?.url ||
+    item.thumbnails?.medium?.url ||
+    profileImage ||
+    undefined;
+
   return {
     contextId: String(item.candidateId || item.channelId || item.id || `candidate-${index + 1}`),
     type: candidateType,
@@ -127,8 +160,8 @@ function normalizeIntelCandidate(item: any, index: number): RealIntelCandidate {
     source: item.platform || item.source || undefined,
     platform,
     recentVideoTitle: item.recentContentTitle || item.topVideoTitle || item.recentVideoTitle || undefined,
-    thumbnailUrl: item.thumbnailUrl || item.thumbnail || item.imageUrl || item.videoThumbnail || undefined,
-    channelAvatarUrl: item.channelAvatarUrl || item.avatarUrl || item.profileImageUrl || item.profileUrl || item.channelThumbnail || undefined,
+    thumbnailUrl,
+    channelAvatarUrl: profileImage || thumbnailUrl,
     subscriberText,
     viewsText,
     contactStatus,
@@ -397,12 +430,27 @@ const DataWallView: React.FC = () => {
               /* ─── Real Hero Intel Card ─── */
               <div className={`dw-hero-intel-card ${openingActive ? 'is-docking' : ''} dw-q1-hero`}>
                 {/* Hero Media Area */}
-                <div className="dw-hero-media">
+                  <div className="dw-hero-media">
                   <div className="dw-hero-thumb-wrap">
                     {heroCandidate.thumbnailUrl ? (
-                      <img src={heroCandidate.thumbnailUrl} alt="" className="dw-hero-thumb-img" onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
+                      <img 
+                        src={heroCandidate.thumbnailUrl} 
+                        alt="" 
+                        className="dw-hero-thumb-img" 
+                        referrerPolicy="no-referrer"
+                        onError={(e) => { 
+                          const target = e.target as HTMLImageElement;
+                          target.style.display = 'none';
+                          target.parentElement?.classList.add('is-image-failed');
+                        }} 
+                      />
                     ) : (
-                      <div className="dw-hero-thumb-fallback" />
+                      <div className="dw-hero-thumb-fallback">
+                        <div className="dw-fallback-visual">
+                          <span className="dw-fallback-letter">{(heroCandidate.channelName || heroCandidate.title || '?')[0]}</span>
+                          <span className="dw-fallback-label">VISUAL SIGNAL PENDING</span>
+                        </div>
+                      </div>
                     )}
                     <div className="dw-hero-thumb-overlay" />
                     <div className="dw-hero-scanline" />
@@ -424,10 +472,19 @@ const DataWallView: React.FC = () => {
                   <div className="dw-hero-header-row">
                     <div className="dw-hero-avatar">
                       {heroCandidate.channelAvatarUrl ? (
-                        <img src={heroCandidate.channelAvatarUrl} alt="" className="dw-hero-avatar-img" onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
-                      ) : (
-                        <span className="dw-channel-orb">{(heroCandidate.channelName || '?')[0]}</span>
-                      )}
+                        <img 
+                          src={heroCandidate.channelAvatarUrl} 
+                          alt="" 
+                          className="dw-hero-avatar-img" 
+                          referrerPolicy="no-referrer"
+                          onError={(e) => { 
+                            const target = e.target as HTMLImageElement;
+                            target.style.display = 'none';
+                            target.parentElement?.classList.add('is-image-failed');
+                          }} 
+                        />
+                      ) : null}
+                      <span className="dw-channel-orb">{(heroCandidate.channelName || '?')[0]}</span>
                     </div>
                     <div className="dw-hero-channel-info">
                       <span className="dw-hero-channel-name">{heroCandidate.channelName || '채널명 미확인'}</span>
@@ -516,10 +573,19 @@ const DataWallView: React.FC = () => {
                   >
                     <div className="dw-film-thumb">
                       {card.thumbnailUrl || card.channelAvatarUrl ? (
-                        <img src={card.thumbnailUrl || card.channelAvatarUrl} alt="" className="dw-film-img" onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
-                      ) : (
-                        <span className="dw-channel-orb dw-film-orb">{(card.channelName || '?')[0]}</span>
-                      )}
+                        <img 
+                          src={card.thumbnailUrl || card.channelAvatarUrl} 
+                          alt="" 
+                          className="dw-film-img" 
+                          referrerPolicy="no-referrer"
+                          onError={(e) => { 
+                            const target = e.target as HTMLImageElement;
+                            target.style.display = 'none';
+                            target.parentElement?.classList.add('is-image-failed');
+                          }} 
+                        />
+                      ) : null}
+                      <span className="dw-channel-orb dw-film-orb">{(card.channelName || card.title || '?')[0]}</span>
                       <span className={`dw-film-platform dw-plat-${(card.platform || 'youtube').toLowerCase()}`}>{card.platform?.charAt(0) || 'Y'}</span>
                     </div>
                     <div className="dw-film-info">
@@ -559,12 +625,21 @@ const DataWallView: React.FC = () => {
                         if (realIdx >= 0) setHeroIndex(realIdx);
                       }}
                     >
-                      <div className="dw-intel-thumb">
+                        <div className="dw-intel-thumb">
                         {card.channelAvatarUrl ? (
-                          <img src={card.channelAvatarUrl} alt="" className="dw-intel-avatar-img" onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
-                        ) : (
-                          <span className="dw-channel-orb">{(card.channelName || '?')[0]}</span>
-                        )}
+                          <img 
+                            src={card.channelAvatarUrl} 
+                            alt="" 
+                            className="dw-intel-avatar-img" 
+                            referrerPolicy="no-referrer"
+                            onError={(e) => { 
+                              const target = e.target as HTMLImageElement;
+                              target.style.display = 'none';
+                              target.parentElement?.classList.add('is-image-failed');
+                            }} 
+                          />
+                        ) : null}
+                        <span className="dw-channel-orb">{(card.channelName || card.title || '?')[0]}</span>
                       </div>
                       <div className="dw-intel-body">
                         <div className="dw-intel-title">{card.channelName || card.title}</div>
