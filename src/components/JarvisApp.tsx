@@ -37,6 +37,16 @@ import MissionControlDeck from './MissionControlDeck';
 import DataWallView from './DataWallView';
 import ResultDeck from './ResultDeck';
 
+interface ContextRegistryItem {
+  id: string;
+  type: 'youtube_channel' | 'youtube_video' | 'blog' | 'influencer' | 'unknown';
+  title: string;
+  channelName?: string;
+  keywords?: string[];
+  position: string;
+  lastUpdated?: string;
+}
+
 // ── 시그니처 응답 목록 (GPT 대기 없이 즉시 재생) ──
 const SIGNATURE_RESPONSES = [
   'Good evening, Mr. Stark. All systems are online and fully operational.',
@@ -140,7 +150,7 @@ type JarvisScene =
   | 'error';
 
 function inferJarvisSceneFromCommand(input: string): JarvisScene {
-  const text = String(input || '').toLowerCase().replace(/\s+/g, '');
+  const text = (String(input || '') || '').toLowerCase().replace(/\s+/g, '');
 
   if (!text) return 'standby';
 
@@ -256,9 +266,37 @@ export default function JarvisApp() {
   }>({ visible: false, type: null, progress: 0, message: '' });
   const [stats, setStats] = useState({ collected: 247, emailsSent: 183, responseRate: 23.5, contracts: 4 });
   const [bannerImage, setBannerImage] = useState<string | null>(null);
+  const [contextRegistry, setContextRegistry] = useState<ContextRegistryItem[]>([]);
+  const [spotlightItem, setSpotlightItem] = useState<ContextRegistryItem | null>(null);
+
+
+
+
   const [schedules, setSchedules] = useState<{ task: string; time: string }[]>([]);
+
+  useEffect(() => {
+    const handleStorageChange = () => {
+      try {
+        const rawRegistry = localStorage.getItem("jarvis.contextRegistry");
+        if (rawRegistry) {
+          setContextRegistry(JSON.parse(rawRegistry));
+        }
+      } catch (error) {
+        console.error("Failed to parse context registry from localStorage", error);
+      }
+    };
+
+    window.addEventListener("storage", handleStorageChange);
+    handleStorageChange(); // Initial load
+
+    return () => {
+      window.removeEventListener("storage", handleStorageChange);
+    };
+  }, []);
   const [isInitialized, setIsInitialized] = useState(false);
   const [showHint, setShowHint] = useState(false);
+
+
   // ── UI-J Dual Screen Opening ──
   const DUAL_WALL_CHANNEL = 'jarvis-dual-command-wall';
   const DUAL_WALL_STORAGE_KEY = 'jarvis.dualWall.latest';
@@ -5183,7 +5221,12 @@ export default function JarvisApp() {
     if (blocks.length < 2) {
       blocks = lines
         .filter((line) => {
-          if (/^(후킹\s*문구|스레드\s*글|릴스\s*스크립트|카카오톡\s*공지문|제목|요약|추천|상태|장면)/i.test(line)) return false;
+          // 섹션 제목 필터링: 한글 섹션 제목, 마크다운 헤더, 특수 기호 제목 등
+          if (/^(후킹\s*문구|스레드\s*글|릴스\s*스크립트|카카오톡\s*공지문|제목|요약|추천|상태|장면|마케팅|콘텐츠|대본|공지문|광고|카피|문구|릴스|인스타|스토리|영상|채널|분석)/i.test(line)) return false;
+          if (/^#{1,3}\s+/.test(line)) return false; // 마크다운 헤더
+          if (/^【.+?】$/.test(line)) return false; // 【 】 형식
+          if (/^──\s*.+?\s*──$/.test(line)) return false; // ── 형식
+          if (/^\*\*.+?\*\*$/.test(line)) return false; // ** 형식
           if (line.length < 8) return false;
           return true;
         })
