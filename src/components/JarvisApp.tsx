@@ -370,6 +370,7 @@ export default function JarvisApp() {
   const [resultDeckContent, setResultDeckContent] = useState('');
   const [resultDeckType, setResultDeckType] = useState('');
   const [resultDeckProduct, setResultDeckProduct] = useState('');
+  const [resultDeckItems, setResultDeckItems] = useState<any[]>([]);
   // ── SSoT: 스마트스토어 데이터 캐시 (5분 유효) ──
   const ssCountsCacheRef = useRef<{ data: any; fetchedAt: number } | null>(null);
 
@@ -2803,14 +2804,21 @@ export default function JarvisApp() {
           emitMissionLog('✅', 'CREATIVE', `${product || '제품'} 콘텐츠 생성 완료`, 'success');
           emitMissionLog('⏳', 'JARVIS', '대표님 선택 대기 중', 'thinking');
 
+          // UI-O.1: 요청 개수 추출 및 결과 분리
+          const requestedCount = extractRequestedCount(userMessage);
+          const items = splitCreativeResultItems(creativeResult, requestedCount);
+
           // 메시지 표시 → Result Deck으로 분리 (UI-O)
           const summaryMsg = `${product || '제품'} ${contentType === 'script' ? '릴스 대본' : contentType === 'headcopy' ? '후킹 문구' : contentType === 'storytelling' ? '스토리텔링 콘텐츠' : '마케팅 콘텐츠'}를 생성했습니다. Result Deck에서 확인해 주십시오.`;
           addMessage('jarvis', summaryMsg, true);
+          
           // Result Deck 활성화
           setResultDeckVisible(true);
           setResultDeckContent(creativeResult);
           setResultDeckType(contentType);
           setResultDeckProduct(product || '');
+          setResultDeckItems(items);
+          
           setState('speaking');
           startSpeakingLevel();
           // TTS 비동기 (요약만 읍음)
@@ -5122,10 +5130,80 @@ export default function JarvisApp() {
 
   const accent = STATE_COLOR[state];
 
+  // UI-O.1: 요청 개수 추출 함수
+  function extractRequestedCount(command?: string): number | null {
+    if (!command || typeof command !== 'string') return null;
+    const text = command.trim();
+    const digitMatch = text.match(/(\d+)\s*(개|가지|문장|문구|버전|안)/);
+    if (digitMatch?.[1]) {
+      const count = Number(digitMatch[1]);
+      if (Number.isFinite(count) && count > 0 && count <= 20) return count;
+    }
+    const koreanMap: Record<string, number> = {
+      하나: 1, 한: 1, 두: 2, 둘: 2, 세: 3, 셋: 3, 네: 4, 넷: 4, 다섯: 5, 여섯: 6, 일곱: 7, 여덟: 8, 아홉: 9, 열: 10,
+    };
+    for (const [word, value] of Object.entries(koreanMap)) {
+      if (text.includes(`${word} 개`) || text.includes(`${word}개`) || text.includes(`${word} 가지`) || text.includes(`${word}가지`)) {
+        return value;
+      }
+    }
+    return null;
+  }
+
+  // UI-O.1: 결과 텍스트 분리 함수
+  function splitCreativeResultItems(text: string, requestedCount?: number | null): any[] {
+    if (!text || typeof text !== 'string') return [];
+    const normalized = text.replace(/\r\n/g, '\n').trim();
+    const lines = normalized.split('\n').map((line) => line.trim()).filter(Boolean);
+
+    // 1) 번호형 결과: 1. / 1) / ① / [1]
+    const numberedBlocks: string[] = [];
+    let current: string[] = [];
+    for (const line of lines) {
+      const isNewNumbered = /^(\d+[\).\s]|[\[]\d+[\]]|[①②③④⑤⑥⑦⑧⑨⑩])/.test(line);
+      if (isNewNumbered) {
+        if (current.length) numberedBlocks.push(current.join('\n').trim());
+        current = [line.replace(/^(\d+[\).\s]|[\[]\d+[\]]|[①②③④⑤⑥⑦⑧⑨⑩])\s*/, '').trim()];
+      } else if (current.length) {
+        current.push(line);
+      }
+    }
+    if (current.length) numberedBlocks.push(current.join('\n').trim());
+
+    // 2) 불릿형 결과
+    const bulletBlocks = lines
+      .filter((line) => /^[-•*]\s+/.test(line))
+      .map((line) => line.replace(/^[-•*]\s+/, '').trim())
+      .filter(Boolean);
+
+    // 3) 후보 선택
+    let blocks = numberedBlocks.length >= 2 ? numberedBlocks : bulletBlocks;
+
+    // 4) 번호/불릿이 부족하면 섹션 내부의 짧은 문장 후보 추출
+    if (blocks.length < 2) {
+      blocks = lines
+        .filter((line) => {
+          if (/^(후킹\s*문구|스레드\s*글|릴스\s*스크립트|카카오톡\s*공지문|제목|요약|추천|상태|장면)/i.test(line)) return false;
+          if (line.length < 8) return false;
+          return true;
+        })
+        .slice(0, requestedCount || 6);
+    }
+
+    const limit = requestedCount || Math.min(blocks.length, 6);
+    return blocks.slice(0, limit).map((body, index) => ({
+      id: `result-${Date.now()}-${index}`,
+      title: `${index + 1}번 결과`,
+      body,
+      tone: index === 0 ? '추천안' : '변형안',
+      format: '마케팅 결과',
+      scoreLabel: index === 0 ? 'PRIORITY' : undefined,
+    }));
+  }
+
   if (isDataWallView) {
     return <DataWallView />;
   }
-
   return (
     <main
       style={{ position: 'fixed', inset: 0, overflow: 'hidden', background: `${THEME.bg} repeating-linear-gradient(0deg, transparent, transparent 60px, rgba(0,245,255,0.012) 60px, rgba(0,245,255,0.012) 61px), repeating-linear-gradient(90deg, transparent, transparent 60px, rgba(0,245,255,0.012) 60px, rgba(0,245,255,0.012) 61px)`, cursor: typeof window !== 'undefined' && ('ontouchstart' in window || navigator.maxTouchPoints > 0) ? 'auto' : 'none' }}
@@ -5553,6 +5631,7 @@ export default function JarvisApp() {
         content={resultDeckContent}
         contentType={resultDeckType}
         product={resultDeckProduct}
+        items={resultDeckItems}
         onDismiss={() => setResultDeckVisible(false)}
         onCopy={() => {}}
         onSaveToWorkspace={() => {

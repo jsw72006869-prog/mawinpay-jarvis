@@ -1,26 +1,28 @@
 /**
- * ResultDeck.tsx — UI-O Result Deck Separation v1
+ * ResultDeck.tsx — UI-O.1 Result Deck Multi-Item Parser Fix
  *
  * Creative Director / 마케팅 콘텐츠 결과를 채팅창에서 분리하여
  * 1번 화면 좌측에 시네마틱 패널로 표시하는 컴포넌트.
- *
- * Props:
- *  - visible: boolean
- *  - content: string (마크다운/텍스트 결과)
- *  - contentType: string (headcopy | script | storytelling | full_package | etc.)
- *  - product: string
- *  - onDismiss: () => void
- *  - onCopy: () => void
- *  - onSaveToWorkspace: () => void
+ * 다중 아이템(items) 지원 및 렌더링 보정.
  */
 import { useEffect, useState, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
+
+export interface ResultItem {
+  id: string;
+  title: string;
+  body: string;
+  tone?: string;
+  format?: string;
+  scoreLabel?: string;
+}
 
 export interface ResultDeckProps {
   visible: boolean;
   content: string;
   contentType: string;
   product: string;
+  items?: ResultItem[];
   onDismiss: () => void;
   onCopy: () => void;
   onSaveToWorkspace: () => void;
@@ -39,7 +41,7 @@ function getTypeLabel(type: string): string {
   }
 }
 
-// 콘텐츠를 섹션별로 파싱
+// 콘텐츠를 섹션별로 파싱 (items가 없을 때 fallback)
 function parseSections(content: string): { title: string; body: string }[] {
   const lines = content.split('\n');
   const sections: { title: string; body: string }[] = [];
@@ -47,7 +49,6 @@ function parseSections(content: string): { title: string; body: string }[] {
   let currentBody: string[] = [];
 
   for (const line of lines) {
-    // 마크다운 헤더 또는 【】 또는 ── 형식 감지
     const headerMatch = line.match(/^#{1,3}\s+(.+)/) ||
       line.match(/^【(.+?)】/) ||
       line.match(/^──\s*(.+?)\s*──/) ||
@@ -75,6 +76,7 @@ export default function ResultDeck({
   content,
   contentType,
   product,
+  items = [],
   onDismiss,
   onCopy,
   onSaveToWorkspace,
@@ -92,15 +94,22 @@ export default function ResultDeck({
     }
   }, [visible]);
 
-  const handleCopy = () => {
-    navigator.clipboard.writeText(content).catch(() => {});
+  const handleCopy = (text?: string) => {
+    navigator.clipboard.writeText(text || content).catch(() => {});
     setCopied(true);
     onCopy();
     setTimeout(() => setCopied(false), 2000);
   };
 
-  const sections = parseSections(content);
   const typeLabel = getTypeLabel(contentType);
+  const displayItems = items.length > 0 
+    ? items 
+    : parseSections(content).map((s, i) => ({
+        id: `fallback-${i}`,
+        title: s.title || `${i + 1}번 결과`,
+        body: s.body,
+        tone: i === 0 ? '추천안' : '변형안'
+      }));
 
   return (
     <AnimatePresence>
@@ -119,8 +128,8 @@ export default function ResultDeck({
               {product && <span className="result-deck-product">{product}</span>}
             </div>
             <div className="result-deck-header-right">
-              <button className="result-deck-btn" onClick={handleCopy}>
-                {copied ? '✓ 복사됨' : '복사'}
+              <button className="result-deck-btn" onClick={() => handleCopy()}>
+                {copied ? '✓ 복사됨' : '전체 복사'}
               </button>
               <button className="result-deck-btn" onClick={onSaveToWorkspace}>
                 저장
@@ -134,24 +143,36 @@ export default function ResultDeck({
           {/* Content */}
           <div className="result-deck-body" ref={scrollRef}>
             <AnimatePresence>
-              {showContent && sections.map((section, idx) => (
+              {showContent && displayItems.map((item, idx) => (
                 <motion.div
-                  key={idx}
+                  key={item.id || idx}
                   className="result-deck-section"
                   initial={{ opacity: 0, y: 20, scale: 0.97 }}
                   animate={{ opacity: 1, y: 0, scale: 1 }}
-                  transition={{ delay: idx * 0.12, duration: 0.4, ease: [0.22, 1, 0.36, 1] }}
+                  transition={{ delay: idx * 0.1, duration: 0.4, ease: [0.22, 1, 0.36, 1] }}
                 >
-                  {section.title && (
-                    <div className="result-deck-section-title">{section.title}</div>
-                  )}
+                  <div className="result-deck-section-header">
+                    <div className="result-deck-section-title">
+                      {item.title}
+                      {item.tone && <span className="result-deck-tone-badge">{item.tone}</span>}
+                    </div>
+                    <button className="result-deck-item-copy" onClick={() => handleCopy(item.body)}>
+                      복사
+                    </button>
+                  </div>
                   <div className="result-deck-section-body">
-                    {section.body.split('\n').map((line, i) => (
+                    {item.body.split('\n').map((line, i) => (
                       <p key={i} className={line.startsWith('-') || line.startsWith('•') ? 'result-deck-bullet' : ''}>
                         {line}
                       </p>
                     ))}
                   </div>
+                  {item.scoreLabel && (
+                    <div className="result-deck-item-score">
+                      <span className="score-label">{item.scoreLabel}</span>
+                      <div className="score-bar"><div className="score-fill" style={{ width: '100%' }}></div></div>
+                    </div>
+                  )}
                 </motion.div>
               ))}
             </AnimatePresence>
