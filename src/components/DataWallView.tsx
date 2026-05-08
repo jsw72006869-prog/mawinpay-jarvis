@@ -1,8 +1,11 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 const WALL_CHANNEL = 'jarvis-dual-command-wall';
 const WALL_STORAGE_KEY = 'jarvis.dualWall.latest';
 const DUAL_OPENING_STORAGE_KEY = 'jarvis.dualWall.opening';
 const SMARTSTORE_SNAPSHOT_KEY = 'jarvis.smartstore.lastStatusSnapshot';
+const INFLUENCER_STORAGE_KEY = 'jarvis-collected-influencers';
+
+/* ─── Types ─── */
 interface WallPayload {
   type?: string;
   source?: string;
@@ -25,6 +28,97 @@ interface SmartstoreSnapshot {
   fetchedAt: number;
   savedAt: number;
 }
+
+/* ─── Real Intel Candidate Type ─── */
+type RealIntelCandidate = {
+  contextId: string;
+  type: 'youtube_channel' | 'youtube_video' | 'blog' | 'influencer' | 'unknown';
+  title: string;
+  channelName?: string;
+  category?: string;
+  source?: string;
+  recentVideoTitle?: string;
+  thumbnailUrl?: string;
+  channelAvatarUrl?: string;
+  subscriberText?: string;
+  viewsText?: string;
+  contactStatus: 'contactable' | 'unknown' | 'none' | 'review';
+  fitScore?: number;
+  reason?: string;
+  keywords?: string[];
+  lastUpdated?: string;
+  raw?: unknown;
+};
+
+/* ─── Normalize Function ─── */
+function normalizeIntelCandidate(item: any, index: number): RealIntelCandidate {
+  const title =
+    item.title ||
+    item.videoTitle ||
+    item.recentContentTitle ||
+    item.recentVideoTitle ||
+    item.channelTitle ||
+    item.channelName ||
+    item.name ||
+    item.topVideoTitle ||
+    `후보 ${index + 1}`;
+
+  const channelName =
+    item.channelName ||
+    item.channelTitle ||
+    item.creatorName ||
+    item.name ||
+    item.author ||
+    undefined;
+
+  const platform = (item.platform || '').toLowerCase();
+  let candidateType: RealIntelCandidate['type'] = 'unknown';
+  if (platform.includes('youtube')) candidateType = 'youtube_channel';
+  else if (platform.includes('blog') || platform.includes('naver')) candidateType = 'blog';
+  else if (platform.includes('instagram') || platform.includes('tiktok')) candidateType = 'influencer';
+
+  const hasEmail = !!(item.email || item.contactEmail || item.publicEmailMasked);
+  const hasForm = item.publicContactStatus === 'form_available';
+  let contactStatus: RealIntelCandidate['contactStatus'] = 'unknown';
+  if (hasEmail || item.publicContactStatus === 'email_public') contactStatus = 'contactable';
+  else if (hasForm) contactStatus = 'review';
+  else if (item.publicContactStatus === 'none') contactStatus = 'none';
+
+  const subscriberText =
+    item.subscriberOrVisitor ||
+    item.followers ||
+    (item.subscriberCount ? `${item.subscriberCount.toLocaleString()}명` : undefined) ||
+    (item.subscribers ? `${item.subscribers.toLocaleString()}명` : undefined) ||
+    undefined;
+
+  const viewsText =
+    item.viewCount ||
+    item.viewCountFormatted ||
+    (item.avgViews ? `평균 ${item.avgViews.toLocaleString()}회` : undefined) ||
+    undefined;
+
+  return {
+    contextId: String(item.candidateId || item.channelId || item.id || `candidate-${index + 1}`),
+    type: candidateType,
+    title,
+    channelName,
+    category: item.category || item.keyword || item.niche || item.topic || '분류 미확인',
+    source: item.platform || item.source || undefined,
+    recentVideoTitle: item.recentContentTitle || item.topVideoTitle || item.recentVideoTitle || undefined,
+    thumbnailUrl: item.thumbnailUrl || item.thumbnail || item.videoThumbnail || undefined,
+    channelAvatarUrl: item.channelAvatarUrl || item.avatarUrl || item.profileImageUrl || item.profileUrl || undefined,
+    subscriberText,
+    viewsText,
+    contactStatus,
+    fitScore: typeof item.productFitScore === 'number' ? item.productFitScore : (typeof item.fitScore === 'number' ? item.fitScore : undefined),
+    reason: item.productFitReason || item.reason || item.fitReason || item.suggestedOfferAngle || undefined,
+    keywords: Array.isArray(item.keywords) ? item.keywords : (item.keyword ? [item.keyword] : []),
+    lastUpdated: item.collectedAt || item.lastUpdated || item.updatedAt || undefined,
+    raw: item,
+  };
+}
+
+/* ─── Helper ─── */
 function readJson<T>(key: string): T | null {
   try {
     const raw = localStorage.getItem(key);
@@ -33,45 +127,7 @@ function readJson<T>(key: string): T | null {
     return null;
   }
 }
-/* ─── Hero Intel Card ─── */
-const heroIntelCard = {
-  id: 'hero-corn-field-asmr',
-  title: '초당옥수수 수확 현장 ASMR',
-  channelName: '옥수수농장TV',
-  category: '농산물 · ASMR · 현장감',
-  signal: '수확 시즌 진입 · 현장감 콘텐츠 적합',
-  action: '첫 3초 사운드 후킹',
-  reason: '산지 신뢰와 먹고 싶은 감각을 동시에 보여줄 수 있음',
-  mood: 'corn',
-};
-/* ─── Video Intel Cards (후보 대기열) ─── */
-const videoIntelCards = [
-  {
-    id: 'v2', category: '캠핑', title: '우중 캠핑 삼겹살 먹방',
-    type: '감성/힐링', channel: '캠핑요리왕', avatar: 'C',
-    reason: '비 오는 날 감성 + 먹방 조합 바이럴 가능', status: 'ANALYZING', mood: 'camping',
-  },
-  {
-    id: 'v3', category: '먹방', title: '매실청 담그기 1분 숏폼',
-    type: '정보/숏폼', channel: '살림의여왕', avatar: 'S',
-    reason: '매실 시즌 도래 — 숏폼 레시피 수요 급증', status: 'READY', mood: 'plum',
-  },
-  {
-    id: 'v4', category: '살림', title: '블루베리 세척 & 보관 꿀팁',
-    type: '생활정보', channel: '깔끔살림', avatar: 'K',
-    reason: '블루베리 출하 시작 — 보관법 검색량 증가', status: 'READY', mood: 'blueberry',
-  },
-  {
-    id: 'v5', category: '건강', title: '복숭아 다이어트 레시피',
-    type: '건강/미용', channel: '헬시라이프', avatar: 'H',
-    reason: '여름 다이어트 시즌 — 과일 레시피 관심 상승', status: 'READY', mood: 'peach',
-  },
-  {
-    id: 'v6', category: '여행', title: '주말 농장 체험 브이로그',
-    type: '브이로그', channel: '시골여행자', avatar: 'T',
-    reason: '체험형 콘텐츠 — 가족 단위 유입 기대', status: 'READY', mood: 'farm',
-  },
-];
+
 /* ─── Season Radar Points ─── */
 const seasonPoints = [
   { label: '옥수수', angle: 30, distance: 72 },
@@ -79,6 +135,7 @@ const seasonPoints = [
   { label: '블루베리', angle: 200, distance: 65 },
   { label: '복숭아', angle: 290, distance: 80 },
 ];
+
 /* ─── Live Feed Lines ─── */
 const liveFeedLines = [
   'SYSTEM ONLINE',
@@ -87,12 +144,36 @@ const liveFeedLines = [
   'OUTREACH ENGINE READY',
   'VOICE AI CONNECTED',
 ];
+
+/* ═══════════════════════════════════════════════════════════
+   DataWallView Component
+   ═══════════════════════════════════════════════════════════ */
 const DataWallView: React.FC = () => {
   const [payload, setPayload] = useState<WallPayload | null>(null);
   const [smartstoreSnapshot, setSmartstoreSnapshot] = useState<SmartstoreSnapshot | null>(null);
   const [openingActive, setOpeningActive] = useState(false);
   const [systemArmed, setSystemArmed] = useState(false);
+  const [realCandidates, setRealCandidates] = useState<RealIntelCandidate[]>([]);
   const openingTimerRef = useRef<number | null>(null);
+
+  /* ─── Read real candidates from localStorage ─── */
+  const refreshCandidates = () => {
+    const raw = readJson<any[]>(INFLUENCER_STORAGE_KEY);
+    if (raw && Array.isArray(raw) && raw.length > 0) {
+      const normalized = raw.map((item, idx) => normalizeIntelCandidate(item, idx));
+      // Sort: contactable first, then by fitScore desc
+      normalized.sort((a, b) => {
+        const contactOrder = { contactable: 0, review: 1, unknown: 2, none: 3 };
+        const diff = (contactOrder[a.contactStatus] || 3) - (contactOrder[b.contactStatus] || 3);
+        if (diff !== 0) return diff;
+        return (b.fitScore || 0) - (a.fitScore || 0);
+      });
+      setRealCandidates(normalized);
+    } else {
+      setRealCandidates([]);
+    }
+  };
+
   useEffect(() => {
     const refreshFromStorage = () => {
       const p = readJson<WallPayload>(WALL_STORAGE_KEY);
@@ -106,6 +187,7 @@ const DataWallView: React.FC = () => {
       if (openingPayload?.type === 'dual-opening') {
         setSystemArmed(true);
       }
+      refreshCandidates();
     };
     refreshFromStorage();
     let channel: BroadcastChannel | null = null;
@@ -134,6 +216,7 @@ const DataWallView: React.FC = () => {
         setPayload(data);
         const nextSmartstore = readJson<SmartstoreSnapshot>(SMARTSTORE_SNAPSHOT_KEY);
         if (nextSmartstore) setSmartstoreSnapshot(nextSmartstore);
+        refreshCandidates();
       };
     }
     const interval = setInterval(refreshFromStorage, 3000);
@@ -145,6 +228,28 @@ const DataWallView: React.FC = () => {
       }
     };
   }, []);
+
+  /* ─── Derived data ─── */
+  const hasRealData = realCandidates.length > 0;
+  const heroCandidate = hasRealData ? realCandidates[0] : null;
+  const queueCandidates = hasRealData ? realCandidates.slice(1, 11) : [];
+  const stats = {
+    total: realCandidates.length,
+    contactable: realCandidates.filter(c => c.contactStatus === 'contactable').length,
+    review: realCandidates.filter(c => c.contactStatus === 'review').length,
+    highFit: realCandidates.filter(c => (c.fitScore || 0) >= 60).length,
+  };
+
+  /* ─── Category distribution for radar ─── */
+  const categoryMap: Record<string, number> = {};
+  realCandidates.forEach(c => {
+    const cat = c.category || '미분류';
+    categoryMap[cat] = (categoryMap[cat] || 0) + 1;
+  });
+  const topCategories = Object.entries(categoryMap)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 4);
+
   return (
     <div className={`data-wall-shell dw-cinematic-unity ${systemArmed ? 'is-system-armed' : ''} ${openingActive ? 'is-cinematic-opening' : ''}`}>
       {/* ─── Cinematic Ambient Layer ─── */}
@@ -164,126 +269,200 @@ const DataWallView: React.FC = () => {
       {/* ─── Header ─── */}
       <header className="data-wall-header">
         <div className="dw-header-left">
-          <span className="dw-greeting">GOOD MORNING, SIR</span>
-          <h1 className="dw-title">STRATEGIC HOLOGRAM STAGE</h1>
+          <span className="dw-header-greeting">GOOD MORNING, SIR</span>
+          <h1 className="dw-header-title">STRATEGIC HOLOGRAM STAGE</h1>
         </div>
         <div className="dw-header-right">
-          <span className="dw-header-badge">JARVIS ONLINE</span>
-          <span className="dw-header-badge">SYSTEM AWAKENING</span>
+          <span className="dw-header-status">JARVIS ONLINE</span>
+          <span className="dw-header-sub">SYSTEM AWAKENING</span>
         </div>
       </header>
-      {/* ─── Main 3-Column Grid ─── */}
+      {/* ─── Main Grid ─── */}
       <div className="data-wall-main-grid v3">
-        {/* LEFT: Morning Brief + Radar */}
+        {/* ─── Left Column ─── */}
         <aside className="dw-col dw-col-left">
-          <div className="dw-panel dw-brief-panel">
+          {/* Morning Brief */}
+          <div className="dw-panel dw-morning-brief">
             <div className="dw-panel-label">MORNING BRIEF</div>
-            <div className="dw-brief-row">
-              <span className="dw-brief-key">SMARTSTORE</span>
-              <span className="dw-brief-val">{smartstoreSnapshot?.preShipTotal ?? '—'} PRE-SHIP</span>
-            </div>
-            <div className="dw-brief-row">
-              <span className="dw-brief-key">OUTREACH</span>
-              <span className="dw-brief-val">{payload?.outreachCount ?? 0} ACTIVE</span>
-            </div>
-            <div className="dw-brief-row">
-              <span className="dw-brief-key">WORKSPACE</span>
-              <span className="dw-brief-val">{payload?.workspaceCount ?? 0} FILES</span>
+            <div className="dw-brief-items">
+              <div className="dw-brief-row">
+                <span className="dw-brief-key">SMARTSTORE</span>
+                <span className="dw-brief-val cyan">{smartstoreSnapshot?.preShipTotal ?? '—'} PRE-SHIP</span>
+              </div>
+              <div className="dw-brief-row">
+                <span className="dw-brief-key">OUTREACH</span>
+                <span className="dw-brief-val gold">
+                  {hasRealData ? `${stats.total}명 수집 · ${stats.contactable}명 연락가능` : `${payload?.outreachCount ?? 0} ACTIVE`}
+                </span>
+              </div>
+              <div className="dw-brief-row">
+                <span className="dw-brief-key">WORKSPACE</span>
+                <span className="dw-brief-val">{payload?.workspaceCount ?? 0} FILES</span>
+              </div>
+              {hasRealData && (
+                <div className="dw-brief-row">
+                  <span className="dw-brief-key">HIGH FIT</span>
+                  <span className="dw-brief-val green">{stats.highFit}명 (60점 이상)</span>
+                </div>
+              )}
             </div>
           </div>
-          <div className="dw-panel dw-radar-panel">
-            <div className="dw-panel-label">SEASON RADAR</div>
-            <div className="dw-radar-container">
+          {/* Season Radar / Category Radar */}
+          <div className="dw-panel dw-season-radar">
+            <div className="dw-panel-label">{hasRealData ? 'CATEGORY RADAR' : 'SEASON RADAR'}</div>
+            <div className="dw-radar-canvas">
               <div className="dw-radar-ring r1" />
               <div className="dw-radar-ring r2" />
               <div className="dw-radar-ring r3" />
-              <div className="dw-radar-sweep-arm" />
-              {seasonPoints.map((pt) => (
-                <div
-                  key={pt.label}
-                  className="dw-radar-point"
-                  style={{
-                    '--angle': `${pt.angle}deg`,
-                    '--dist': `${pt.distance}%`,
-                  } as React.CSSProperties}
-                >
-                  <span className="dw-radar-dot" />
-                  <span className="dw-radar-label">{pt.label}</span>
-                </div>
-              ))}
+              <div className="dw-radar-sweep" />
+              {hasRealData ? (
+                topCategories.map(([cat, count], idx) => {
+                  const angle = (idx * 90) + 30;
+                  const dist = Math.min(72, 40 + count * 6);
+                  const rad = (angle * Math.PI) / 180;
+                  const x = 50 + dist * Math.cos(rad) * 0.45;
+                  const y = 50 + dist * Math.sin(rad) * 0.45;
+                  return (
+                    <div key={cat} className="dw-radar-point" style={{ left: `${x}%`, top: `${y}%` }}>
+                      <span className="dw-radar-label">{cat} {count}</span>
+                    </div>
+                  );
+                })
+              ) : (
+                seasonPoints.map((pt) => {
+                  const rad = (pt.angle * Math.PI) / 180;
+                  const x = 50 + pt.distance * Math.cos(rad) * 0.45;
+                  const y = 50 + pt.distance * Math.sin(rad) * 0.45;
+                  return (
+                    <div key={pt.label} className="dw-radar-point" style={{ left: `${x}%`, top: `${y}%` }}>
+                      <span className="dw-radar-label">{pt.label}</span>
+                    </div>
+                  );
+                })
+              )}
             </div>
           </div>
         </aside>
-        {/* CENTER: Hero Stage */}
+        {/* ─── Center Column (Hero Stage) ─── */}
         <main className="dw-col dw-col-center">
           <section className="dw-hero-stage">
-            {/* Unity Ambient (Orb-like depth behind Hero Card) */}
+            {/* Unity Ambient (Orb-like rings behind hero) */}
             <div className="dw-unity-ambient" aria-hidden="true">
-              <span className="dw-unity-core" />
-              <span className="dw-unity-ring ring-a" />
-              <span className="dw-unity-ring ring-b" />
-              <span className="dw-unity-ring ring-c" />
+              <div className="dw-unity-core" />
+              <div className="dw-unity-ring ring-a" />
+              <div className="dw-unity-ring ring-b" />
+              <div className="dw-unity-ring ring-c" />
             </div>
-            {/* Depth Rings (camera push-in feel) */}
             <div className="dw-camera-depth" aria-hidden="true">
-              <span className="dw-depth-ring ring-1" />
-              <span className="dw-depth-ring ring-2" />
-              <span className="dw-depth-ring ring-3" />
-              <span className="dw-horizon-beam" />
+              <div className="dw-depth-ring dr1" />
+              <div className="dw-depth-ring dr2" />
+              <div className="dw-depth-ring dr3" />
+              <div className="dw-horizon-beam" />
             </div>
-            {/* Hero Intel Card */}
-            <article className="dw-hero-intel-card" data-context-id={heroIntelCard.id}>
-              <div className={`dw-hero-thumb thumb-${heroIntelCard.mood}`}>
-                <div className="dw-thumb-scan" />
-                <div className="dw-thumb-play" />
-                <div className="dw-thumb-caption">FIELD SIGNAL</div>
-              </div>
-              <div className="dw-hero-meta">
-                <div className="dw-channel-row">
-                  <span className="dw-channel-avatar">U</span>
-                  <div className="dw-channel-info">
-                    <strong>{heroIntelCard.channelName}</strong>
-                    <em>{heroIntelCard.category}</em>
-                  </div>
+            {/* ─── Hero Intel Card ─── */}
+            {heroCandidate ? (
+              <div className={`dw-hero-intel-card ${openingActive ? 'is-docking' : ''}`} data-context-id={heroCandidate.contextId}>
+                <div className="dw-hero-thumb">
+                  {heroCandidate.thumbnailUrl ? (
+                    <img
+                      src={heroCandidate.thumbnailUrl}
+                      alt=""
+                      className="dw-real-thumb-img"
+                      onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; (e.target as HTMLImageElement).nextElementSibling?.classList.remove('hidden'); }}
+                    />
+                  ) : null}
+                  <div className={`dw-cinematic-thumb-fallback ${heroCandidate.thumbnailUrl ? 'hidden' : ''}`} />
+                  <span className="dw-hero-thumb-caption">FIELD SIGNAL</span>
                 </div>
-                <h2 className="dw-hero-title">{heroIntelCard.title}</h2>
-                <p className="dw-hero-signal">{heroIntelCard.signal}</p>
-                <p className="dw-hero-reason">{heroIntelCard.reason}</p>
-                <div className="dw-hero-action-bar">
-                  <span className="dw-hero-action-label">RECOMMENDED ACTION</span>
-                  <span className="dw-hero-action-text">{heroIntelCard.action}</span>
-                </div>
-              </div>
-            </article>
-          </section>
-        </main>
-        {/* RIGHT: Video Intel Queue */}
-        <aside className="dw-col dw-col-right">
-          <div className="dw-panel dw-video-intel-panel">
-            <div className="dw-panel-label">INTEL QUEUE</div>
-            <div className="dw-intel-cards">
-              {videoIntelCards.map((card, idx) => (
-                <div
-                  key={card.id}
-                  className={`dw-intel-card ${openingActive ? 'is-docking' : ''}`}
-                  style={{ '--i': idx } as React.CSSProperties}
-                  data-context-id={card.id}
-                >
-                  <div className={`dw-intel-thumb thumb-${card.mood}`}>
-                    <span className="dw-intel-thumb-avatar">{card.avatar}</span>
-                    <div className="dw-intel-thumb-scan" />
-                  </div>
-                  <div className="dw-intel-body">
-                    <div className="dw-intel-title">{card.title}</div>
-                    <div className="dw-intel-channel">{card.channel}</div>
-                    <div className="dw-intel-reason">{card.reason}</div>
-                    <div className="dw-intel-footer">
-                      <span className="dw-intel-category">{card.category}</span>
-                      <span className={`dw-intel-status st-${card.status.toLowerCase()}`}>{card.status}</span>
+                <div className="dw-hero-body">
+                  <div className="dw-hero-channel-row">
+                    {heroCandidate.channelAvatarUrl ? (
+                      <img src={heroCandidate.channelAvatarUrl} alt="" className="dw-real-avatar-img" onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
+                    ) : (
+                      <span className="dw-channel-orb">{(heroCandidate.channelName || '?')[0]}</span>
+                    )}
+                    <div className="dw-hero-channel-info">
+                      <span className="dw-hero-channel-name">{heroCandidate.channelName || '채널명 미확인'}</span>
+                      <span className="dw-hero-channel-meta">{heroCandidate.category}</span>
                     </div>
                   </div>
+                  <h2 className="dw-hero-title">{heroCandidate.title}</h2>
+                  <p className="dw-hero-signal">{heroCandidate.reason || '자비스 판단 대기 중'}</p>
+                  {/* Stats Row */}
+                  <div className="dw-hero-stats-row">
+                    {heroCandidate.subscriberText && <span className="dw-real-data-badge">구독 {heroCandidate.subscriberText}</span>}
+                    {heroCandidate.viewsText && <span className="dw-real-data-badge">조회 {heroCandidate.viewsText}</span>}
+                    {heroCandidate.fitScore !== undefined && <span className="dw-real-data-badge">적합도 {heroCandidate.fitScore}점</span>}
+                    <span className={`dw-real-data-badge ${heroCandidate.contactStatus === 'contactable' ? 'dw-contactable' : 'dw-contact-unknown'}`}>
+                      {heroCandidate.contactStatus === 'contactable' ? '연락 가능' : heroCandidate.contactStatus === 'review' ? '검토 필요' : '연락처 미확인'}
+                    </span>
+                  </div>
+                  {heroCandidate.recentVideoTitle && (
+                    <div className="dw-hero-action-row">
+                      <span className="dw-hero-action-label">RECENT</span>
+                      <span className="dw-hero-action-text">{heroCandidate.recentVideoTitle}</span>
+                    </div>
+                  )}
                 </div>
-              ))}
+              </div>
+            ) : (
+              /* ─── Empty State: No Real Candidates ─── */
+              <div className="dw-hero-intel-card dw-empty-intel-state">
+                <div className="dw-hero-thumb">
+                  <div className="dw-cinematic-thumb-fallback" />
+                  <span className="dw-hero-thumb-caption">AWAITING DATA</span>
+                </div>
+                <div className="dw-hero-body">
+                  <h2 className="dw-hero-title">후보 데이터 대기 중</h2>
+                  <p className="dw-hero-signal">OUTREACH에서 후보를 수집하면 이 영역에 실제 채널/영상 후보가 표시됩니다.</p>
+                  <div className="dw-hero-stats-row">
+                    <span className="dw-real-data-badge dw-contact-unknown">수집된 후보 없음</span>
+                  </div>
+                </div>
+              </div>
+            )}
+          </section>
+        </main>
+        {/* ─── Right Column (Intel Queue) ─── */}
+        <aside className="dw-col dw-col-right">
+          <div className="dw-panel dw-intel-queue-panel">
+            <div className="dw-panel-label">INTEL QUEUE {hasRealData && <span className="dw-queue-count">{queueCandidates.length}</span>}</div>
+            <div className="dw-intel-cards">
+              {hasRealData ? (
+                queueCandidates.map((card, idx) => (
+                  <div
+                    key={card.contextId}
+                    className={`dw-intel-card ${openingActive ? 'is-docking' : ''}`}
+                    style={{ '--i': idx } as React.CSSProperties}
+                    data-context-id={card.contextId}
+                  >
+                    <div className="dw-intel-thumb">
+                      {card.channelAvatarUrl ? (
+                        <img src={card.channelAvatarUrl} alt="" className="dw-real-avatar-img" onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
+                      ) : (
+                        <span className="dw-channel-orb">{(card.channelName || '?')[0]}</span>
+                      )}
+                    </div>
+                    <div className="dw-intel-body">
+                      <div className="dw-intel-title">{card.title}</div>
+                      <div className="dw-intel-channel">{card.channelName || '채널 미확인'}</div>
+                      <div className="dw-intel-reason">{card.reason || '판단 대기'}</div>
+                      <div className="dw-intel-footer">
+                        <span className="dw-intel-category">{card.category}</span>
+                        <span className={`dw-intel-status ${card.contactStatus === 'contactable' ? 'st-contactable' : 'st-unknown'}`}>
+                          {card.contactStatus === 'contactable' ? '연락가능' : card.contactStatus === 'review' ? '검토' : '미확인'}
+                        </span>
+                        {card.fitScore !== undefined && <span className="dw-intel-score">적합 {card.fitScore}</span>}
+                      </div>
+                    </div>
+                  </div>
+                ))
+              ) : (
+                <div className="dw-empty-intel-state">
+                  <p>수집된 후보가 없습니다.</p>
+                  <p style={{ fontSize: '11px', opacity: 0.6 }}>키워드 기반 수집을 실행하면 실제 후보가 이곳에 표시됩니다.</p>
+                </div>
+              )}
             </div>
           </div>
         </aside>
