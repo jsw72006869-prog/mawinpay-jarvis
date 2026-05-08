@@ -5322,10 +5322,10 @@ export default function JarvisApp() {
 
       {/* ── 박수 감지 ── */}
       <ClapDetector
-        onClap={() => {
-          console.log('[JARVIS] Clap detected! (UI-P.3 Auto Activate)');
+        onClap={async () => {
+          console.log('[JARVIS] Clap detected! (UI-P.4 Exact ACTIVATE Routine)');
           
-          // UI-P.3: 박수 감지 시 쿨다운 적용 (1.5초)
+          // UI-P.4: 박수 감지 시 쿨다운 적용 (1.5초)
           const now = Date.now();
           if (now - (lastClapActivateAtRef.current || 0) < 1500) {
             console.log('[JARVIS] Clap ignored (cooldown)');
@@ -5334,20 +5334,17 @@ export default function JarvisApp() {
           lastClapActivateAtRef.current = now;
 
           // 1. 기존 자비스 시그니처 응답 유지
-          console.info('[UI-P.3] clap -> handleActivate');
+          console.info('[UI-P.4] clap -> handleActivate (signature response)');
           handleActivate();
 
-          // 2. DUAL ARM 여부와 관계없이 듀얼 오프닝/포커스 실행
-          console.info('[UI-P.3] clap -> triggerDualScreenOpening (clap-auto)');
+          // 2. DUAL ARM 여부와 관계없이 실제 ACTIVATE 버튼의 정확한 루틴 실행
+          // ACTIVATE 버튼 = triggerDualScreenOpening + openDataWallWindow
+          console.info('[UI-P.4] clap -> triggerDualScreenOpening (clap-auto)');
           triggerDualScreenOpening('clap-auto');
           
-          // 2번 화면 포커스 시도 (이미 열려있는 경우)
-          if (dataWallPopupRef.current && !dataWallPopupRef.current.closed) {
-            try {
-              dataWallPopupRef.current.focus();
-              publishDualWallPayload({ type: 'data-update', source: 'clap-auto', updatedAt: Date.now() });
-            } catch (e) { console.warn('[DUAL] focus failed:', e); }
-          }
+          // 3. 실제 2번 화면 창 오픈/포커스 (ACTIVATE 버튼과 동일한 루틴)
+          console.info('[UI-P.4] clap -> openDataWallWindow (exact ACTIVATE routine)');
+          await openDataWallWindow();
         }}
         onAudioLevel={setMicLevel}
         enabled={state === 'idle' || dualScreenArmed}
