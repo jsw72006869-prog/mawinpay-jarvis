@@ -35,6 +35,7 @@ import CloudStatusOverlay from './CloudStatusOverlay';
 import LiveBrowserViewer from './LiveBrowserViewer';
 import MissionControlDeck from './MissionControlDeck';
 import DataWallView from './DataWallView';
+import ResultDeck from './ResultDeck';
 
 // ── 시그니처 응답 목록 (GPT 대기 없이 즉시 재생) ──
 const SIGNATURE_RESPONSES = [
@@ -364,6 +365,11 @@ export default function JarvisApp() {
   const [orderDashboardVisible, setOrderDashboardVisible] = useState(false);
   const [orderDashboardData, setOrderDashboardData] = useState<any[]>([]);
   const [orderDashboardSummary, setOrderDashboardSummary] = useState<any>(null);
+  // ── UI-O: Result Deck state ──
+  const [resultDeckVisible, setResultDeckVisible] = useState(false);
+  const [resultDeckContent, setResultDeckContent] = useState('');
+  const [resultDeckType, setResultDeckType] = useState('');
+  const [resultDeckProduct, setResultDeckProduct] = useState('');
   // ── SSoT: 스마트스토어 데이터 캐시 (5분 유효) ──
   const ssCountsCacheRef = useRef<{ data: any; fetchedAt: number } | null>(null);
 
@@ -2797,14 +2803,18 @@ export default function JarvisApp() {
           emitMissionLog('✅', 'CREATIVE', `${product || '제품'} 콘텐츠 생성 완료`, 'success');
           emitMissionLog('⏳', 'JARVIS', '대표님 선택 대기 중', 'thinking');
 
-          // 메시지 표시
-          addMessage('jarvis', creativeResult, true);
+          // 메시지 표시 → Result Deck으로 분리 (UI-O)
+          const summaryMsg = `${product || '제품'} ${contentType === 'script' ? '릴스 대본' : contentType === 'headcopy' ? '후킹 문구' : contentType === 'storytelling' ? '스토리텔링 콘텐츠' : '마케팅 콘텐츠'}를 생성했습니다. Result Deck에서 확인해 주십시오.`;
+          addMessage('jarvis', summaryMsg, true);
+          // Result Deck 활성화
+          setResultDeckVisible(true);
+          setResultDeckContent(creativeResult);
+          setResultDeckType(contentType);
+          setResultDeckProduct(product || '');
           setState('speaking');
           startSpeakingLevel();
-          // TTS 비동기 (긴 콘텐츠는 요약만 읍음)
-          const ttsText = creativeResult.length > 200 
-            ? `${product || '제품'} ${contentType === 'script' ? '릴스 대본' : contentType === 'headcopy' ? '후킹 문구' : contentType === 'storytelling' ? '스토리텔링 콘텐츠' : '마케팅 콘텐츠'}를 생성했습니다, 선생님. 화면에서 확인해 주십시오.`
-            : creativeResult;
+          // TTS 비동기 (요약만 읍음)
+          const ttsText = `${product || '제품'} ${contentType === 'script' ? '릴스 대본' : contentType === 'headcopy' ? '후킹 문구' : contentType === 'storytelling' ? '스토리텔링 콘텐츠' : '마케팅 콘텐츠'}를 생성했습니다, 선생님. Result Deck에서 확인해 주십시오.`;
           await new Promise<void>(resolve => {
             speak(ttsText, undefined, () => { stopSpeakingLevel(); resolve(); });
           });
@@ -5536,6 +5546,35 @@ export default function JarvisApp() {
           />
         )}
       </AnimatePresence>
+
+      {/* ── UI-O: Result Deck (Creative Director 결과 패널) ── */}
+      <ResultDeck
+        visible={resultDeckVisible}
+        content={resultDeckContent}
+        contentType={resultDeckType}
+        product={resultDeckProduct}
+        onDismiss={() => setResultDeckVisible(false)}
+        onCopy={() => {}}
+        onSaveToWorkspace={() => {
+          // workspace에 저장 (기존 로직 활용)
+          const record: WorkspaceRecord = {
+            recordId: `rd_${Date.now()}`,
+            createdAt: new Date().toISOString(),
+            type: 'creative_script',
+            title: `${resultDeckProduct} ${resultDeckType === 'script' ? '릴스 대본' : resultDeckType === 'headcopy' ? '후킹 문구' : '마케팅 콘텐츠'}`,
+            summary: resultDeckContent.slice(0, 120),
+            sourceCommand: `creative_director ${resultDeckProduct} ${resultDeckType}`,
+            status: 'completed',
+            tags: [resultDeckType, resultDeckProduct].filter(Boolean),
+            linkedSheetTab: null,
+            createdBy: 'jarvis',
+            safePreview: resultDeckContent.slice(0, 200),
+          };
+          setWorkspaceRecords(prev => [record, ...prev]);
+          setResultDeckVisible(false);
+          addMessage('jarvis', `Result Deck 콘텐츠를 Workspace에 저장했습니다.`);
+        }}
+      />
 
       {/* ── ActionCard (Phase UI-D: 우측 중단 고정) ── */}
       <div style={{
