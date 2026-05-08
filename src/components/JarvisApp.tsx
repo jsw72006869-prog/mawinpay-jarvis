@@ -793,6 +793,22 @@ export default function JarvisApp() {
     } catch (e) { console.warn('[JARVIS] localStorage 저장 실패:', e); }
   }, [collectedInfluencers]);
 
+  // UI-P: Outreach 후보 데이터도 localStorage에 동기화 (Data Wall용)
+  useEffect(() => {
+    if (outreachCandidates.length > 0) {
+      try {
+        localStorage.setItem('jarvis-outreach-candidates', JSON.stringify(outreachCandidates));
+        // Data Wall에 즉시 알림
+        publishDualWallPayload({
+          type: 'data-update',
+          dataType: 'outreach',
+          count: outreachCandidates.length,
+          updatedAt: Date.now()
+        });
+      } catch (e) { console.warn('[JARVIS] Outreach localStorage 저장 실패:', e); }
+    }
+  }, [outreachCandidates]);
+
   // ── Workspace: Google Sheets 저장/조회 ──
   const fetchWorkspaceRecords = useCallback(async () => {
     setWorkspaceLoading(true);
@@ -5306,9 +5322,14 @@ export default function JarvisApp() {
       {/* ── 박수 감지 ── */}
       <ClapDetector
         onClap={() => {
+          console.log('[JARVIS] Clap detected! Armed:', dualScreenArmed);
           if (dualScreenArmed) {
             triggerDualScreenOpening('clap');
-            handleActivate();
+            // handleActivate는 triggerDualScreenOpening 내부에서 호출하거나 
+            // 여기서 직접 호출하되, 딜레이를 주어 오프닝 효과와 겹치지 않게 함
+            setTimeout(() => {
+              handleActivate();
+            }, 500);
             return;
           }
           handleActivate();

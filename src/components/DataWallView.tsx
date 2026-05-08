@@ -4,6 +4,7 @@ const WALL_STORAGE_KEY = 'jarvis.dualWall.latest';
 const DUAL_OPENING_STORAGE_KEY = 'jarvis.dualWall.opening';
 const SMARTSTORE_SNAPSHOT_KEY = 'jarvis.smartstore.lastStatusSnapshot';
 const INFLUENCER_STORAGE_KEY = 'jarvis-collected-influencers';
+const OUTREACH_STORAGE_KEY = 'jarvis-outreach-candidates';
 
 /* ─── Types ─── */
 interface WallPayload {
@@ -159,9 +160,24 @@ const DataWallView: React.FC = () => {
 
   /* ─── Read real candidates from localStorage ─── */
   const refreshCandidates = () => {
-    const raw = readJson<any[]>(INFLUENCER_STORAGE_KEY);
-    if (raw && Array.isArray(raw) && raw.length > 0) {
-      const normalized = raw.map((item, idx) => normalizeIntelCandidate(item, idx));
+    // UI-P: 두 키 모두 확인하여 병합 (Outreach 우선)
+    const outreachRaw = readJson<any[]>(OUTREACH_STORAGE_KEY) || [];
+    const collectedRaw = readJson<any[]>(INFLUENCER_STORAGE_KEY) || [];
+    
+    // 중복 제거 (ID 기준)
+    const combined = [...outreachRaw];
+    const existingIds = new Set(outreachRaw.map(item => String(item.candidateId || item.channelId || item.id)));
+    
+    collectedRaw.forEach(item => {
+      const id = String(item.candidateId || item.channelId || item.id || item.name);
+      if (!existingIds.has(id)) {
+        combined.push(item);
+        existingIds.add(id);
+      }
+    });
+
+    if (combined.length > 0) {
+      const normalized = combined.map((item, idx) => normalizeIntelCandidate(item, idx));
       // Sort: contactable first, then by fitScore desc
       normalized.sort((a, b) => {
         const contactOrder = { contactable: 0, review: 1, unknown: 2, none: 3 };
@@ -219,6 +235,10 @@ const DataWallView: React.FC = () => {
           openingTimerRef.current = window.setTimeout(() => {
             setOpeningActive(false);
           }, 6000);
+          return;
+        }
+        if (data.type === 'data-update') {
+          refreshCandidates();
           return;
         }
         setPayload(data);
