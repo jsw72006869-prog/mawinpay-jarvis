@@ -5323,9 +5323,9 @@ export default function JarvisApp() {
       {/* ── 박수 감지 ── */}
       <ClapDetector
         onClap={() => {
-          console.log('[JARVIS] Clap detected! Armed:', dualScreenArmed);
+          console.log('[JARVIS] Clap detected! (UI-P.3 Auto Activate)');
           
-          // UI-P.2: 박수 감지 시 쿨다운 적용 (1.5초)
+          // UI-P.3: 박수 감지 시 쿨다운 적용 (1.5초)
           const now = Date.now();
           if (now - (lastClapActivateAtRef.current || 0) < 1500) {
             console.log('[JARVIS] Clap ignored (cooldown)');
@@ -5333,26 +5333,21 @@ export default function JarvisApp() {
           }
           lastClapActivateAtRef.current = now;
 
-          if (dualScreenArmed) {
-            console.info('[UI-P.2] clap -> handleActivate (Dual Mode)');
-            triggerDualScreenOpening('clap');
-            
-            // 2번 화면 포커스 시도 (이미 열려있는 경우)
-            if (dataWallPopupRef.current && !dataWallPopupRef.current.closed) {
-              try {
-                dataWallPopupRef.current.focus();
-                publishDualWallPayload({ type: 'data-update', source: 'clap-activate', updatedAt: Date.now() });
-              } catch (e) { console.warn('[DUAL] focus failed:', e); }
-            }
-
-            setTimeout(() => {
-              handleActivate();
-            }, 500);
-            return;
-          }
-          
-          console.info('[UI-P.2] clap -> handleActivate (Normal Mode)');
+          // 1. 기존 자비스 시그니처 응답 유지
+          console.info('[UI-P.3] clap -> handleActivate');
           handleActivate();
+
+          // 2. DUAL ARM 여부와 관계없이 듀얼 오프닝/포커스 실행
+          console.info('[UI-P.3] clap -> triggerDualScreenOpening (clap-auto)');
+          triggerDualScreenOpening('clap-auto');
+          
+          // 2번 화면 포커스 시도 (이미 열려있는 경우)
+          if (dataWallPopupRef.current && !dataWallPopupRef.current.closed) {
+            try {
+              dataWallPopupRef.current.focus();
+              publishDualWallPayload({ type: 'data-update', source: 'clap-auto', updatedAt: Date.now() });
+            } catch (e) { console.warn('[DUAL] focus failed:', e); }
+          }
         }}
         onAudioLevel={setMicLevel}
         enabled={state === 'idle' || dualScreenArmed}
