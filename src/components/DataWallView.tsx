@@ -285,40 +285,52 @@ const DataWallView: React.FC = () => {
           {/* Morning Brief */}
           <div className="dw-panel dw-morning-brief">
             <div className="dw-panel-label">MORNING BRIEF</div>
-            <div className="dw-brief-cards">
-              <div className="dw-brief-card">
-                <span className="dw-brief-val">{smartstoreSnapshot?.pendingShipping || 0}</span>
+            <div className="dw-brief-grid">
+              <div className="dw-brief-item">
+                <span className="dw-brief-val">{smartstoreSnapshot?.preShipTotal || 0}</span>
                 <span className="dw-brief-key">SMARTSTORE PRE-SHIP</span>
               </div>
-              <div className="dw-brief-card">
+              <div className="dw-brief-item">
                 <span className="dw-brief-val">{payload?.outreachCount || 0}</span>
                 <span className="dw-brief-key">OUTREACH ACTIVE</span>
               </div>
-              <div className="dw-brief-card">
+              <div className="dw-brief-item">
                 <span className="dw-brief-val">{payload?.workspaceCount || 0}</span>
                 <span className="dw-brief-key">WORKSPACE FILES</span>
               </div>
             </div>
           </div>
-          {/* Season Radar */}
-          <div className="dw-panel dw-season-radar">
+          {/* Category Radar */}
+          <div className="dw-panel dw-category-radar">
             <div className="dw-panel-label">CATEGORY RADAR</div>
-            <div className="dw-radar-stage">
-              <div className="dw-radar-circle" />
-              <div className="dw-radar-sweep" />
+            <div className="dw-radar-container">
+              <div className="dw-radar-rings">
+                <div className="dw-radar-ring" />
+                <div className="dw-radar-ring" />
+                <div className="dw-radar-ring" />
+                <div className="dw-radar-sweep" />
+              </div>
               {hasRealData ? (
                 topCategories.map(([cat, count], idx) => {
                   const angle = (idx * 90) + 45;
                   const dist = 50 + (count * 5);
                   return (
-                    <div key={cat} className="dw-radar-point" style={{ '--angle': `${angle}deg`, '--dist': `${dist}px` } as React.CSSProperties}>
+                    <div
+                      key={cat}
+                      className="dw-radar-point"
+                      style={{ '--angle': `${angle}deg`, '--dist': `${dist}%` } as React.CSSProperties}
+                    >
                       <span className="dw-radar-label">{cat}</span>
                     </div>
                   );
                 })
               ) : (
                 seasonPoints.map((p) => (
-                  <div key={p.label} className="dw-radar-point" style={{ '--angle': `${p.angle}deg`, '--dist': `${p.distance}px` } as React.CSSProperties}>
+                  <div
+                    key={p.label}
+                    className="dw-radar-point"
+                    style={{ '--angle': `${p.angle}deg`, '--dist': `${p.distance}%` } as React.CSSProperties}
+                  >
                     <span className="dw-radar-label">{p.label}</span>
                   </div>
                 ))
@@ -329,38 +341,34 @@ const DataWallView: React.FC = () => {
         {/* ─── Center Column (Hero Stage) ─── */}
         <main className="dw-col dw-col-center">
           <section className="dw-hero-stage">
-            {/* Unity Core & Rings (Now integrated with Hero Card) */}
+            {/* Unity Core & Rings (Behind Hero Card) */}
             <div className="dw-unity-core-wrap">
               <div className="dw-unity-core" />
               <div className="dw-unity-ring ring-a" />
               <div className="dw-unity-ring ring-b" />
               <div className="dw-unity-ring ring-c" />
             </div>
-            <div className="dw-camera-depth" />
             {heroCandidate ? (
-              <div className="dw-hero-intel-card v2-upgrade">
+              /* ─── Real Hero Intel Card ─── */
+              <div className={`dw-hero-intel-card ${openingActive ? 'is-docking' : ''} v2-upgrade`}>
                 <div className="dw-hero-thumb-wrap">
                   <div className="dw-hero-thumb">
                     {heroCandidate.thumbnailUrl ? (
-                      <img 
-                        src={heroCandidate.thumbnailUrl} 
-                        alt="" 
-                        className="dw-real-thumb-img" 
-                        onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; (e.target as HTMLImageElement).nextElementSibling?.classList.remove('hidden'); }}
-                      />
-                    ) : null}
-                    <div className={`dw-cinematic-thumb-fallback ${heroCandidate.thumbnailUrl ? 'hidden' : ''}`} />
-                    <div className="dw-hero-thumb-overlay">
-                      <div className="dw-hero-play-btn">
-                        <div className="dw-play-icon" />
-                      </div>
-                      <span className="dw-hero-thumb-caption">INTEL SOURCE: {heroCandidate.source || 'SYSTEM'}</span>
+                      <img src={heroCandidate.thumbnailUrl} alt="" className="dw-real-thumb-img" onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
+                    ) : (
+                      <div className="dw-cinematic-thumb-fallback" />
+                    )}
+                    <div className="dw-thumb-overlay" />
+                    <div className="dw-thumb-scanline" />
+                    <div className="dw-hero-play-btn">
+                      <div className="dw-play-icon" />
                     </div>
+                    <span className="dw-hero-thumb-caption">FIELD SIGNAL // {heroCandidate.source?.toUpperCase() || 'INTEL'}</span>
                   </div>
                 </div>
                 <div className="dw-hero-body">
                   <div className="dw-hero-header-row">
-                    <div className="dw-hero-avatar-wrap">
+                    <div className="dw-hero-avatar">
                       {heroCandidate.channelAvatarUrl ? (
                         <img src={heroCandidate.channelAvatarUrl} alt="" className="dw-real-avatar-img" onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
                       ) : (
@@ -400,6 +408,7 @@ const DataWallView: React.FC = () => {
                 </div>
               </div>
             ) : (
+              /* ─── Empty State: No Real Candidates ─── */
               <div className="dw-hero-intel-card dw-empty-intel-state v2-upgrade">
                 <div className="dw-hero-thumb-wrap">
                   <div className="dw-hero-thumb">
