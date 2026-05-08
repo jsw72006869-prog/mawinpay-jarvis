@@ -38,6 +38,7 @@ type RealIntelCandidate = {
   channelName?: string;
   category?: string;
   source?: string;
+  platform?: string;
   recentVideoTitle?: string;
   thumbnailUrl?: string;
   channelAvatarUrl?: string;
@@ -48,8 +49,14 @@ type RealIntelCandidate = {
   reason?: string;
   keywords?: string[];
   lastUpdated?: string;
+  videoId?: string;
+  videoUrl?: string;
   raw?: unknown;
 };
+
+/* ─── Platform Tabs ─── */
+const PLATFORM_TABS = ['전체', 'YouTube', 'Instagram', 'Threads', 'Naver'] as const;
+type PlatformTab = typeof PLATFORM_TABS[number];
 
 /* ─── Normalize Function ─── */
 function normalizeIntelCandidate(item: any, index: number): RealIntelCandidate {
@@ -72,11 +79,13 @@ function normalizeIntelCandidate(item: any, index: number): RealIntelCandidate {
     item.author ||
     undefined;
 
-  const platform = (item.platform || '').toLowerCase();
+  const platformRaw = (item.platform || item.source || '').toLowerCase();
   let candidateType: RealIntelCandidate['type'] = 'unknown';
-  if (platform.includes('youtube')) candidateType = 'youtube_channel';
-  else if (platform.includes('blog') || platform.includes('naver')) candidateType = 'blog';
-  else if (platform.includes('instagram') || platform.includes('tiktok')) candidateType = 'influencer';
+  let platform = 'YouTube';
+  if (platformRaw.includes('youtube')) { candidateType = 'youtube_channel'; platform = 'YouTube'; }
+  else if (platformRaw.includes('blog') || platformRaw.includes('naver')) { candidateType = 'blog'; platform = 'Naver'; }
+  else if (platformRaw.includes('instagram')) { candidateType = 'influencer'; platform = 'Instagram'; }
+  else if (platformRaw.includes('tiktok') || platformRaw.includes('thread')) { candidateType = 'influencer'; platform = 'Threads'; }
 
   const hasEmail = !!(item.email || item.contactEmail || item.publicEmailMasked);
   const hasForm = item.publicContactStatus === 'form_available';
@@ -98,6 +107,17 @@ function normalizeIntelCandidate(item: any, index: number): RealIntelCandidate {
     (item.avgViews ? `평균 ${item.avgViews.toLocaleString()}회` : undefined) ||
     undefined;
 
+  // Extract videoId from various sources
+  let videoId: string | undefined = item.videoId || undefined;
+  if (!videoId && item.videoUrl) {
+    const match = item.videoUrl.match(/(?:v=|youtu\.be\/)([a-zA-Z0-9_-]{11})/);
+    if (match) videoId = match[1];
+  }
+  if (!videoId && item.url) {
+    const match = item.url.match(/(?:v=|youtu\.be\/)([a-zA-Z0-9_-]{11})/);
+    if (match) videoId = match[1];
+  }
+
   return {
     contextId: String(item.candidateId || item.channelId || item.id || `candidate-${index + 1}`),
     type: candidateType,
@@ -105,16 +125,19 @@ function normalizeIntelCandidate(item: any, index: number): RealIntelCandidate {
     channelName,
     category: item.category || item.keyword || item.niche || item.topic || '분류 미확인',
     source: item.platform || item.source || undefined,
+    platform,
     recentVideoTitle: item.recentContentTitle || item.topVideoTitle || item.recentVideoTitle || undefined,
-    thumbnailUrl: item.thumbnailUrl || item.thumbnail || item.videoThumbnail || undefined,
-    channelAvatarUrl: item.channelAvatarUrl || item.avatarUrl || item.profileImageUrl || item.profileUrl || undefined,
+    thumbnailUrl: item.thumbnailUrl || item.thumbnail || item.imageUrl || item.videoThumbnail || undefined,
+    channelAvatarUrl: item.channelAvatarUrl || item.avatarUrl || item.profileImageUrl || item.profileUrl || item.channelThumbnail || undefined,
     subscriberText,
     viewsText,
     contactStatus,
-    fitScore: typeof item.productFitScore === 'number' ? item.productFitScore : (typeof item.fitScore === 'number' ? item.fitScore : undefined),
+    fitScore: typeof item.productFitScore === 'number' ? item.productFitScore : (typeof item.fitScore === 'number' ? item.fitScore : (typeof item.score === 'number' ? item.score : (typeof item.matchScore === 'number' ? item.matchScore : undefined))),
     reason: item.productFitReason || item.reason || item.fitReason || item.suggestedOfferAngle || undefined,
     keywords: Array.isArray(item.keywords) ? item.keywords : (item.keyword ? [item.keyword] : []),
     lastUpdated: item.collectedAt || item.lastUpdated || item.updatedAt || undefined,
+    videoId,
+    videoUrl: item.videoUrl || item.url || (videoId ? `https://www.youtube.com/watch?v=${videoId}` : undefined),
     raw: item,
   };
 }
@@ -129,25 +152,8 @@ function readJson<T>(key: string): T | null {
   }
 }
 
-/* ─── Season Radar Points ─── */
-const seasonPoints = [
-  { label: '옥수수', angle: 30, distance: 72 },
-  { label: '매실', angle: 110, distance: 58 },
-  { label: '블루베리', angle: 200, distance: 65 },
-  { label: '복숭아', angle: 290, distance: 80 },
-];
-
-/* ─── Live Feed Lines ─── */
-const liveFeedLines = [
-  'SYSTEM ONLINE',
-  'DATA SYNC ACTIVE',
-  'MARKET BRAIN STANDBY',
-  'OUTREACH ENGINE READY',
-  'VOICE AI CONNECTED',
-];
-
 /* ═══════════════════════════════════════════════════════════
-   DataWallView Component
+   DataWallView Component — UI-Q.1 Cinematic Intel Wall
    ═══════════════════════════════════════════════════════════ */
 const DataWallView: React.FC = () => {
   const [payload, setPayload] = useState<WallPayload | null>(null);
@@ -155,19 +161,16 @@ const DataWallView: React.FC = () => {
   const [openingActive, setOpeningActive] = useState(false);
   const [systemArmed, setSystemArmed] = useState(false);
   const [realCandidates, setRealCandidates] = useState<RealIntelCandidate[]>([]);
-  const [heroIndex, setHeroIndex] = useState(0); // UI-P: Hero 승격용 인덱스
+  const [heroIndex, setHeroIndex] = useState(0);
+  const [activeTab, setActiveTab] = useState<PlatformTab>('전체');
   const openingTimerRef = useRef<number | null>(null);
 
   /* ─── Read real candidates from localStorage ─── */
   const refreshCandidates = () => {
-    // UI-P: 두 키 모두 확인하여 병합 (Outreach 우선)
     const outreachRaw = readJson<any[]>(OUTREACH_STORAGE_KEY) || [];
     const collectedRaw = readJson<any[]>(INFLUENCER_STORAGE_KEY) || [];
-    
-    // 중복 제거 (ID 기준)
     const combined = [...outreachRaw];
     const existingIds = new Set(outreachRaw.map(item => String(item.candidateId || item.channelId || item.id)));
-    
     collectedRaw.forEach(item => {
       const id = String(item.candidateId || item.channelId || item.id || item.name);
       if (!existingIds.has(id)) {
@@ -175,10 +178,8 @@ const DataWallView: React.FC = () => {
         existingIds.add(id);
       }
     });
-
     if (combined.length > 0) {
       const normalized = combined.map((item, idx) => normalizeIntelCandidate(item, idx));
-      // Sort: contactable first, then by fitScore desc
       normalized.sort((a, b) => {
         const contactOrder = { contactable: 0, review: 1, unknown: 2, none: 3 };
         const diff = (contactOrder[a.contactStatus] || 3) - (contactOrder[b.contactStatus] || 3);
@@ -204,12 +205,8 @@ const DataWallView: React.FC = () => {
       if (openingPayload?.type === 'dual-opening') {
         setSystemArmed(true);
         setOpeningActive(true);
-        if (openingTimerRef.current) {
-          window.clearTimeout(openingTimerRef.current);
-        }
-        openingTimerRef.current = window.setTimeout(() => {
-          setOpeningActive(false);
-        }, 6000);
+        if (openingTimerRef.current) window.clearTimeout(openingTimerRef.current);
+        openingTimerRef.current = window.setTimeout(() => setOpeningActive(false), 6000);
       }
       refreshCandidates();
     };
@@ -220,27 +217,14 @@ const DataWallView: React.FC = () => {
       channel.onmessage = (event) => {
         const data = event?.data;
         if (!data) return;
-        if (data.type === 'dual-armed') {
-          setSystemArmed(true);
-          setPayload(data);
-          return;
-        }
+        if (data.type === 'dual-armed') { setSystemArmed(true); setPayload(data); return; }
         if (data.type === 'dual-opening') {
-          setSystemArmed(true);
-          setOpeningActive(true);
-          setPayload(data);
-          if (openingTimerRef.current) {
-            window.clearTimeout(openingTimerRef.current);
-          }
-          openingTimerRef.current = window.setTimeout(() => {
-            setOpeningActive(false);
-          }, 6000);
+          setSystemArmed(true); setOpeningActive(true); setPayload(data);
+          if (openingTimerRef.current) window.clearTimeout(openingTimerRef.current);
+          openingTimerRef.current = window.setTimeout(() => setOpeningActive(false), 6000);
           return;
         }
-        if (data.type === 'data-update') {
-          refreshCandidates();
-          return;
-        }
+        if (data.type === 'data-update') { refreshCandidates(); return; }
         setPayload(data);
         const nextSmartstore = readJson<SmartstoreSnapshot>(SMARTSTORE_SNAPSHOT_KEY);
         if (nextSmartstore) setSmartstoreSnapshot(nextSmartstore);
@@ -251,20 +235,23 @@ const DataWallView: React.FC = () => {
     return () => {
       if (channel) channel.close();
       clearInterval(interval);
-      if (openingTimerRef.current) {
-        window.clearTimeout(openingTimerRef.current);
-      }
+      if (openingTimerRef.current) window.clearTimeout(openingTimerRef.current);
     };
   }, []);
 
-  /* ─── Derived data (UI-P: Top 5 + Queue 정렬) ─── */
-  const hasRealData = realCandidates.length > 0;
-  // UI-P: heroIndex로 선택된 후보가 Hero, 나머지가 Queue
-  const safeHeroIndex = hasRealData ? Math.min(heroIndex, realCandidates.length - 1) : 0;
-  const heroCandidate = hasRealData ? realCandidates[safeHeroIndex] : null;
+  /* ─── Derived data ─── */
+  // Platform filter
+  const filteredCandidates = activeTab === '전체'
+    ? realCandidates
+    : realCandidates.filter(c => c.platform === activeTab);
+
+  const hasRealData = filteredCandidates.length > 0;
+  const safeHeroIndex = hasRealData ? Math.min(heroIndex, filteredCandidates.length - 1) : 0;
+  const heroCandidate = hasRealData ? filteredCandidates[safeHeroIndex] : null;
   const queueCandidates = hasRealData
-    ? realCandidates.filter((_, idx) => idx !== safeHeroIndex).slice(0, 10)
+    ? filteredCandidates.filter((_, idx) => idx !== safeHeroIndex).slice(0, 8)
     : [];
+  const top5Candidates = filteredCandidates.slice(0, 5);
 
   /* ─── Category distribution for radar ─── */
   const categoryMap: Record<string, number> = {};
@@ -272,9 +259,14 @@ const DataWallView: React.FC = () => {
     const cat = c.category || '미분류';
     categoryMap[cat] = (categoryMap[cat] || 0) + 1;
   });
-  const topCategories = Object.entries(categoryMap)
-    .sort((a, b) => b[1] - a[1])
-    .slice(0, 4);
+  const topCategories = Object.entries(categoryMap).sort((a, b) => b[1] - a[1]).slice(0, 5);
+
+  /* ─── Platform distribution ─── */
+  const platformCounts: Record<string, number> = {};
+  realCandidates.forEach(c => {
+    const p = c.platform || 'YouTube';
+    platformCounts[p] = (platformCounts[p] || 0) + 1;
+  });
 
   return (
     <div className={`data-wall-shell dw-cinematic-unity ${systemArmed ? 'is-system-armed' : ''} ${openingActive ? 'is-cinematic-opening' : ''}`}>
@@ -284,7 +276,6 @@ const DataWallView: React.FC = () => {
         <div className="dw-ambient-glow" />
         <div className="dw-ambient-sweep" />
         <div className="dw-ambient-noise" />
-        <div className="dw-ambient-film-grain" />
         <div className="dw-ambient-scanline" />
       </div>
       {/* ─── Background Layer ─── */}
@@ -292,40 +283,57 @@ const DataWallView: React.FC = () => {
         <div className="bg-grid" />
         <div className="bg-vignette" />
       </div>
-      {/* ─── Header ─── */}
-      <header className="data-wall-header">
+
+      {/* ═══ A. Header Bar ═══ */}
+      <header className="data-wall-header dw-q1-header">
         <div className="dw-header-left">
-          <span className="dw-header-greeting">GOOD MORNING, SIR</span>
-          <h1 className="dw-header-title">STRATEGIC HOLOGRAM STAGE</h1>
+          <h1 className="dw-header-title">OUTREACH INTEL WALL</h1>
+          <span className="dw-header-subtitle">STRATEGIC HOLOGRAM STAGE</span>
+        </div>
+        <div className="dw-header-center">
+          {/* Platform Tabs */}
+          <div className="dw-platform-tabs">
+            {PLATFORM_TABS.map(tab => (
+              <button
+                key={tab}
+                className={`dw-platform-tab ${activeTab === tab ? 'is-active' : ''}`}
+                onClick={() => { setActiveTab(tab); setHeroIndex(0); }}
+              >
+                {tab}
+                {tab !== '전체' && platformCounts[tab] ? <span className="dw-tab-count">{platformCounts[tab]}</span> : null}
+              </button>
+            ))}
+          </div>
         </div>
         <div className="dw-header-right">
-          <span className={`dw-header-status ${systemArmed ? 'is-linked' : ''}`}>{systemArmed ? 'LINKED' : 'JARVIS ONLINE'}</span>
+          <span className={`dw-header-status ${systemArmed ? 'is-linked' : ''}`}>{systemArmed ? 'LINKED' : 'ONLINE'}</span>
           <span className="dw-header-sub">{systemArmed ? 'DUAL SCREEN ACTIVE' : 'SYSTEM AWAKENING'}</span>
+          <span className="dw-header-intel-count">INTEL: {realCandidates.length}</span>
         </div>
       </header>
-      {/* ─── Main Grid ─── */}
-      <div className="data-wall-main-grid v3">
-        {/* ─── Left Column ─── */}
+
+      {/* ═══ Main 5-Zone Grid ═══ */}
+      <div className="data-wall-main-grid dw-q1-grid">
+
+        {/* ═══ E. Left Radar / Status Panel ═══ */}
         <aside className="dw-col dw-col-left">
-          {/* Morning Brief */}
           <div className="dw-panel dw-morning-brief">
             <div className="dw-panel-label">MORNING BRIEF</div>
             <div className="dw-brief-grid">
               <div className="dw-brief-item">
                 <span className="dw-brief-val">{smartstoreSnapshot?.preShipTotal || 0}</span>
-                <span className="dw-brief-key">SMARTSTORE PRE-SHIP</span>
+                <span className="dw-brief-key">PRE-SHIP</span>
               </div>
               <div className="dw-brief-item">
-                <span className="dw-brief-val">{payload?.outreachCount || 0}</span>
-                <span className="dw-brief-key">OUTREACH ACTIVE</span>
+                <span className="dw-brief-val">{payload?.outreachCount || realCandidates.length}</span>
+                <span className="dw-brief-key">OUTREACH</span>
               </div>
               <div className="dw-brief-item">
                 <span className="dw-brief-val">{payload?.workspaceCount || 0}</span>
-                <span className="dw-brief-key">WORKSPACE FILES</span>
+                <span className="dw-brief-key">WORKSPACE</span>
               </div>
             </div>
           </div>
-          {/* Category Radar */}
           <div className="dw-panel dw-category-radar">
             <div className="dw-panel-label">CATEGORY RADAR</div>
             <div className="dw-radar-container">
@@ -335,67 +343,88 @@ const DataWallView: React.FC = () => {
                 <div className="dw-radar-ring" />
                 <div className="dw-radar-sweep" />
               </div>
-              {hasRealData ? (
+              {topCategories.length > 0 ? (
                 topCategories.map(([cat, count], idx) => {
-                  const angle = (idx * 90) + 45;
-                  const dist = 50 + (count * 5);
+                  const angle = (idx * 72) + 18;
+                  const dist = 40 + Math.min(count * 8, 40);
                   return (
-                    <div
-                      key={cat}
-                      className="dw-radar-point"
-                      style={{ '--angle': `${angle}deg`, '--dist': `${dist}%` } as React.CSSProperties}
-                    >
-                      <span className="dw-radar-label">{cat}</span>
+                    <div key={cat} className="dw-radar-point" style={{ '--angle': `${angle}deg`, '--dist': `${dist}%` } as React.CSSProperties}>
+                      <span className="dw-radar-label">{cat} <span className="dw-radar-count">{count}</span></span>
                     </div>
                   );
                 })
               ) : (
-                seasonPoints.map((p) => (
-                  <div
-                    key={p.label}
-                    className="dw-radar-point"
-                    style={{ '--angle': `${p.angle}deg`, '--dist': `${p.distance}%` } as React.CSSProperties}
-                  >
-                    <span className="dw-radar-label">{p.label}</span>
+                ['대기중', '수집 준비', '분석 대기'].map((label, idx) => (
+                  <div key={label} className="dw-radar-point dw-radar-standby" style={{ '--angle': `${idx * 120 + 30}deg`, '--dist': '50%' } as React.CSSProperties}>
+                    <span className="dw-radar-label">{label}</span>
                   </div>
                 ))
               )}
             </div>
           </div>
+          {/* Platform Source Summary */}
+          <div className="dw-panel dw-source-summary">
+            <div className="dw-panel-label">SOURCE</div>
+            <div className="dw-source-list">
+              {Object.entries(platformCounts).length > 0 ? (
+                Object.entries(platformCounts).map(([p, count]) => (
+                  <div key={p} className="dw-source-row">
+                    <span className={`dw-source-badge dw-src-${p.toLowerCase()}`}>{p}</span>
+                    <span className="dw-source-count">{count}</span>
+                  </div>
+                ))
+              ) : (
+                <div className="dw-source-row dw-source-standby">
+                  <span className="dw-source-badge">STANDBY</span>
+                </div>
+              )}
+            </div>
+          </div>
         </aside>
-        {/* ─── Center Column (Hero Stage) ─── */}
+
+        {/* ═══ B. Center Hero Intel Panel ═══ */}
         <main className="dw-col dw-col-center">
           <section className="dw-hero-stage">
-            {/* Unity Core & Rings (Behind Hero Card) */}
+            {/* Unity Core & Rings */}
             <div className="dw-unity-core-wrap">
               <div className="dw-unity-core" />
               <div className="dw-unity-ring ring-a" />
               <div className="dw-unity-ring ring-b" />
               <div className="dw-unity-ring ring-c" />
             </div>
+
             {heroCandidate ? (
               /* ─── Real Hero Intel Card ─── */
-              <div className={`dw-hero-intel-card ${openingActive ? 'is-docking' : ''} v2-upgrade`}>
-                <div className="dw-hero-thumb-wrap">
-                  <div className="dw-hero-thumb">
+              <div className={`dw-hero-intel-card ${openingActive ? 'is-docking' : ''} dw-q1-hero`}>
+                {/* Hero Media Area */}
+                <div className="dw-hero-media">
+                  <div className="dw-hero-thumb-wrap">
                     {heroCandidate.thumbnailUrl ? (
-                      <img src={heroCandidate.thumbnailUrl} alt="" className="dw-real-thumb-img" onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
+                      <img src={heroCandidate.thumbnailUrl} alt="" className="dw-hero-thumb-img" onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
                     ) : (
-                      <div className="dw-cinematic-thumb-fallback" />
+                      <div className="dw-hero-thumb-fallback" />
                     )}
-                    <div className="dw-thumb-overlay" />
-                    <div className="dw-thumb-scanline" />
-                    <div className="dw-hero-play-btn">
-                      <div className="dw-play-icon" />
-                    </div>
-                    <span className="dw-hero-thumb-caption">FIELD SIGNAL // {heroCandidate.source?.toUpperCase() || 'INTEL'}</span>
+                    <div className="dw-hero-thumb-overlay" />
+                    <div className="dw-hero-scanline" />
+                    {/* Play Button */}
+                    {heroCandidate.videoUrl && (
+                      <a href={heroCandidate.videoUrl} target="_blank" rel="noopener noreferrer" className="dw-hero-play-btn">
+                        <div className="dw-play-icon" />
+                      </a>
+                    )}
+                    {/* Platform Badge */}
+                    <span className={`dw-platform-badge dw-plat-${(heroCandidate.platform || 'youtube').toLowerCase()}`}>
+                      {heroCandidate.platform || 'YouTube'}
+                    </span>
+                    <span className="dw-hero-thumb-caption">FIELD SIGNAL // {heroCandidate.platform?.toUpperCase() || 'INTEL'}</span>
                   </div>
                 </div>
+                {/* Hero Body */}
                 <div className="dw-hero-body">
                   <div className="dw-hero-header-row">
                     <div className="dw-hero-avatar">
                       {heroCandidate.channelAvatarUrl ? (
-                        <img src={heroCandidate.channelAvatarUrl} alt="" className="dw-real-avatar-img" onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
+                        <img src={heroCandidate.channelAvatarUrl} alt="" className="dw-hero-avatar-img" onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
                       ) : (
                         <span className="dw-channel-orb">{(heroCandidate.channelName || '?')[0]}</span>
                       )}
@@ -405,112 +434,170 @@ const DataWallView: React.FC = () => {
                       <span className="dw-hero-channel-meta">{heroCandidate.category} // {heroCandidate.type.replace('_', ' ').toUpperCase()}</span>
                     </div>
                     <div className="dw-hero-fit-badge">
-                      <span className="dw-fit-label">FIT SCORE</span>
-                      <span className="dw-fit-value">{heroCandidate.fitScore || '??'}</span>
+                      <span className="dw-fit-label">FIT</span>
+                      <span className="dw-fit-value">{heroCandidate.fitScore ?? '??'}</span>
                     </div>
                   </div>
                   <h2 className="dw-hero-title">{heroCandidate.title}</h2>
-                  <div className="dw-hero-reason-box">
-                    <span className="dw-reason-label">JARVIS ANALYSIS</span>
-                    <p className="dw-hero-reason">{heroCandidate.reason || '전략적 가치 분석 중...'}</p>
+                  {/* JARVIS Analysis */}
+                  <div className="dw-hero-analysis">
+                    <span className="dw-analysis-label">JARVIS ANALYSIS</span>
+                    <p className="dw-analysis-text">{heroCandidate.reason || '전략적 가치 분석 중...'}</p>
                   </div>
-                  <div className="dw-hero-stats-grid">
-                    <div className="dw-hero-stat">
-                      <span className="dw-stat-key">SUBSCRIBERS</span>
-                      <span className="dw-stat-val">{heroCandidate.subscriberText || 'N/A'}</span>
+                  {/* Metrics Strip */}
+                  <div className="dw-metrics-strip">
+                    <div className="dw-metric">
+                      <span className="dw-metric-key">SUBSCRIBERS</span>
+                      <span className="dw-metric-val">{heroCandidate.subscriberText || '확인 필요'}</span>
                     </div>
-                    <div className="dw-hero-stat">
-                      <span className="dw-stat-key">AVG VIEWS</span>
-                      <span className="dw-stat-val">{heroCandidate.viewsText || 'N/A'}</span>
+                    <div className="dw-metric">
+                      <span className="dw-metric-key">AVG VIEWS</span>
+                      <span className="dw-metric-val">{heroCandidate.viewsText || '확인 필요'}</span>
                     </div>
-                    <div className="dw-hero-stat">
-                      <span className="dw-stat-key">CONTACT</span>
-                      <span className={`dw-stat-val ${heroCandidate.contactStatus === 'contactable' ? 'st-active' : ''}`}>
-                        {heroCandidate.contactStatus === 'contactable' ? 'AVAILABLE' : 'PENDING'}
+                    <div className="dw-metric">
+                      <span className="dw-metric-key">CONTACT</span>
+                      <span className={`dw-metric-val ${heroCandidate.contactStatus === 'contactable' ? 'dw-val-active' : ''}`}>
+                        {heroCandidate.contactStatus === 'contactable' ? 'AVAILABLE' : heroCandidate.contactStatus === 'review' ? 'REVIEW' : 'PENDING'}
                       </span>
                     </div>
+                    {heroCandidate.videoUrl && (
+                      <a href={heroCandidate.videoUrl} target="_blank" rel="noopener noreferrer" className="dw-metric dw-metric-link">
+                        <span className="dw-metric-key">LINK</span>
+                        <span className="dw-metric-val dw-val-active">VIEW</span>
+                      </a>
+                    )}
                   </div>
                 </div>
               </div>
             ) : (
-              /* ─── Empty State: UI-P 정리 ─── */
-              <div className="dw-hero-intel-card dw-empty-intel-state v2-upgrade">
-                <div className="dw-hero-thumb-wrap">
-                  <div className="dw-hero-thumb">
-                    <div className="dw-cinematic-thumb-fallback" />
+              /* ─── Empty State: Hero ─── */
+              <div className="dw-hero-intel-card dw-q1-hero dw-empty-hero">
+                <div className="dw-hero-media">
+                  <div className="dw-hero-thumb-wrap">
+                    <div className="dw-hero-thumb-fallback" />
+                    <div className="dw-hero-scanline" />
                     <span className="dw-hero-thumb-caption">AWAITING INTEL</span>
                   </div>
                 </div>
                 <div className="dw-hero-body">
                   <h2 className="dw-hero-title">INTEL STANDBY</h2>
-                  <p className="dw-hero-reason">수집된 후보가 없습니다. 1번 화면에서 OUTREACH 수집을 실행하세요.</p>
-                  <div className="dw-hero-stats-grid">
-                    <div className="dw-hero-stat">
-                      <span className="dw-stat-key">STATUS</span>
-                      <span className="dw-stat-val">{systemArmed ? 'LINKED' : 'STANDBY'}</span>
+                  <div className="dw-hero-analysis">
+                    <span className="dw-analysis-label">STATUS</span>
+                    <p className="dw-analysis-text">OUTREACH 후보를 수집하면 이곳에 실제 채널/영상 후보가 표시됩니다.</p>
+                  </div>
+                  <div className="dw-empty-modules">
+                    <span className="dw-empty-modules-label">READY MODULES</span>
+                    <div className="dw-empty-module-grid">
+                      <span className="dw-module-chip">Candidate Feed</span>
+                      <span className="dw-module-chip">Contact Check</span>
+                      <span className="dw-module-chip">Category Radar</span>
+                      <span className="dw-module-chip">Hero Selection</span>
+                      <span className="dw-module-chip">YouTube Visual Preview</span>
                     </div>
                   </div>
                 </div>
               </div>
             )}
           </section>
+
+          {/* ═══ D. Bottom Filmstrip / Top 5 ═══ */}
+          <section className="dw-filmstrip-section">
+            <div className="dw-panel-label">TOP 5 INTEL TARGETS</div>
+            <div className="dw-filmstrip">
+              {hasRealData ? (
+                top5Candidates.map((card, idx) => (
+                  <div
+                    key={card.contextId}
+                    className={`dw-filmstrip-card ${filteredCandidates.indexOf(card) === safeHeroIndex ? 'is-selected' : ''}`}
+                    onClick={() => {
+                      const realIdx = filteredCandidates.indexOf(card);
+                      if (realIdx >= 0) setHeroIndex(realIdx);
+                    }}
+                  >
+                    <div className="dw-film-thumb">
+                      {card.thumbnailUrl || card.channelAvatarUrl ? (
+                        <img src={card.thumbnailUrl || card.channelAvatarUrl} alt="" className="dw-film-img" onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
+                      ) : (
+                        <span className="dw-channel-orb dw-film-orb">{(card.channelName || '?')[0]}</span>
+                      )}
+                      <span className={`dw-film-platform dw-plat-${(card.platform || 'youtube').toLowerCase()}`}>{card.platform?.charAt(0) || 'Y'}</span>
+                    </div>
+                    <div className="dw-film-info">
+                      <span className="dw-film-name">{card.channelName || card.title}</span>
+                      <span className="dw-film-score">{card.fitScore !== undefined ? `FIT ${card.fitScore}` : ''}</span>
+                    </div>
+                  </div>
+                ))
+              ) : (
+                Array.from({ length: 5 }).map((_, idx) => (
+                  <div key={idx} className="dw-filmstrip-card dw-standby-frame">
+                    <div className="dw-film-thumb">
+                      <div className="dw-film-empty-frame" />
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+          </section>
         </main>
-        {/* ─── Right Column (Intel Queue) ─── */}
+
+        {/* ═══ C. Right Intel Queue ═══ */}
         <aside className="dw-col dw-col-right">
           <div className="dw-panel dw-intel-queue-panel">
             <div className="dw-panel-label">INTEL QUEUE {hasRealData && <span className="dw-queue-count">{queueCandidates.length}</span>}</div>
             <div className="dw-intel-cards">
               {hasRealData ? (
-                queueCandidates.map((card, idx) => (
-                  <div
-                    key={card.contextId}
-                    className={`dw-intel-card ${openingActive ? 'is-docking' : ''} ${idx < 4 ? 'is-top5' : ''}`}
-                    style={{ '--i': idx } as React.CSSProperties}
-                    data-context-id={card.contextId}
-                    onClick={() => {
-                      // UI-P: 클릭 시 Hero 승격
-                      const realIdx = realCandidates.findIndex(c => c.contextId === card.contextId);
-                      if (realIdx >= 0) setHeroIndex(realIdx);
-                    }}
-                  >
-                    <div className="dw-intel-thumb">
-                      {card.channelAvatarUrl ? (
-                        <img src={card.channelAvatarUrl} alt="" className="dw-real-avatar-img" onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
-                      ) : (
-                        <span className="dw-channel-orb">{(card.channelName || '?')[0]}</span>
-                      )}
-                    </div>
-                    <div className="dw-intel-body">
-                      <div className="dw-intel-title">{card.title}</div>
-                      <div className="dw-intel-channel">{card.channelName || '채널 미확인'}</div>
-                      <div className="dw-intel-reason">{card.reason || '판단 대기'}</div>
-                      <div className="dw-intel-footer">
-                        <span className="dw-intel-category">{card.category}</span>
-                        <span className={`dw-intel-status ${card.contactStatus === 'contactable' ? 'st-contactable' : 'st-unknown'}`}>
-                          {card.contactStatus === 'contactable' ? '연락가능' : card.contactStatus === 'review' ? '검토' : '미확인'}
-                        </span>
-                        {card.fitScore !== undefined && <span className="dw-intel-score">적합 {card.fitScore}</span>}
+                queueCandidates.map((card, idx) => {
+                  const isSelected = filteredCandidates.indexOf(card) === safeHeroIndex;
+                  return (
+                    <div
+                      key={card.contextId}
+                      className={`dw-intel-card ${openingActive ? 'is-docking' : ''} ${idx < 4 ? 'is-top5' : ''} ${isSelected ? 'is-selected' : ''}`}
+                      style={{ '--i': idx } as React.CSSProperties}
+                      onClick={() => {
+                        const realIdx = filteredCandidates.indexOf(card);
+                        if (realIdx >= 0) setHeroIndex(realIdx);
+                      }}
+                    >
+                      <div className="dw-intel-thumb">
+                        {card.channelAvatarUrl ? (
+                          <img src={card.channelAvatarUrl} alt="" className="dw-intel-avatar-img" onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
+                        ) : (
+                          <span className="dw-channel-orb">{(card.channelName || '?')[0]}</span>
+                        )}
+                      </div>
+                      <div className="dw-intel-body">
+                        <div className="dw-intel-title">{card.channelName || card.title}</div>
+                        <div className="dw-intel-reason">{card.reason || '판단 대기'}</div>
+                        <div className="dw-intel-footer">
+                          <span className={`dw-intel-badge dw-plat-${(card.platform || 'youtube').toLowerCase()}`}>{card.platform || 'YT'}</span>
+                          {card.fitScore !== undefined && <span className="dw-intel-badge dw-badge-score">FIT {card.fitScore}</span>}
+                          <span className={`dw-intel-badge ${card.contactStatus === 'contactable' ? 'dw-badge-contact' : 'dw-badge-pending'}`}>
+                            {card.contactStatus === 'contactable' ? 'CONTACT' : card.contactStatus === 'review' ? 'REVIEW' : 'PENDING'}
+                          </span>
+                        </div>
                       </div>
                     </div>
-                  </div>
-                ))
+                  );
+                })
               ) : (
-                <div className="dw-empty-intel-state">
-                  <p>AWAITING INTEL</p>
-                  <p style={{ fontSize: '11px', opacity: 0.6 }}>1번 화면에서 수집 실행 시 표시됩니다.</p>
+                <div className="dw-empty-queue">
+                  <p className="dw-empty-queue-title">AWAITING INTEL</p>
+                  <p className="dw-empty-queue-sub">1번 화면에서 후보 수집 실행 시 이곳에 우선순위 후보가 정렬됩니다.</p>
                 </div>
               )}
             </div>
           </div>
         </aside>
       </div>
+
       {/* ─── Live Feed Strip ─── */}
       <footer className="dw-live-feed">
-        {liveFeedLines.map((line, idx) => (
-          <span key={idx} className="dw-feed-line" style={{ '--i': idx } as React.CSSProperties}>
-            {line}
-          </span>
-        ))}
+        <span className="dw-feed-line">SYSTEM ONLINE</span>
+        <span className="dw-feed-line">DATA SYNC ACTIVE</span>
+        <span className="dw-feed-line">OUTREACH ENGINE READY</span>
+        <span className="dw-feed-line">VOICE AI CONNECTED</span>
+        <span className="dw-feed-line">INTEL: {realCandidates.length} CANDIDATES</span>
       </footer>
     </div>
   );
