@@ -1,10 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
-
 const WALL_CHANNEL = 'jarvis-dual-command-wall';
 const WALL_STORAGE_KEY = 'jarvis.dualWall.latest';
 const DUAL_OPENING_STORAGE_KEY = 'jarvis.dualWall.opening';
 const SMARTSTORE_SNAPSHOT_KEY = 'jarvis.smartstore.lastStatusSnapshot';
-
 interface WallPayload {
   type?: string;
   source?: string;
@@ -16,7 +14,6 @@ interface WallPayload {
   actionType?: string;
   updatedAt: number;
 }
-
 interface SmartstoreSnapshot {
   newOrders: number;
   pendingShipping: number;
@@ -28,7 +25,6 @@ interface SmartstoreSnapshot {
   fetchedAt: number;
   savedAt: number;
 }
-
 function readJson<T>(key: string): T | null {
   try {
     const raw = localStorage.getItem(key);
@@ -37,7 +33,6 @@ function readJson<T>(key: string): T | null {
     return null;
   }
 }
-
 /* ─── Hero Intel Card ─── */
 const heroIntelCard = {
   id: 'hero-corn-field-asmr',
@@ -49,7 +44,6 @@ const heroIntelCard = {
   reason: '산지 신뢰와 먹고 싶은 감각을 동시에 보여줄 수 있음',
   mood: 'corn',
 };
-
 /* ─── Video Intel Cards (후보 대기열) ─── */
 const videoIntelCards = [
   {
@@ -78,36 +72,33 @@ const videoIntelCards = [
     reason: '체험형 콘텐츠 — 가족 단위 유입 기대', status: 'READY', mood: 'farm',
   },
 ];
-
+/* ─── Season Radar Points ─── */
 const seasonPoints = [
-  { label: '옥수수', angle: 35, distance: 68 },
-  { label: '매실', angle: 120, distance: 55 },
-  { label: '블루베리', angle: 210, distance: 72 },
-  { label: '복숭아', angle: 300, distance: 60 },
+  { label: '옥수수', angle: 30, distance: 72 },
+  { label: '매실', angle: 110, distance: 58 },
+  { label: '블루베리', angle: 200, distance: 65 },
+  { label: '복숭아', angle: 290, distance: 80 },
 ];
-
+/* ─── Live Feed Lines ─── */
 const liveFeedLines = [
-  '시즌 레이더 스캔 완료 — 옥수수 · 매실 · 블루베리 · 복숭아',
-  '바이럴 소재 6건 분석 완료',
-  '스마트스토어 동기화 대기 중',
-  '아웃리치 후보 탐색 중',
+  'SYSTEM ONLINE',
+  'DATA SYNC ACTIVE',
+  'MARKET BRAIN STANDBY',
+  'OUTREACH ENGINE READY',
+  'VOICE AI CONNECTED',
 ];
-
 const DataWallView: React.FC = () => {
   const [payload, setPayload] = useState<WallPayload | null>(null);
   const [smartstoreSnapshot, setSmartstoreSnapshot] = useState<SmartstoreSnapshot | null>(null);
   const [openingActive, setOpeningActive] = useState(false);
   const [systemArmed, setSystemArmed] = useState(false);
   const openingTimerRef = useRef<number | null>(null);
-
   useEffect(() => {
     const refreshFromStorage = () => {
       const p = readJson<WallPayload>(WALL_STORAGE_KEY);
       if (p) setPayload(p);
-
       const s = readJson<SmartstoreSnapshot>(SMARTSTORE_SNAPSHOT_KEY);
       if (s) setSmartstoreSnapshot(s);
-
       const openingPayload = readJson<any>(DUAL_OPENING_STORAGE_KEY);
       if (openingPayload?.type === 'dual-armed') {
         setSystemArmed(true);
@@ -117,25 +108,21 @@ const DataWallView: React.FC = () => {
       }
     };
     refreshFromStorage();
-
     let channel: BroadcastChannel | null = null;
     if ('BroadcastChannel' in window) {
       channel = new BroadcastChannel(WALL_CHANNEL);
       channel.onmessage = (event) => {
         const data = event?.data;
         if (!data) return;
-
         if (data.type === 'dual-armed') {
           setSystemArmed(true);
           setPayload(data);
           return;
         }
-
         if (data.type === 'dual-opening') {
           setSystemArmed(true);
           setOpeningActive(true);
           setPayload(data);
-
           if (openingTimerRef.current) {
             window.clearTimeout(openingTimerRef.current);
           }
@@ -144,16 +131,12 @@ const DataWallView: React.FC = () => {
           }, 6000);
           return;
         }
-
         setPayload(data);
-
         const nextSmartstore = readJson<SmartstoreSnapshot>(SMARTSTORE_SNAPSHOT_KEY);
         if (nextSmartstore) setSmartstoreSnapshot(nextSmartstore);
       };
     }
-
     const interval = setInterval(refreshFromStorage, 3000);
-
     return () => {
       if (channel) channel.close();
       clearInterval(interval);
@@ -162,16 +145,22 @@ const DataWallView: React.FC = () => {
       }
     };
   }, []);
-
   return (
-    <div className={`data-wall-shell ${systemArmed ? 'is-system-armed' : ''} ${openingActive ? 'is-cinematic-opening' : ''}`}>
-
+    <div className={`data-wall-shell dw-cinematic-unity ${systemArmed ? 'is-system-armed' : ''} ${openingActive ? 'is-cinematic-opening' : ''}`}>
+      {/* ─── Cinematic Ambient Layer ─── */}
+      <div className="dw-cinematic-ambient-layer" aria-hidden="true">
+        <div className="dw-ambient-grid" />
+        <div className="dw-ambient-glow" />
+        <div className="dw-ambient-sweep" />
+        <div className="dw-ambient-noise" />
+        <div className="dw-ambient-film-grain" />
+        <div className="dw-ambient-scanline" />
+      </div>
       {/* ─── Background Layer ─── */}
       <div className="data-wall-bg" aria-hidden="true">
         <div className="bg-grid" />
         <div className="bg-vignette" />
       </div>
-
       {/* ─── Header ─── */}
       <header className="data-wall-header">
         <div className="dw-header-left">
@@ -179,24 +168,19 @@ const DataWallView: React.FC = () => {
           <h1 className="dw-title">STRATEGIC HOLOGRAM STAGE</h1>
         </div>
         <div className="dw-header-right">
-          <div className="dw-status-badge">
-            <span className="dw-status-dot" />
-            <span>{openingActive ? 'AWAKENING' : 'ONLINE'}</span>
-          </div>
-          <div className="dw-time">{payload?.currentTime || '00:00:00'}</div>
+          <span className="dw-header-badge">JARVIS ONLINE</span>
+          <span className="dw-header-badge">SYSTEM AWAKENING</span>
         </div>
       </header>
-
-      {/* ─── Main Grid: Left / Center Hero / Right ─── */}
+      {/* ─── Main 3-Column Grid ─── */}
       <div className="data-wall-main-grid v3">
-
-        {/* LEFT: Brief + Season Radar */}
+        {/* LEFT: Morning Brief + Radar */}
         <aside className="dw-col dw-col-left">
           <div className="dw-panel dw-brief-panel">
             <div className="dw-panel-label">MORNING BRIEF</div>
             <div className="dw-brief-row">
               <span className="dw-brief-key">SMARTSTORE</span>
-              <span className="dw-brief-val">{smartstoreSnapshot?.preShipTotal ?? 0} PRE-SHIP</span>
+              <span className="dw-brief-val">{smartstoreSnapshot?.preShipTotal ?? '—'} PRE-SHIP</span>
             </div>
             <div className="dw-brief-row">
               <span className="dw-brief-key">OUTREACH</span>
@@ -207,7 +191,6 @@ const DataWallView: React.FC = () => {
               <span className="dw-brief-val">{payload?.workspaceCount ?? 0} FILES</span>
             </div>
           </div>
-
           <div className="dw-panel dw-radar-panel">
             <div className="dw-panel-label">SEASON RADAR</div>
             <div className="dw-radar-container">
@@ -231,10 +214,16 @@ const DataWallView: React.FC = () => {
             </div>
           </div>
         </aside>
-
         {/* CENTER: Hero Stage */}
         <main className="dw-col dw-col-center">
           <section className="dw-hero-stage">
+            {/* Unity Ambient (Orb-like depth behind Hero Card) */}
+            <div className="dw-unity-ambient" aria-hidden="true">
+              <span className="dw-unity-core" />
+              <span className="dw-unity-ring ring-a" />
+              <span className="dw-unity-ring ring-b" />
+              <span className="dw-unity-ring ring-c" />
+            </div>
             {/* Depth Rings (camera push-in feel) */}
             <div className="dw-camera-depth" aria-hidden="true">
               <span className="dw-depth-ring ring-1" />
@@ -242,7 +231,6 @@ const DataWallView: React.FC = () => {
               <span className="dw-depth-ring ring-3" />
               <span className="dw-horizon-beam" />
             </div>
-
             {/* Hero Intel Card */}
             <article className="dw-hero-intel-card" data-context-id={heroIntelCard.id}>
               <div className={`dw-hero-thumb thumb-${heroIntelCard.mood}`}>
@@ -250,7 +238,6 @@ const DataWallView: React.FC = () => {
                 <div className="dw-thumb-play" />
                 <div className="dw-thumb-caption">FIELD SIGNAL</div>
               </div>
-
               <div className="dw-hero-meta">
                 <div className="dw-channel-row">
                   <span className="dw-channel-avatar">U</span>
@@ -259,11 +246,9 @@ const DataWallView: React.FC = () => {
                     <em>{heroIntelCard.category}</em>
                   </div>
                 </div>
-
                 <h2 className="dw-hero-title">{heroIntelCard.title}</h2>
                 <p className="dw-hero-signal">{heroIntelCard.signal}</p>
                 <p className="dw-hero-reason">{heroIntelCard.reason}</p>
-
                 <div className="dw-hero-action-bar">
                   <span className="dw-hero-action-label">RECOMMENDED ACTION</span>
                   <span className="dw-hero-action-text">{heroIntelCard.action}</span>
@@ -272,7 +257,6 @@ const DataWallView: React.FC = () => {
             </article>
           </section>
         </main>
-
         {/* RIGHT: Video Intel Queue */}
         <aside className="dw-col dw-col-right">
           <div className="dw-panel dw-video-intel-panel">
@@ -304,7 +288,6 @@ const DataWallView: React.FC = () => {
           </div>
         </aside>
       </div>
-
       {/* ─── Live Feed Strip ─── */}
       <footer className="dw-live-feed">
         {liveFeedLines.map((line, idx) => (
@@ -316,5 +299,4 @@ const DataWallView: React.FC = () => {
     </div>
   );
 };
-
 export default DataWallView;

@@ -3611,3 +3611,282 @@ html, body {
     filter: none !important;
   }
 }
+
+/* ═══════════════════════════════════════════════════════════
+   UI-M Dual Monitor Cinematic Unity v1
+   ambient motion / glow / sweep / film grain / scanline /
+   hologram noise / unity core ring / camera push-in
+   ═══════════════════════════════════════════════════════════ */
+
+/* ─── Cinematic Ambient Layer (full-screen behind content) ─── */
+.dw-cinematic-ambient-layer {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  overflow: hidden;
+}
+
+/* Ambient Grid — perspective depth grid drifting slowly */
+.dw-ambient-grid {
+  position: absolute;
+  inset: 0;
+  background:
+    repeating-linear-gradient(
+      0deg,
+      transparent,
+      transparent 59px,
+      rgba(103, 232, 249, 0.03) 60px
+    ),
+    repeating-linear-gradient(
+      90deg,
+      transparent,
+      transparent 59px,
+      rgba(103, 232, 249, 0.03) 60px
+    );
+  transform: perspective(900px) rotateX(62deg) translateY(128px);
+  transform-origin: center bottom;
+  opacity: 0.5;
+  animation: dwAmbientGridDrift 18s ease-in-out infinite;
+}
+
+/* Ambient Glow — central radial breathing */
+.dw-ambient-glow {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 900px;
+  height: 900px;
+  border-radius: 999px;
+  transform: translate(-50%, -50%) scale(0.96);
+  background: radial-gradient(
+    circle,
+    rgba(0, 245, 255, 0.06) 0%,
+    rgba(103, 232, 249, 0.03) 35%,
+    transparent 70%
+  );
+  animation: dwAmbientBreath 8s ease-in-out infinite;
+}
+
+/* Ambient Sweep — horizontal light sweep */
+.dw-ambient-sweep {
+  position: absolute;
+  top: 46%;
+  left: -10%;
+  width: 120%;
+  height: 2px;
+  background: linear-gradient(90deg, transparent, rgba(103, 232, 249, 0.42), rgba(255, 235, 170, 0.18), transparent);
+  filter: blur(1px);
+  opacity: 0.58;
+  animation: dwHorizonSweep 6.5s ease-in-out infinite;
+}
+
+/* Ambient Noise — hologram noise texture */
+.dw-ambient-noise {
+  position: absolute;
+  inset: 0;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.025'/%3E%3C/svg%3E");
+  opacity: 0.4;
+  mix-blend-mode: overlay;
+  animation: dwNoiseShift 0.15s steps(3) infinite;
+}
+
+/* Film Grain — subtle analog texture */
+.dw-ambient-film-grain {
+  position: absolute;
+  inset: 0;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 512 512' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='g'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='1.2' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23g)' opacity='0.03'/%3E%3C/svg%3E");
+  opacity: 0.3;
+  mix-blend-mode: soft-light;
+  animation: dwGrainDrift 0.3s steps(4) infinite;
+}
+
+/* Scanline — subtle horizontal lines */
+.dw-ambient-scanline {
+  position: absolute;
+  inset: 0;
+  background: repeating-linear-gradient(
+    0deg,
+    transparent,
+    transparent 3px,
+    rgba(0, 0, 0, 0.04) 3px,
+    rgba(0, 0, 0, 0.04) 4px
+  );
+  opacity: 0.6;
+  pointer-events: none;
+}
+
+/* ─── Unity Ambient (Orb-like depth in Hero Stage center) ─── */
+.dw-unity-ambient {
+  position: absolute;
+  inset: -12%;
+  z-index: 0;
+  pointer-events: none;
+  transform-style: preserve-3d;
+}
+
+.dw-unity-core {
+  position: absolute;
+  left: 50%;
+  top: 48%;
+  width: 170px;
+  height: 170px;
+  border-radius: 999px;
+  transform: translate(-50%, -50%) translateZ(-60px);
+  background:
+    radial-gradient(circle, rgba(255, 236, 178, 0.20), rgba(0, 245, 255, 0.16) 38%, transparent 68%);
+  filter: blur(10px);
+  animation: dwUnityCorePulse 5.8s ease-in-out infinite;
+}
+
+.dw-unity-ring {
+  position: absolute;
+  left: 50%;
+  top: 48%;
+  border-radius: 999px;
+  border: 1px solid rgba(103, 232, 249, 0.12);
+  transform: translate(-50%, -50%) rotateX(58deg);
+  box-shadow: 0 0 28px rgba(0, 245, 255, 0.05);
+}
+
+.dw-unity-ring.ring-a { width: 330px; height: 330px; animation: dwUnityRing 9s linear infinite; }
+.dw-unity-ring.ring-b { width: 520px; height: 520px; animation: dwUnityRing 13s linear infinite reverse; }
+.dw-unity-ring.ring-c { width: 760px; height: 760px; animation: dwUnityRing 17s linear infinite; opacity: 0.45; }
+
+/* ─── Keyframes ─── */
+@keyframes dwAmbientBreath {
+  0%, 100% { transform: translate(-50%, -50%) scale(0.96); opacity: 0.54; }
+  50% { transform: translate(-50%, -50%) scale(1.08); opacity: 0.86; }
+}
+
+@keyframes dwAmbientGridDrift {
+  0%, 100% { transform: perspective(900px) rotateX(62deg) translateY(128px) translateX(0); }
+  50% { transform: perspective(900px) rotateX(62deg) translateY(108px) translateX(-24px); }
+}
+
+@keyframes dwHorizonSweep {
+  0%, 100% { opacity: 0.18; transform: translateX(-4%); }
+  50% { opacity: 0.72; transform: translateX(4%); }
+}
+
+@keyframes dwUnityCorePulse {
+  0%, 100% { opacity: 0.45; transform: translate(-50%, -50%) translateZ(-60px) scale(0.92); }
+  50% { opacity: 0.92; transform: translate(-50%, -50%) translateZ(-20px) scale(1.12); }
+}
+
+@keyframes dwUnityRing {
+  from { rotate: 0deg; }
+  to { rotate: 360deg; }
+}
+
+@keyframes dwNoiseShift {
+  0% { transform: translate(0, 0); }
+  33% { transform: translate(-2px, 1px); }
+  66% { transform: translate(1px, -1px); }
+  100% { transform: translate(0, 0); }
+}
+
+@keyframes dwGrainDrift {
+  0% { transform: translate(0, 0); }
+  25% { transform: translate(-1px, 2px); }
+  50% { transform: translate(2px, -1px); }
+  75% { transform: translate(-2px, -1px); }
+  100% { transform: translate(0, 0); }
+}
+
+/* ─── dw-cinematic-unity class ensures ambient layer renders ─── */
+.dw-cinematic-unity {
+  position: relative;
+}
+
+/* Ensure Hero Stage has relative positioning for unity ambient */
+.dw-cinematic-unity .dw-hero-stage {
+  position: relative;
+  transform-style: preserve-3d;
+}
+
+/* Ensure content sits above ambient layer */
+.dw-cinematic-unity .data-wall-header,
+.dw-cinematic-unity .data-wall-main-grid,
+.dw-cinematic-unity .dw-live-feed {
+  position: relative;
+  z-index: 2;
+}
+
+/* Hero card above unity rings */
+.dw-cinematic-unity .dw-hero-intel-card {
+  position: relative;
+  z-index: 3;
+}
+
+/* Camera depth rings above unity but below card */
+.dw-cinematic-unity .dw-camera-depth {
+  z-index: 1;
+}
+
+/* ─── Opening sequence enhancement for Unity ─── */
+.dw-cinematic-unity.is-cinematic-opening .dw-unity-core {
+  animation: dwUnityCoreBoot 2.4s cubic-bezier(0.22, 1, 0.36, 1) forwards, dwUnityCorePulse 5.8s ease-in-out 2.4s infinite;
+}
+
+@keyframes dwUnityCoreBoot {
+  0% { opacity: 0; transform: translate(-50%, -50%) translateZ(-200px) scale(0.3); }
+  60% { opacity: 1; transform: translate(-50%, -50%) translateZ(10px) scale(1.2); }
+  100% { opacity: 0.92; transform: translate(-50%, -50%) translateZ(-60px) scale(1); }
+}
+
+.dw-cinematic-unity.is-cinematic-opening .dw-unity-ring.ring-a {
+  animation: dwUnityRingBoot 1.8s cubic-bezier(0.22, 1, 0.36, 1) 0.4s forwards, dwUnityRing 9s linear 2.2s infinite;
+  opacity: 0;
+}
+.dw-cinematic-unity.is-cinematic-opening .dw-unity-ring.ring-b {
+  animation: dwUnityRingBoot 1.8s cubic-bezier(0.22, 1, 0.36, 1) 0.7s forwards, dwUnityRing 13s linear 2.5s infinite reverse;
+  opacity: 0;
+}
+.dw-cinematic-unity.is-cinematic-opening .dw-unity-ring.ring-c {
+  animation: dwUnityRingBoot 1.8s cubic-bezier(0.22, 1, 0.36, 1) 1.0s forwards, dwUnityRing 17s linear 2.8s infinite;
+  opacity: 0;
+}
+
+@keyframes dwUnityRingBoot {
+  0% { opacity: 0; transform: translate(-50%, -50%) rotateX(58deg) scale(0.2); }
+  70% { opacity: 0.8; transform: translate(-50%, -50%) rotateX(58deg) scale(1.08); }
+  100% { opacity: 1; transform: translate(-50%, -50%) rotateX(58deg) scale(1); }
+}
+
+/* Ambient layer boot-in during opening */
+.dw-cinematic-unity.is-cinematic-opening .dw-cinematic-ambient-layer {
+  animation: dwAmbientLayerBoot 3s ease-out forwards;
+}
+
+@keyframes dwAmbientLayerBoot {
+  0% { opacity: 0; }
+  40% { opacity: 0.3; }
+  100% { opacity: 1; }
+}
+
+/* Sweep flash during opening */
+.dw-cinematic-unity.is-cinematic-opening .dw-ambient-sweep {
+  animation: dwSweepFlash 1.2s ease-out 0.6s forwards, dwHorizonSweep 6.5s ease-in-out 1.8s infinite;
+  opacity: 0;
+}
+
+@keyframes dwSweepFlash {
+  0% { opacity: 0; transform: translateX(-20%); }
+  50% { opacity: 1; }
+  100% { opacity: 0.58; transform: translateX(0); }
+}
+
+/* ─── Reduced motion ─── */
+@media (prefers-reduced-motion: reduce) {
+  .dw-cinematic-ambient-layer,
+  .dw-unity-ambient {
+    animation: none !important;
+  }
+  .dw-cinematic-ambient-layer * {
+    animation: none !important;
+  }
+  .dw-unity-ambient * {
+    animation: none !important;
+  }
+}
