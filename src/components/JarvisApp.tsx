@@ -412,6 +412,7 @@ export default function JarvisApp() {
   const [resultDeckItems, setResultDeckItems] = useState<any[]>([]);
   // ── SSoT: 스마트스토어 데이터 캐시 (5분 유효) ──
   const ssCountsCacheRef = useRef<{ data: any; fetchedAt: number } | null>(null);
+  const lastClapActivateAtRef = useRef<number>(0);
 
   // ── UI 컨텍스트 동기화 (GPT에게 현재 화면 정보 전달) ──
   useEffect(() => {
@@ -5323,15 +5324,34 @@ export default function JarvisApp() {
       <ClapDetector
         onClap={() => {
           console.log('[JARVIS] Clap detected! Armed:', dualScreenArmed);
+          
+          // UI-P.2: 박수 감지 시 쿨다운 적용 (1.5초)
+          const now = Date.now();
+          if (now - (lastClapActivateAtRef.current || 0) < 1500) {
+            console.log('[JARVIS] Clap ignored (cooldown)');
+            return;
+          }
+          lastClapActivateAtRef.current = now;
+
           if (dualScreenArmed) {
+            console.info('[UI-P.2] clap -> handleActivate (Dual Mode)');
             triggerDualScreenOpening('clap');
-            // handleActivate는 triggerDualScreenOpening 내부에서 호출하거나 
-            // 여기서 직접 호출하되, 딜레이를 주어 오프닝 효과와 겹치지 않게 함
+            
+            // 2번 화면 포커스 시도 (이미 열려있는 경우)
+            if (dataWallPopupRef.current && !dataWallPopupRef.current.closed) {
+              try {
+                dataWallPopupRef.current.focus();
+                publishDualWallPayload({ type: 'data-update', source: 'clap-activate', updatedAt: Date.now() });
+              } catch (e) { console.warn('[DUAL] focus failed:', e); }
+            }
+
             setTimeout(() => {
               handleActivate();
             }, 500);
             return;
           }
+          
+          console.info('[UI-P.2] clap -> handleActivate (Normal Mode)');
           handleActivate();
         }}
         onAudioLevel={setMicLevel}
