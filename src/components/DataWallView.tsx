@@ -44,6 +44,7 @@ type RealIntelCandidate = {
   channelAvatarUrl?: string;
   subscriberText?: string;
   viewsText?: string;
+  likesText?: string;
   contactStatus: 'contactable' | 'unknown' | 'none' | 'review';
   fitScore?: number;
   reason?: string;
@@ -131,7 +132,11 @@ function normalizeIntelCandidate(item: any, index: number): RealIntelCandidate {
   const likesText = likeCount ? `${likeCount.toLocaleString()}개` : undefined;
 
   // Extract videoId from various sources
-  let videoId: string | undefined = item.videoId || undefined;
+  let videoId: string | undefined = item.videoId || item.representativeVideoId || undefined;
+  if (!videoId && item.topVideoUrl) {
+    const match = item.topVideoUrl.match(/(?:v=|youtu\.be\/)([a-zA-Z0-9_-]{11})/);
+    if (match) videoId = match[1];
+  }
   if (!videoId && item.videoUrl) {
     const match = item.videoUrl.match(/(?:v=|youtu\.be\/)([a-zA-Z0-9_-]{11})/);
     if (match) videoId = match[1];
@@ -140,8 +145,18 @@ function normalizeIntelCandidate(item: any, index: number): RealIntelCandidate {
     const match = item.url.match(/(?:v=|youtu\.be\/)([a-zA-Z0-9_-]{11})/);
     if (match) videoId = match[1];
   }
+  if (!videoId && item.recentContentUrl) {
+    const match = item.recentContentUrl.match(/(?:v=|youtu\.be\/)([a-zA-Z0-9_-]{11})/);
+    if (match) videoId = match[1];
+  }
 
   // Enhanced Image Mapping
+  // Note: profileUrl in outreach candidates is a channel URL (https://www.youtube.com/channel/...)
+  // not an image URL, so we filter it out from image sources
+  const isImageUrl = (url: string | undefined): boolean => {
+    if (!url) return false;
+    return url.startsWith('http') && (url.includes('ggpht') || url.includes('googleusercontent') || url.includes('ytimg') || url.includes('.jpg') || url.includes('.png') || url.includes('.webp') || url.includes('instagram') || url.includes('fbcdn') || url.includes('pstatic'));
+  };
   const profileImage =
     item.profileImageUrl ||
     item.profileImage ||
@@ -151,7 +166,7 @@ function normalizeIntelCandidate(item: any, index: number): RealIntelCandidate {
     item.channelAvatar ||
     item.channelThumbnailUrl ||
     item.channelThumbnail ||
-    item.profileUrl ||
+    (isImageUrl(item.profileUrl) ? item.profileUrl : undefined) ||
     item.channel?.thumbnailUrl ||
     item.channel?.avatarUrl ||
     item.snippet?.thumbnails?.default?.url ||
@@ -200,7 +215,7 @@ function normalizeIntelCandidate(item: any, index: number): RealIntelCandidate {
     keywords: Array.isArray(item.keywords) ? item.keywords : (item.keyword ? [item.keyword] : []),
     lastUpdated: item.collectedAt || item.lastUpdated || item.updatedAt || undefined,
     videoId,
-    videoUrl: item.videoUrl || item.url || (videoId ? `https://www.youtube.com/watch?v=${videoId}` : undefined),
+    videoUrl: item.videoUrl || item.topVideoUrl || item.url || item.channelOrBlogUrl || (videoId ? `https://www.youtube.com/watch?v=${videoId}` : undefined),
     raw: item,
   };
 }

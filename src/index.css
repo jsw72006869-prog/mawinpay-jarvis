@@ -4037,6 +4037,7 @@ html, body {
   display: flex;
   align-items: center;
   justify-content: center;
+  position: relative;
 }
 
 .dw-real-avatar-img {
@@ -4469,10 +4470,10 @@ html, body {
 }
 
 .dw-fallback-letter {
-  font-size: 5rem;
+  font-size: 2.5rem;
   font-weight: 900;
-  color: rgba(0, 255, 255, 0.2);
-  text-shadow: 0 0 20px rgba(0, 255, 255, 0.3);
+  color: rgba(0, 255, 255, 0.15);
+  text-shadow: 0 0 15px rgba(0, 255, 255, 0.2);
   font-family: 'Orbitron', sans-serif;
 }
 
@@ -4484,15 +4485,15 @@ html, body {
 }
 
 .dw-hero-thumb-wrap.is-image-failed::after {
-  content: "SIGNAL LOST";
+  content: "미디어 확인 중";
   position: absolute;
   top: 50%;
   left: 50%;
   transform: translate(-50%, -50%);
-  color: rgba(255, 0, 0, 0.5);
-  font-size: 0.8rem;
-  letter-spacing: 0.2em;
-  font-weight: bold;
+  color: rgba(0, 245, 255, 0.4);
+  font-size: 0.7rem;
+  letter-spacing: 0.15em;
+  font-weight: 600;
 }
 
 .dw-hero-avatar.is-image-failed,
@@ -5197,6 +5198,7 @@ html, body {
   overflow: hidden;
   border: 1px solid rgba(0, 245, 255, 0.2);
   flex-shrink: 0;
+  position: relative;
 }
 .dw-hero-avatar-img {
   width: 100%;
@@ -5209,10 +5211,20 @@ html, body {
   justify-content: center;
   width: 100%;
   height: 100%;
+  position: absolute;
+  top: 0;
+  left: 0;
   background: linear-gradient(135deg, rgba(0, 245, 255, 0.15), rgba(0, 245, 255, 0.05));
   color: #00F5FF;
   font-size: 0.7rem;
   font-weight: 700;
+  z-index: 0;
+}
+.dw-hero-avatar-img,
+.dw-intel-avatar-img,
+.dw-film-img {
+  position: relative;
+  z-index: 1;
 }
 .dw-hero-channel-info {
   flex: 1;
@@ -5331,10 +5343,9 @@ html, body {
 }
 
 .is-image-failed::after {
-  content: 'SIGNAL LOST';
-  font-size: 10px;
-  color: rgba(255, 100, 100, 0.5);
-  letter-spacing: 2px;
+  content: '';
+  font-size: 0;
+  display: none;
 }
 .dw-metric-link {
   text-decoration: none;
@@ -5422,7 +5433,7 @@ html, body {
 .dw-film-orb {
   width: 100%;
   height: 100%;
-  font-size: 1.2rem;
+  font-size: 0.8rem;
 }
 .dw-film-platform {
   position: absolute;

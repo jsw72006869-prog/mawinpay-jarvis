@@ -1614,6 +1614,7 @@ async function handleOutreachCollect(params: any) {
             followUpDraft: hasEmail ? generateFollowUpDraft(channelData, keyword, productName) : '',
             responseStatus: 'none',
             notes: trendChannelIds.includes(ch.id) ? '🔥 트렌드 발견' : '',
+            thumbnailUrl: snippet.thumbnails?.medium?.url || snippet.thumbnails?.default?.url || '',
             excludedReason: '',
           };
 
