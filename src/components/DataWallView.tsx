@@ -94,18 +94,41 @@ function normalizeIntelCandidate(item: any, index: number): RealIntelCandidate {
   else if (hasForm) contactStatus = 'review';
   else if (item.publicContactStatus === 'none') contactStatus = 'none';
 
+  const subscriberCount =
+    item.subscriberCount ||
+    item.subscribers ||
+    item.followerCount ||
+    item.followers ||
+    item.channel?.subscriberCount ||
+    undefined;
+
   const subscriberText =
     item.subscriberOrVisitor ||
-    item.followers ||
-    (item.subscriberCount ? `${item.subscriberCount.toLocaleString()}명` : undefined) ||
-    (item.subscribers ? `${item.subscribers.toLocaleString()}명` : undefined) ||
+    (subscriberCount ? `${subscriberCount.toLocaleString()}명` : undefined) ||
+    undefined;
+
+  const viewCount =
+    item.viewCount ||
+    item.views ||
+    item.avgViews ||
+    item.averageViews ||
+    item.video?.viewCount ||
+    item.statistics?.viewCount ||
     undefined;
 
   const viewsText =
-    item.viewCount ||
     item.viewCountFormatted ||
-    (item.avgViews ? `평균 ${item.avgViews.toLocaleString()}회` : undefined) ||
+    (viewCount ? (typeof viewCount === 'number' ? `${viewCount.toLocaleString()}회` : viewCount) : undefined) ||
     undefined;
+
+  const likeCount =
+    item.likeCount ||
+    item.likes ||
+    item.video?.likeCount ||
+    item.statistics?.likeCount ||
+    undefined;
+
+  const likesText = likeCount ? `${likeCount.toLocaleString()}개` : undefined;
 
   // Extract videoId from various sources
   let videoId: string | undefined = item.videoId || undefined;
@@ -129,6 +152,8 @@ function normalizeIntelCandidate(item: any, index: number): RealIntelCandidate {
     item.channelThumbnailUrl ||
     item.channelThumbnail ||
     item.profileUrl ||
+    item.channel?.thumbnailUrl ||
+    item.channel?.avatarUrl ||
     item.snippet?.thumbnails?.default?.url ||
     item.snippet?.thumbnails?.medium?.url ||
     item.thumbnails?.default?.url ||
@@ -143,11 +168,15 @@ function normalizeIntelCandidate(item: any, index: number): RealIntelCandidate {
     item.imageUrl ||
     item.videoThumbnailUrl ||
     item.videoThumbnail ||
-    youtubeThumbnailFromId ||
+    item.video?.thumbnailUrl ||
+    item.video?.thumbnail ||
+    item.snippet?.thumbnails?.maxres?.url ||
     item.snippet?.thumbnails?.high?.url ||
     item.snippet?.thumbnails?.medium?.url ||
+    item.thumbnails?.maxres?.url ||
     item.thumbnails?.high?.url ||
     item.thumbnails?.medium?.url ||
+    youtubeThumbnailFromId ||
     profileImage ||
     undefined;
 
@@ -164,6 +193,7 @@ function normalizeIntelCandidate(item: any, index: number): RealIntelCandidate {
     channelAvatarUrl: profileImage || thumbnailUrl,
     subscriberText,
     viewsText,
+    likesText,
     contactStatus,
     fitScore: typeof item.productFitScore === 'number' ? item.productFitScore : (typeof item.fitScore === 'number' ? item.fitScore : (typeof item.score === 'number' ? item.score : (typeof item.matchScore === 'number' ? item.matchScore : undefined))),
     reason: item.productFitReason || item.reason || item.fitReason || item.suggestedOfferAngle || undefined,
@@ -448,7 +478,8 @@ const DataWallView: React.FC = () => {
                       <div className="dw-hero-thumb-fallback">
                         <div className="dw-fallback-visual">
                           <span className="dw-fallback-letter">{(heroCandidate.channelName || heroCandidate.title || '?')[0]}</span>
-                          <span className="dw-fallback-label">VISUAL SIGNAL PENDING</span>
+                          <span className="dw-fallback-label">미디어 정보 확인 중</span>
+                          <span className="dw-fallback-sub">대표 영상 또는 프로필 이미지를 불러올 수 없습니다.</span>
                         </div>
                       </div>
                     )}
@@ -464,7 +495,7 @@ const DataWallView: React.FC = () => {
                     <span className={`dw-platform-badge dw-plat-${(heroCandidate.platform || 'youtube').toLowerCase()}`}>
                       {heroCandidate.platform || 'YouTube'}
                     </span>
-                    <span className="dw-hero-thumb-caption">FIELD SIGNAL // {heroCandidate.platform?.toUpperCase() || 'INTEL'}</span>
+                    <span className="dw-hero-thumb-caption">현장 신호 // {heroCandidate.platform?.toUpperCase() || '인텔'}</span>
                   </div>
                 </div>
                 {/* Hero Body */}
@@ -474,9 +505,10 @@ const DataWallView: React.FC = () => {
                       {heroCandidate.channelAvatarUrl ? (
                         <img 
                           src={heroCandidate.channelAvatarUrl} 
-                          alt="" 
+                          alt={heroCandidate.channelName} 
                           className="dw-hero-avatar-img" 
                           referrerPolicy="no-referrer"
+                          loading="lazy"
                           onError={(e) => { 
                             const target = e.target as HTMLImageElement;
                             target.style.display = 'none';
@@ -491,36 +523,42 @@ const DataWallView: React.FC = () => {
                       <span className="dw-hero-channel-meta">{heroCandidate.category} // {heroCandidate.type.replace('_', ' ').toUpperCase()}</span>
                     </div>
                     <div className="dw-hero-fit-badge">
-                      <span className="dw-fit-label">FIT</span>
+                      <span className="dw-fit-label">적합도</span>
                       <span className="dw-fit-value">{heroCandidate.fitScore ?? '??'}</span>
                     </div>
                   </div>
                   <h2 className="dw-hero-title">{heroCandidate.title}</h2>
                   {/* JARVIS Analysis */}
                   <div className="dw-hero-analysis">
-                    <span className="dw-analysis-label">JARVIS ANALYSIS</span>
+                    <span className="dw-analysis-label">자비스 전략 분석</span>
                     <p className="dw-analysis-text">{heroCandidate.reason || '전략적 가치 분석 중...'}</p>
                   </div>
                   {/* Metrics Strip */}
                   <div className="dw-metrics-strip">
                     <div className="dw-metric">
-                      <span className="dw-metric-key">SUBSCRIBERS</span>
+                      <span className="dw-metric-key">구독자</span>
                       <span className="dw-metric-val">{heroCandidate.subscriberText || '확인 필요'}</span>
                     </div>
                     <div className="dw-metric">
-                      <span className="dw-metric-key">AVG VIEWS</span>
+                      <span className="dw-metric-key">평균 조회수</span>
                       <span className="dw-metric-val">{heroCandidate.viewsText || '확인 필요'}</span>
                     </div>
+                    {heroCandidate.likesText && (
+                      <div className="dw-metric">
+                        <span className="dw-metric-key">좋아요</span>
+                        <span className="dw-metric-val">{heroCandidate.likesText}</span>
+                      </div>
+                    )}
                     <div className="dw-metric">
-                      <span className="dw-metric-key">CONTACT</span>
+                      <span className="dw-metric-key">연락 가능</span>
                       <span className={`dw-metric-val ${heroCandidate.contactStatus === 'contactable' ? 'dw-val-active' : ''}`}>
-                        {heroCandidate.contactStatus === 'contactable' ? 'AVAILABLE' : heroCandidate.contactStatus === 'review' ? 'REVIEW' : 'PENDING'}
+                        {heroCandidate.contactStatus === 'contactable' ? '문의 가능' : heroCandidate.contactStatus === 'review' ? '검토 필요' : '대기 중'}
                       </span>
                     </div>
                     {heroCandidate.videoUrl && (
                       <a href={heroCandidate.videoUrl} target="_blank" rel="noopener noreferrer" className="dw-metric dw-metric-link">
-                        <span className="dw-metric-key">LINK</span>
-                        <span className="dw-metric-val dw-val-active">VIEW</span>
+                        <span className="dw-metric-key">링크</span>
+                        <span className="dw-metric-val dw-val-active">이동</span>
                       </a>
                     )}
                   </div>
@@ -648,7 +686,7 @@ const DataWallView: React.FC = () => {
                           <span className={`dw-intel-badge dw-plat-${(card.platform || 'youtube').toLowerCase()}`}>{card.platform || 'YT'}</span>
                           {card.fitScore !== undefined && <span className="dw-intel-badge dw-badge-score">FIT {card.fitScore}</span>}
                           <span className={`dw-intel-badge ${card.contactStatus === 'contactable' ? 'dw-badge-contact' : 'dw-badge-pending'}`}>
-                            {card.contactStatus === 'contactable' ? 'CONTACT' : card.contactStatus === 'review' ? 'REVIEW' : 'PENDING'}
+                            {card.contactStatus === 'contactable' ? '문의 가능' : card.contactStatus === 'review' ? '검토 필요' : '대기 중'}
                           </span>
                         </div>
                       </div>

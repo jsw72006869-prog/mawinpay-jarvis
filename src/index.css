@@ -5314,6 +5314,28 @@ html, body {
   color: #00FFAA;
   text-shadow: 0 0 6px rgba(0, 255, 170, 0.3);
 }
+
+.dw-fallback-sub {
+  font-size: 10px;
+  color: rgba(255, 255, 255, 0.3);
+  margin-top: 8px;
+  max-width: 80%;
+  text-align: center;
+}
+
+.is-image-failed {
+  background: linear-gradient(135deg, rgba(20, 30, 50, 0.8), rgba(10, 15, 25, 0.9)) !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+}
+
+.is-image-failed::after {
+  content: 'SIGNAL LOST';
+  font-size: 10px;
+  color: rgba(255, 100, 100, 0.5);
+  letter-spacing: 2px;
+}
 .dw-metric-link {
   text-decoration: none;
   cursor: pointer;
