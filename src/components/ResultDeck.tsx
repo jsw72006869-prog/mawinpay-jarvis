@@ -26,6 +26,7 @@ export interface ResultItem {
   headline?: string;
   thumbnailText?: string;
   firstThreeSeconds?: string;
+  reelsScript?: string;
   targetPersona?: string;
   desireTrigger?: string;
   futureScene?: string;
@@ -252,6 +253,7 @@ export default function ResultDeck({
                           <CopyACardSection label="헤드카피" value={item.headline || ''} icon="🎯" />
                           <CopyACardSection label="썸네일 문구" value={item.thumbnailText || ''} icon="📸" />
                           <CopyACardSection label="첫 3초 스크립트" value={item.firstThreeSeconds || ''} icon="⚡" />
+                          {item.reelsScript && <CopyACardSection label="릴스 대본" value={item.reelsScript} icon="🎬" />}
                           <CopyACardSection label="타깃 고객" value={item.targetPersona || ''} icon="👤" />
                           <CopyACardSection label="자극한 욕구" value={item.desireTrigger || ''} icon="💡" />
                           <CopyACardSection label="미래 장면" value={item.futureScene || ''} icon="🌅" />
