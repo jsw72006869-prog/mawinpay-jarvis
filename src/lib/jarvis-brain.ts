@@ -396,18 +396,29 @@ function deterministicMatch(text: string): JarvisAction | null {
   const lower = text.toLowerCase().trim();
 
   // ── Priority 1: Creative Director 명령 (smartstore보다 먼저 체크) ──
-  // 상품명 + 마케팅/콘텐츠 키워드 → Creative Director로 우선 라우팅
-  const creativeKeywords = /마케팅|문구|카피|릴스|스레드|인스타|콘텐츠|광고|후킹|대본|공지문|공구.?글|영상.?구성|자막|촬영/;
-  const creativeActions = /만들어|써줘|작성|생성|구성|제작/;
-  if (creativeKeywords.test(lower) && (creativeActions.test(lower) || /만들어줘|써줘|해줘/.test(lower))) {
+  // COPY-A.3: 확장된 creativeKeywords (썸네일/스크립트/쇼츠/숏폼/틱톡/첫3초 추가)
+  const creativeKeywords = /마케팅|문구|카피|릴스|스레드|인스타|콘텐츠|광고|후킹|대본|공지문|공구.?글|영상.?구성|자막|촬영|썸네일|스크립트|쇼츠|숏폼|틱톡|첫.?3초|인스타그램|threads|reels|shorts|tiktok|thumbnail|script/i;
+  const creativeActions = /만들어|써줘|작성|생성|구성|제작|짜줘|뽑아줘/;
+  if (creativeKeywords.test(lower) && (creativeActions.test(lower) || /만들어줘|써줘|해줘|짜줘/.test(lower))) {
     // 상품명 추출 (Creative Director의 product 입력값)
-    const productMatch = lower.match(/^(.+?)(?:마케팅|문구|카피|릴스|스레드|인스타|콘텐츠|광고|후킹|대본|공지문|공구|영상)/)?.[1]?.trim();
+    const productMatch = lower.match(/^(.+?)(?:마케팅|문구|카피|릴스|스레드|인스타|콘텐츠|광고|후킹|대본|공지문|공구|영상|썸네일|스크립트|쇼츠|숏폼|틱톡)/)?.[1]?.trim();
     const product = productMatch || '';
-    // content_type 추론
+    // COPY-A.3: content_type 우선순위 재정렬
+    // 1순위: 릴스/쇼츠/숏폼/스크립트/대본/틱톡/첫3초 → reels_script
+    // 2순위: 유튜브 썸네일 → youtube_thumbnail
+    // 3순위: 스레드/쓰레드 → threads_post
+    // 4순위: 인스타/인스타그램 → instagram_copy
+    // 5순위: 후킹/헤드카피 → headcopy
+    // 6순위: 카피 단독 → headcopy
+    // 7순위: 공지문/카카오 → full_package
     let contentType = 'full_package';
-    if (/릴스|영상|대본/.test(lower)) contentType = 'script';
-    else if (/후킹|헤드카피|카피/.test(lower)) contentType = 'headcopy';
-    else if (/스레드|인스타|공구.?글/.test(lower)) contentType = 'storytelling';
+    if (/릴스|reels|쇼츠|shorts|숏폼|스크립트|script|틱톡|tiktok|첫.?3초/.test(lower) && !/유튜브.?썸네일|youtube.?thumbnail/.test(lower)) contentType = 'reels_script';
+    else if (/유튜브.?썸네일|youtube.?썸네일|썸네일.?문구|썸네일.?제목|thumbnail/.test(lower)) contentType = 'youtube_thumbnail';
+    else if (/스레드|쓰레드|threads/.test(lower)) contentType = 'threads_post';
+    else if (/인스타그램|인스타|instagram/.test(lower)) contentType = 'instagram_copy';
+    else if (/후킹|헤드카피|hook/.test(lower)) contentType = 'headcopy';
+    else if (/카피/.test(lower)) contentType = 'headcopy';
+    else if (/대본|영상/.test(lower)) contentType = 'reels_script';
     else if (/공지문|카카오/.test(lower)) contentType = 'full_package';
     return {
       type: 'creative_content',
