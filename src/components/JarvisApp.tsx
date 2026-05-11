@@ -2803,6 +2803,58 @@ export default function JarvisApp() {
     // ══════════════════════════════════════════════════════
     // ── COPY-R: Research Before Writing 프로토콜 ──
     // ══════════════════════════════════════════════════════
+    // ══════════════════════════════════════════════════════
+    // ── COPY-R.3: Social / Reels / Threads / Global Pattern Analyzer ──
+    // ══════════════════════════════════════════════════════
+    if (action?.type === 'copy_social_research') {
+      setState('working');
+      const params = action.params || {} as Record<string, any>;
+      const product = String(params.product || '');
+      const contentType = String(params.contentType || 'headcopy');
+      const userMessage = String(params.userMessage || text);
+      const sourceUrl = String(params.sourceUrl || '');
+      const sourceText = String(params.sourceText || '');
+      emitMissionLog('🌐', 'COPY-R.3', '소셜 패턴 분석 시작', 'info');
+      emitMissionLog('📱', 'COPY-R.3', `${sourceUrl ? 'URL 크롤링' : '텍스트 패턴'} 분석 중...`, 'working');
+      addMessage('assistant', `🌐 **COPY-R.3 소셜 패턴 분석** — ${product || '제품'} 관련 소셜 콘텐츠 패턴을 분석하고 있습니다...`);
+      let socialInsight = '';
+      let socialInsightForCopy = '';
+      let socialSuccess = false;
+      let sourceType = 'text';
+      try {
+        const socialRes = await fetch('/api/cloud-proxy', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ task: 'copy-social-research', product, contentType, userMessage, sourceUrl, sourceText }),
+        });
+        const socialData = await socialRes.json();
+        if (socialData.success) {
+          socialInsight = socialData.socialInsight || '';
+          socialInsightForCopy = socialData.socialInsightForCopy || '';
+          socialSuccess = true;
+          sourceType = socialData.sourceType || 'text';
+          emitMissionLog('✅', 'COPY-R.3', `소셜 패턴 분석 완료 (${sourceType === 'url' ? 'URL 분석' : '텍스트 패턴'})`, 'success');
+        } else {
+          addMessage('assistant', `소셜 패턴 분석에 실패했습니다. COPY-A 기본 카피 두뇌로 생성합니다.`);
+          emitMissionLog('⚠️', 'COPY-R.3', `소셜 패턴 분석 실패 — 기본 전략으로 진행`, 'warning');
+        }
+      } catch (err) {
+        emitMissionLog('⚠️', 'COPY-R.3', '소셜 패턴 분석 오류 — 기본 전략으로 진행', 'warning');
+      }
+      emitMissionLog('🎨', 'COPY-R.3', '소셜 인사이트 주입 → 카피 생성 시작', 'info');
+      const copyCountMatch = userMessage.match(/(\d+)\s*개/);
+      const copyCount = copyCountMatch ? Math.min(parseInt(copyCountMatch[1]), 10) : 3;
+      const researchPrefix = socialInsightForCopy
+        ? `\n\n${socialInsightForCopy}\n`
+        : '';
+      // creative_content action으로 위임
+      Object.assign(action, {
+        type: 'creative_content',
+        params: { product, content_type: contentType, count: copyCount, userMessage, researchInsight: socialInsight, researchPrefix, videosFound: 0, topVideos: [], isCopyR: true, isCopyR3: true, socialSuccess, sourceType },
+        workingMessage: `${product} ${contentType} 생성 중...`,
+        response: '__SKIP_TTS__',
+      });
+    }
     // ── COPY-R.2: Market Context Research (시세/가격/시장 맥락 기반 카피 생성) ──
     // ══════════════════════════════════════════════════════
     if (action?.type === 'copy_market_research') {

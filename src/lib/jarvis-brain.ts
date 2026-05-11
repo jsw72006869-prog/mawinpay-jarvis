@@ -398,6 +398,36 @@ export function getGeminiClient() {
 function deterministicMatch(text: string): JarvisAction | null {
   const lower = text.toLowerCase().trim();
 
+  // ── Priority 0-S: COPY-R.3 Social / Reels / Threads / Global Pattern Analyzer ──
+  // 트리거 O: "이 스레드 링크 분석", "이 릴스 참고", "해외 계정 이 영상 패턴", "이 틱톡 캡션 구조 참고", "첨부한 스레드 글 느낌으로"
+  // 트리거 X: 일반 "스레드 글 써줘" (참고/분석/패턴/느낌/구조/링크 없음) → COPY-A 유지
+  const copyR3Keywords = /(?:스레드|threads|릴스|reels|틱톡|tiktok|해외|외국|글로벌).{0,15}(?:링크|참고|분석|패턴|구조|느낌|보고)|(?:첨부|아래|이).{0,10}(?:스레드|threads|릴스|reels|틱톡|tiktok|해외|외국).{0,10}(?:글|영상|캡션|스크립트|문구|느낌|패턴|구조|참고)|해외.{0,5}(?:계정|릴스|영상|콘텐츠).{0,10}(?:참고|분석|패턴|보고|구조)|(?:이|저|그).{0,5}(?:릴스|스레드|틱톡|영상|글).{0,10}(?:참고|분석|패턴|구조|느낌).{0,10}(?:만들어|써줘|짜줘|작성|생성|뽑아)/i;
+  if (copyR3Keywords.test(lower)) {
+    // 품목명 추출
+    const productMatch3 = lower.match(/([가-힣]+?)\s*(?:스레드|릴스|인스타|카피|후킹|문구|썸네일|스크립트|대본)/)?.[1]?.trim()
+      || lower.match(/(?:참고|분석|패턴|구조|느낌|보고).{0,15}?([가-힣]+?)\s*(?:카피|문구|후킹|스레드|릴스|인스타|썸네일|스크립트|대본|글)/)?.[1]?.trim()
+      || '';
+    const product = productMatch3;
+    let contentType = 'headcopy';
+    if (/릴스|reels|쇼츠|shorts|숏폼|스크립트|대본|틱톡/.test(lower)) contentType = 'reels_script';
+    else if (/유튜브.?썸네일|썸네일.?문구|thumbnail/.test(lower)) contentType = 'youtube_thumbnail';
+    else if (/스레드|쓰레드|threads/.test(lower)) contentType = 'threads_post';
+    else if (/인스타|instagram/.test(lower)) contentType = 'instagram_copy';
+    else if (/카카오|카톡|공지문/.test(lower)) contentType = 'kakao';
+    // URL 추출
+    const urlMatch = text.match(/https?:\/\/[^\s"'<>]+/i);
+    const sourceUrl = urlMatch ? urlMatch[0] : '';
+    // 참고 텍스트 추출 (따옴표 안 또는 줄바꿈 뒤 텍스트)
+    const quoteMatch = text.match(/["'\u201C\u201D]([^"'\u201C\u201D\n]{10,})["'\u201C\u201D]/);
+    const sourceText = quoteMatch ? quoteMatch[1] : '';
+    return {
+      type: 'copy_social_research' as any,
+      params: { product, contentType, userMessage: text, sourceUrl, sourceText },
+      workingMessage: `${product || '제품'} 소셜 패턴 분석 중...`,
+      response: '__SKIP_TTS__',
+    };
+  }
+
   // ── Priority 0-A: COPY-R.2 Market Context Research (시세/가격/시장 맥락 기반) ──
   // 트리거 O: "시세 보고", "가격 흐름 참고", "시장 상황 보고", "시장 맥락 보고", "현재 가격 참고"
   // 트리거 X: "시세 알려줘" 단독 (카피 생성 요청 없음) → 기존 KAMIS Mini 조회

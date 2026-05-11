@@ -881,6 +881,188 @@ function classifyPattern(title: string): string[] {
   return patterns;
 }
 
+
+// ── COPY-R.3: Social / Reels / Threads / Global Pattern Analyzer ──
+async function handleCopySocialResearch(params: any) {
+  const product = params?.product || '';
+  const contentType = params?.contentType || 'headcopy';
+  const userMessage = params?.userMessage || '';
+  const sourceUrl = params?.sourceUrl || '';
+  const sourceText = params?.sourceText || '';
+
+  // Step 1: 소셜 콘텐츠 수집 (URL이 있으면 fetch, 없으면 텍스트 기반 분석)
+  let socialContent = '';
+  let sourceType = 'text'; // text | url | fallback
+  let fetchSuccess = false;
+
+  if (sourceUrl) {
+    sourceType = 'url';
+    try {
+      // URL에서 텍스트 콘텐츠 추출 시도
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 8000);
+      const res = await fetch(sourceUrl, {
+        headers: { 'User-Agent': 'Mozilla/5.0 (compatible; JarvisBot/1.0)' },
+        signal: controller.signal,
+      });
+      clearTimeout(timeout);
+      if (res.ok) {
+        const html = await res.text();
+        // 기본 텍스트 추출 (meta description, og:description, 본문 텍스트)
+        const ogDesc = html.match(/<meta[^>]*property="og:description"[^>]*content="([^"]+)"/i)?.[1] || '';
+        const metaDesc = html.match(/<meta[^>]*name="description"[^>]*content="([^"]+)"/i)?.[1] || '';
+        const titleMatch = html.match(/<title[^>]*>([^<]+)<\/title>/i)?.[1] || '';
+        // 본문에서 주요 텍스트 추출 (script/style 제거)
+        const bodyText = html
+          .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '')
+          .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '')
+          .replace(/<[^>]+>/g, ' ')
+          .replace(/\s+/g, ' ')
+          .trim()
+          .slice(0, 2000);
+        socialContent = [
+          titleMatch ? `제목: ${titleMatch}` : '',
+          ogDesc ? `설명: ${ogDesc}` : (metaDesc ? `설명: ${metaDesc}` : ''),
+          bodyText ? `본문 발췌: ${bodyText.slice(0, 800)}` : '',
+        ].filter(Boolean).join('\n');
+        fetchSuccess = socialContent.length > 50;
+      }
+    } catch (e) {
+      // fetch 실패 — fallback으로 진행
+    }
+  }
+
+  if (sourceText && !fetchSuccess) {
+    socialContent = sourceText;
+    sourceType = 'text';
+    fetchSuccess = true;
+  }
+
+  // Step 2: GPT 기반 소셜 패턴 분석
+  const OPENAI_KEY = process.env.OPENAI_API_KEY || process.env.VITE_OPENAI_API_KEY || '';
+  if (!OPENAI_KEY) {
+    return { success: false, failReason: 'OPENAI_API_KEY not configured' };
+  }
+
+  const analysisPrompt = fetchSuccess
+    ? `당신은 소셜 미디어 콘텐츠 패턴 분석 전문가입니다.
+
+아래 소셜 콘텐츠를 분석하여 패턴 인사이트를 추출해 주세요.
+
+[분석 대상]
+소스 타입: ${sourceType === 'url' ? 'URL 크롤링' : '텍스트 입력'}
+${sourceUrl ? `URL: ${sourceUrl}` : ''}
+콘텐츠:
+${socialContent.slice(0, 1500)}
+
+[분석 항목]
+1. 후킹 패턴: 첫 문장/첫 3초에 사용된 기법 (질문형/반전형/금지형/감탄형/숫자형 등)
+2. 구조 패턴: 글/영상의 전체 흐름 구조 (도입→전개→CTA 등)
+3. 감정 톤: 사용된 감정 톤 (친근/도발/공감/유머/긴급 등)
+4. CTA 패턴: 댓글/DM/공유/저장 유도 방식
+5. 타깃 페르소나: 누구를 겨냥한 콘텐츠인지
+6. 바이럴 요소: 왜 반응이 좋을 수 있는지 (공감/호기심/논쟁/실용 등)
+
+[출력 형식]
+=== 소셜 패턴 인사이트 ===
+조사 출처: ${sourceType === 'url' ? 'URL 분석' : '텍스트 패턴 분석'}
+후킹 패턴: (분석 결과)
+구조 패턴: (분석 결과)
+감정 톤: (분석 결과)
+CTA 패턴: (분석 결과)
+타깃 페르소나: (분석 결과)
+바이럴 요소: (분석 결과)
+
+[카피 적용 방향]
+(이 패턴을 ${product || '제품'} 카피에 어떻게 적용할지 2~3줄)
+
+[피해야 할 방향]
+(이 패턴에서 주의할 점 1~2줄)
+
+[COPY-A 주입 인사이트]
+(카피 생성 시 반영할 핵심 지시 3~5줄)`
+    : `당신은 소셜 미디어 콘텐츠 패턴 분석 전문가입니다.
+
+사용자가 "${userMessage}"라고 요청했지만, 분석할 소셜 콘텐츠(URL 또는 텍스트)를 제공하지 않았습니다.
+
+사용자의 요청 의도를 파악하여, ${product || '농산물'} 제품에 대한 일반적인 소셜 미디어 바이럴 패턴 인사이트를 제공해 주세요.
+
+[분석 항목]
+1. 후킹 패턴: 해당 플랫폼(${contentType === 'threads_post' ? 'Threads' : contentType === 'reels_script' ? 'Reels/TikTok' : contentType === 'instagram_copy' ? 'Instagram' : '소셜 미디어'})에서 ${product || '농산물'} 관련 인기 콘텐츠의 일반적 후킹 기법
+2. 구조 패턴: 해당 플랫폼의 일반적 콘텐츠 구조
+3. 감정 톤: 반응 좋은 콘텐츠의 감정 톤
+4. CTA 패턴: 효과적인 CTA 방식
+5. 타깃 페르소나: 주요 타깃
+6. 바이럴 요소: 반응을 이끄는 핵심 요소
+
+[출력 형식]
+=== 소셜 패턴 인사이트 ===
+조사 출처: 일반 패턴 분석 (참고 콘텐츠 미제공)
+후킹 패턴: (분석 결과)
+구조 패턴: (분석 결과)
+감정 톤: (분석 결과)
+CTA 패턴: (분석 결과)
+타깃 페르소나: (분석 결과)
+바이럴 요소: (분석 결과)
+
+[카피 적용 방향]
+(이 패턴을 ${product || '제품'} 카피에 어떻게 적용할지 2~3줄)
+
+[피해야 할 방향]
+(이 패턴에서 주의할 점 1~2줄)
+
+[COPY-A 주입 인사이트]
+(카피 생성 시 반영할 핵심 지시 3~5줄)`;
+
+  try {
+    const gptRes = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${OPENAI_KEY}`,
+      },
+      body: JSON.stringify({
+        model: 'gpt-4.1-mini',
+        messages: [{ role: 'user', content: analysisPrompt }],
+        max_tokens: 1200,
+        temperature: 0.7,
+      }),
+    });
+
+    if (!gptRes.ok) {
+      return { success: false, failReason: `GPT API error: ${gptRes.status}` };
+    }
+
+    const gptData = await gptRes.json();
+    const socialInsight = gptData.choices?.[0]?.message?.content || '';
+
+    if (!socialInsight) {
+      return { success: false, failReason: 'GPT returned empty response' };
+    }
+
+    // 인사이트 분리: UI용 vs COPY-A 주입용
+    const uiInsight = socialInsight.split('[COPY-A 주입 인사이트]')[0].trim();
+    const copyAInjection = socialInsight.split('[COPY-A 주입 인사이트]')[1]?.trim() || uiInsight;
+
+    const socialInsightForCopy = `[COPY-R.3 소셜 패턴 분석 결과 주입]
+${copyAInjection}
+
+위 소셜 패턴 분석 결과를 반드시 반영하여 카피를 작성하세요.
+특히 후킹 패턴, 구조 패턴, 감정 톤을 카피에 적용하세요.`;
+
+    return {
+      success: true,
+      socialInsight: socialInsight,
+      socialInsightForCopy,
+      sourceType,
+      fetchSuccess,
+      sourceUrl: sourceUrl || null,
+    };
+  } catch (err: any) {
+    return { success: false, failReason: `GPT call failed: ${err.message}` };
+  }
+}
+
 // ── COPY-R.2: Market Context Research (KAMIS/시세 조회 → 인사이트 변환) ──
 async function handleCopyMarketResearch(params: any) {
   const marketProduct = params?.marketProduct || params?.product || '농산물';
@@ -2620,6 +2802,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         return res.status(200).json(result);
       }
 
+      // ── COPY-R.3: Social Pattern Research ──
+      if (resolvedTask === 'copy-social-research') {
+        const result = await handleCopySocialResearch(params || rest);
+        return res.status(200).json(result);
+      }
       // ── COPY-R.2: Market Context Research ──
       if (resolvedTask === 'copy-market-research') {
         const result = await handleCopyMarketResearch(params || rest);
