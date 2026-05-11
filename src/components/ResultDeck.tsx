@@ -52,9 +52,13 @@ function getTypeLabel(type: string): string {
   switch (type) {
     case 'headcopy': return '후킹 문구';
     case 'script': return '릴스 대본';
+    case 'reels_script': return '릴스 스크립트';
     case 'storytelling': return '스토리텔링';
     case 'full_package': return '마케팅 패키지';
     case 'thread': return '스레드 글';
+    case 'threads_post': return '스레드 글';
+    case 'youtube_thumbnail': return '유튜브 썸네일 문구';
+    case 'instagram_copy': return '인스타 카피';
     case 'kakao': return '카카오톡 공지';
     default: return '마케팅 콘텐츠';
   }
