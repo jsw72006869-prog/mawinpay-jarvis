@@ -215,7 +215,7 @@ export function getApiKeys(): ApiKeys {
   try {
     const stored = JSON.parse(localStorage.getItem(API_KEY_STORAGE) || '{}');
     return {
-      openaiKey: stored.openaiKey || import.meta.env.VITE_OPENAI_API_KEY || '',
+      openaiKey: stored.openaiKey || '',
       elevenLabsKey: stored.elevenLabsKey || import.meta.env.VITE_ELEVENLABS_API_KEY || '',
       elevenLabsVoiceId: stored.elevenLabsVoiceId || localStorage.getItem('jarvis_voice_id') || 'pNInz6obpgDQGcFmaJgB',
     };

@@ -679,31 +679,17 @@ export default function JarvisApp() {
   const [settingsForm, setSettingsForm] = useState(() => {
     const stored = JSON.parse(localStorage.getItem('jarvis_api_keys') || '{}');
     // 환경 변수에서 기본 키 가져오기
-    const defaultOpenAIKey = import.meta.env.VITE_OPENAI_API_KEY || '';
     return {
-      geminiKey: stored.geminiKey || stored.openaiKey || defaultOpenAIKey,
-      openaiKey: stored.openaiKey || defaultOpenAIKey,
+      geminiKey: stored.geminiKey || stored.openaiKey || '',
+      openaiKey: stored.openaiKey || '',
       elevenlabsKey: stored.elevenlabsKey || '',
     };
   });
 
   useEffect(() => {
-    const envKey = import.meta.env.VITE_OPENAI_API_KEY;
-    const storedKey = settingsForm.geminiKey || settingsForm.openaiKey;
-    console.log('[JARVIS] OpenAI GPT 초기화 시도:', { envKey: envKey ? '***' : 'MISSING', storedKey: storedKey ? '***' : 'NONE' });
-    
-    if (envKey) {
-      console.log('[JARVIS] 환경 변수에서 OpenAI 키 로드 성공');
-      initializeGemini(envKey);
-      if (!settingsForm.geminiKey) {
-        setSettingsForm(prev => ({ ...prev, geminiKey: envKey }));
-      }
-    } else if (storedKey) {
-      console.log('[JARVIS] localStorage에서 OpenAI 키 로드 성공');
-      initializeGemini(storedKey);
-    } else {
-      console.warn('[JARVIS] WARNING: OpenAI API 키를 찾을 수 없습니다.');
-    }
+    // 보안: GPT는 서버 route(api/chat-proxy)를 통해서만 호출 - 프론트엔드에서 API key 미사용
+    console.log('[JARVIS] GPT 라우팅 준비 (서버 route 전용)');
+    initializeGemini('server-route-only'); // 호환성 유지 (실제 key 미사용)
   }, [settingsForm.geminiKey]);
 
   // ── 서버 메모리 복원 (앱 시작 시) ──
@@ -2346,11 +2332,10 @@ export default function JarvisApp() {
                 // ── 캡차: stateless 재로그인 방식 (GPT Vision 자동 → 실패 시 사용자 직접) ──
                 const tryCaptchaWithVision = async (imgSrc: string): Promise<string> => {
                   try {
-                    const apiKey = import.meta.env.VITE_OPENAI_API_KEY;
-                    if (!apiKey) return '';
-                    const visionRes = await fetch('https://api.openai.com/v1/chat/completions', {
+                    // 보안: 캐시 비전 분석도 서버 route를 통해 호출
+                    const visionRes = await fetch('/api/chat-proxy', {
                       method: 'POST',
-                      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
+                      headers: { 'Content-Type': 'application/json' },
                       body: JSON.stringify({
                         model: 'gpt-4o',
                         max_tokens: 30,

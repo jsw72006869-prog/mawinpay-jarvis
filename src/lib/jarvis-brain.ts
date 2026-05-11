@@ -7,7 +7,7 @@
  * 지능형 모닝 브리핑 & 인플루언서 분석
  */
 
-import OpenAI from 'openai';
+// OpenAI 직접 import 제거 (보안: 서버 route 전용 - api/chat-proxy.ts 사용)
 import {
   saveConversationEntry,
   saveConversationWithSync,
@@ -202,7 +202,7 @@ Always brief: "지금은 [경로 이름]을 사용하여 작업을 수행합니�
 선생님의 오타는 제가 알아서 수정하겠습니다. 지시만 내리십시오, Sir.`;
 
 // ── OpenAI Function Calling Tools ──
-const OPENAI_TOOLS: OpenAI.Chat.Completions.ChatCompletionTool[] = [
+const OPENAI_TOOLS: any[] = [
   {
     type: 'function',
     function: {
@@ -377,17 +377,19 @@ const OPENAI_TOOLS: OpenAI.Chat.Completions.ChatCompletionTool[] = [
   },
 ];
 
-// ── OpenAI 클라이언트 ──
-let openaiClient: OpenAI | null = null;
+// ── OpenAI 클라이언트 (보안: 프론트엔드에서 직접 호출 금지) ──
+// OpenAI API는 api/cloud-proxy.ts 또는 api/chat-proxy.ts 서버 route를 통해서만 호출
+let _clientInitialized = false;
 
-export function initializeGemini(apiKey: string) {
+export function initializeGemini(_apiKey: string) {
   // 호환성을 위해 함수명 유지 (JarvisApp.tsx에서 호출)
-  openaiClient = new OpenAI({ apiKey, dangerouslyAllowBrowser: true });
-  console.log('[JARVIS] OpenAI GPT-4.1-mini 초기화 완료');
+  // 실제 OpenAI 클라이언트는 서버 route에서만 생성 - 프론트엔드에서 key 사용 금지
+  _clientInitialized = true;
+  console.log('[JARVIS] GPT 라우팅 준비 완료 (서버 route 전용)');
 }
 
 export function getGeminiClient() {
-  return openaiClient;
+  return _clientInitialized ? {} : null;
 }
 
 // ── Deterministic Fast-Path (GPT 우회) ──
@@ -555,8 +557,8 @@ export async function askGPT(userMessage: string): Promise<JarvisAction> {
     return fastAction;
   }
 
-  if (!openaiClient) {
-    console.error('[JARVIS] OpenAI API 키가 설정되지 않았습니다.');
+  if (!_clientInitialized) {
+    console.warn('[JARVIS] GPT 라우팅 미초기화 - parseCommand 폴백');
     return parseCommand(userMessage);
   }
 
@@ -577,8 +579,8 @@ export async function askGPT(userMessage: string): Promise<JarvisAction> {
   const contextAddition = [memoryContext, prevSessionContext, learnedContext, sessionContext, sheetContextBlock]
     .filter(Boolean).join('');
 
-  // OpenAI Chat Completions 메시지 구성
-  const messages: OpenAI.Chat.Completions.ChatCompletionMessageParam[] = [
+  // ── 보안: OpenAI는 서버 route(api/chat-proxy)를 통해서만 호출 ──
+  const messages = [
     { role: 'system', content: SYSTEM_PROMPT + contextAddition },
     ...conversationHistory.slice(-12).map(m => ({
       role: m.role as 'user' | 'assistant',
@@ -592,17 +594,23 @@ export async function askGPT(userMessage: string): Promise<JarvisAction> {
     const timeoutPromise = new Promise<never>((_, reject) =>
       setTimeout(() => reject(new Error('GPT_TIMEOUT: 30초 초과')), GPT_TIMEOUT_MS)
     );
-    const completion = await Promise.race([
-      openaiClient.chat.completions.create({
-        model: 'gpt-4.1-mini',
-        messages,
-        tools: OPENAI_TOOLS,
-        tool_choice: 'auto',
-        max_tokens: 800,
-        temperature: 0.72,
+    // 서버 route를 통해 GPT 호출 (프론트엔드에서 API key 미사용)
+    const chatProxyRes = await Promise.race([
+      fetch('/api/chat-proxy', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          model: 'gpt-4.1-mini',
+          messages,
+          tools: OPENAI_TOOLS,
+          tool_choice: 'auto',
+          max_tokens: 800,
+          temperature: 0.72,
+        }),
       }),
       timeoutPromise,
     ]);
+    const completion = await (chatProxyRes as Response).json();
 
     const choice = completion.choices?.[0];
     const message = choice?.message;
