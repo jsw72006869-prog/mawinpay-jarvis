@@ -1042,7 +1042,7 @@ async function handleCopyMarketResearch(params: any) {
 
 async function handleCopyResearch(params: any) {
   const product = params?.product || '농산물';
-  const contentType = params?.contentType || 'headcopy'; || 'headcopy';
+  const contentType = params?.contentType || 'headcopy';
   const count = Math.min(Number(params?.count) || 8, 15); // 필터를 위해 더 많이 가져오기
 
   // YouTube \uc778\uae30 \uc601\uc0c1 \uac80\uc0c9
