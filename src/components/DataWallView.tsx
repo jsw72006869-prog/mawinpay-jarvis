@@ -67,9 +67,17 @@ type RealIntelCandidate = {
 };
 
 /* ─── OUTREACH-Q.5: Candidate Quality Evaluation ─── */
-const BOOST_CATEGORIES = ['먹방','요리','캠핑','살림','주부','가족','건강식','다이어트','여행','지역','농장체험','리뷰','라이프스타일'];
+const BOOST_CATEGORIES = ['먹방','요리','캠핑','살림','주부','가족','건강식','다이어트','여행','지역','농장체험','리뷰','라이프스타일','농산물','식품','공동구매','제철','수확'];
+// 직접 연결 카테고리 (S/A급 가능)
+const DIRECT_FIT_CATEGORIES = ['먹방','요리','살림','주부','가족','건강식','다이어트','농장체험','농산물','식품','공동구매','제철','수확'];
+// 간접 연결 카테고리 (B급 → 검토 강제)
+const INDIRECT_FIT_CATEGORIES = ['캠핑','여행','지역','리뷰','라이프스타일'];
 const PENALTY_CATEGORIES = ['뷰티','패션','연예','가십','게임','금융','정치','성인','자극'];
 const STRONG_EXCLUDE = ['성인','선정성','혐오','폭력','정치 선동','사기','불법','도박','주류','니코틴'];
+
+/* ─── Email Masking ─── */
+const maskEmail = (text: string): string =>
+  text ? text.replace(/[A-Z0-9._%+\-]+@[A-Z0-9.\-]+\.[A-Z]{2,}/gi, '문의 가능') : text;
 
 function evaluateCandidate(c: RealIntelCandidate): RealIntelCandidate {
   const catLower = (c.category || '').toLowerCase();
@@ -80,12 +88,21 @@ function evaluateCandidate(c: RealIntelCandidate): RealIntelCandidate {
   const positiveSignals: string[] = [];
 
   /* A. Category Fit Score (0-100) */
-  let categoryFitScore = 50; // base
+  let categoryFitScore = 40; // base (Q5.1: 더 엄격한 기본값)
   const boostHits = BOOST_CATEGORIES.filter(k => combined.includes(k));
   const penaltyHits = PENALTY_CATEGORIES.filter(k => combined.includes(k));
-  categoryFitScore += boostHits.length * 10;
-  categoryFitScore -= penaltyHits.length * 12;
-  if (boostHits.length > 0) positiveSignals.push(`카테고리 적합: ${boostHits.join(', ')}`);
+  const directHits = DIRECT_FIT_CATEGORIES.filter(k => combined.includes(k));
+  const indirectHits = INDIRECT_FIT_CATEGORIES.filter(k => combined.includes(k));
+  // 직접 연결 카테고리는 더 강하게 부스트
+  categoryFitScore += directHits.length * 15;
+  // 간접 연결 카테고리는 약하게 부스트 + 리스크 플래그
+  categoryFitScore += indirectHits.length * 5;
+  if (indirectHits.length > 0 && directHits.length === 0) {
+    riskFlags.push('카테고리 간접 연결');
+  }
+  categoryFitScore -= penaltyHits.length * 15;
+  if (directHits.length > 0) positiveSignals.push(`카테고리 적합: ${directHits.join(', ')}`);
+  else if (indirectHits.length > 0) positiveSignals.push(`간접 연결: ${indirectHits.join(', ')}`);
   if (penaltyHits.length > 0 && boostHits.length === 0) riskFlags.push(`카테고리 부적합: ${penaltyHits.join(', ')}`);
   // Incorporate existing fitScore
   if (c.fitScore !== undefined) {
@@ -94,32 +111,36 @@ function evaluateCandidate(c: RealIntelCandidate): RealIntelCandidate {
   categoryFitScore = Math.max(0, Math.min(100, categoryFitScore));
 
   /* B. Brand Safety Score (0-100) */
-  let brandSafetyScore = 80; // default safe
+  let brandSafetyScore = 75; // Q5.1: 기본값 낮춤 (더 엄격)
   const strongExcludeHits = STRONG_EXCLUDE.filter(k => combined.includes(k));
   if (strongExcludeHits.length > 0) {
     brandSafetyScore = 10;
     riskFlags.push(`브랜드 충돌: ${strongExcludeHits.join(', ')}`);
   }
-  if (combined.includes('자극')) { brandSafetyScore -= 20; riskFlags.push('자극적 콘텐츠 가능성'); }
-  if (combined.includes('논란')) { brandSafetyScore -= 20; riskFlags.push('논란 가능성'); }
-  if (combined.includes('노출')) { brandSafetyScore -= 15; riskFlags.push('과도한 노출 가능성'); }
-  if (boostHits.length > 0) brandSafetyScore += 5;
+  if (combined.includes('자극')) { brandSafetyScore -= 25; riskFlags.push('자극적 썸네일'); }
+  if (combined.includes('논란')) { brandSafetyScore -= 25; riskFlags.push('이슈/논란 가능성'); }
+  if (combined.includes('노출')) { brandSafetyScore -= 20; riskFlags.push('과도한 노출'); }
+  if (combined.includes('선정')) { brandSafetyScore -= 30; riskFlags.push('선정적 콘텐츠'); }
+  // 뷰티/패션 단독이면 식품 브랜드 부적합 플래그
+  if ((combined.includes('뷰티') || combined.includes('패션')) && directHits.length === 0) {
+    brandSafetyScore -= 10; riskFlags.push('식품 브랜드 부적합');
+  }
+  if (directHits.length > 0) brandSafetyScore += 5;
   brandSafetyScore = Math.max(0, Math.min(100, brandSafetyScore));
 
   /* C. Contact Score (0-100) */
-  let contactScore = 30; // base
-  if (c.contactStatus === 'contactable') { contactScore = 90; positiveSignals.push('공개 이메일 확인됨'); }
-  else if (c.contactStatus === 'review') { contactScore = 60; positiveSignals.push('문의 채널 있음'); }
-  else if (c.contactStatus === 'none') { contactScore = 10; riskFlags.push('연락처 없음'); }
-  // Check for collaboration hints in reason
+  let contactScore = 25; // Q5.1: 기본값 낮춤
+  if (c.contactStatus === 'contactable') { contactScore = 90; positiveSignals.push('공개 문의 채널 확인'); }
+  else if (c.contactStatus === 'review') { contactScore = 55; positiveSignals.push('문의 채널 있음'); }
+  else if (c.contactStatus === 'none') { contactScore = 10; riskFlags.push('연락 불명확'); }
   if (combined.includes('공동구매') || combined.includes('협찬') || combined.includes('광고')) {
     contactScore += 10; positiveSignals.push('협업 이력 흔적');
   }
   contactScore = Math.max(0, Math.min(100, contactScore));
 
   /* D. Media Score (0-100) */
-  let mediaScore = 30; // base
-  if (c.thumbnailUrl) { mediaScore += 20; positiveSignals.push('썸네일 있음'); }
+  let mediaScore = 25; // Q5.1: 기본값 낮춤
+  if (c.thumbnailUrl) { mediaScore += 20; }
   if (c.channelAvatarUrl) { mediaScore += 15; positiveSignals.push('프로필 이미지 있음'); }
   if (c.videoId || c.videoUrl) { mediaScore += 15; positiveSignals.push('대표 영상 있음'); }
   if (c.subscriberText) { mediaScore += 10; }
@@ -136,36 +157,60 @@ function evaluateCandidate(c: RealIntelCandidate): RealIntelCandidate {
     mediaScore * 0.15
   );
 
-  /* Recommendation Tier */
+  /* Q5.1: Recommendation Tier - 엄격한 기준 */
   let recommendationTier: RecommendationTier;
-  if (brandSafetyScore < 40 || strongExcludeHits.length > 0) {
+  const hasStrongRisk = riskFlags.some(f => ['브랜드 충돌','자극적 썸네일','선정적 콘텐츠','이슈/논란 가능성','과도한 노출'].includes(f));
+  const isIndirectOnly = indirectHits.length > 0 && directHits.length === 0;
+  const isBrandUnsafe = brandSafetyScore < 45;
+
+  if (brandSafetyScore < 45 || strongExcludeHits.length > 0) {
+    // 제외: 브랜드 안전도 < 45 또는 강한 제외 플래그
     recommendationTier = '제외';
-  } else if (finalScore >= 75) {
+  } else if (
+    finalScore >= 82 &&
+    brandSafetyScore >= 75 &&
+    categoryFitScore >= 70 &&
+    contactScore >= 60 &&
+    !hasStrongRisk &&
+    !isIndirectOnly // 간접 연결만 있으면 추천 금지
+  ) {
+    // 추천: S/A급 - 모든 조건 충족
     recommendationTier = '추천';
-  } else if (finalScore >= 55) {
+  } else if (
+    finalScore >= 62 &&
+    brandSafetyScore >= 60 &&
+    !isBrandUnsafe
+  ) {
+    // 검토: B급 - 간접 연결, 애매한 카테고리 포함
     recommendationTier = '검토';
   } else {
+    // 보류: C급 이하
     recommendationTier = '보류';
   }
 
-  /* Jarvis Reason */
+  /* Q5.1: Jarvis Reason - 보정된 문구 + 이메일 마스킹 */
   let jarvisReason = '';
   if (recommendationTier === '추천') {
-    jarvisReason = `농산물 공동구매와 콘텐츠 맥락이 맞고${c.contactStatus === 'contactable' ? ', 공개 문의 채널이 있어' : ''} 우선 제안 후보로 적합합니다.`;
+    jarvisReason = `농산물 공동구매와 콘텐츠 맥락이 명확하고${c.contactStatus === 'contactable' ? ', 공개 문의 채널이 있어' : ''} 우선 제안 후보로 적합합니다.`;
   } else if (recommendationTier === '검토') {
-    jarvisReason = riskFlags.length > 0
-      ? `잠재력이 있으나 ${riskFlags[0]} 등의 사유로 추가 확인이 필요합니다.`
-      : '적합도가 중간 수준이므로 콘텐츠를 직접 확인 후 판단하세요.';
+    const mainRisk = riskFlags.find(f => !['이미지 없음','대표 영상 없음'].includes(f));
+    jarvisReason = mainRisk
+      ? `콘텐츠 맥락은 일부 맞지만, ${mainRisk} 등으로 브랜드 톤과 실제 공동구매 전환 가능성은 추가 확인이 필요합니다.`
+      : '콘텐츠 맥락은 일부 맞지만, 브랜드 톤과 실제 공동구매 전환 가능성은 추가 확인이 필요합니다.';
   } else if (recommendationTier === '보류') {
-    jarvisReason = '현재 데이터 기준으로 우선순위가 낮습니다. 추가 정보 확인 후 재평가하세요.';
+    jarvisReason = '현재 데이터만으로는 농산물/식품 공동구매 적합도가 낮아 우선순위를 낮춥니다.';
   } else {
-    jarvisReason = riskFlags.length > 0
-      ? `${riskFlags[0]} 사유로 공동구매 협업에 부적합합니다.`
-      : '브랜드 안전도가 낮아 제외 처리되었습니다.';
+    const mainRisk = riskFlags[0] || '브랜드 안전도 미달';
+    jarvisReason = `${mainRisk} 사유로 이번 캠페인에서는 제외합니다.`;
   }
+
+  // Q5.1: 이메일 원문 마스킹 적용
+  const maskedTitle = maskEmail(c.title);
+  const maskedJarvisReason = maskEmail(jarvisReason);
 
   return {
     ...c,
+    title: maskedTitle,
     recommendationTier,
     finalScore,
     categoryFitScore,
@@ -174,7 +219,7 @@ function evaluateCandidate(c: RealIntelCandidate): RealIntelCandidate {
     mediaScore,
     riskFlags,
     positiveSignals,
-    jarvisReason,
+    jarvisReason: maskedJarvisReason,
   };
 }
 
@@ -684,11 +729,11 @@ const DataWallView: React.FC = () => {
                       </span>
                     )}
                   </div>
-                  <h2 className="dw-hero-title">{heroCandidate.title}</h2>
+                  <h2 className="dw-hero-title">{maskEmail(heroCandidate.title)}</h2>
                   {/* OUTREACH-Q.5: Jarvis Quality Analysis */}
                   <div className="dw-hero-analysis">
                     <span className="dw-analysis-label">자비스 품질 판단</span>
-                    <p className="dw-analysis-text">{heroCandidate.jarvisReason || heroCandidate.reason || '전략적 가치 분석 중...'}</p>
+                    <p className="dw-analysis-text">{heroCandidate.jarvisReason || maskEmail(heroCandidate.reason || '') || '전략적 가치 분석 중...'}</p>
                   </div>
                   {/* OUTREACH-Q.5: 4-Axis Score Bar */}
                   <div className="dw-q5-score-bar">
@@ -874,8 +919,8 @@ const DataWallView: React.FC = () => {
                         <span className="dw-channel-orb">{(card.channelName || card.title || '?')[0]}</span>
                       </div>
                       <div className="dw-intel-body">
-                        <div className="dw-intel-title">{card.channelName || card.title}</div>
-                        <div className="dw-intel-reason">{card.jarvisReason || card.reason || '판단 대기'}</div>
+                        <div className="dw-intel-title">{maskEmail(card.channelName || card.title)}</div>
+                        <div className="dw-intel-reason">{card.jarvisReason || maskEmail(card.reason || '') || '판단 대기'}</div>
                         <div className="dw-intel-footer">
                           {/* OUTREACH-Q.5: Tier Badge */}
                           {card.recommendationTier && (
