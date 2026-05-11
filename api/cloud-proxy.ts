@@ -742,17 +742,28 @@ async function handleDailyBriefing() {
 
 // ── Creative Content 핸들러 ──
 async function handleCreativeContent(params: any) {
-  const product = params?.product || params?.prompt || '농산물';
+  const product = params?.product || '농산물';
+  // COPY-A v2: params.prompt가 있으면 해당 프롬프트를 그대로 GPT에 전달 (JarvisApp에서 생성한 COPY-A 구조화 프롬프트)
+  const customPrompt = params?.prompt && typeof params.prompt === 'string' && params.prompt.length > 50 ? params.prompt : null;
 
   // GPT 호출 시도
   let hookingText = '';
   let threadPost = '';
   let kakaoNotice = '';
   let reelsScript = '';
+  let rawGptContent = '';
 
   if (OPENAI_API_KEY) {
     try {
       const { default: nodeFetchGpt } = await import('node-fetch');
+      // COPY-A v2: customPrompt가 있으면 그대로 사용, 없으면 구버전 프롬프트
+      const messages = customPrompt ? [
+        { role: 'system', content: '당신은 농수축산물 판매 전문 장관급 카피라이터입니다. 과장 광고, 허위 효능, 매출 보장, 성공 보장 표현은 절대 금지합니다.' },
+        { role: 'user', content: customPrompt }
+      ] : [
+        { role: 'system', content: '당신은 농산물/식품 바이럴 마케팅 전문가입니다. 친근하고 말하듯 툭 던지는 문장, 강한 첫 문장, 계절감, 식감, 수확 타이밍, 스토리, 댓글/DM 유도, 여운 있는 마무리를 사용합니다. 과장 광고, 허위 효능, 매출 보장 표현은 금지합니다.' },
+        { role: 'user', content: `"${product}" 마케팅 콘텐츠를 만들어주세요. 다음 4가지를 각각 만들어주세요:\n1. 후킹 문구 (1-2줄, 스크롤 멈추게 하는 첫 문장)\n2. 스레드 글 (3-5줄, 자연스럽고 공감가는 톤)\n3. 카카오톡 공지문 (공동구매/할인 안내용, 3-4줄)\n4. 릴스 스크립트 (15초 분량, 장면 설명 포함)\n\n각 항목을 [후킹], [스레드], [카카오톡], [릴스] 태그로 구분해주세요.` }
+      ];
       const gptRes = await nodeFetchGpt('https://api.openai.com/v1/chat/completions', {
         method: 'POST',
         headers: {
@@ -761,39 +772,47 @@ async function handleCreativeContent(params: any) {
         },
         body: JSON.stringify({
           model: 'gpt-4.1-mini',
-          messages: [{
-            role: 'system',
-            content: '당신은 농산물/식품 바이럴 마케팅 전문가입니다. 친근하고 말하듯 툭 던지는 문장, 강한 첫 문장, 계절감, 식감, 수확 타이밍, 스토리, 댓글/DM 유도, 여운 있는 마무리를 사용합니다. 과장 광고, 허위 효능, 매출 보장 표현은 금지합니다.'
-          }, {
-            role: 'user',
-            content: `"${product}" 마케팅 콘텐츠를 만들어주세요. 다음 4가지를 각각 만들어주세요:\n1. 후킹 문구 (1-2줄, 스크롤 멈추게 하는 첫 문장)\n2. 스레드 글 (3-5줄, 자연스럽고 공감가는 톤)\n3. 카카오톡 공지문 (공동구매/할인 안내용, 3-4줄)\n4. 릴스 스크립트 (15초 분량, 장면 설명 포함)\n\n각 항목을 [후킹], [스레드], [카카오톡], [릴스] 태그로 구분해주세요.`
-          }],
-          max_tokens: 1500,
+          messages,
+          max_tokens: customPrompt ? 3000 : 1500,
           temperature: 0.8,
         }),
       });
 
       if (gptRes.ok) {
         const gptData = await gptRes.json();
-        const content = gptData.choices?.[0]?.message?.content || '';
+        rawGptContent = gptData.choices?.[0]?.message?.content || '';
         
-        // 태그별 파싱
-        const hookMatch = content.match(/\[후킹\]([\s\S]*?)(?=\[스레드\]|\[카카오톡\]|\[릴스\]|$)/);
-        const threadMatch = content.match(/\[스레드\]([\s\S]*?)(?=\[후킹\]|\[카카오톡\]|\[릴스\]|$)/);
-        const kakaoMatch = content.match(/\[카카오톡\]([\s\S]*?)(?=\[후킹\]|\[스레드\]|\[릴스\]|$)/);
-        const reelsMatch = content.match(/\[릴스\]([\s\S]*?)(?=\[후킹\]|\[스레드\]|\[카카오톡\]|$)/);
-
-        hookingText = hookMatch ? hookMatch[1].trim() : content.split('\n')[0] || '';
-        threadPost = threadMatch ? threadMatch[1].trim() : '';
-        kakaoNotice = kakaoMatch ? kakaoMatch[1].trim() : '';
-        reelsScript = reelsMatch ? reelsMatch[1].trim() : '';
+        if (customPrompt) {
+          // COPY-A v2: 구조화 응답 그대로 반환 (JarvisApp에서 파싱)
+          hookingText = rawGptContent;
+        } else {
+          // 구버전: 태그별 파싱
+          const hookMatch = rawGptContent.match(/\[후킹\]([\s\S]*?)(?=\[스레드\]|\[카카오톡\]|\[릴스\]|$)/);
+          const threadMatch = rawGptContent.match(/\[스레드\]([\s\S]*?)(?=\[후킹\]|\[카카오톡\]|\[릴스\]|$)/);
+          const kakaoMatch = rawGptContent.match(/\[카카오톡\]([\s\S]*?)(?=\[후킹\]|\[스레드\]|\[릴스\]|$)/);
+          const reelsMatch = rawGptContent.match(/\[릴스\]([\s\S]*?)(?=\[후킹\]|\[스레드\]|\[카카오톡\]|$)/);
+          hookingText = hookMatch ? hookMatch[1].trim() : rawGptContent.split('\n')[0] || '';
+          threadPost = threadMatch ? threadMatch[1].trim() : '';
+          kakaoNotice = kakaoMatch ? kakaoMatch[1].trim() : '';
+          reelsScript = reelsMatch ? reelsMatch[1].trim() : '';
+        }
       }
     } catch (e: any) {
       console.error('[cloud-proxy] GPT creative error:', e.message);
     }
   }
 
-  // Fallback
+  // COPY-A v2: customPrompt 응답은 rawGptContent를 result.content로 직접 반환
+  if (customPrompt && rawGptContent) {
+    return {
+      success: true,
+      product,
+      result: { content: rawGptContent },
+      content: rawGptContent,
+    };
+  }
+
+  // 구버전 Fallback
   if (!hookingText) {
     hookingText = `이거 ${product} 먹어본 사람만 아는데... 진짜 다릅니다`;
     threadPost = `요즘 ${product} 시즌이라 산지에서 직접 받아봤는데\n한 입 먹자마자 "아 이거다" 싶었어요\n올해는 당도가 유난히 높대요 🍑`;

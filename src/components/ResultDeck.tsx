@@ -167,8 +167,8 @@ export default function ResultDeck({
         tone: i === 0 ? '추천안' : '변형안'
       }));
 
-  // COPY-A v2 구조화 카드 여부 판단
-  const isCopyACard = (item: ResultItem) => item.format === 'copy_a' && (item.headline || item.storyBody);
+  // COPY-A v2 구조화 카드 여부 판단 (format=copy_a이면 항상 구조화 렌더링)
+  const isCopyACard = (item: ResultItem) => item.format === 'copy_a';
 
   return (
     <AnimatePresence>
@@ -242,15 +242,30 @@ export default function ResultDeck({
                   {/* COPY-A v2 구조화 카드 렌더링 */}
                   {isCopyACard(item) ? (
                     <div style={{ padding: '8px 0' }}>
-                      <CopyACardSection label="헤드카피" value={item.headline || ''} icon="🎯" />
-                      <CopyACardSection label="썸네일 문구" value={item.thumbnailText || ''} icon="📸" />
-                      <CopyACardSection label="첫 3초 스크립트" value={item.firstThreeSeconds || ''} icon="⚡" />
-                      <CopyACardSection label="타깃 고객" value={item.targetPersona || ''} icon="👤" />
-                      <CopyACardSection label="자극한 욕구" value={item.desireTrigger || ''} icon="💡" />
-                      <CopyACardSection label="미래 장면" value={item.futureScene || ''} icon="🌅" />
-                      <CopyACardSection label="스토리 본문" value={item.storyBody || ''} icon="📖" />
-                      <CopyACardSection label="CTA" value={item.cta || ''} icon="📣" />
-                      <CopyACardSection label="왜 먹히는지" value={item.whyItWorks || ''} icon="🔍" />
+                      {/* 구조화 필드가 있으면 세션별 표시, 없으면 body 텍스트 전체 표시 */}
+                      {(item.headline || item.storyBody || item.thumbnailText) ? (
+                        <>
+                          <CopyACardSection label="헤드카피" value={item.headline || ''} icon="🎯" />
+                          <CopyACardSection label="썸네일 문구" value={item.thumbnailText || ''} icon="📸" />
+                          <CopyACardSection label="첫 3초 스크립트" value={item.firstThreeSeconds || ''} icon="⚡" />
+                          <CopyACardSection label="타깃 고객" value={item.targetPersona || ''} icon="👤" />
+                          <CopyACardSection label="자극한 욕구" value={item.desireTrigger || ''} icon="💡" />
+                          <CopyACardSection label="미래 장면" value={item.futureScene || ''} icon="🌅" />
+                          <CopyACardSection label="스토리 본문" value={item.storyBody || ''} icon="📖" />
+                          <CopyACardSection label="CTA" value={item.cta || ''} icon="📣" />
+                          <CopyACardSection label="왜 먹히는지" value={item.whyItWorks || ''} icon="🔍" />
+                          {/* 이하 점수 바 렌더링 유지 */}
+                        </>
+                      ) : (
+                        /* 구조화 필드 없으면 body 텍스트 전체 표시 */
+                        <div className="result-deck-section-body">
+                          {(item.body || '').split('\n').map((line, i) => (
+                            <p key={i} className={line.startsWith('-') || line.startsWith('•') ? 'result-deck-bullet' : ''}>
+                              {line}
+                            </p>
+                          ))}
+                        </div>
+                      )}
                       {/* 점수 바 */}
                       {item.scores && (
                         <div style={{ marginTop: 10, padding: '8px 10px', background: 'rgba(0,245,255,0.04)', borderRadius: 6, border: '1px solid rgba(0,245,255,0.1)' }}>
