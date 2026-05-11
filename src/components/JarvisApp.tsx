@@ -411,6 +411,8 @@ export default function JarvisApp() {
   const [resultDeckType, setResultDeckType] = useState('');
   const [resultDeckProduct, setResultDeckProduct] = useState('');
   const [resultDeckItems, setResultDeckItems] = useState<any[]>([]);
+  // ── COPY-A v2: Copy Focus Mode ──
+  const [copyFocusMode, setCopyFocusMode] = useState(false);
   // ── SSoT: 스마트스토어 데이터 캐시 (5분 유효) ──
   const ssCountsCacheRef = useRef<{ data: any; fetchedAt: number } | null>(null);
   const lastClapActivateAtRef = useRef<number>(0);
@@ -2827,24 +2829,57 @@ export default function JarvisApp() {
       telemetryFunctionStart('creative_director', `${product} ${contentType} 생성`);
 
       try {
-        // GPT에게 Creative Director 전용 프롬프트로 콘텐츠 생성 요청
-        const creativePrompt = `당신은 바이럴 마케팅 전문가입니다. 아래 요청에 맞는 실전 마케팅 콘텐츠를 생성하세요.
-
-요청: "${userMessage}"
+        // COPY-A v2: 농수축산물 전용 장관급 카피 두뇌 프롬프트
+        const requestedCount = extractRequestedCount(userMessage);
+        const copyCount = requestedCount || 3;
+        // 플랫폼 감지
+        const platformHint = userMessage.includes('스레드') || userMessage.includes('쓰레드') ? 'Threads'
+          : userMessage.includes('릴스') || userMessage.toLowerCase().includes('tiktok') || userMessage.includes('틱톡') ? 'TikTok'
+          : userMessage.includes('인스타') || userMessage.toLowerCase().includes('instagram') ? 'Instagram'
+          : userMessage.includes('유튜브') || userMessage.toLowerCase().includes('youtube') || userMessage.includes('썸네일') ? 'YouTube'
+          : 'Mixed';
+        const creativePrompt = `당신은 농수축산물 판매 전문 장관급 카피라이터입니다.
+사용자 요청: "${userMessage}"
 제품: ${product || '지정되지 않음'}
+플랫폼: ${platformHint}
 콘텐츠 타입: ${contentType}
+요청 개수: ${copyCount}개
 
-스타일 규칙:
-- 친근하고 말하듯 툴 던지는 문장
-- 첫 문장 후킹 강하게
-- 직접 판매보다 스토리와 이유 중심
-- 농산물의 계절감, 식감, 수확 타이밍 강조
-- "먹어본 사람만 안다" 식의 호기심
-- 댓글, DM, 공유 유도
-- 마지막에 여운 있는 문장
-- 카카오톡/스레드/릴스에 바로 쓸 수 있는 실전 문장
+[COPY-A 전략 적용]
+A. Product Intelligence: 맛/향/식감/제철/보관/손질/먹는 장면/선물 가능성/가족·캠핑·아이 간식 연결성 추론
+B. Persona Engine: 주부/1인 가구/부모님 선물/아이 간식/캠핑·여행/건강 루틴/명절 선물/공동구매 참여자 중 적합한 타깃 선택
+C. Desire Engine: 손실회피/실수회피/제철을 놓치기 싫은 마음/가족에게 좋은 걸 주고 싶은 마음/추억/자기보상/호기심/금지형 후킹/참여욕구 반영
+D. Future Scene: 제품을 먹은 뒤 구체적인 장면 묘사 (여름 밤 냄비에서 김이 올라오는 장면/캠핑장 아이스박스/부모님 냉장고/퇴근 후 혼자 꺼내 먹는 장면 등)
+E. Viral Headline: 상식반전형/금지형/실수회피형/끝물·마감형/비교형/첫입반응형/냄새·향·식감 감각형/가족·추억형/가격보다 중요한 기준형 중 선택
+F. Platform Grammar:
+  - YouTube: 제목+썸네일+첫 5초 중심
+  - Instagram: 감각적 캡션+저장하고 싶은 문장
+  - TikTok: 첫 1~3초 자막+빠른 반전
+  - Threads: 말하듯 툭 던지는 스토리+댓글 유도+여운
+G. Review Objection: 작다/비싸다/무르다/배송 손상/맛 기대와 다름/보관 어려움/양 애매함 등 불안을 카피에서 미리 해소
 
-금지: 과장 광고, 허위 효능, 매출 보장, 성공 보장
+[출력 형식 - 반드시 아래 구조로 ${copyCount}개 카드 생성]
+각 카드는 아래 구분자로 시작:
+=== 카드 N ===
+**헤드카피**: (강한 첫 문장)
+**썸네일 문구**: (짧고 강렬, 3~8자)
+**첫 3초 스크립트**: (영상 첫 3초 자막/나레이션)
+**타깃 고객**: (구체적 페르소나)
+**자극한 욕구**: (Desire Engine 키워드)
+**미래 장면**: (제품 먹은 뒤 구체적 장면)
+**스토리 본문**: (3~5문장, 말하듯 자연스럽게)
+**CTA**: (댓글/DM/공유 유도 문장)
+**왜 먹히는지**: (한 줄 분석)
+**위험도**: 낮음 또는 보통 또는 주의
+**점수**: 클릭파워 XX / 구매욕구 XX / 스토리강도 XX / 신뢰도 XX (각 0~100)
+
+[안전 가드 - 절대 금지]
+- 가짜 후기/가짜 조회수/가짜 판매량 생성
+- 식품이 질병을 치료한다는 표현
+- 과도한 공포 조장
+- 허위 원산지/허위 인증
+- 실제 존재하지 않는 고객 반응 조작
+- 과장 광고, 허위 효능, 매출 보장, 성공 보장
 
 응답은 한국어로, 실제 바이럴에 바로 쓸 수 있는 콘텐츠만 작성하세요.`;
 
@@ -2875,20 +2910,20 @@ export default function JarvisApp() {
           emitMissionLog('✅', 'CREATIVE', `${product || '제품'} 콘텐츠 생성 완료`, 'success');
           emitMissionLog('⏳', 'JARVIS', '대표님 선택 대기 중', 'thinking');
 
-          // UI-O.1: 요청 개수 추출 및 결과 분리
-          const requestedCount = extractRequestedCount(userMessage);
-          const items = splitCreativeResultItems(creativeResult, requestedCount);
+          // COPY-A v2: 구조화 카드 파싱
+          const items = splitCopyACards(creativeResult, copyCount);
 
           // 메시지 표시 → Result Deck으로 분리 (UI-O)
           const summaryMsg = `${product || '제품'} ${contentType === 'script' ? '릴스 대본' : contentType === 'headcopy' ? '후킹 문구' : contentType === 'storytelling' ? '스토리텔링 콘텐츠' : '마케팅 콘텐츠'}를 생성했습니다. Result Deck에서 확인해 주십시오.`;
           addMessage('jarvis', summaryMsg, true);
           
-          // Result Deck 활성화
+          // Result Deck 활성화 + Copy Focus Mode 진입
           setResultDeckVisible(true);
           setResultDeckContent(creativeResult);
           setResultDeckType(contentType);
           setResultDeckProduct(product || '');
           setResultDeckItems(items);
+          setCopyFocusMode(true);
           
           setState('speaking');
           startSpeakingLevel();
@@ -2925,7 +2960,7 @@ export default function JarvisApp() {
       // 완료 후 listening 복귀
       resetAllNodes();
 
-      // ── Phase UI-C: Creative ActionCard context 설정 ──
+      // ── COPY-A v2: Creative ActionCard context 설정 (COPY 전용 액션) ──
       const creativeCtx: ActionContext = {
         type: 'creative',
         product: product || '',
@@ -5221,7 +5256,83 @@ export default function JarvisApp() {
     return null;
   }
 
-  // UI-O.1: 결과 텍스트 분리 함수
+  // COPY-A v2: 구조화 카드 파싱 함수 (=== 카드 N === 구분자 기반)
+  function splitCopyACards(text: string, requestedCount?: number | null): any[] {
+    if (!text || typeof text !== 'string') return [];
+    const normalized = text.replace(/\r\n/g, '\n').trim();
+    // === 카드 N === 구분자로 분리
+    const cardBlocks = normalized.split(/===\s*카드\s*\d+\s*===/).map(b => b.trim()).filter(Boolean);
+    if (cardBlocks.length >= 1) {
+      const limit = requestedCount || Math.min(cardBlocks.length, 6);
+      return cardBlocks.slice(0, limit).map((block, index) => {
+        // 각 필드 파싱
+        const extract = (key: string) => {
+          const match = block.match(new RegExp(`\\*\\*${key}\\*\\*[:\s]+([^\n]+(?:\n(?!\\*\\*)[^\n]+)*)`, 'i'));
+          return match ? match[1].trim() : '';
+        };
+        const headline = extract('헤드카피');
+        const thumbnailText = extract('썸네일 문구');
+        const firstThreeSeconds = extract('첫 3초 스크립트');
+        const targetPersona = extract('타깃 고객');
+        const desireTrigger = extract('자극한 욕구');
+        const futureScene = extract('미래 장면');
+        const storyBody = extract('스토리 본문');
+        const cta = extract('CTA');
+        const whyItWorks = extract('왜 먹히는지');
+        const riskLevel = extract('위험도') || '낮음';
+        const scoresRaw = extract('점수');
+        // 점수 파싱
+        const parseScore = (label: string) => {
+          const m = scoresRaw.match(new RegExp(`${label}\\s*(\\d+)`));
+          return m ? parseInt(m[1]) : 75;
+        };
+        const scores = {
+          clickPower: parseScore('클릭파워'),
+          purchaseDesire: parseScore('구매욕구'),
+          storyStrength: parseScore('스토리강도'),
+          trust: parseScore('신뢰도'),
+        };
+        // 카드 body: 구조화 표시용
+        const bodyLines = [
+          headline ? `🎯 헤드카피\n${headline}` : '',
+          thumbnailText ? `📸 썸네일 문구\n${thumbnailText}` : '',
+          firstThreeSeconds ? `⚡ 첫 3초 스크립트\n${firstThreeSeconds}` : '',
+          targetPersona ? `👤 타깃 고객\n${targetPersona}` : '',
+          desireTrigger ? `💡 자극한 욕구\n${desireTrigger}` : '',
+          futureScene ? `🌅 미래 장면\n${futureScene}` : '',
+          storyBody ? `📖 스토리 본문\n${storyBody}` : '',
+          cta ? `📣 CTA\n${cta}` : '',
+          whyItWorks ? `🔍 왜 먹히는지\n${whyItWorks}` : '',
+          riskLevel ? `⚠️ 위험도: ${riskLevel}` : '',
+          scoresRaw ? `📊 점수: ${scoresRaw}` : '',
+        ].filter(Boolean).join('\n\n');
+        return {
+          id: `copy-a-${Date.now()}-${index}`,
+          title: `${index + 1}안 — ${headline ? headline.slice(0, 20) + (headline.length > 20 ? '…' : '') : '카피 ' + (index + 1)}`,
+          body: bodyLines || block,
+          tone: index === 0 ? '추천안' : '변형안',
+          format: 'copy_a',
+          scoreLabel: index === 0 ? 'PRIORITY' : undefined,
+          // 구조화 필드 (ResultDeck에서 활용 가능)
+          headline,
+          thumbnailText,
+          firstThreeSeconds,
+          targetPersona,
+          desireTrigger,
+          futureScene,
+          storyBody,
+          cta,
+          whyItWorks,
+          riskLevel,
+          scores,
+        };
+      });
+    }
+    // fallback: 기존 splitCreativeResultItems 로직
+    return splitCreativeResultItems(text, requestedCount);
+  }
+
+  // UI-O.1: 결과 텍스트 분리 함수 (기존 유지)
   function splitCreativeResultItems(text: string, requestedCount?: number | null): any[] {
     if (!text || typeof text !== 'string') return [];
     const normalized = text.replace(/\r\n/g, '\n').trim();
@@ -5717,6 +5828,11 @@ export default function JarvisApp() {
         )}
       </AnimatePresence>
 
+      {/* ── COPY-A v2: Copy Focus Mode 오버레이 ── */}
+      {copyFocusMode && resultDeckVisible && (
+        <div className="copy-focus-overlay" />
+      )}
+
       {/* ── UI-O: Result Deck (Creative Director 결과 패널) ── */}
       <ResultDeck
         visible={resultDeckVisible}
@@ -5724,7 +5840,7 @@ export default function JarvisApp() {
         contentType={resultDeckType}
         product={resultDeckProduct}
         items={resultDeckItems}
-        onDismiss={() => setResultDeckVisible(false)}
+        onDismiss={() => { setResultDeckVisible(false); setCopyFocusMode(false); }}
         onCopy={() => {}}
         onSaveToWorkspace={() => {
           // workspace에 저장 (기존 로직 활용)

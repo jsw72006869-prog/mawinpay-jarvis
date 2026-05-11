@@ -5785,3 +5785,34 @@ html, body {
   padding: 1px 6px;
   font-size: 0.48rem;
 }
+
+/* ══════════════════════════════════════════════════════
+   COPY-A v2 — Copy Focus Mode + Result Deck 강화 스타일
+   ══════════════════════════════════════════════════════ */
+
+/* Copy Focus Mode: 배경 딤 처리 */
+.copy-focus-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.45);
+  backdrop-filter: blur(2px);
+  z-index: 38;
+  pointer-events: none;
+  animation: copyFocusFadeIn 0.4s ease forwards;
+}
+
+@keyframes copyFocusFadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+/* NEXT ACTIONS COPY 전용 버튼 강조 */
+.action-btn-copy-primary {
+  border-color: rgba(0, 245, 255, 0.4) !important;
+  background: rgba(0, 245, 255, 0.08) !important;
+}
+
+.action-btn-copy-primary:hover {
+  background: rgba(0, 245, 255, 0.16) !important;
+  border-color: rgba(0, 245, 255, 0.6) !important;
+}

@@ -119,13 +119,18 @@ function getRecommendedActions(context: ActionContext): ActionButton[] {
   }
 
   if (type === 'creative') {
+    const p = context.product || '';
+    const ct = context.contentType || '';
     return [
-      { id: 'to_insta', label: '인스타 문구로 변환', icon: '📸', mode: 'draft', command: `${context.product || ''} 인스타 문구로 변환해줘` },
-      { id: 'to_thread', label: '스레드 글로 변환', icon: '🧵', mode: 'draft', command: `${context.product || ''} 스레드 글로 변환해줘` },
-      { id: 'to_kakao', label: '카카오톡 공지로 변환', icon: '💬', mode: 'draft', command: `${context.product || ''} 카카오톡 공지문 만들어줘` },
-      { id: 'growth_link', label: 'Growth Link 만들기', icon: '🔗', mode: 'draft', command: `${context.product || ''} Growth Link 만들어줘` },
-      { id: 'save', label: '스크립트 저장하기', icon: '💾', mode: 'observe', command: '콘텐츠 저장해줘' },
-      { id: 'later', label: '나중에 하기', icon: '⏸️', mode: 'observe', command: '' },
+      { id: 'rewrite', label: '다시 써줘', icon: '🔄', mode: 'draft', command: `${p} ${ct} 다시 써줘` },
+      { id: 'more_intense', label: '더 자극적으로', icon: '🔥', mode: 'draft', command: `${p} 더 자극적으로 써줘` },
+      { id: 'more_premium', label: '더 고급스럽게', icon: '✨', mode: 'draft', command: `${p} 더 고급스럽게 써줘` },
+      { id: 'shorter', label: '더 짧게', icon: '✏️', mode: 'draft', command: `${p} 더 짧게 써줘` },
+      { id: 'to_thread', label: 'Threads 스타일로', icon: '🧵', mode: 'draft', command: `${p} 스레드 글 3개 써줘` },
+      { id: 'to_youtube', label: 'YouTube 썸네일형으로', icon: '🎥', mode: 'draft', command: `${p} 유튜브 썸네일 문구 3개 만들어줘` },
+      { id: 'to_insta', label: 'Instagram 감각형으로', icon: '📸', mode: 'draft', command: `${p} 인스타 카피 3개 만들어줘` },
+      { id: 'to_reels', label: '릴스 스크립트로', icon: '🎞️', mode: 'draft', command: `${p} 릴스 스크립트 3개 짜줘` },
+      { id: 'save', label: '저장하기', icon: '💾', mode: 'observe', command: '콘텐츠 저장해줘' },
     ];
   }
 

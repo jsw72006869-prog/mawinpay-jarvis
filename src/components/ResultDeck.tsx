@@ -1,12 +1,19 @@
 /**
- * ResultDeck.tsx — UI-O.1 Result Deck Multi-Item Parser Fix
+ * ResultDeck.tsx — COPY-A v2
  *
  * Creative Director / 마케팅 콘텐츠 결과를 채팅창에서 분리하여
  * 1번 화면 좌측에 시네마틱 패널로 표시하는 컴포넌트.
- * 다중 아이템(items) 지원 및 렌더링 보정.
+ * COPY-A v2: 구조화 카드 (헤드카피/썸네일/첫3초/타깃/욕구/미래장면/본문/CTA/왜먹히는지/위험도/점수)
  */
 import { useEffect, useState, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
+
+export interface CopyAScores {
+  clickPower: number;
+  purchaseDesire: number;
+  storyStrength: number;
+  trust: number;
+}
 
 export interface ResultItem {
   id: string;
@@ -15,6 +22,18 @@ export interface ResultItem {
   tone?: string;
   format?: string;
   scoreLabel?: string;
+  // COPY-A v2 구조화 필드
+  headline?: string;
+  thumbnailText?: string;
+  firstThreeSeconds?: string;
+  targetPersona?: string;
+  desireTrigger?: string;
+  futureScene?: string;
+  storyBody?: string;
+  cta?: string;
+  whyItWorks?: string;
+  riskLevel?: string;
+  scores?: CopyAScores;
 }
 
 export interface ResultDeckProps {
@@ -39,6 +58,43 @@ function getTypeLabel(type: string): string {
     case 'kakao': return '카카오톡 공지';
     default: return '마케팅 콘텐츠';
   }
+}
+
+// 위험도 색상
+function getRiskColor(risk?: string): string {
+  if (!risk) return 'rgba(34,197,94,0.8)';
+  if (risk.includes('주의')) return 'rgba(239,68,68,0.8)';
+  if (risk.includes('보통')) return 'rgba(255,152,0,0.8)';
+  return 'rgba(34,197,94,0.8)';
+}
+
+// 점수 바 컴포넌트
+function ScoreBar({ label, value }: { label: string; value: number }) {
+  const color = value >= 80 ? '#00FF88' : value >= 60 ? '#00F5FF' : '#FF9800';
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 3 }}>
+      <span style={{ fontSize: '0.55rem', color: 'rgba(148,163,184,0.7)', width: 52, flexShrink: 0 }}>{label}</span>
+      <div style={{ flex: 1, height: 3, background: 'rgba(255,255,255,0.08)', borderRadius: 2, overflow: 'hidden' }}>
+        <div style={{ width: `${Math.min(value, 100)}%`, height: '100%', background: color, borderRadius: 2, transition: 'width 0.8s ease' }} />
+      </div>
+      <span style={{ fontSize: '0.55rem', color, width: 24, textAlign: 'right' }}>{value}</span>
+    </div>
+  );
+}
+
+// 구조화 카드 섹션 렌더링
+function CopyACardSection({ label, value, icon }: { label: string; value: string; icon: string }) {
+  if (!value) return null;
+  return (
+    <div style={{ marginBottom: 8 }}>
+      <div style={{ fontSize: '0.5rem', color: 'rgba(0,245,255,0.6)', fontFamily: 'Orbitron, monospace', letterSpacing: '0.08em', marginBottom: 2 }}>
+        {icon} {label}
+      </div>
+      <div style={{ fontSize: '0.72rem', color: 'rgba(224,242,254,0.92)', lineHeight: 1.55, paddingLeft: 4, borderLeft: '2px solid rgba(0,245,255,0.2)' }}>
+        {value}
+      </div>
+    </div>
+  );
 }
 
 // 콘텐츠를 섹션별로 파싱 (items가 없을 때 fallback)
@@ -102,14 +158,17 @@ export default function ResultDeck({
   };
 
   const typeLabel = getTypeLabel(contentType);
-  const displayItems = items.length > 0 
-    ? items 
+  const displayItems: ResultItem[] = items.length > 0
+    ? items
     : parseSections(content).map((s, i) => ({
         id: `fallback-${i}`,
         title: s.title || `${i + 1}번 결과`,
         body: s.body,
         tone: i === 0 ? '추천안' : '변형안'
       }));
+
+  // COPY-A v2 구조화 카드 여부 판단
+  const isCopyACard = (item: ResultItem) => item.format === 'copy_a' && (item.headline || item.storyBody);
 
   return (
     <AnimatePresence>
@@ -126,6 +185,9 @@ export default function ResultDeck({
             <div className="result-deck-header-left">
               <span className="result-deck-badge">{typeLabel}</span>
               {product && <span className="result-deck-product">{product}</span>}
+              <span style={{ fontSize: '0.45rem', color: 'rgba(0,245,255,0.5)', fontFamily: 'Orbitron, monospace', letterSpacing: '0.1em' }}>
+                COPY-A
+              </span>
             </div>
             <div className="result-deck-header-right">
               <button className="result-deck-btn" onClick={() => handleCopy()}>
@@ -151,23 +213,69 @@ export default function ResultDeck({
                   animate={{ opacity: 1, y: 0, scale: 1 }}
                   transition={{ delay: idx * 0.1, duration: 0.4, ease: [0.22, 1, 0.36, 1] }}
                 >
+                  {/* 카드 헤더 */}
                   <div className="result-deck-section-header">
                     <div className="result-deck-section-title">
                       {item.title}
                       {item.tone && <span className="result-deck-tone-badge">{item.tone}</span>}
+                      {item.riskLevel && (
+                        <span style={{
+                          fontSize: '0.42rem',
+                          padding: '1px 5px',
+                          borderRadius: 3,
+                          background: 'rgba(0,0,0,0.3)',
+                          border: `1px solid ${getRiskColor(item.riskLevel)}`,
+                          color: getRiskColor(item.riskLevel),
+                          fontFamily: 'Orbitron, monospace',
+                          letterSpacing: '0.06em',
+                          marginLeft: 4,
+                        }}>
+                          {item.riskLevel}
+                        </span>
+                      )}
                     </div>
                     <button className="result-deck-item-copy" onClick={() => handleCopy(item.body)}>
                       복사
                     </button>
                   </div>
-                  <div className="result-deck-section-body">
-                    {item.body.split('\n').map((line, i) => (
-                      <p key={i} className={line.startsWith('-') || line.startsWith('•') ? 'result-deck-bullet' : ''}>
-                        {line}
-                      </p>
-                    ))}
-                  </div>
-                  {item.scoreLabel && (
+
+                  {/* COPY-A v2 구조화 카드 렌더링 */}
+                  {isCopyACard(item) ? (
+                    <div style={{ padding: '8px 0' }}>
+                      <CopyACardSection label="헤드카피" value={item.headline || ''} icon="🎯" />
+                      <CopyACardSection label="썸네일 문구" value={item.thumbnailText || ''} icon="📸" />
+                      <CopyACardSection label="첫 3초 스크립트" value={item.firstThreeSeconds || ''} icon="⚡" />
+                      <CopyACardSection label="타깃 고객" value={item.targetPersona || ''} icon="👤" />
+                      <CopyACardSection label="자극한 욕구" value={item.desireTrigger || ''} icon="💡" />
+                      <CopyACardSection label="미래 장면" value={item.futureScene || ''} icon="🌅" />
+                      <CopyACardSection label="스토리 본문" value={item.storyBody || ''} icon="📖" />
+                      <CopyACardSection label="CTA" value={item.cta || ''} icon="📣" />
+                      <CopyACardSection label="왜 먹히는지" value={item.whyItWorks || ''} icon="🔍" />
+                      {/* 점수 바 */}
+                      {item.scores && (
+                        <div style={{ marginTop: 10, padding: '8px 10px', background: 'rgba(0,245,255,0.04)', borderRadius: 6, border: '1px solid rgba(0,245,255,0.1)' }}>
+                          <div style={{ fontSize: '0.45rem', color: 'rgba(0,245,255,0.5)', fontFamily: 'Orbitron, monospace', letterSpacing: '0.1em', marginBottom: 6 }}>
+                            COPY SCORE
+                          </div>
+                          <ScoreBar label="클릭파워" value={item.scores.clickPower} />
+                          <ScoreBar label="구매욕구" value={item.scores.purchaseDesire} />
+                          <ScoreBar label="스토리강도" value={item.scores.storyStrength} />
+                          <ScoreBar label="신뢰도" value={item.scores.trust} />
+                        </div>
+                      )}
+                    </div>
+                  ) : (
+                    /* 기존 일반 카드 렌더링 */
+                    <div className="result-deck-section-body">
+                      {item.body.split('\n').map((line, i) => (
+                        <p key={i} className={line.startsWith('-') || line.startsWith('•') ? 'result-deck-bullet' : ''}>
+                          {line}
+                        </p>
+                      ))}
+                    </div>
+                  )}
+
+                  {item.scoreLabel && !isCopyACard(item) && (
                     <div className="result-deck-item-score">
                       <span className="score-label">{item.scoreLabel}</span>
                       <div className="score-bar"><div className="score-fill" style={{ width: '100%' }}></div></div>
@@ -181,7 +289,7 @@ export default function ResultDeck({
           {/* Footer */}
           <div className="result-deck-footer">
             <span className="result-deck-footer-hint">
-              "이거 스레드에 올려줘" · "카카오톡 버전으로 바꿔줘" · "더 짧게"
+              "다시 써줘" · "더 자극적으로" · "더 짧게" · "스레드 스타일로"
             </span>
           </div>
         </motion.div>
