@@ -2804,6 +2804,62 @@ export default function JarvisApp() {
     // ── COPY-R: Research Before Writing 프로토콜 ──
     // ══════════════════════════════════════════════════════
     // ══════════════════════════════════════════════════════
+    // ── COPY-R.5: Research Orchestrator (복합 리서치 통합) ──
+    // ══════════════════════════════════════════════════════
+    if (action?.type === 'copy_orchestrator') {
+      setState('working');
+      const params = action.params || {} as Record<string, any>;
+      const product = String(params.product || '');
+      const contentType = String(params.contentType || 'headcopy');
+      const userMessage = String(params.userMessage || text);
+      const engines = Array.isArray(params.engines) ? params.engines : ['youtube', 'market'];
+      emitMissionLog('🔍', 'COPY-R.5', `${product || '제품'} 통합 리서치 시작 (${engines.join(' + ')})`, 'info');
+      emitNodeState('jarvis_brain', 'active', `통합 리서치: ${engines.join(' + ')}`);
+      addMessage('jarvis', `🔍 COPY-R.5 통합 리서치 시작 — ${product || '제품'} (${engines.join(' + ')}) 분석 중입니다...`, true);
+      try {
+        const response = await fetch('/api/cloud-proxy', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ endpoint: 'task', taskType: 'copy-orchestrator', params: { ...params } }),
+        });
+        if (!response.ok) throw new Error(`API ${response.status}`);
+        const result = await response.json();
+        if (result.success) {
+          const orchestratorInsight = result.orchestratorInsightForCopy || '';
+          const researchInsight = result.researchInsight || '';
+          const enginesSuccess = result.enginesSuccess || 0;
+          const enginesUsed = result.enginesUsed || 0;
+          emitMissionLog('✅', 'COPY-R.5', `통합 리서치 완료 (${enginesSuccess}/${enginesUsed} 엔진 성공)`, 'success');
+          addMessage('jarvis', `✅ 통합 리서치 완료 — ${enginesSuccess}/${enginesUsed} 엔진 성공. 카피 생성 중...`, true);
+          // creative_content action으로 위임
+          const creativeAction = {
+            type: 'creative_content',
+            params: {
+              product,
+              content_type: contentType,
+              userMessage,
+              isCopyR: true,
+              researchInsight,
+              researchPrefix: orchestratorInsight,
+              videosFound: result.engineResults?.youtube?.videosFound || 0,
+              topVideos: [],
+            },
+          };
+          action = creativeAction as any;
+          // creative_content 핸들러로 fall-through
+        } else {
+          emitMissionLog('⚠️', 'COPY-R.5', '통합 리서치 실패 — COPY-A 기본 카피로 생성합니다', 'warning');
+          addMessage('jarvis', '⚠️ 통합 리서치 실패 — COPY-A 기본 카피 두뇌로 생성합니다.', true);
+          action = { type: 'creative_content', params: { product, content_type: contentType, userMessage } } as any;
+        }
+      } catch (err) {
+        console.error('[JARVIS] COPY-R.5 Orchestrator 오류:', err);
+        emitMissionLog('⚠️', 'COPY-R.5', '통합 리서치 오류 — COPY-A fallback', 'warning');
+        addMessage('jarvis', '⚠️ 통합 리서치 오류 — COPY-A 기본 카피 두뇌로 생성합니다.', true);
+        action = { type: 'creative_content', params: { product, content_type: contentType, userMessage } } as any;
+      }
+    }
+    // ══════════════════════════════════════════════════════
     // ── COPY-R.4: Review Objection Data Input ──
     // ══════════════════════════════════════════════════════
     if (action?.type === 'copy_review_research') {

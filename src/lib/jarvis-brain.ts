@@ -433,6 +433,49 @@ function deterministicMatch(text: string): JarvisAction | null {
   // 트리거 X: "시세 알려줘" 단독 (카피 생성 요청 없음) → 기존 KAMIS Mini 조회
   const copyR2Keywords = /시세.{0,10}(보고|참고|기반|반영)|가격.{0,10}(흐름|참고|보고|반영|기반)|시장.{0,10}(상황|맥락|동향).{0,10}(보고|참고|반영|기반)|현재.?가격.{0,10}(참고|보고|반영|기반)/i;
   const hasCopyAction = /만들어|써줘|작성|생성|구성|제작|짜줘|뽑아줘/.test(lower);
+  // ── Priority 0-R5: COPY-R.5 Research Orchestrator (복합 리서치 통합) ──
+  // 트리거 O: "제대로 조사해서", "유튜브랑 리뷰 참고해서", "시세랑 유튜브 조사해서", "아래 리뷰랑 유튜브 반응 참고해서"
+  // 트리거 X: 단일 엔진 명령 (유튜브 조사만, 시세만, 리뷰만, 소셜만) → 기존 R.1~R.4 유지
+  // 트리거 X: 일반 카피 명령 (블루베리 인스타 카피 3개 만들어줘) → COPY-A 유지
+  const copyR5Triggers = /제대로.{0,5}(?:조사|분석|리서치)|(?:유튜브|youtube).{0,10}(?:리뷰|후기|시세|가격|소셜|스레드|릴스)|(?:리뷰|후기).{0,10}(?:유튜브|youtube|시세|가격|소셜|스레드)|(?:시세|가격).{0,10}(?:리뷰|후기|유튜브|youtube|소셜|스레드)|(?:소셜|스레드|릴스).{0,10}(?:리뷰|후기|유튜브|youtube|시세|가격)|(?:아래|첨부).{0,5}(?:리뷰|후기).{0,10}(?:유튜브|youtube|반응|패턴).{0,10}(?:참고|분석|보고)/i;
+  if (copyR5Triggers.test(lower) && hasCopyAction) {
+    // 품목명 추출
+    const productMatchR5 = lower.match(/([가-힣]+?)\s*(?:제대로|유튜브|시세|가격|리뷰|후기|소셜|스레드|릴스|인스타|카피|후킹|문구|썸네일|스크립트|대본|글)/)?.[1]?.trim()
+      || lower.match(/(?:조사|분석|참고|보고).{0,15}?([가-힣]+?)\s*(?:카피|문구|후킹|스레드|릴스|인스타|썸네일|스크립트|대본|글)/)?.[1]?.trim()
+      || '';
+    let contentType = 'headcopy';
+    if (/릴스|reels|쇼츠|shorts|숏폼|스크립트|대본|틱톡/.test(lower)) contentType = 'reels_script';
+    else if (/유튜브.?썸네일|썸네일.?문구|thumbnail/.test(lower)) contentType = 'youtube_thumbnail';
+    else if (/스레드|쓰레드|threads/.test(lower)) contentType = 'threads_post';
+    else if (/인스타|instagram/.test(lower)) contentType = 'instagram_copy';
+    else if (/카카오|카톡|공지문/.test(lower)) contentType = 'kakao';
+    // 엔진 선택 로직 (기본 최대 2개, 명시적이면 3개까지)
+    const engines: string[] = [];
+    if (/유튜브|youtube|조회수|영상|반응/.test(lower)) engines.push('youtube');
+    if (/시세|가격|시장|마켓/.test(lower)) engines.push('market');
+    if (/리뷰|후기|댓글|불안|1점|별점/.test(lower)) engines.push('review');
+    if (/소셜|스레드.{0,5}(?:링크|참고|분석|패턴)|릴스.{0,5}(?:링크|참고|분석|패턴)|해외|틱톡.{0,5}(?:링크|참고|분석)/.test(lower)) engines.push('social');
+    // "제대로 조사해서" → 기본 YouTube + Market
+    if (/제대로.{0,5}(?:조사|분석|리서치)/.test(lower) && engines.length === 0) {
+      engines.push('youtube', 'market');
+    }
+    // 최대 3개 제한
+    const selectedEngines = engines.slice(0, 3);
+    // URL 추출
+    const urlMatch = text.match(/https?:\/\/[^\s"'<>]+/i);
+    const sourceUrl = urlMatch ? urlMatch[0] : '';
+    // 리뷰 텍스트 추출
+    const reviewText = text;
+    // 소셜 텍스트 추출 (따옴표 안)
+    const quoteMatch = text.match(/["'\u201C\u201D]([^"'\u201C\u201D\n]{10,})["'\u201C\u201D]/);
+    const sourceText = quoteMatch ? quoteMatch[1] : '';
+    return {
+      type: 'copy_orchestrator' as any,
+      params: { product: productMatchR5, contentType, userMessage: text, engines: selectedEngines, sourceUrl, sourceText, reviewText },
+      workingMessage: `${productMatchR5 || '제품'} 통합 리서치 (${selectedEngines.join(' + ')}) 진행 중...`,
+      response: '__SKIP_TTS__',
+    };
+  }
   // ── Priority 0-R4: COPY-R.4 Review Objection Data Input ──
   // 트리거 O: "리뷰 분석해서", "후기 참고해서", "고객 후기 기반", "1점 리뷰 참고", "리뷰 불안 반영", "댓글 반응 참고"
   // 트리거 X: "복숭아 스레드 글 3개 써줘" (리뷰/후기/댓글 키워드 없음) → COPY-A 유지

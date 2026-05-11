@@ -200,7 +200,7 @@ export default function ResultDeck({
               <span className="result-deck-badge">{typeLabel}</span>
               {product && <span className="result-deck-product">{product}</span>}
               <span style={{ fontSize: '0.45rem', color: 'rgba(0,245,255,0.5)', fontFamily: 'Orbitron, monospace', letterSpacing: '0.1em' }}>
-                {isCopyR ? (researchInsight?.includes('리뷰/고객 불안 인사이트') ? 'COPY-R.4' : researchInsight?.includes('소셜 패턴 인사이트') ? 'COPY-R.3' : researchInsight?.includes('시장/시즈 인사이트') ? 'COPY-R.2' : 'COPY-R') : 'COPY-A'}
+                {isCopyR ? (researchInsight?.includes('통합 리서치 인사이트') ? 'COPY-R.5' : researchInsight?.includes('리뷰/고객 불안 인사이트') ? 'COPY-R.4' : researchInsight?.includes('소셜 패턴 인사이트') ? 'COPY-R.3' : researchInsight?.includes('시장/시즈 인사이트') ? 'COPY-R.2' : 'COPY-R') : 'COPY-A'}
               </span>
               {isCopyR && videosFound > 0 && (
                 <span style={{ fontSize: '0.4rem', color: 'rgba(255,200,0,0.9)', fontFamily: 'Orbitron, monospace', background: 'rgba(255,200,0,0.1)', border: '1px solid rgba(255,200,0,0.3)', borderRadius: 4, padding: '1px 5px' }}>
@@ -220,6 +220,11 @@ export default function ResultDeck({
               {isCopyR && researchInsight?.includes('리뷰/고객 불안 인사이트') && (
                 <span style={{ fontSize: '0.4rem', color: 'rgba(255,150,100,0.9)', fontFamily: 'Orbitron, monospace', background: 'rgba(255,150,100,0.1)', border: '1px solid rgba(255,150,100,0.3)', borderRadius: 4, padding: '1px 5px' }}>
                   📋 리뷰 불안 분석 반영
+                </span>
+              )}
+              {isCopyR && researchInsight?.includes('통합 리서치 인사이트') && (
+                <span style={{ fontSize: '0.4rem', color: 'rgba(255,215,0,0.9)', fontFamily: 'Orbitron, monospace', background: 'rgba(255,215,0,0.1)', border: '1px solid rgba(255,215,0,0.3)', borderRadius: 4, padding: '1px 5px' }}>
+                  🎯 통합 리서치 반영
                 </span>
               )}
             </div>

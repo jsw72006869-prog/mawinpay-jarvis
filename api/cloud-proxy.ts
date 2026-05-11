@@ -881,6 +881,161 @@ function classifyPattern(title: string): string[] {
   return patterns;
 }
 
+// ── COPY-R.5: Research Orchestrator (복합 리서치 통합) ──
+async function handleCopyOrchestrator(params: any) {
+  const product = params?.product || '';
+  const contentType = params?.contentType || 'headcopy';
+  const userMessage = params?.userMessage || '';
+  const engines: string[] = Array.isArray(params?.engines) ? params.engines : ['youtube', 'market'];
+  const sourceUrl = params?.sourceUrl || '';
+  const sourceText = params?.sourceText || '';
+  const reviewText = params?.reviewText || '';
+
+  // 각 엔진 병렬 실행
+  const engineResults: Record<string, any> = {};
+  const enginePromises: Promise<void>[] = [];
+
+  if (engines.includes('youtube')) {
+    enginePromises.push(
+      handleCopyResearch({ product, contentType, userMessage })
+        .then(r => { engineResults.youtube = r; })
+        .catch(() => { engineResults.youtube = { success: false, error: 'YouTube 조사 실패' }; })
+    );
+  }
+
+  if (engines.includes('market')) {
+    const marketProduct = product;
+    const copyProduct = product;
+    enginePromises.push(
+      handleCopyMarketResearch({ marketProduct, copyProduct, contentType, userMessage })
+        .then(r => { engineResults.market = r; })
+        .catch(() => { engineResults.market = { success: false, error: 'KAMIS 조회 실패' }; })
+    );
+  }
+
+  if (engines.includes('review')) {
+    enginePromises.push(
+      handleCopyReviewResearch({ product, contentType, userMessage, reviewText })
+        .then(r => { engineResults.review = r; })
+        .catch(() => { engineResults.review = { success: false, error: '리뷰 분석 실패' }; })
+    );
+  }
+
+  if (engines.includes('social')) {
+    enginePromises.push(
+      handleCopySocialResearch({ product, contentType, userMessage, sourceUrl, sourceText })
+        .then(r => { engineResults.social = r; })
+        .catch(() => { engineResults.social = { success: false, error: '소셜 패턴 분석 실패' }; })
+    );
+  }
+
+  await Promise.all(enginePromises);
+
+  // 통합 인사이트 생성
+  const insightParts: string[] = [];
+  const copyInjectionParts: string[] = [];
+  let totalEnginesUsed = 0;
+  let totalEnginesSuccess = 0;
+
+  // YouTube 결과 통합
+  if (engineResults.youtube) {
+    totalEnginesUsed++;
+    if (engineResults.youtube.success) {
+      totalEnginesSuccess++;
+      const ytInsight = engineResults.youtube.researchInsight || '';
+      if (ytInsight) {
+        insightParts.push(`[YouTube 분석]\n${ytInsight.split('[COPY-A 주입 인사이트]')[0].trim()}`);
+        const ytCopyPart = ytInsight.split('[COPY-A 주입 인사이트]')[1]?.trim();
+        if (ytCopyPart) copyInjectionParts.push(`[YouTube 인사이트]\n${ytCopyPart}`);
+      }
+    } else {
+      insightParts.push(`[YouTube 분석] 조사 실패 — fallback 없이 다른 엔진 결과로 보완`);
+    }
+  }
+
+  // Market 결과 통합
+  if (engineResults.market) {
+    totalEnginesUsed++;
+    if (engineResults.market.success) {
+      totalEnginesSuccess++;
+      const mktInsight = engineResults.market.marketInsight || '';
+      if (mktInsight) {
+        insightParts.push(`[시장/시세 분석]\n${mktInsight.split('[COPY-A 주입 인사이트]')[0].trim()}`);
+        const mktCopyPart = mktInsight.split('[COPY-A 주입 인사이트]')[1]?.trim();
+        if (mktCopyPart) copyInjectionParts.push(`[시장 인사이트]\n${mktCopyPart}`);
+      }
+    } else {
+      insightParts.push(`[시장/시세 분석] KAMIS 조회 실패 — 정량 시세 없이 카피 생성`);
+    }
+  }
+
+  // Review 결과 통합
+  if (engineResults.review) {
+    totalEnginesUsed++;
+    if (engineResults.review.success) {
+      totalEnginesSuccess++;
+      const revInsight = engineResults.review.reviewInsight || '';
+      if (revInsight) {
+        insightParts.push(`[리뷰/고객 불안 분석]\n${revInsight.split('[COPY-A 주입 인사이트]')[0].trim()}`);
+        const revCopyPart = revInsight.split('[COPY-A 주입 인사이트]')[1]?.trim();
+        if (revCopyPart) copyInjectionParts.push(`[리뷰 인사이트]\n${revCopyPart}`);
+      }
+    } else {
+      insightParts.push(`[리뷰/고객 불안 분석] 분석 실패 — 일반 불안 패턴으로 대체`);
+    }
+  }
+
+  // Social 결과 통합
+  if (engineResults.social) {
+    totalEnginesUsed++;
+    if (engineResults.social.success) {
+      totalEnginesSuccess++;
+      const socInsight = engineResults.social.socialInsight || '';
+      if (socInsight) {
+        insightParts.push(`[소셜 패턴 분석]\n${socInsight.split('[COPY-A 주입 인사이트]')[0].trim()}`);
+        const socCopyPart = socInsight.split('[COPY-A 주입 인사이트]')[1]?.trim();
+        if (socCopyPart) copyInjectionParts.push(`[소셜 인사이트]\n${socCopyPart}`);
+      }
+    } else {
+      insightParts.push(`[소셜 패턴 분석] 분석 실패 — 다른 엔진 결과로 보완`);
+    }
+  }
+
+  // 통합 인사이트 조합
+  const combinedInsight = `📊 통합 리서치 인사이트 (COPY-R.5 Orchestrator)
+사용 엔진: ${engines.join(' + ')} (${totalEnginesSuccess}/${totalEnginesUsed} 성공)
+품목: ${product || '미지정'}
+
+${insightParts.join('\n\n')}
+
+[카피 적용 방향]
+- 위 ${totalEnginesSuccess}개 엔진 분석 결과를 종합하여 카피에 반영
+- 각 엔진에서 추출한 핵심 포인트를 교차 검증하여 적용
+
+[피해야 할 방향]
+- 단일 엔진 결과만으로 과도한 단정 금지
+- 가짜 데이터/가짜 조회수/가짜 리뷰 생성 금지
+- 과장 광고, 허위 효능, 매출 보장 금지
+
+[COPY-A 주입 인사이트]
+${copyInjectionParts.join('\n\n') || '통합 분석 결과 기반으로 카피 생성'}`;
+
+  return {
+    success: true,
+    engines: engines,
+    enginesUsed: totalEnginesUsed,
+    enginesSuccess: totalEnginesSuccess,
+    researchInsight: combinedInsight,
+    orchestratorInsightForCopy: `\n\n[COPY-R.5 통합 리서치 인사이트 — 아래 내용을 카피에 반영하세요]\n${copyInjectionParts.join('\n\n') || '통합 분석 결과 기반으로 카피 생성'}`,
+    engineResults: {
+      youtube: engineResults.youtube?.success ? { videosFound: engineResults.youtube.videosFound, totalSearched: engineResults.youtube.totalSearched } : null,
+      market: engineResults.market?.success ? { kamisSuccess: true } : null,
+      review: engineResults.review?.success ? { sourceType: engineResults.review.sourceType } : null,
+      social: engineResults.social?.success ? { sourceType: engineResults.social.sourceType } : null,
+    },
+  };
+}
+
 
 // ── COPY-R.4: Review Objection Data Input ──
 async function handleCopyReviewResearch(params: any) {
@@ -2940,6 +3095,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       // ── Creative Content ──
       if (resolvedTask === 'creative-content') {
         const result = await handleCreativeContent(params || rest);
+        return res.status(200).json(result);
+      }
+      // ── COPY-R.5: Research Orchestrator ──
+      if (resolvedTask === 'copy-orchestrator') {
+        const result = await handleCopyOrchestrator(params || rest);
         return res.status(200).json(result);
       }
 
