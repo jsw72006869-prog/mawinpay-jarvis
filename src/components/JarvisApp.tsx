@@ -2803,6 +2803,66 @@ export default function JarvisApp() {
     // ══════════════════════════════════════════════════════
     // ── COPY-R: Research Before Writing 프로토콜 ──
     // ══════════════════════════════════════════════════════
+    // ── COPY-R.2: Market Context Research (시세/가격/시장 맥락 기반 카피 생성) ──
+    // ══════════════════════════════════════════════════════
+    if (action?.type === 'copy_market_research') {
+      setState('working');
+      const params = action.params || {} as Record<string, any>;
+      const marketProduct = String(params.marketProduct || '');
+      const copyProduct = String(params.copyProduct || marketProduct);
+      const contentType = String(params.contentType || 'headcopy');
+      const userMessage = String(params.userMessage || text);
+
+      emitMissionLog('📊', 'COPY-R.2', '시장 맥락 조사 시작', 'info');
+      emitMissionLog('📈', 'COPY-R.2', `${marketProduct || '제품'} KAMIS/시세 조회 중...`, 'working');
+      addMessage('assistant', `📊 **COPY-R.2 시장 맥락 조사** — ${marketProduct || '제품'} 시세/가격 데이터를 확인하고 있습니다...`);
+
+      let marketInsight = '';
+      let marketInsightForCopy = '';
+      let kamisSuccess = false;
+
+      try {
+        const marketRes = await fetch('/api/cloud-proxy', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ task: 'copy-market-research', marketProduct, copyProduct, contentType }),
+        });
+        const marketData = await marketRes.json();
+        if (marketData.success) {
+          marketInsight = marketData.marketInsight || '';
+          marketInsightForCopy = marketData.marketInsightForCopy || '';
+          kamisSuccess = marketData.kamisSuccess || false;
+          if (kamisSuccess) {
+            emitMissionLog('✅', 'COPY-R.2', `KAMIS 시세 조회 성공 — ${marketProduct} 시장 인사이트 생성 완료`, 'success');
+          } else {
+            addMessage('assistant', `KAMIS/시장 데이터 확인이 어려워 COPY-A 기본 카피 두뇌로 생성합니다.\n시장 데이터는 반영하지 않았습니다.`);
+            emitMissionLog('⚠️', 'COPY-R.2', `KAMIS 데이터 부족 — 일반 카피 두뇌로 진행`, 'warning');
+          }
+        } else {
+          emitMissionLog('⚠️', 'COPY-R.2', '시장 맥락 조회 실패 — 기본 전략으로 진행', 'warning');
+        }
+      } catch (err) {
+        emitMissionLog('⚠️', 'COPY-R.2', '시장 맥락 조회 오류 — 기본 전략으로 진행', 'warning');
+      }
+
+      emitMissionLog('🎨', 'COPY-R.2', '시장 인사이트 주입 → 카피 생성 시작', 'info');
+
+      const copyCountMatch = userMessage.match(/(\d+)\s*개/);
+      const copyCount = copyCountMatch ? Math.min(parseInt(copyCountMatch[1]), 10) : 3;
+      const researchPrefix = marketInsightForCopy
+        ? `\n\n${marketInsightForCopy}\n`
+        : '';
+
+      // creative_content action으로 위임
+      Object.assign(action, {
+        type: 'creative_content',
+        params: { product: copyProduct, content_type: contentType, count: copyCount, userMessage, researchInsight: marketInsight, researchPrefix, videosFound: 0, topVideos: [], isCopyR: true, isCopyR2: true, kamisSuccess },
+        workingMessage: `${copyProduct} ${contentType} 생성 중...`,
+        response: '__SKIP_TTS__',
+      });
+    }
+
+    // ══════════════════════════════════════════════════════
     if (action?.type === 'copy_research') {
       setState('working');
       const params = action.params || {} as Record<string, any>;

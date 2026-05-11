@@ -200,11 +200,16 @@ export default function ResultDeck({
               <span className="result-deck-badge">{typeLabel}</span>
               {product && <span className="result-deck-product">{product}</span>}
               <span style={{ fontSize: '0.45rem', color: 'rgba(0,245,255,0.5)', fontFamily: 'Orbitron, monospace', letterSpacing: '0.1em' }}>
-                {isCopyR ? 'COPY-R' : 'COPY-A'}
+                {isCopyR ? (researchInsight?.includes('시장/시즈 인사이트') ? 'COPY-R.2' : 'COPY-R') : 'COPY-A'}
               </span>
               {isCopyR && videosFound > 0 && (
                 <span style={{ fontSize: '0.4rem', color: 'rgba(255,200,0,0.9)', fontFamily: 'Orbitron, monospace', background: 'rgba(255,200,0,0.1)', border: '1px solid rgba(255,200,0,0.3)', borderRadius: 4, padding: '1px 5px' }}>
                   🔍 YouTube {videosFound}건 분석반영
+                </span>
+              )}
+              {isCopyR && researchInsight?.includes('시장/시즈 인사이트') && (
+                <span style={{ fontSize: '0.4rem', color: 'rgba(100,255,150,0.9)', fontFamily: 'Orbitron, monospace', background: 'rgba(100,255,150,0.1)', border: '1px solid rgba(100,255,150,0.3)', borderRadius: 4, padding: '1px 5px' }}>
+                  📊 KAMIS 시장 맥락 반영
                 </span>
               )}
             </div>

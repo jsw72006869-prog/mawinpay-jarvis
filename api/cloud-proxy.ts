@@ -881,9 +881,168 @@ function classifyPattern(title: string): string[] {
   return patterns;
 }
 
-async function handleCopyResearch(params: any) {
-  const product = params?.product || '\ub18d\uc0b0\ubb3c';
+// ── COPY-R.2: Market Context Research (KAMIS/시세 조회 → 인사이트 변환) ──
+async function handleCopyMarketResearch(params: any) {
+  const marketProduct = params?.marketProduct || params?.product || '농산물';
+  const copyProduct = params?.copyProduct || marketProduct;
   const contentType = params?.contentType || 'headcopy';
+
+  // 1. KAMIS 조회 (기존 handleKamisMini 재사용)
+  let kamisData: any = null;
+  let kamisSuccess = false;
+  let failReason = '';
+
+  try {
+    kamisData = await handleKamisMini({ item: marketProduct });
+    if (kamisData.success && kamisData.prices) {
+      kamisSuccess = true;
+    } else if (kamisData.success && !kamisData.prices) {
+      failReason = kamisData.message || 'KAMIS 데이터 부족';
+    } else {
+      failReason = kamisData.error || 'KAMIS 조회 실패';
+    }
+  } catch (err: any) {
+    failReason = `KAMIS API 오류: ${err.message || 'unknown'}`;
+  }
+
+  // 2. Market Insight 변환
+  let marketInsight = '';
+  let marketInsightForCopy = '';
+
+  if (kamisSuccess && kamisData.prices) {
+    const prices = kamisData.prices;
+    const todayPrice = prices.today || '-';
+    const monthPrice = prices.monthBefore || '-';
+    const direction = kamisData.direction || 'N/A';
+    const unit = kamisData.unit || '';
+    const cls = kamisData.cls || '소매';
+    const date = kamisData.date || '';
+    const isProxy = kamisData.isProxy || false;
+    const proxyNote = kamisData.proxyNote || '';
+
+    // 가격 흐름 해석
+    let priceFlow = '';
+    const changePercent = kamisData.changePercent;
+    if (!isNaN(changePercent)) {
+      if (changePercent > 5) priceFlow = `전월 대비 ${direction} 상승 추세`;
+      else if (changePercent < -5) priceFlow = `전월 대비 ${direction} 하락 추세`;
+      else priceFlow = `전월 대비 ${direction} 보합 유지`;
+    } else {
+      priceFlow = '가격 변동 데이터 부족';
+    }
+
+    // 판매 타이밍 판단
+    let sellingTiming = '';
+    if (!isNaN(changePercent)) {
+      if (changePercent > 10) sellingTiming = '가격 상승기 — 프리미엄/한정 수량 메시지 효과적';
+      else if (changePercent > 0) sellingTiming = '안정적 상승 — 품질 강조 전략 유효';
+      else if (changePercent > -5) sellingTiming = '보합 유지 — 묶음/세트 구성 검토';
+      else sellingTiming = '가격 하락기 — 가성비 강조 또는 용량 업 전략';
+    } else {
+      sellingTiming = '데이터 부족으로 타이밍 판단 불가';
+    }
+
+    // 소비자 불안 추정
+    let consumerAnxiety = '';
+    if (marketProduct === '복숭아') consumerAnxiety = '후숙 타이밍, 무름, 당도 불안';
+    else if (marketProduct === '한우') consumerAnxiety = '가격 부담, 등급 신뢰, 원산지 의심';
+    else if (marketProduct === '배추' || marketProduct === '절임배추') consumerAnxiety = '김장 실패 회피, 원물 신뢰';
+    else if (marketProduct === '초당옥수수' || marketProduct === '옥수수') consumerAnxiety = '당도/신선도, 수확 후 당도 감소 불안';
+    else if (marketProduct === '사과') consumerAnxiety = '당도, 식감, 크기 편차';
+    else if (marketProduct === '딸기') consumerAnxiety = '신선도, 무름, 당도 불안';
+    else consumerAnxiety = '가격 대비 품질, 신선도 불안';
+
+    // 카피 적용 방향
+    let copyDirection = '';
+    if (!isNaN(changePercent) && changePercent > 10) {
+      copyDirection = `"싸다"보다 "지금 사야 하는 이유"로 접근. 한정 수량/시즈널 메시지 효과적`;
+    } else if (!isNaN(changePercent) && changePercent < -5) {
+      copyDirection = `가격 하락기에는 "싸다"보다 "품질 대비 가성비"로 접근`;
+    } else {
+      copyDirection = `가격보다 품질/스토리/신뢰로 접근. 소비자 불안 해소 중심`;
+    }
+
+    // 피해야 할 방향
+    const avoidDirection = '근거 없는 최저가/가격 보장, 가격 폭등/폭락 단정, 허위 수급 위기, 치료/효능 과장';
+
+    // Result Deck 용 인사이트
+    marketInsight = [
+      `시장/시즈 인사이트`,
+      `• 조사 출처: KAMIS (${cls})`,
+      `• 품목: ${marketProduct}${isProxy ? ` (${proxyNote})` : ''}`,
+      `• 데이터 기준일: ${date}`,
+      `• 현재 가격: ${todayPrice}/${unit}`,
+      `• 전월 대비: ${direction}`,
+      `• 가격 흐름: ${priceFlow}`,
+      `• 판매 타이밍: ${sellingTiming}`,
+      `• 소비자 불안: ${consumerAnxiety}`,
+      ``,
+      `카피 적용 방향:`,
+      copyDirection,
+      ``,
+      `피해야 할 방향:`,
+      avoidDirection,
+    ].join('\n');
+
+    // COPY-A 주입용 인사이트
+    marketInsightForCopy = [
+      `[COPY-R.2 시장 맥락 주입]`,
+      `품목: ${copyProduct}${isProxy ? ` (원물: ${marketProduct})` : ''}`,
+      `데이터 기준: KAMIS ${cls} ${date}`,
+      `현재 가격: ${todayPrice}/${unit}`,
+      `전월 대비: ${direction}`,
+      `시장 맥락: ${priceFlow}`,
+      `소비자 불안: ${consumerAnxiety}`,
+      `판매 타이밍: ${sellingTiming}`,
+      `카피 적용 방향: ${copyDirection}`,
+      `피해야 할 표현: ${avoidDirection}`,
+      ``,
+      `위 시장 맥락을 반드시 반영하여 카피를 작성하세요.`,
+    ].join('\n');
+  } else {
+    // KAMIS 데이터 없음 — 안전 fallback
+    marketInsight = [
+      `시장/시즈 인사이트`,
+      `• 조사 출처: KAMIS`,
+      `• 품목: ${marketProduct}`,
+      `• 상태: 정량 시세 없음 / 일반 시장 맥락만 반영`,
+      `• 사유: ${failReason}`,
+    ].join('\n');
+
+    marketInsightForCopy = [
+      `[COPY-R.2 시장 맥락 주입]`,
+      `품목: ${copyProduct}`,
+      `KAMIS 데이터가 부족하여 일반 농산물 카피 두뇌로 생성합니다.`,
+      `시장 맥락은 참고하지 않았습니다.`,
+      `피해야 할 표현: 근거 없는 최저가, 가격 폭등/폭락 단정, 허위 수급 위기, 치료/효능 과장`,
+    ].join('\n');
+  }
+
+  return {
+    success: true,
+    marketProduct,
+    copyProduct,
+    contentType,
+    kamisSuccess,
+    failReason: kamisSuccess ? '' : failReason,
+    marketInsight,
+    marketInsightForCopy,
+    kamisData: kamisSuccess ? {
+      date: kamisData.date,
+      cls: kamisData.cls,
+      prices: kamisData.prices,
+      direction: kamisData.direction,
+      changePercent: kamisData.changePercent,
+      unit: kamisData.unit,
+      isProxy: kamisData.isProxy,
+      proxyNote: kamisData.proxyNote,
+    } : null,
+  };
+}
+
+async function handleCopyResearch(params: any) {
+  const product = params?.product || '농산물';
+  const contentType = params?.contentType || 'headcopy'; || 'headcopy';
   const count = Math.min(Number(params?.count) || 8, 15); // 필터를 위해 더 많이 가져오기
 
   // YouTube \uc778\uae30 \uc601\uc0c1 \uac80\uc0c9
@@ -2231,6 +2390,10 @@ const KAMIS_ITEMS: Record<string, { code: string; category: string; unit: string
   '사과': { code: '411', category: '400', unit: '10개' },
   '배': { code: '412', category: '400', unit: '10개' },
   '쌀': { code: '111', category: '100', unit: '20kg' },
+  '복숭아': { code: '414', category: '400', unit: '10개' },
+  '한우': { code: '312', category: '300', unit: '1kg' },
+  '초당옥수수': { code: '225', category: '100', unit: '10개' },  // 옥수수와 동일 코드
+  '딸기': { code: '415', category: '400', unit: '1kg' },
 };
 
 function getKamisDateStr(d: Date): string {
@@ -2457,6 +2620,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         return res.status(200).json(result);
       }
 
+      // ── COPY-R.2: Market Context Research ──
+      if (resolvedTask === 'copy-market-research') {
+        const result = await handleCopyMarketResearch(params || rest);
+        return res.status(200).json(result);
+      }
       // ── COPY-R: Research Before Writing ──
       if (resolvedTask === 'copy-research') {
         const result = await handleCopyResearch(params || rest);

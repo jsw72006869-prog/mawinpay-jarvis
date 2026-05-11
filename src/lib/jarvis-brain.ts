@@ -398,11 +398,37 @@ export function getGeminiClient() {
 function deterministicMatch(text: string): JarvisAction | null {
   const lower = text.toLowerCase().trim();
 
-  // ── Priority 0: COPY-R Research Before Writing (Creative보다 먼저 체크) ──
+  // ── Priority 0-A: COPY-R.2 Market Context Research (시세/가격/시장 맥락 기반) ──
+  // 트리거 O: "시세 보고", "가격 흐름 참고", "시장 상황 보고", "시장 맥락 보고", "현재 가격 참고"
+  // 트리거 X: "시세 알려줘" 단독 (카피 생성 요청 없음) → 기존 KAMIS Mini 조회
+  const copyR2Keywords = /시세.{0,10}(보고|참고|기반|반영)|가격.{0,10}(흐름|참고|보고|반영|기반)|시장.{0,10}(상황|맥락|동향).{0,10}(보고|참고|반영|기반)|현재.?가격.{0,10}(참고|보고|반영|기반)/i;
+  const hasCopyAction = /만들어|써줘|작성|생성|구성|제작|짜줘|뽑아줘/.test(lower);
+  if (copyR2Keywords.test(lower) && hasCopyAction) {
+    // 품목명 추출: "배추 시세 보고" → 배추, "복숭아 가격 흐름 참고해서" → 복숭아
+    const marketProductMatch = lower.match(/^(.+?)(?:시세|가격|시장|현재)/)?.[1]?.trim();
+    const marketProduct = marketProductMatch || '';
+    // 카피용 품목명 ("절임배추 카피" 등 별도 추출)
+    const copyProductMatch = lower.match(/(?:시세|가격|시장|맥락|상황|흐름|참고|보고|반영|기반).{0,15}?([가-힣]+?)\s*(?:카피|문구|후킹|스레드|릴스|인스타|썸네일|스크립트|공지)/)?.[1]?.trim();
+    const copyProduct = copyProductMatch || marketProduct;
+    let contentType = 'headcopy';
+    if (/릴스|reels|쇼츠|shorts|숏폼|스크립트|대본|틱톡/.test(lower)) contentType = 'reels_script';
+    else if (/유튜브.?썸네일|썸네일.?문구|thumbnail/.test(lower)) contentType = 'youtube_thumbnail';
+    else if (/스레드|쓰레드|threads/.test(lower)) contentType = 'threads_post';
+    else if (/인스타|instagram/.test(lower)) contentType = 'instagram_copy';
+    else if (/카카오|카톡|공지문/.test(lower)) contentType = 'kakao';
+    return {
+      type: 'copy_market_research' as any,
+      params: { marketProduct, copyProduct, contentType, userMessage: text },
+      workingMessage: `${copyProduct || '제품'} 시장 맥락 조사 중...`,
+      response: '__SKIP_TTS__',
+    };
+  }
+
+  // ── Priority 0-B: COPY-R.1 YouTube Research Before Writing ──
   // COPY-R.1.1: 트리거 조건 정확화
   // 트리거 O: "유튜브 조사해서", "유튜브 반응 보고", "유튜브 제목 패턴 분석", "조회수 좋은 영상 패턴 참고"
   // 트리거 X: "반응 좋게", "반응 보고" 단독 (유튜브 언급 없음) → COPY-A 유지
-  const copyRKeywords = /유튜브.{0,15}(조사|반응|분석|패턴|참고|보고)|조회수.{0,10}(영상|패턴).{0,10}(참고|분석)|조사.{0,5}(써줘|만들어|작성)(?=.*(유튜브|영상|패턴))|youtube.{0,10}(research|pattern|analyze)/i;
+  const copyRKeywords = /유튜브.{0,15}(조사|반응|분석|패턴|참고|보고|트렌드)|조회수.{0,10}(영상|패턴).{0,10}(참고|분석)|조사.{0,5}(써줘|만들어|작성)(?=.*(유튜브|영상|패턴))|youtube.{0,10}(research|pattern|analyze)/i;
   if (copyRKeywords.test(lower)) {
     const productMatch = lower.match(/^(.+?)(?:유튜브|조회수|조사)/)?.[1]?.trim();
     const product = productMatch || '';
@@ -411,6 +437,7 @@ function deterministicMatch(text: string): JarvisAction | null {
     else if (/유튜브.?썸네일|썸네일.?문구|thumbnail/.test(lower)) contentType = 'youtube_thumbnail';
     else if (/스레드|쓰레드|threads/.test(lower)) contentType = 'threads_post';
     else if (/인스타|instagram/.test(lower)) contentType = 'instagram_copy';
+    else if (/카카오|카톡|공지문/.test(lower)) contentType = 'kakao';
     return {
       type: 'copy_research',
       params: { product, contentType, userMessage: text },
