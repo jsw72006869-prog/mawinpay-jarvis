@@ -31,6 +31,7 @@ interface SmartstoreSnapshot {
 }
 
 /* ─── Real Intel Candidate Type ─── */
+type RecommendationTier = '추천' | '검토' | '보류' | '제외';
 type RealIntelCandidate = {
   contextId: string;
   type: 'youtube_channel' | 'youtube_video' | 'blog' | 'influencer' | 'unknown';
@@ -53,7 +54,129 @@ type RealIntelCandidate = {
   videoId?: string;
   videoUrl?: string;
   raw?: unknown;
+  /* OUTREACH-Q.5 Candidate Quality Fields */
+  recommendationTier?: RecommendationTier;
+  finalScore?: number;
+  categoryFitScore?: number;
+  brandSafetyScore?: number;
+  contactScore?: number;
+  mediaScore?: number;
+  riskFlags?: string[];
+  positiveSignals?: string[];
+  jarvisReason?: string;
 };
+
+/* ─── OUTREACH-Q.5: Candidate Quality Evaluation ─── */
+const BOOST_CATEGORIES = ['먹방','요리','캠핑','살림','주부','가족','건강식','다이어트','여행','지역','농장체험','리뷰','라이프스타일'];
+const PENALTY_CATEGORIES = ['뷰티','패션','연예','가십','게임','금융','정치','성인','자극'];
+const STRONG_EXCLUDE = ['성인','선정성','혐오','폭력','정치 선동','사기','불법','도박','주류','니코틴'];
+
+function evaluateCandidate(c: RealIntelCandidate): RealIntelCandidate {
+  const catLower = (c.category || '').toLowerCase();
+  const reasonLower = (c.reason || '').toLowerCase();
+  const titleLower = (c.title || '').toLowerCase();
+  const combined = `${catLower} ${reasonLower} ${titleLower}`;
+  const riskFlags: string[] = [];
+  const positiveSignals: string[] = [];
+
+  /* A. Category Fit Score (0-100) */
+  let categoryFitScore = 50; // base
+  const boostHits = BOOST_CATEGORIES.filter(k => combined.includes(k));
+  const penaltyHits = PENALTY_CATEGORIES.filter(k => combined.includes(k));
+  categoryFitScore += boostHits.length * 10;
+  categoryFitScore -= penaltyHits.length * 12;
+  if (boostHits.length > 0) positiveSignals.push(`카테고리 적합: ${boostHits.join(', ')}`);
+  if (penaltyHits.length > 0 && boostHits.length === 0) riskFlags.push(`카테고리 부적합: ${penaltyHits.join(', ')}`);
+  // Incorporate existing fitScore
+  if (c.fitScore !== undefined) {
+    categoryFitScore = Math.round(categoryFitScore * 0.4 + c.fitScore * 0.6);
+  }
+  categoryFitScore = Math.max(0, Math.min(100, categoryFitScore));
+
+  /* B. Brand Safety Score (0-100) */
+  let brandSafetyScore = 80; // default safe
+  const strongExcludeHits = STRONG_EXCLUDE.filter(k => combined.includes(k));
+  if (strongExcludeHits.length > 0) {
+    brandSafetyScore = 10;
+    riskFlags.push(`브랜드 충돌: ${strongExcludeHits.join(', ')}`);
+  }
+  if (combined.includes('자극')) { brandSafetyScore -= 20; riskFlags.push('자극적 콘텐츠 가능성'); }
+  if (combined.includes('논란')) { brandSafetyScore -= 20; riskFlags.push('논란 가능성'); }
+  if (combined.includes('노출')) { brandSafetyScore -= 15; riskFlags.push('과도한 노출 가능성'); }
+  if (boostHits.length > 0) brandSafetyScore += 5;
+  brandSafetyScore = Math.max(0, Math.min(100, brandSafetyScore));
+
+  /* C. Contact Score (0-100) */
+  let contactScore = 30; // base
+  if (c.contactStatus === 'contactable') { contactScore = 90; positiveSignals.push('공개 이메일 확인됨'); }
+  else if (c.contactStatus === 'review') { contactScore = 60; positiveSignals.push('문의 채널 있음'); }
+  else if (c.contactStatus === 'none') { contactScore = 10; riskFlags.push('연락처 없음'); }
+  // Check for collaboration hints in reason
+  if (combined.includes('공동구매') || combined.includes('협찬') || combined.includes('광고')) {
+    contactScore += 10; positiveSignals.push('협업 이력 흔적');
+  }
+  contactScore = Math.max(0, Math.min(100, contactScore));
+
+  /* D. Media Score (0-100) */
+  let mediaScore = 30; // base
+  if (c.thumbnailUrl) { mediaScore += 20; positiveSignals.push('썸네일 있음'); }
+  if (c.channelAvatarUrl) { mediaScore += 15; positiveSignals.push('프로필 이미지 있음'); }
+  if (c.videoId || c.videoUrl) { mediaScore += 15; positiveSignals.push('대표 영상 있음'); }
+  if (c.subscriberText) { mediaScore += 10; }
+  if (c.viewsText) { mediaScore += 10; }
+  if (!c.thumbnailUrl && !c.channelAvatarUrl) riskFlags.push('이미지 없음');
+  if (!c.videoId && !c.videoUrl) riskFlags.push('대표 영상 없음');
+  mediaScore = Math.max(0, Math.min(100, mediaScore));
+
+  /* Final Score */
+  const finalScore = Math.round(
+    categoryFitScore * 0.35 +
+    brandSafetyScore * 0.30 +
+    contactScore * 0.20 +
+    mediaScore * 0.15
+  );
+
+  /* Recommendation Tier */
+  let recommendationTier: RecommendationTier;
+  if (brandSafetyScore < 40 || strongExcludeHits.length > 0) {
+    recommendationTier = '제외';
+  } else if (finalScore >= 75) {
+    recommendationTier = '추천';
+  } else if (finalScore >= 55) {
+    recommendationTier = '검토';
+  } else {
+    recommendationTier = '보류';
+  }
+
+  /* Jarvis Reason */
+  let jarvisReason = '';
+  if (recommendationTier === '추천') {
+    jarvisReason = `농산물 공동구매와 콘텐츠 맥락이 맞고${c.contactStatus === 'contactable' ? ', 공개 문의 채널이 있어' : ''} 우선 제안 후보로 적합합니다.`;
+  } else if (recommendationTier === '검토') {
+    jarvisReason = riskFlags.length > 0
+      ? `잠재력이 있으나 ${riskFlags[0]} 등의 사유로 추가 확인이 필요합니다.`
+      : '적합도가 중간 수준이므로 콘텐츠를 직접 확인 후 판단하세요.';
+  } else if (recommendationTier === '보류') {
+    jarvisReason = '현재 데이터 기준으로 우선순위가 낮습니다. 추가 정보 확인 후 재평가하세요.';
+  } else {
+    jarvisReason = riskFlags.length > 0
+      ? `${riskFlags[0]} 사유로 공동구매 협업에 부적합합니다.`
+      : '브랜드 안전도가 낮아 제외 처리되었습니다.';
+  }
+
+  return {
+    ...c,
+    recommendationTier,
+    finalScore,
+    categoryFitScore,
+    brandSafetyScore,
+    contactScore,
+    mediaScore,
+    riskFlags,
+    positiveSignals,
+    jarvisReason,
+  };
+}
 
 /* ─── Platform Tabs ─── */
 const PLATFORM_TABS = ['전체', 'YouTube', 'Instagram', 'Threads', 'Naver'] as const;
@@ -258,13 +381,22 @@ const DataWallView: React.FC = () => {
     });
     if (combined.length > 0) {
       const normalized = combined.map((item, idx) => normalizeIntelCandidate(item, idx));
-      normalized.sort((a, b) => {
-        const contactOrder = { contactable: 0, review: 1, unknown: 2, none: 3 };
-        const diff = (contactOrder[a.contactStatus] || 3) - (contactOrder[b.contactStatus] || 3);
-        if (diff !== 0) return diff;
+      // OUTREACH-Q.5: Apply quality evaluation
+      const evaluated = normalized.map(c => evaluateCandidate(c));
+      // OUTREACH-Q.5: Sort by recommendationTier → finalScore → contactScore → mediaScore → fitScore
+      const tierOrder: Record<string, number> = { '추천': 0, '검토': 1, '보류': 2, '제외': 3 };
+      evaluated.sort((a, b) => {
+        const tierDiff = (tierOrder[a.recommendationTier || '보류'] ?? 2) - (tierOrder[b.recommendationTier || '보류'] ?? 2);
+        if (tierDiff !== 0) return tierDiff;
+        const scoreDiff = (b.finalScore || 0) - (a.finalScore || 0);
+        if (scoreDiff !== 0) return scoreDiff;
+        const contactDiff = (b.contactScore || 0) - (a.contactScore || 0);
+        if (contactDiff !== 0) return contactDiff;
+        const mediaDiff = (b.mediaScore || 0) - (a.mediaScore || 0);
+        if (mediaDiff !== 0) return mediaDiff;
         return (b.fitScore || 0) - (a.fitScore || 0);
       });
-      setRealCandidates(normalized);
+      setRealCandidates(evaluated);
     } else {
       setRealCandidates([]);
     }
@@ -324,12 +456,16 @@ const DataWallView: React.FC = () => {
     : realCandidates.filter(c => c.platform === activeTab);
 
   const hasRealData = filteredCandidates.length > 0;
-  const safeHeroIndex = hasRealData ? Math.min(heroIndex, filteredCandidates.length - 1) : 0;
-  const heroCandidate = hasRealData ? filteredCandidates[safeHeroIndex] : null;
+  // OUTREACH-Q.5: Hero/Top5/Filmstrip exclude '제외' candidates
+  const heroEligible = filteredCandidates.filter(c => c.recommendationTier !== '제외');
+  const safeHeroIndex = heroEligible.length > 0 ? Math.min(heroIndex, heroEligible.length - 1) : -1;
+  const heroCandidate = safeHeroIndex >= 0 ? heroEligible[safeHeroIndex] : null;
   const queueCandidates = hasRealData
-    ? filteredCandidates.filter((_, idx) => idx !== safeHeroIndex).slice(0, 8)
+    ? filteredCandidates.filter(c => c !== heroCandidate).slice(0, 8)
     : [];
-  const top5Candidates = filteredCandidates.slice(0, 5);
+  // OUTREACH-Q.5: Top5/Filmstrip only 추천/검토
+  const top5Candidates = filteredCandidates.filter(c => c.recommendationTier === '추천' || c.recommendationTier === '검토').slice(0, 5);
+  const allExcludedOrHeld = heroEligible.length === 0 && hasRealData;
 
   /* ─── Category distribution for radar ─── */
   const categoryMap: Record<string, number> = {};
@@ -541,13 +677,53 @@ const DataWallView: React.FC = () => {
                       <span className="dw-fit-label">적합도</span>
                       <span className="dw-fit-value">{heroCandidate.fitScore ?? '??'}</span>
                     </div>
+                    {/* OUTREACH-Q.5: Recommendation Tier Badge */}
+                    {heroCandidate.recommendationTier && (
+                      <span className={`dw-tier-badge dw-tier-${heroCandidate.recommendationTier}`}>
+                        {heroCandidate.recommendationTier}
+                      </span>
+                    )}
                   </div>
                   <h2 className="dw-hero-title">{heroCandidate.title}</h2>
-                  {/* JARVIS Analysis */}
+                  {/* OUTREACH-Q.5: Jarvis Quality Analysis */}
                   <div className="dw-hero-analysis">
-                    <span className="dw-analysis-label">자비스 전략 분석</span>
-                    <p className="dw-analysis-text">{heroCandidate.reason || '전략적 가치 분석 중...'}</p>
+                    <span className="dw-analysis-label">자비스 품질 판단</span>
+                    <p className="dw-analysis-text">{heroCandidate.jarvisReason || heroCandidate.reason || '전략적 가치 분석 중...'}</p>
                   </div>
+                  {/* OUTREACH-Q.5: 4-Axis Score Bar */}
+                  <div className="dw-q5-score-bar">
+                    <div className="dw-q5-axis">
+                      <span className="dw-q5-axis-label">카테고리</span>
+                      <div className="dw-q5-bar-track"><div className="dw-q5-bar-fill" style={{ width: `${heroCandidate.categoryFitScore || 0}%` }} /></div>
+                      <span className="dw-q5-axis-val">{heroCandidate.categoryFitScore || 0}</span>
+                    </div>
+                    <div className="dw-q5-axis">
+                      <span className="dw-q5-axis-label">안전도</span>
+                      <div className="dw-q5-bar-track"><div className="dw-q5-bar-fill dw-q5-safety" style={{ width: `${heroCandidate.brandSafetyScore || 0}%` }} /></div>
+                      <span className="dw-q5-axis-val">{heroCandidate.brandSafetyScore || 0}</span>
+                    </div>
+                    <div className="dw-q5-axis">
+                      <span className="dw-q5-axis-label">연락</span>
+                      <div className="dw-q5-bar-track"><div className="dw-q5-bar-fill dw-q5-contact" style={{ width: `${heroCandidate.contactScore || 0}%` }} /></div>
+                      <span className="dw-q5-axis-val">{heroCandidate.contactScore || 0}</span>
+                    </div>
+                    <div className="dw-q5-axis">
+                      <span className="dw-q5-axis-label">미디어</span>
+                      <div className="dw-q5-bar-track"><div className="dw-q5-bar-fill dw-q5-media" style={{ width: `${heroCandidate.mediaScore || 0}%` }} /></div>
+                      <span className="dw-q5-axis-val">{heroCandidate.mediaScore || 0}</span>
+                    </div>
+                  </div>
+                  {/* OUTREACH-Q.5: Risk Flags & Positive Signals */}
+                  {(heroCandidate.riskFlags?.length || heroCandidate.positiveSignals?.length) ? (
+                    <div className="dw-q5-signals">
+                      {heroCandidate.positiveSignals?.slice(0, 3).map((s, i) => (
+                        <span key={`p${i}`} className="dw-q5-signal dw-q5-positive">{s}</span>
+                      ))}
+                      {heroCandidate.riskFlags?.slice(0, 2).map((f, i) => (
+                        <span key={`r${i}`} className="dw-q5-signal dw-q5-risk">{f}</span>
+                      ))}
+                    </div>
+                  ) : null}
                   {/* Metrics Strip */}
                   <div className="dw-metrics-strip">
                     <div className="dw-metric">
@@ -618,9 +794,9 @@ const DataWallView: React.FC = () => {
                 top5Candidates.map((card, idx) => (
                   <div
                     key={card.contextId}
-                    className={`dw-filmstrip-card ${filteredCandidates.indexOf(card) === safeHeroIndex ? 'is-selected' : ''}`}
+                    className={`dw-filmstrip-card ${heroCandidate && card.contextId === heroCandidate.contextId ? 'is-selected' : ''}`}
                     onClick={() => {
-                      const realIdx = filteredCandidates.indexOf(card);
+                      const realIdx = heroEligible.indexOf(card);
                       if (realIdx >= 0) setHeroIndex(realIdx);
                     }}
                   >
@@ -643,7 +819,10 @@ const DataWallView: React.FC = () => {
                     </div>
                     <div className="dw-film-info">
                       <span className="dw-film-name">{card.channelName || card.title}</span>
-                      <span className="dw-film-score">{card.fitScore !== undefined ? `FIT ${card.fitScore}` : ''}</span>
+                      <span className="dw-film-score">
+                        {card.recommendationTier && <span className={`dw-tier-dot dw-tier-${card.recommendationTier}`} />}
+                        {card.finalScore !== undefined ? `${card.finalScore}점` : ''}
+                      </span>
                     </div>
                   </div>
                 ))
@@ -667,14 +846,14 @@ const DataWallView: React.FC = () => {
             <div className="dw-intel-cards">
               {hasRealData ? (
                 queueCandidates.map((card, idx) => {
-                  const isSelected = filteredCandidates.indexOf(card) === safeHeroIndex;
+                  const isSelected = heroCandidate && card.contextId === heroCandidate.contextId;
                   return (
                     <div
                       key={card.contextId}
                       className={`dw-intel-card ${openingActive ? 'is-docking' : ''} ${idx < 4 ? 'is-top5' : ''} ${isSelected ? 'is-selected' : ''}`}
                       style={{ '--i': idx } as React.CSSProperties}
                       onClick={() => {
-                        const realIdx = filteredCandidates.indexOf(card);
+                        const realIdx = heroEligible.indexOf(card);
                         if (realIdx >= 0) setHeroIndex(realIdx);
                       }}
                     >
@@ -696,10 +875,14 @@ const DataWallView: React.FC = () => {
                       </div>
                       <div className="dw-intel-body">
                         <div className="dw-intel-title">{card.channelName || card.title}</div>
-                        <div className="dw-intel-reason">{card.reason || '판단 대기'}</div>
+                        <div className="dw-intel-reason">{card.jarvisReason || card.reason || '판단 대기'}</div>
                         <div className="dw-intel-footer">
+                          {/* OUTREACH-Q.5: Tier Badge */}
+                          {card.recommendationTier && (
+                            <span className={`dw-intel-badge dw-tier-badge dw-tier-${card.recommendationTier}`}>{card.recommendationTier}</span>
+                          )}
                           <span className={`dw-intel-badge dw-plat-${(card.platform || 'youtube').toLowerCase()}`}>{card.platform || 'YT'}</span>
-                          {card.fitScore !== undefined && <span className="dw-intel-badge dw-badge-score">FIT {card.fitScore}</span>}
+                          {card.finalScore !== undefined && <span className="dw-intel-badge dw-badge-score">{card.finalScore}점</span>}
                           <span className={`dw-intel-badge ${card.contactStatus === 'contactable' ? 'dw-badge-contact' : 'dw-badge-pending'}`}>
                             {card.contactStatus === 'contactable' ? '문의 가능' : card.contactStatus === 'review' ? '검토 필요' : '대기 중'}
                           </span>
@@ -722,9 +905,8 @@ const DataWallView: React.FC = () => {
       {/* ─── Live Feed Strip ─── */}
       <footer className="dw-live-feed">
         <span className="dw-feed-line">SYSTEM ONLINE</span>
-        <span className="dw-feed-line">DATA SYNC ACTIVE</span>
-        <span className="dw-feed-line">OUTREACH ENGINE READY</span>
-        <span className="dw-feed-line">VOICE AI CONNECTED</span>
+        <span className="dw-feed-line">QUALITY ENGINE ACTIVE</span>
+        <span className="dw-feed-line">추천 {realCandidates.filter(c => c.recommendationTier === '추천').length} / 검토 {realCandidates.filter(c => c.recommendationTier === '검토').length} / 보류 {realCandidates.filter(c => c.recommendationTier === '보류').length} / 제외 {realCandidates.filter(c => c.recommendationTier === '제외').length}</span>
         <span className="dw-feed-line">INTEL: {realCandidates.length} CANDIDATES</span>
       </footer>
     </div>

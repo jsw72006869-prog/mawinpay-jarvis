@@ -5638,3 +5638,150 @@ html, body {
   0% { transform: translateX(0); }
   100% { transform: translateX(-50px); }
 }
+
+/* ═══════════════════════════════════════════════════════════
+   OUTREACH-Q.5: Candidate Quality Evaluation Styles
+   ═══════════════════════════════════════════════════════════ */
+
+/* ─── Recommendation Tier Badges ─── */
+.dw-tier-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2px 10px;
+  border-radius: 3px;
+  font-size: 0.6rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+.dw-tier-추천 {
+  color: #00FF88;
+  background: rgba(0, 255, 136, 0.12);
+  border: 1px solid rgba(0, 255, 136, 0.4);
+  box-shadow: 0 0 8px rgba(0, 255, 136, 0.15);
+}
+.dw-tier-검토 {
+  color: #FFD700;
+  background: rgba(255, 215, 0, 0.10);
+  border: 1px solid rgba(255, 215, 0, 0.35);
+  box-shadow: 0 0 6px rgba(255, 215, 0, 0.10);
+}
+.dw-tier-보류 {
+  color: rgba(180, 180, 180, 0.7);
+  background: rgba(180, 180, 180, 0.06);
+  border: 1px solid rgba(180, 180, 180, 0.2);
+}
+.dw-tier-제외 {
+  color: #FF4444;
+  background: rgba(255, 68, 68, 0.10);
+  border: 1px solid rgba(255, 68, 68, 0.3);
+}
+
+/* ─── Tier Dot (Filmstrip compact) ─── */
+.dw-tier-dot {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  margin-right: 4px;
+  vertical-align: middle;
+}
+.dw-tier-dot.dw-tier-추천 { background: #00FF88; box-shadow: 0 0 4px #00FF88; border: none; }
+.dw-tier-dot.dw-tier-검토 { background: #FFD700; box-shadow: 0 0 4px #FFD700; border: none; }
+.dw-tier-dot.dw-tier-보류 { background: rgba(180, 180, 180, 0.5); border: none; }
+.dw-tier-dot.dw-tier-제외 { background: #FF4444; border: none; }
+
+/* ─── 4-Axis Score Bar ─── */
+.dw-q5-score-bar {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px 12px;
+  padding: 6px 0;
+  margin-bottom: 4px;
+}
+.dw-q5-axis {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.dw-q5-axis-label {
+  font-size: 0.5rem;
+  color: rgba(200, 200, 200, 0.6);
+  letter-spacing: 0.05em;
+  min-width: 40px;
+  text-align: right;
+}
+.dw-q5-bar-track {
+  flex: 1;
+  height: 4px;
+  background: rgba(255, 255, 255, 0.06);
+  border-radius: 2px;
+  overflow: hidden;
+}
+.dw-q5-bar-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #00F5FF, #00AAFF);
+  border-radius: 2px;
+  transition: width 0.6s ease;
+}
+.dw-q5-bar-fill.dw-q5-safety {
+  background: linear-gradient(90deg, #00FF88, #00CC66);
+}
+.dw-q5-bar-fill.dw-q5-contact {
+  background: linear-gradient(90deg, #FFD700, #FFAA00);
+}
+.dw-q5-bar-fill.dw-q5-media {
+  background: linear-gradient(90deg, #AA88FF, #7744FF);
+}
+.dw-q5-axis-val {
+  font-size: 0.5rem;
+  color: rgba(0, 245, 255, 0.7);
+  min-width: 20px;
+  text-align: left;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ─── Risk Flags & Positive Signals ─── */
+.dw-q5-signals {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  padding: 4px 0 6px;
+}
+.dw-q5-signal {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: 2px;
+  font-size: 0.48rem;
+  letter-spacing: 0.03em;
+  white-space: nowrap;
+}
+.dw-q5-positive {
+  color: #00FF88;
+  background: rgba(0, 255, 136, 0.06);
+  border: 1px solid rgba(0, 255, 136, 0.15);
+}
+.dw-q5-positive::before {
+  content: '+';
+  margin-right: 3px;
+  font-weight: 700;
+}
+.dw-q5-risk {
+  color: #FF8844;
+  background: rgba(255, 136, 68, 0.06);
+  border: 1px solid rgba(255, 136, 68, 0.15);
+}
+.dw-q5-risk::before {
+  content: '!';
+  margin-right: 3px;
+  font-weight: 700;
+}
+
+/* ─── Queue Tier Badge (inline in footer) ─── */
+.dw-intel-footer .dw-tier-badge {
+  padding: 1px 6px;
+  font-size: 0.48rem;
+}
