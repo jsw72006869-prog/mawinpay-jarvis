@@ -433,6 +433,38 @@ function deterministicMatch(text: string): JarvisAction | null {
   // 트리거 X: "시세 알려줘" 단독 (카피 생성 요청 없음) → 기존 KAMIS Mini 조회
   const copyR2Keywords = /시세.{0,10}(보고|참고|기반|반영)|가격.{0,10}(흐름|참고|보고|반영|기반)|시장.{0,10}(상황|맥락|동향).{0,10}(보고|참고|반영|기반)|현재.?가격.{0,10}(참고|보고|반영|기반)/i;
   const hasCopyAction = /만들어|써줘|작성|생성|구성|제작|짜줘|뽑아줘/.test(lower);
+  // ── Priority 0-R4: COPY-R.4 Review Objection Data Input ──
+  // 트리거 O: "리뷰 분석해서", "후기 참고해서", "고객 후기 기반", "1점 리뷰 참고", "리뷰 불안 반영", "댓글 반응 참고"
+  // 트리거 X: "복숭아 스레드 글 3개 써줘" (리뷰/후기/댓글 키워드 없음) → COPY-A 유지
+  // 트리거 X: "리뷰처럼 써줘" (가짜 리뷰 생성 위험) → 안전 거절
+  const copyR4Keywords = /리뷰.{0,5}(?:분석|참고|기반|반영|보고)|후기.{0,5}(?:분석|참고|기반|반영|보고)|고객.{0,5}(?:후기|리뷰|불안|반응).{0,10}(?:기반|반영|참고|분석)|댓글.{0,5}(?:반응|참고|분석|기반|반영)|(?:1점|별점.?1|불만).{0,5}(?:리뷰|후기).{0,5}(?:참고|기반|반영|분석)|(?:5점|만족).{0,5}(?:리뷰|후기).{0,5}(?:참고|기반|반영)|리뷰.{0,5}불안.{0,5}(?:반영|참고|기반)/i;
+  const fakeReviewPattern = /리뷰.{0,3}(?:처럼|같이).{0,5}(?:써줘|만들어|작성|생성)|(?:가짜|없는).{0,5}리뷰.{0,5}(?:만들어|써줘|생성)/i;
+  if (fakeReviewPattern.test(lower)) {
+    return {
+      type: 'creative_content' as any,
+      params: { product: '', content_type: 'headcopy', userMessage: text },
+      workingMessage: '',
+      response: '대표님, 가짜 리뷰나 실제 리뷰처럼 꾸민 문장 생성은 위험합니다. 대신 "리뷰 불안 반영해서 카피 써줘"로 요청하시면 고객 불안을 해소하는 카피를 만들어 드리겠습니다.',
+    };
+  }
+  if (copyR4Keywords.test(lower) && hasCopyAction) {
+    const productMatchR4 = lower.match(/([가-힣]+?)\s*(?:스레드|릴스|인스타|카피|후킹|문구|썸네일|스크립트|대본|글)/)?.[1]?.trim()
+      || lower.match(/(?:리뷰|후기|댓글|불안|반응).{0,15}?([가-힣]+?)\s*(?:카피|문구|후킹|스레드|릴스|인스타|썸네일|스크립트|대본|글)/)?.[1]?.trim()
+      || '';
+    let contentType = 'headcopy';
+    if (/릴스|reels|쇼츠|shorts|숏폼|스크립트|대본|틱톡/.test(lower)) contentType = 'reels_script';
+    else if (/유튜브.?썸네일|썸네일.?문구|thumbnail/.test(lower)) contentType = 'youtube_thumbnail';
+    else if (/스레드|쓰레드|threads/.test(lower)) contentType = 'threads_post';
+    else if (/인스타|instagram/.test(lower)) contentType = 'instagram_copy';
+    else if (/카카오|카톡|공지문/.test(lower)) contentType = 'kakao';
+    const reviewTextBlock = text;
+    return {
+      type: 'copy_review_research' as any,
+      params: { product: productMatchR4, contentType, userMessage: text, reviewText: reviewTextBlock },
+      workingMessage: `${productMatchR4 || '제품'} 리뷰 불안 분석 중...`,
+      response: '__SKIP_TTS__',
+    };
+  }
   if (copyR2Keywords.test(lower) && hasCopyAction) {
     // 품목명 추출: "배추 시세 보고" → 배추, "복숭아 가격 흐름 참고해서" → 복숭아
     const marketProductMatch = lower.match(/^(.+?)(?:시세|가격|시장|현재)/)?.[1]?.trim();

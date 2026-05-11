@@ -882,7 +882,148 @@ function classifyPattern(title: string): string[] {
 }
 
 
-// ── COPY-R.3: Social / Reels / Threads / Global Pattern Analyzer ──
+// ── COPY-R.4: Review Objection Data Input ──
+async function handleCopyReviewResearch(params: any) {
+  const product = params?.product || '';
+  const contentType = params?.contentType || 'headcopy';
+  const userMessage = params?.userMessage || '';
+  const reviewText = params?.reviewText || '';
+
+  // 리뷰 텍스트가 있는지 확인
+  const hasReviewText = reviewText.length > 20 && /[1-5]점|리뷰|후기|댓글|물러|배송|맛|향|포장|아이|재구매|아쉬|좋|싫|별로|만족|불만|작다|크다|비싸|싸|달다|시다/.test(reviewText);
+
+  // 개인정보 필터링 패턴
+  const piiPatterns = /(\d{2,3}[-\s]?\d{3,4}[-\s]?\d{4})|(\w+@\w+\.\w+)|([\uac00-\ud7a3]{2,4}\s*님)|(\d{10,})|(\d{1,3}[-\s]\d{1,4}[-\s]\d{1,4})/g;
+
+  let reviewInsights: any = {};
+
+  if (hasReviewText) {
+    // 리뷰 텍스트에서 개인정보 제거
+    const sanitizedReview = reviewText.replace(piiPatterns, '[개인정보 제거]');
+
+    // GPT로 리뷰 분석
+    const analysisPrompt = `당신은 농수축산물 리뷰 분석 전문가입니다.
+아래 리뷰/후기/댓글 텍스트에서 고객 불안과 만족 포인트를 추출하세요.
+
+제품: ${product || '미지정'}
+리뷰 텍스트:
+${sanitizedReview.slice(0, 3000)}
+
+아래 JSON 형식으로만 응답하세요 (다른 텍스트 없이):
+{
+  "sourceType": "review_text",
+  "reviewCount": (분석한 리뷰 수),
+  "negativeSignals": ["불안1", "불안2", ...],
+  "positiveSignals": ["만족1", "만족2", ...],
+  "buyerObjections": ["망설임1", "망설임2", ...],
+  "satisfactionDrivers": ["구매동기1", "구매동기2", ...],
+  "copyAngles": ["카피방향1", "카피방향2", ...],
+  "trustBuilders": ["신뢰요소1", "신뢰요소2", ...],
+  "avoidClaims": ["피해야할표현1", "피해야할표현2", ...],
+  "privacyNote": "개인정보성 내용은 분석에서 제외했습니다."
+}
+
+규칙:
+- 리뷰 원문을 그대로 복사하지 마세요
+- 패턴과 인사이트만 추출하세요
+- 개인정보(이름, 전화번호, 주소, 주문번호)는 무시하세요
+- 없는 리뷰를 만들지 마세요
+- 가짜 평점/가짜 반응을 생성하지 마세요`;
+
+    try {
+      const analysisRes = await fetch('https://api.openai.com/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${process.env.OPENAI_API_KEY}`,
+        },
+        body: JSON.stringify({
+          model: 'gpt-4.1-mini',
+          messages: [{ role: 'user', content: analysisPrompt }],
+          temperature: 0.3,
+          max_tokens: 1000,
+        }),
+      });
+      const analysisData = await analysisRes.json();
+      const analysisContent = analysisData.choices?.[0]?.message?.content || '';
+      // JSON 파싱
+      const jsonMatch = analysisContent.match(/\{[\s\S]*\}/);
+      if (jsonMatch) {
+        reviewInsights = JSON.parse(jsonMatch[0]);
+      }
+    } catch (err) {
+      console.error('[COPY-R.4] GPT 리뷰 분석 오류:', err);
+    }
+  } else {
+    // 리뷰 텍스트 없음 → 일반 리뷰 불안 패턴 fallback
+    const genericObjections: Record<string, any> = {
+      '복숭아': { negativeSignals: ['무름', '후숙 어려움', '배송 멍', '덜 달다'], positiveSignals: ['향', '과즙', '선물 반응', '아이 간식'], buyerObjections: ['물러서 바로 먹어야 함', '후숙 타이밍 모름', '배송 중 손상 걱정'] },
+      '초당옥수수': { negativeSignals: ['단맛 기대 미달', '알 크기 작음', '보관 어려움'], positiveSignals: ['단맛', '아이 간식', '간편 조리'], buyerObjections: ['보관법 모름', '수확 후 시간 걱정', '삶는 법 모름'] },
+      '절임배추': { negativeSignals: ['무름', '짠맛 편차', '절임 불균일', '원물 상태'], positiveSignals: ['편리함', '김장 시간 절약', '가격 대비 양'], buyerObjections: ['김장 실패 걱정', '원물 신뢰', '배송 일정 불안'] },
+      '한우': { negativeSignals: ['가격 부담', '마블링 기대 미달'], positiveSignals: ['선물 체면', '원산지 신뢰', '포장 만족'], buyerObjections: ['비싸서 실패하면 아까움', '사진과 다를까 걱정'] },
+      '블루베리': { negativeSignals: ['크기 편차', '신맛', '무름'], positiveSignals: ['아이 간식', '요거트 활용', '신선도'], buyerObjections: ['크기 작을까 걱정', '금방 무를까 걱정'] },
+      '사과': { negativeSignals: ['당도 편차', '식감 차이', '크기 편차', '흠집'], positiveSignals: ['아삭함', '단맛', '선물용'], buyerObjections: ['당도 떨어질까 걱정', '흠집 있을까 걱정'] },
+      '딸기': { negativeSignals: ['무름', '크기 편차', '배송 손상'], positiveSignals: ['향', '단맛', '아이 간식', '비주얼'], buyerObjections: ['배송 중 물러질까 걱정', '사진보다 작을까 걱정'] },
+    };
+    const matchedProduct = Object.keys(genericObjections).find(k => product.includes(k));
+    const fallbackData = matchedProduct ? genericObjections[matchedProduct] : {
+      negativeSignals: ['맛 기대 미달', '배송 손상', '크기/양 불만'],
+      positiveSignals: ['신선도', '포장 만족', '재구매 의향'],
+      buyerObjections: ['실패할까 걱정', '배송 중 상할까 걱정', '사진과 다를까 걱정'],
+    };
+    reviewInsights = {
+      sourceType: 'generic_objection',
+      reviewCount: 0,
+      negativeSignals: fallbackData.negativeSignals || [],
+      positiveSignals: fallbackData.positiveSignals || [],
+      buyerObjections: fallbackData.buyerObjections || [],
+      satisfactionDrivers: [],
+      copyAngles: ['불안을 먼저 인정', '선택 기준 제시', '먹는 장면으로 전환', '신뢰 요소 보강'],
+      trustBuilders: ['과장 없이 기대치 조정', '실제 보관/배송 안내 포함'],
+      avoidClaims: ['실제 리뷰처럼 꾸며 쓰기', '고객 반응 조작', '허위 효능', '과도한 공포'],
+      privacyNote: '실제 리뷰 원문 없이 일반 리뷰 불안 패턴만 참고했습니다.',
+    };
+  }
+
+  // 인사이트 표시용 문자열 생성
+  const reviewInsightDisplay = `📋 리뷰/고객 불안 인사이트
+조사 출처: ${reviewInsights.sourceType === 'review_text' ? '리뷰 텍스트 분석' : '일반 리뷰 불안 패턴'}
+분석 리뷰 수: ${reviewInsights.reviewCount || 0}개
+핵심 불안: ${(reviewInsights.negativeSignals || []).join(', ') || '없음'}
+만족 포인트: ${(reviewInsights.positiveSignals || []).join(', ') || '없음'}
+구매 망설임: ${(reviewInsights.buyerObjections || []).join(', ') || '없음'}
+신뢰 보강 포인트: ${(reviewInsights.trustBuilders || []).join(', ') || '없음'}
+카피 적용 방향: ${(reviewInsights.copyAngles || []).join(', ') || '불안 해소 중심'}
+피해야 할 표현: ${(reviewInsights.avoidClaims || []).join(', ') || '가짜 리뷰, 허위 효능'}`;
+
+  // COPY-A 주입용 인사이트
+  const reviewInsightForCopy = `
+[COPY-R.4 리뷰/고객 불안 인사이트]
+- 분석 리뷰 수: ${reviewInsights.reviewCount || 0}개
+- 핵심 불안: ${(reviewInsights.negativeSignals || []).join(', ')}
+- 만족 포인트: ${(reviewInsights.positiveSignals || []).join(', ')}
+- 구매 망설임: ${(reviewInsights.buyerObjections || []).join(', ')}
+- 신뢰 보강 포인트: ${(reviewInsights.trustBuilders || []).join(', ')}
+- 카피 적용 방향: ${(reviewInsights.copyAngles || []).join(', ')}
+- 피해야 할 표현: ${(reviewInsights.avoidClaims || []).join(', ')}
+- 실제 리뷰처럼 꾸며 쓰지 말고, 불안 해소 방향만 반영할 것
+- 고객 불안을 먼저 이해한 문장으로 시작
+- 불안을 과장하지 않음
+- 선택 기준 또는 보관/후숙/배송 기대치를 부드럽게 제시
+- 만족 포인트는 먹는 장면으로 전환
+- 가짜 고객 후기처럼 쓰지 않음`;
+
+  return {
+    success: true,
+    reviewInsight: reviewInsightDisplay,
+    reviewInsightForCopy,
+    reviewInsights,
+    hasReviewText,
+    sourceType: reviewInsights.sourceType || 'generic_objection',
+    reviewCount: reviewInsights.reviewCount || 0,
+  };
+}
+
 async function handleCopySocialResearch(params: any) {
   const product = params?.product || '';
   const contentType = params?.contentType || 'headcopy';
@@ -2802,6 +2943,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         return res.status(200).json(result);
       }
 
+      // ── COPY-R.4: Review Objection Data Input ──
+      if (resolvedTask === 'copy-review-research') {
+        const result = await handleCopyReviewResearch(params || rest);
+        return res.status(200).json(result);
+      }
       // ── COPY-R.3: Social Pattern Research ──
       if (resolvedTask === 'copy-social-research') {
         const result = await handleCopySocialResearch(params || rest);

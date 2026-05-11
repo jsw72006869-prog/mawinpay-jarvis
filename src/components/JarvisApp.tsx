@@ -2804,6 +2804,59 @@ export default function JarvisApp() {
     // ── COPY-R: Research Before Writing 프로토콜 ──
     // ══════════════════════════════════════════════════════
     // ══════════════════════════════════════════════════════
+    // ── COPY-R.4: Review Objection Data Input ──
+    // ══════════════════════════════════════════════════════
+    if (action?.type === 'copy_review_research') {
+      setState('working');
+      const params = action.params || {} as Record<string, any>;
+      const product = String(params.product || '');
+      const contentType = String(params.contentType || 'headcopy');
+      const userMessage = String(params.userMessage || text);
+      const reviewText = String(params.reviewText || '');
+      emitMissionLog('📋', 'COPY-R.4', '리뷰/고객 불안 분석 시작', 'info');
+      emitMissionLog('🔍', 'COPY-R.4', `${product || '제품'} 리뷰 불안 패턴 추출 중...`, 'working');
+      addMessage('assistant', `📋 **COPY-R.4 리뷰 불안 분석** — ${product || '제품'} 관련 고객 불안·만족 포인트를 분석하고 있습니다...`);
+      let reviewInsight = '';
+      let reviewInsightForCopy = '';
+      let reviewSuccess = false;
+      let sourceType = 'generic_objection';
+      let reviewCount = 0;
+      try {
+        const reviewRes = await fetch('/api/cloud-proxy', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ task: 'copy-review-research', product, contentType, userMessage, reviewText }),
+        });
+        const reviewData = await reviewRes.json();
+        if (reviewData.success) {
+          reviewInsight = reviewData.reviewInsight || '';
+          reviewInsightForCopy = reviewData.reviewInsightForCopy || '';
+          reviewSuccess = true;
+          sourceType = reviewData.sourceType || 'generic_objection';
+          reviewCount = reviewData.reviewCount || 0;
+          emitMissionLog('✅', 'COPY-R.4', `리뷰 분석 완료 (${sourceType === 'review_text' ? `실제 리뷰 ${reviewCount}건 분석` : '일반 불안 패턴'})`, 'success');
+        } else {
+          addMessage('assistant', `리뷰 분석에 실패했습니다. COPY-A 기본 카피 두뇌로 생성합니다.`);
+          emitMissionLog('⚠️', 'COPY-R.4', `리뷰 분석 실패 — 기본 전략으로 진행`, 'warning');
+        }
+      } catch (err) {
+        emitMissionLog('⚠️', 'COPY-R.4', '리뷰 분석 오류 — 기본 전략으로 진행', 'warning');
+      }
+      emitMissionLog('🎨', 'COPY-R.4', '리뷰 인사이트 주입 → 카피 생성 시작', 'info');
+      const copyCountMatch = userMessage.match(/(\d+)\s*개/);
+      const copyCount = copyCountMatch ? Math.min(parseInt(copyCountMatch[1]), 10) : 3;
+      const researchPrefix = reviewInsightForCopy
+        ? `\n\n${reviewInsightForCopy}\n`
+        : '';
+      // creative_content action으로 위임
+      Object.assign(action, {
+        type: 'creative_content',
+        params: { product, content_type: contentType, count: copyCount, userMessage, researchInsight: reviewInsight, researchPrefix, videosFound: 0, topVideos: [], isCopyR: true, isCopyR4: true, reviewSuccess, sourceType, reviewCount },
+        workingMessage: `${product} ${contentType} 생성 중...`,
+        response: '__SKIP_TTS__',
+      });
+    }
+    // ══════════════════════════════════════════════════════
     // ── COPY-R.3: Social / Reels / Threads / Global Pattern Analyzer ──
     // ══════════════════════════════════════════════════════
     if (action?.type === 'copy_social_research') {
