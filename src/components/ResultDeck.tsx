@@ -46,6 +46,11 @@ export interface ResultDeckProps {
   onDismiss: () => void;
   onCopy: () => void;
   onSaveToWorkspace: () => void;
+  // COPY-R
+  isCopyR?: boolean;
+  researchInsight?: string;
+  videosFound?: number;
+  topVideos?: Array<{ title: string; viewCount: string; url: string }>;
 }
 
 // 콘텐츠 타입 → 한글 라벨
@@ -141,6 +146,10 @@ export default function ResultDeck({
   onDismiss,
   onCopy,
   onSaveToWorkspace,
+  isCopyR = false,
+  researchInsight = '',
+  videosFound = 0,
+  topVideos = [],
 }: ResultDeckProps) {
   const [showContent, setShowContent] = useState(false);
   const [copied, setCopied] = useState(false);
@@ -191,8 +200,13 @@ export default function ResultDeck({
               <span className="result-deck-badge">{typeLabel}</span>
               {product && <span className="result-deck-product">{product}</span>}
               <span style={{ fontSize: '0.45rem', color: 'rgba(0,245,255,0.5)', fontFamily: 'Orbitron, monospace', letterSpacing: '0.1em' }}>
-                COPY-A
+                {isCopyR ? 'COPY-R' : 'COPY-A'}
               </span>
+              {isCopyR && videosFound > 0 && (
+                <span style={{ fontSize: '0.4rem', color: 'rgba(255,200,0,0.9)', fontFamily: 'Orbitron, monospace', background: 'rgba(255,200,0,0.1)', border: '1px solid rgba(255,200,0,0.3)', borderRadius: 4, padding: '1px 5px' }}>
+                  🔍 YouTube {videosFound}건 분석반영
+                </span>
+              )}
             </div>
             <div className="result-deck-header-right">
               <button className="result-deck-btn" onClick={() => handleCopy()}>
@@ -209,6 +223,12 @@ export default function ResultDeck({
 
           {/* Content */}
           <div className="result-deck-body" ref={scrollRef}>
+            {/* COPY-R 인사이트 배너 */}
+            {isCopyR && researchInsight && showContent && (
+              <div style={{ background: 'rgba(255,200,0,0.07)', border: '1px solid rgba(255,200,0,0.25)', borderRadius: 8, padding: '10px 14px', marginBottom: 12, fontSize: '0.55rem', color: 'rgba(255,220,80,0.9)', fontFamily: 'monospace', whiteSpace: 'pre-wrap', lineHeight: 1.6 }}>
+                {researchInsight}
+              </div>
+            )}
             <AnimatePresence>
               {showContent && displayItems.map((item, idx) => (
                 <motion.div

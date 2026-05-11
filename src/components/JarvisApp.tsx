@@ -411,6 +411,11 @@ export default function JarvisApp() {
   const [resultDeckType, setResultDeckType] = useState('');
   const [resultDeckProduct, setResultDeckProduct] = useState('');
   const [resultDeckItems, setResultDeckItems] = useState<any[]>([]);
+  // COPY-R
+  const [resultDeckIsCopyR, setResultDeckIsCopyR] = useState(false);
+  const [resultDeckResearchInsight, setResultDeckResearchInsight] = useState('');
+  const [resultDeckVideosFound, setResultDeckVideosFound] = useState(0);
+  const [resultDeckTopVideos, setResultDeckTopVideos] = useState<any[]>([]);
   // ── COPY-A v2: Copy Focus Mode ──
   const [copyFocusMode, setCopyFocusMode] = useState(false);
   // ── SSoT: 스마트스토어 데이터 캐시 (5분 유효) ──
@@ -2796,6 +2801,60 @@ export default function JarvisApp() {
     }
 
     // ══════════════════════════════════════════════════════
+    // ── COPY-R: Research Before Writing 프로토콜 ──
+    // ══════════════════════════════════════════════════════
+    if (action?.type === 'copy_research') {
+      setState('working');
+      const params = action.params || {} as Record<string, any>;
+      const product = String(params.product || '');
+      const contentType = String(params.contentType || 'headcopy');
+      const userMessage = String(params.userMessage || text);
+
+      emitMissionLog('🔍', 'COPY-R', 'YouTube 반응 패턴 조사 시작', 'info');
+      emitMissionLog('📊', 'COPY-R', `${product || '제품'} 인기 영상 분석 중...`, 'working');
+      addMessage('assistant', `🔍 **COPY-R 조사 시작** — ${product || '제품'} 관련 YouTube 인기 영상을 분석하고 있습니다...`);
+
+      let researchInsight = '';
+      let videosFound = 0;
+      let topVideos: any[] = [];
+
+      try {
+        const researchRes = await fetch('/api/cloud-proxy', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ task: 'copy-research', product, contentType, count: 5 }),
+        });
+        const researchData = await researchRes.json();
+        if (researchData.success) {
+          researchInsight = researchData.researchInsight || '';
+          videosFound = researchData.videosFound || 0;
+          topVideos = researchData.topVideos || [];
+          emitMissionLog('✅', 'COPY-R', `YouTube 영상 ${videosFound}건 분석 완료`, 'success');
+        } else {
+          emitMissionLog('⚠️', 'COPY-R', 'YouTube 조사 실패 — 기본 전략으로 진행', 'warning');
+        }
+      } catch (err) {
+        emitMissionLog('⚠️', 'COPY-R', 'YouTube 조사 오류 — 기본 전략으로 진행', 'warning');
+      }
+
+      emitMissionLog('🎨', 'COPY-R', '조사 인사이트 주입 → 카피 생성 시작', 'info');
+
+      const copyCountMatch = userMessage.match(/(\d+)\s*개/);
+      const copyCount = copyCountMatch ? Math.min(parseInt(copyCountMatch[1]), 10) : 3;
+      const researchPrefix = researchInsight
+        ? `\n\n[COPY-R 조사 결과 주입]\n${researchInsight}\n\n위 조사 결과를 반드시 반영하여 카피를 작성하세요.\n`
+        : '';
+
+      // creative_content action으로 위임
+      Object.assign(action, {
+        type: 'creative_content',
+        params: { product, content_type: contentType, count: copyCount, userMessage, researchInsight, researchPrefix, videosFound, topVideos, isCopyR: true },
+        workingMessage: `${product} ${contentType} 생성 중...`,
+        response: '__SKIP_TTS__',
+      });
+    }
+
+    // ══════════════════════════════════════════════════════
     // ── Creative Director 프로토콜 (Creative Content Generation) ──
     // ══════════════════════════════════════════════════════
     if (action?.type === 'creative_content') {
@@ -2878,7 +2937,7 @@ G. Review Objection: 작다/비싸다/무르다/배송 손상/맛 기대와 다�
 - 실제 존재하지 않는 고객 반응 조작
 - 과장 광고, 허위 효능, 매출 보장, 성공 보장
 
-응답은 한국어로, 실제 바이럴에 바로 쓸 수 있는 콘텐츠만 작성하세요.`;
+응답은 한국어로, 실제 바이럴에 바로 쓸 수 있는 콘텐츠만 작성하세요.${params.researchPrefix || ''}`;
 
         const response = await fetch('/api/cloud-proxy', {
           method: 'POST',
@@ -2930,6 +2989,11 @@ G. Review Objection: 작다/비싸다/무르다/배송 손상/맛 기대와 다�
           setResultDeckProduct(product || '');
           setResultDeckItems(items);
           setCopyFocusMode(true);
+          // COPY-R 상태 세팅
+          setResultDeckIsCopyR(Boolean(params.isCopyR));
+          setResultDeckResearchInsight(String(params.researchInsight || ''));
+          setResultDeckVideosFound(Number(params.videosFound || 0));
+          setResultDeckTopVideos(Array.isArray(params.topVideos) ? params.topVideos : []);
           
           setState('speaking');
           startSpeakingLevel();
@@ -5854,7 +5918,11 @@ G. Review Objection: 작다/비싸다/무르다/배송 손상/맛 기대와 다�
         contentType={resultDeckType}
         product={resultDeckProduct}
         items={resultDeckItems}
-        onDismiss={() => { setResultDeckVisible(false); setCopyFocusMode(false); }}
+        isCopyR={resultDeckIsCopyR}
+        researchInsight={resultDeckResearchInsight}
+        videosFound={resultDeckVideosFound}
+        topVideos={resultDeckTopVideos}
+        onDismiss={() => { setResultDeckVisible(false); setCopyFocusMode(false); setResultDeckIsCopyR(false); setResultDeckResearchInsight(''); }}
         onCopy={() => {}}
         onSaveToWorkspace={() => {
           // workspace에 저장 (기존 로직 활용)

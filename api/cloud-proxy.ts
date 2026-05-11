@@ -837,6 +837,78 @@ async function handleCreativeContent(params: any) {
   };
 }
 
+// ── COPY-R: Research Before Writing 핸들러 ──
+async function handleCopyResearch(params: any) {
+  const product = params?.product || '농산물';
+  const contentType = params?.contentType || 'headcopy';
+  const count = Math.min(Number(params?.count) || 5, 10);
+
+  // YouTube 인기 영상 검색 (최근 3개월)
+  let videos: any[] = [];
+  let researchInsight = '';
+
+  try {
+    if (YOUTUBE_API_KEY) {
+      const searchResult = await searchPopularVideos(product, count, 'month');
+      videos = searchResult.videos || [];
+    }
+  } catch (e: any) {
+    console.error('[COPY-R] YouTube search error:', e.message);
+  }
+
+  // 패턴 추출
+  if (videos.length > 0) {
+    // 제목 패턴 분석
+    const titles = videos.map((v: any) => v.title);
+    const topTitles = titles.slice(0, 5).map((t: string, i: number) => `${i + 1}. ${t}`).join('\n');
+    const totalViews = videos.reduce((sum: number, v: any) => sum + (v.viewCount || 0), 0);
+    const avgViews = videos.length > 0 ? Math.round(totalViews / videos.length) : 0;
+    const topVideo = videos[0];
+
+    // 제목 패턴 키워드 추출 (자주 등장하는 단어)
+    const allWords = titles.join(' ').match(/[가-힣a-zA-Z]{2,}/g) || [];
+    const wordFreq: Record<string, number> = {};
+    allWords.forEach((w: string) => { wordFreq[w] = (wordFreq[w] || 0) + 1; });
+    const topWords = Object.entries(wordFreq)
+      .filter(([w]) => !['있는', '하는', '이런', '그런', '저런', '하고', '에서', '으로', '에게', '부터', '까지', '이다', '합니다', '있습니다'].includes(w))
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 8)
+      .map(([w, c]) => `${w}(${c})`)
+      .join(', ');
+
+    researchInsight = `[COPY-R 조사 인사이트 — ${product}]
+최근 3개월 YouTube 인기 영상 ${videos.length}건 분석 결과:
+
+📊 평균 조회수: ${avgViews.toLocaleString()}회
+🏆 최고 조회수 영상: "${topVideo?.title}" (${topVideo?.viewCountFormatted}회)
+
+🔥 인기 영상 제목 TOP 5:
+${topTitles}
+
+🔑 자주 등장하는 키워드: ${topWords}
+
+💡 패턴 분석:
+- 제목에 숫자/수량 포함 여부: ${titles.filter((t: string) => /\d/.test(t)).length}/${videos.length}건
+- 감탄/반응형 제목: ${titles.filter((t: string) => /실화|대박|미쳤|놀라|충격|진짜|레전드|역대급/.test(t)).length}건
+- 가격/가성비 언급: ${titles.filter((t: string) => /원|가격|저렴|싸|비싸|가성비/.test(t)).length}건
+- 계절/제철 언급: ${titles.filter((t: string) => /제철|시즌|여름|겨울|봄|가을|햇/.test(t)).length}건
+
+이 인사이트를 반영하여 카피를 작성합니다.`;
+  } else {
+    researchInsight = `[COPY-R 조사 인사이트 — ${product}]
+YouTube 데이터를 가져오지 못했습니다. 기본 COPY-A 전략으로 작성합니다.`;
+  }
+
+  return {
+    success: true,
+    product,
+    contentType,
+    researchInsight,
+    videosFound: videos.length,
+    topVideos: videos.slice(0, 3).map((v: any) => ({ title: v.title, viewCount: v.viewCountFormatted, url: v.url })),
+  };
+}
+
 // ── Growth Link 핸들러 ──
 async function handleGrowthLink(params: any) {
   const product = params?.product || params?.prompt || '농산물';
@@ -2276,6 +2348,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       // ── Creative Content ──
       if (resolvedTask === 'creative-content') {
         const result = await handleCreativeContent(params || rest);
+        return res.status(200).json(result);
+      }
+
+      // ── COPY-R: Research Before Writing ──
+      if (resolvedTask === 'copy-research') {
+        const result = await handleCopyResearch(params || rest);
         return res.status(200).json(result);
       }
 

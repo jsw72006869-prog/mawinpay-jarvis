@@ -398,6 +398,25 @@ export function getGeminiClient() {
 function deterministicMatch(text: string): JarvisAction | null {
   const lower = text.toLowerCase().trim();
 
+  // ── Priority 0: COPY-R Research Before Writing (Creative보다 먼저 체크) ──
+  // 트리거: "조사해서 써줘", "반응 보고 써줘", "유튜브 조사 후", "트렌드 반영해서"
+  const copyRKeywords = /조사.{0,5}(써줘|만들어|작성|써줘|써줘)|유튜브.{0,5}조사|반응.{0,5}(보고|확인).{0,5}(써줘|만들어)|트렌드.{0,5}반영|인기.{0,5}영상.{0,5}분석.{0,5}(써줘|만들어)|research.{0,5}(write|copy)/i;
+  if (copyRKeywords.test(lower)) {
+    const productMatch = lower.match(/^(.+?)(?:조사|유튜브|반응|트렌드|인기)/)?.[1]?.trim();
+    const product = productMatch || '';
+    let contentType = 'headcopy';
+    if (/릴스|reels|쓰즈|shorts|숫폼|스크립트|대본|틱톡/.test(lower)) contentType = 'reels_script';
+    else if (/유튜브.?썸네일|썸네일.?문구|thumbnail/.test(lower)) contentType = 'youtube_thumbnail';
+    else if (/스레드|쓰레드|threads/.test(lower)) contentType = 'threads_post';
+    else if (/인스타|instagram/.test(lower)) contentType = 'instagram_copy';
+    return {
+      type: 'copy_research',
+      params: { product, contentType, userMessage: text },
+      workingMessage: `${product || '제품'} YouTube 조사 중...`,
+      response: '__SKIP_TTS__',
+    };
+  }
+
   // ── Priority 1: Creative Director 명령 (smartstore보다 먼저 체크) ──
   // COPY-A.3: 확장된 creativeKeywords (썸네일/스크립트/쇼츠/숏폼/틱톡/첫3초 추가)
   const creativeKeywords = /마케팅|문구|카피|릴스|스레드|인스타|콘텐츠|광고|후킹|대본|공지문|공구.?글|영상.?구성|자막|촬영|썸네일|스크립트|쇼츠|숏폼|틱톡|첫.?3초|인스타그램|threads|reels|shorts|tiktok|thumbnail|script/i;
