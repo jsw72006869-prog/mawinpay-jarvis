@@ -54,7 +54,7 @@ async function parallelLimit(tasks, limit) {
 const CLIENT_ID = process.env.SMARTSTORE_CLIENT_ID || process.env.NAVER_CLIENT_ID;
 const CLIENT_SECRET = process.env.SMARTSTORE_CLIENT_SECRET || process.env.NAVER_CLIENT_SECRET;
 const PROXY_URL = process.env.QUOTAGUARD_URL || process.env.QUOTAGUARDSTATIC_URL || process.env.PROXY_URL;
-const OPENAI_API_KEY = process.env.OPENAI_API_KEY || process.env.VITE_OPENAI_API_KEY;
+const OPENAI_API_KEY = process.env.OPENAI_API_KEY; // SECURITY: VITE_OPENAI_API_KEY fallback 제거 - 서버 전용 env만 사용
 const API_BASE = 'https://api.commerce.naver.com/external';
 
 // ============================================

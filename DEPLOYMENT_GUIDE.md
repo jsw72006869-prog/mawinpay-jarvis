@@ -63,7 +63,7 @@ VITE_GEMINI_API_KEY=<Google Gemini API 키>
 
 #### OpenAI API 키 (Whisper STT)
 ```
-VITE_OPENAI_API_KEY=<OpenAI API 키>
+# VITE_OPENAI_API_KEY 제거됨 - 서버 전용 OPENAI_API_KEY만 사용 (Vercel 환경변수에 등록)
 ```
 
 #### ElevenLabs API 키 (TTS)
@@ -78,7 +78,7 @@ VITE_ELEVENLABS_API_KEY=<ElevenLabs API 키>
 ```bash
 # .env.local
 VITE_GEMINI_API_KEY=your_gemini_key_here
-VITE_OPENAI_API_KEY=your_openai_key_here
+# VITE_OPENAI_API_KEY 제거됨 - 서버 전용 OPENAI_API_KEY만 사용
 VITE_ELEVENLABS_API_KEY=your_elevenlabs_key_here
 VITE_BOOKING_SERVER_URL=https://jarvis-booking-server-production.up.railway.app
 
