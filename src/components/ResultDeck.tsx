@@ -223,12 +223,16 @@ export default function ResultDeck({
 
           {/* Content */}
           <div className="result-deck-body" ref={scrollRef}>
-            {/* COPY-R 인사이트 배너 */}
-            {isCopyR && researchInsight && showContent && (
-              <div style={{ background: 'rgba(255,200,0,0.07)', border: '1px solid rgba(255,200,0,0.25)', borderRadius: 8, padding: '10px 14px', marginBottom: 12, fontSize: '0.55rem', color: 'rgba(255,220,80,0.9)', fontFamily: 'monospace', whiteSpace: 'pre-wrap', lineHeight: 1.6 }}>
-                {researchInsight}
-              </div>
-            )}
+            {/* COPY-R 인사이트 배너 (COPY-R.1.1: 카피 적용 방향 중심) */}
+            {isCopyR && researchInsight && showContent && (() => {
+              // [COPY-A 주입 인사이트] 이후는 내부 주입용이므로 UI에서 숨김
+              const displayInsight = researchInsight.split('[COPY-A 주입 인사이트]')[0].trim();
+              return (
+                <div style={{ background: 'rgba(255,200,0,0.07)', border: '1px solid rgba(255,200,0,0.25)', borderRadius: 8, padding: '10px 14px', marginBottom: 12, fontSize: '0.55rem', color: 'rgba(255,220,80,0.9)', fontFamily: 'monospace', whiteSpace: 'pre-wrap', lineHeight: 1.7 }}>
+                  {displayInsight}
+                </div>
+              );
+            })()}
             <AnimatePresence>
               {showContent && displayItems.map((item, idx) => (
                 <motion.div

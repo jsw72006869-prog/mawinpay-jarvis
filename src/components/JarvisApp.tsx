@@ -2829,9 +2829,17 @@ export default function JarvisApp() {
           researchInsight = researchData.researchInsight || '';
           videosFound = researchData.videosFound || 0;
           topVideos = researchData.topVideos || [];
-          emitMissionLog('✅', 'COPY-R', `YouTube 영상 ${videosFound}건 분석 완료`, 'success');
+          const totalSearched = researchData.totalSearched || videosFound;
+          if (videosFound > 0) {
+            emitMissionLog('✅', 'COPY-R', `YouTube ${totalSearched}건 검색 → 관련성 필터 통과 ${videosFound}건 분석 완료`, 'success');
+          } else if (researchData.failReason) {
+            addMessage('assistant', `유튜브 조사에 실패했습니다. COPY-A 기본 카피 두뇌로 생성합니다.`);
+            emitMissionLog('⚠️', 'COPY-R', 'YouTube 조사 실패 — COPY-A 기본 전략으로 진행', 'warning');
+          } else {
+            emitMissionLog('⚠️', 'COPY-R', '관련 영상 없음 — COPY-A 기본 전략으로 진행', 'warning');
+          }
         } else {
-          emitMissionLog('⚠️', 'COPY-R', 'YouTube 조사 실패 — 기본 전략으로 진행', 'warning');
+          emitMissionLog('⚠️', 'COPY-R', 'YouTube 조사 실패 — COPY-A 기본 전략으로 진행', 'warning');
         }
       } catch (err) {
         emitMissionLog('⚠️', 'COPY-R', 'YouTube 조사 오류 — 기본 전략으로 진행', 'warning');

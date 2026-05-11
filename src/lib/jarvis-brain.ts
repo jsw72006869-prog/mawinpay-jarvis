@@ -399,13 +399,15 @@ function deterministicMatch(text: string): JarvisAction | null {
   const lower = text.toLowerCase().trim();
 
   // ── Priority 0: COPY-R Research Before Writing (Creative보다 먼저 체크) ──
-  // 트리거: "조사해서 써줘", "반응 보고 써줘", "유튜브 조사 후", "트렌드 반영해서"
-  const copyRKeywords = /조사.{0,5}(써줘|만들어|작성|써줘|써줘)|유튜브.{0,5}조사|반응.{0,5}(보고|확인).{0,5}(써줘|만들어)|트렌드.{0,5}반영|인기.{0,5}영상.{0,5}분석.{0,5}(써줘|만들어)|research.{0,5}(write|copy)/i;
+  // COPY-R.1.1: 트리거 조건 정확화
+  // 트리거 O: "유튜브 조사해서", "유튜브 반응 보고", "유튜브 제목 패턴 분석", "조회수 좋은 영상 패턴 참고"
+  // 트리거 X: "반응 좋게", "반응 보고" 단독 (유튜브 언급 없음) → COPY-A 유지
+  const copyRKeywords = /유튜브.{0,15}(조사|반응|분석|패턴|참고|보고)|조회수.{0,10}(영상|패턴).{0,10}(참고|분석)|조사.{0,5}(써줘|만들어|작성)(?=.*(유튜브|영상|패턴))|youtube.{0,10}(research|pattern|analyze)/i;
   if (copyRKeywords.test(lower)) {
-    const productMatch = lower.match(/^(.+?)(?:조사|유튜브|반응|트렌드|인기)/)?.[1]?.trim();
+    const productMatch = lower.match(/^(.+?)(?:유튜브|조회수|조사)/)?.[1]?.trim();
     const product = productMatch || '';
     let contentType = 'headcopy';
-    if (/릴스|reels|쓰즈|shorts|숫폼|스크립트|대본|틱톡/.test(lower)) contentType = 'reels_script';
+    if (/릴스|reels|쓰즈|shorts|슷폼|스크립트|대본|틱톡/.test(lower)) contentType = 'reels_script';
     else if (/유튜브.?썸네일|썸네일.?문구|thumbnail/.test(lower)) contentType = 'youtube_thumbnail';
     else if (/스레드|쓰레드|threads/.test(lower)) contentType = 'threads_post';
     else if (/인스타|instagram/.test(lower)) contentType = 'instagram_copy';
