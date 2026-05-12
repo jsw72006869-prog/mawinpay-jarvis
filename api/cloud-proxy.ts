@@ -887,6 +887,7 @@ async function handleCopyOrchestrator(params: any) {
   const contentType = params?.contentType || 'headcopy';
   const userMessage = params?.userMessage || '';
   const engines: string[] = Array.isArray(params?.engines) ? params.engines : ['youtube', 'market'];
+  const excludedEngines: string[] = Array.isArray(params?.excludedEngines) ? params.excludedEngines : [];
   const sourceUrl = params?.sourceUrl || '';
   const sourceText = params?.sourceText || '';
   const reviewText = params?.reviewText || '';
@@ -1020,9 +1021,20 @@ ${insightParts.join('\n\n')}
 [COPY-A 주입 인사이트]
 ${copyInjectionParts.join('\n\n') || '통합 분석 결과 기반으로 카피 생성'}`;
 
+  // 제외된 엔진 안내 메시지 생성
+  const engineNameMap: Record<string, string> = {
+    youtube: 'YouTube 반응 분석',
+    market: 'KAMIS 시세 조회',
+    review: '리뷰/고객 불안 분석',
+    social: '소셜 패턴 분석',
+  };
+  const excludedEngineNames = excludedEngines.map(e => engineNameMap[e] || e);
+
   return {
     success: true,
     engines: engines,
+    excludedEngines: excludedEngines,
+    excludedEngineNames: excludedEngineNames,
     enginesUsed: totalEnginesUsed,
     enginesSuccess: totalEnginesSuccess,
     researchInsight: combinedInsight,

@@ -416,6 +416,7 @@ export default function JarvisApp() {
   const [resultDeckResearchInsight, setResultDeckResearchInsight] = useState('');
   const [resultDeckVideosFound, setResultDeckVideosFound] = useState(0);
   const [resultDeckTopVideos, setResultDeckTopVideos] = useState<any[]>([]);
+  const [resultDeckExcludedEngines, setResultDeckExcludedEngines] = useState<string[]>([]);
   // ── COPY-A v2: Copy Focus Mode ──
   const [copyFocusMode, setCopyFocusMode] = useState(false);
   // ── SSoT: 스마트스토어 데이터 캐시 (5분 유효) ──
@@ -2829,6 +2830,7 @@ export default function JarvisApp() {
           const researchInsight = result.researchInsight || '';
           const enginesSuccess = result.enginesSuccess || 0;
           const enginesUsed = result.enginesUsed || 0;
+          const excludedEnginesFromResult: string[] = Array.isArray(result.excludedEngines) ? result.excludedEngines : [];
           emitMissionLog('✅', 'COPY-R.5', `통합 리서치 완료 (${enginesSuccess}/${enginesUsed} 엔진 성공)`, 'success');
           addMessage('jarvis', `✅ 통합 리서치 완료 — ${enginesSuccess}/${enginesUsed} 엔진 성공. 카피 생성 중...`, true);
           // creative_content action으로 위임
@@ -2843,6 +2845,7 @@ export default function JarvisApp() {
               researchPrefix: orchestratorInsight,
               videosFound: result.engineResults?.youtube?.videosFound || 0,
               topVideos: [],
+              excludedEngines: excludedEnginesFromResult,
             },
           };
           action = creativeAction as any;
@@ -3223,6 +3226,7 @@ G. Review Objection: 작다/비싸다/무르다/배송 손상/맛 기대와 다�
           setResultDeckResearchInsight(String(params.researchInsight || ''));
           setResultDeckVideosFound(Number(params.videosFound || 0));
           setResultDeckTopVideos(Array.isArray(params.topVideos) ? params.topVideos : []);
+          setResultDeckExcludedEngines(Array.isArray(params.excludedEngines) ? params.excludedEngines : []);
           
           setState('speaking');
           startSpeakingLevel();
@@ -6151,7 +6155,8 @@ G. Review Objection: 작다/비싸다/무르다/배송 손상/맛 기대와 다�
         researchInsight={resultDeckResearchInsight}
         videosFound={resultDeckVideosFound}
         topVideos={resultDeckTopVideos}
-        onDismiss={() => { setResultDeckVisible(false); setCopyFocusMode(false); setResultDeckIsCopyR(false); setResultDeckResearchInsight(''); }}
+        excludedEngines={resultDeckExcludedEngines}
+        onDismiss={() => { setResultDeckVisible(false); setCopyFocusMode(false); setResultDeckIsCopyR(false); setResultDeckResearchInsight(''); setResultDeckExcludedEngines([]); }}
         onCopy={() => {}}
         onSaveToWorkspace={() => {
           // workspace에 저장 (기존 로직 활용)

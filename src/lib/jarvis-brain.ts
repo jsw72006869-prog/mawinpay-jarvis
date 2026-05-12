@@ -449,18 +449,23 @@ function deterministicMatch(text: string): JarvisAction | null {
     else if (/스레드|쓰레드|threads/.test(lower)) contentType = 'threads_post';
     else if (/인스타|instagram/.test(lower)) contentType = 'instagram_copy';
     else if (/카카오|카톡|공지문/.test(lower)) contentType = 'kakao';
-    // 엔진 선택 로직 (기본 최대 2개, 명시적이면 3개까지)
-    const engines: string[] = [];
-    if (/유튜브|youtube|조회수|영상|반응/.test(lower)) engines.push('youtube');
-    if (/시세|가격|시장|마켓/.test(lower)) engines.push('market');
-    if (/리뷰|후기|댓글|불안|1점|별점/.test(lower)) engines.push('review');
-    if (/소셜|스레드.{0,5}(?:링크|참고|분석|패턴)|릴스.{0,5}(?:링크|참고|분석|패턴)|해외|틱톡.{0,5}(?:링크|참고|분석)/.test(lower)) engines.push('social');
-    // "제대로 조사해서" → 기본 YouTube + Market
-    if (/제대로.{0,5}(?:조사|분석|리서치)/.test(lower) && engines.length === 0) {
-      engines.push('youtube', 'market');
+    // 엔진 선택 로직 — 우선순위: review > social > youtube > market
+    // 기본 최대 2개, 명시 복합 최대 3개, 4개 전부 실행 절대 금지
+    const enginesRaw: string[] = [];
+    if (/리뷰|후기|댓글|불안|1점|별점/.test(lower)) enginesRaw.push('review');
+    if (/소셜|스레드.{0,5}(?:링크|참고|분석|패턴)|릴스.{0,5}(?:링크|참고|분석|패턴)|해외|틱톡.{0,5}(?:링크|참고|분석)/.test(lower)) enginesRaw.push('social');
+    if (/유튜브|youtube|조회수|영상|반응/.test(lower)) enginesRaw.push('youtube');
+    if (/시세|가격|시장|마켓/.test(lower)) enginesRaw.push('market');
+    // "제대로 조사해서" 단독 → 기본 YouTube + Market (2개)
+    if (/제대로.{0,5}(?:조사|분석|리서치)/.test(lower) && enginesRaw.length === 0) {
+      enginesRaw.push('youtube', 'market');
     }
-    // 최대 3개 제한
-    const selectedEngines = engines.slice(0, 3);
+    // cap 적용: 명시 복합(2개 이상 키워드)이면 최대 3개, 기본이면 최대 2개
+    const isExplicitComplex = enginesRaw.length >= 2;
+    const engineCap = isExplicitComplex ? 3 : 2;
+    // 4개 전부 실행 절대 금지 — 우선순위 순서로 잘라냄
+    const selectedEngines = enginesRaw.slice(0, engineCap);
+    const excludedEngines = enginesRaw.slice(engineCap);
     // URL 추출
     const urlMatch = text.match(/https?:\/\/[^\s"'<>]+/i);
     const sourceUrl = urlMatch ? urlMatch[0] : '';
@@ -471,7 +476,7 @@ function deterministicMatch(text: string): JarvisAction | null {
     const sourceText = quoteMatch ? quoteMatch[1] : '';
     return {
       type: 'copy_orchestrator' as any,
-      params: { product: productMatchR5, contentType, userMessage: text, engines: selectedEngines, sourceUrl, sourceText, reviewText },
+      params: { product: productMatchR5, contentType, userMessage: text, engines: selectedEngines, excludedEngines, sourceUrl, sourceText, reviewText },
       workingMessage: `${productMatchR5 || '제품'} 통합 리서치 (${selectedEngines.join(' + ')}) 진행 중...`,
       response: '__SKIP_TTS__',
     };

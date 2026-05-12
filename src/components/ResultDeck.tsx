@@ -51,6 +51,7 @@ export interface ResultDeckProps {
   researchInsight?: string;
   videosFound?: number;
   topVideos?: Array<{ title: string; viewCount: string; url: string }>;
+  excludedEngines?: string[];
 }
 
 // 콘텐츠 타입 → 한글 라벨
@@ -150,6 +151,7 @@ export default function ResultDeck({
   researchInsight = '',
   videosFound = 0,
   topVideos = [],
+  excludedEngines = [],
 }: ResultDeckProps) {
   const [showContent, setShowContent] = useState(false);
   const [copied, setCopied] = useState(false);
@@ -350,6 +352,35 @@ export default function ResultDeck({
               ))}
             </AnimatePresence>
           </div>
+
+          {/* COPY-R.5.1 — 제외된 엔진 추가 조사 안내 */}
+          {isCopyR && excludedEngines && excludedEngines.length > 0 && (() => {
+            const engineLabelMap: Record<string, string> = {
+              youtube: 'YouTube 반응 분석',
+              market: 'KAMIS 시세 조회',
+              review: '리뷰/고객 불안 분석',
+              social: '소셜 패턴 분석',
+            };
+            const engineCmdMap: Record<string, string> = {
+              youtube: '유튜브 반응 참고해서',
+              market: '시세 참고해서',
+              review: '리뷰 불안 참고해서',
+              social: '소셜 패턴 참고해서',
+            };
+            return (
+              <div style={{ margin: '8px 0 4px', padding: '8px 12px', background: 'rgba(255,200,0,0.06)', border: '1px solid rgba(255,200,0,0.2)', borderRadius: 8 }}>
+                <div style={{ fontSize: '0.42rem', color: 'rgba(255,200,0,0.7)', fontFamily: 'Orbitron, monospace', letterSpacing: '0.1em', marginBottom: 6 }}>⚡ 추가 조사 가능</div>
+                <div style={{ fontSize: '0.5rem', color: 'rgba(255,220,100,0.85)', lineHeight: 1.8 }}>
+                  이번에 실행하지 않은 엔진입니다. 아래 명령으로 추가 조사할 수 있습니다.
+                </div>
+                {excludedEngines.map(e => (
+                  <div key={e} style={{ marginTop: 4, fontSize: '0.48rem', color: 'rgba(255,200,0,0.9)', fontFamily: 'monospace' }}>
+                    • <strong>{engineLabelMap[e] || e}</strong> → <span style={{ color: 'rgba(180,230,255,0.85)' }}>"[제품명] {engineCmdMap[e] || e} 카피 써줘"</span>
+                  </div>
+                ))}
+              </div>
+            );
+          })()}
 
           {/* Footer */}
           <div className="result-deck-footer">
