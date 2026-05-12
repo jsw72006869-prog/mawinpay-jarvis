@@ -1,9 +1,12 @@
 /**
- * ResultDeck.tsx — UI-V1 Viral Command Center
+ * ResultDeck.tsx — UI-V1.2-B Viral Command Center
  *
- * Creative Director / 마케팅 콘텐츠 결과를 채팅창에서 분리하여
- * 1번 화면 좌측에 시네마틱 패널로 표시하는 컴포넌트.
- * UI-V1: 영상 촬영용 고급 디자인 (Mission Feed, Research Intel, Copy Cards, NEXT ACTIONS)
+ * 수정 내역 (UI-V1.2-B):
+ * A. Mission Feed: 실제 사용 엔진만 ANALYZED (사용 엔진: 라인 파싱)
+ * B. 스켈레톤/완료 불일치 제거: items 없으면 "카피 카드 생성 중" 표시
+ * C. 선명도 보정: Result Deck 내부 blur/filter/opacity 제거
+ * D. 카드 잘림 개선: rd-body 높이 조정, NEXT ACTIONS 분리
+ * E. Research Intel 엔진별 카드: 실제 사용 엔진 기준으로 분리 표시
  */
 import { useEffect, useState, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -77,7 +80,7 @@ function detectCopyMode(isCopyR: boolean, researchInsight: string): { mode: stri
   if (researchInsight?.includes('통합 리서치 인사이트')) return { mode: 'COPY-R.5', label: 'ORCHESTRATOR', color: '#FFD700' };
   if (researchInsight?.includes('리뷰/고객 불안 인사이트')) return { mode: 'COPY-R.4', label: 'REVIEW INTEL', color: '#FF9664' };
   if (researchInsight?.includes('소셜 패턴 인사이트')) return { mode: 'COPY-R.3', label: 'SOCIAL INTEL', color: '#B482FF' };
-  if (researchInsight?.includes('시장/시즈 인사이트')) return { mode: 'COPY-R.2', label: 'MARKET INTEL', color: '#64FF96' };
+  if (researchInsight?.includes('시장/시즈 인사이트') || researchInsight?.includes('시장/시세 인사이트')) return { mode: 'COPY-R.2', label: 'MARKET INTEL', color: '#64FF96' };
   return { mode: 'COPY-R.1', label: 'YOUTUBE INTEL', color: '#FF6464' };
 }
 
@@ -114,31 +117,109 @@ function CopyACardSection({ label, value, icon }: { label: string; value: string
   );
 }
 
-// Research Insight 엔진별 파싱
-function parseInsightSections(insight: string): Array<{ engine: string; icon: string; color: string; lines: string[] }> {
-  const sections: Array<{ engine: string; icon: string; color: string; lines: string[] }> = [];
-  const engineMap: Record<string, { icon: string; color: string }> = {
-    'YouTube': { icon: '▶', color: '#FF6464' },
-    'Market': { icon: '◆', color: '#64FF96' },
-    'Review': { icon: '◈', color: '#FF9664' },
-    'Social': { icon: '◉', color: '#B482FF' },
-  };
+// ─── 수정 A: 실제 사용 엔진 파싱 ───
+// combinedInsight에서 "사용 엔진: youtube + market" 라인을 파싱하여 실제 사용 엔진 목록 추출
+function parseUsedEnginesFromInsight(researchInsight: string): string[] {
+  // "사용 엔진: youtube + market (2/2 성공)" 패턴 파싱
+  const match = researchInsight.match(/사용 엔진:\s*([^\n(]+)/);
+  if (!match) return [];
+  const raw = match[1].trim();
+  // "youtube + market" → ['youtube', 'market']
+  return raw.split(/\s*\+\s*/).map(e => e.trim().toLowerCase()).filter(Boolean);
+}
 
-  // 인사이트 텍스트에서 [YouTube 인사이트], [Market 인사이트] 등 섹션 파싱
-  const parts = insight.split(/\[([^\]]+)\s*인사이트\]/);
-  for (let i = 1; i < parts.length; i += 2) {
-    const engineKey = parts[i].trim();
-    const content = (parts[i + 1] || '').trim();
-    const lines = content.split('\n').filter(l => l.trim()).slice(0, 3);
-    const meta = engineMap[engineKey] || { icon: '●', color: '#00F5FF' };
-    sections.push({ engine: engineKey, icon: meta.icon, color: meta.color, lines });
+// ─── 수정 A: Mission Feed 엔진 목록 생성 (실제 사용 엔진 기준) ───
+function getMissionFeedEngines(researchInsight: string, excludedEngines: string[]): Array<{ name: string; label: string; status: 'used' | 'available' }> {
+  const allEngines = [
+    { key: 'youtube', label: 'YouTube Pattern' },
+    { key: 'market', label: 'Market Context' },
+    { key: 'review', label: 'Review Objection' },
+    { key: 'social', label: 'Social Pattern' },
+  ];
+
+  // 1순위: "사용 엔진:" 라인에서 실제 사용 엔진 파싱
+  const usedEngines = parseUsedEnginesFromInsight(researchInsight);
+
+  if (usedEngines.length > 0) {
+    // 실제 사용 엔진 목록이 있으면 정확히 구분
+    return allEngines.map(eng => ({
+      name: eng.key,
+      label: eng.label,
+      status: usedEngines.includes(eng.key) ? 'used' : 'available',
+    }));
   }
 
-  // 섹션이 없으면 전체를 하나로
-  if (sections.length === 0 && insight.trim()) {
-    const lines = insight.split('\n').filter(l => l.trim() && !l.startsWith('📊') && !l.startsWith('사용 엔진')).slice(0, 4);
+  // 2순위: excludedEngines 기반 (fallback)
+  // excludedEngines에 있으면 available, 없으면 used
+  // 단, 아무 엔진도 감지 안 되면 전체 숨김
+  const result: Array<{ name: string; label: string; status: 'used' | 'available' }> = [];
+  for (const eng of allEngines) {
+    if (excludedEngines.includes(eng.key)) {
+      result.push({ name: eng.key, label: eng.label, status: 'available' });
+    } else {
+      // 인사이트 섹션 헤더 기반으로 used 판단 (키워드 전체 매칭 금지)
+      const sectionHeaders: Record<string, string[]> = {
+        youtube: ['[YouTube 분석]'],
+        market: ['[시장/시세 분석]'],
+        review: ['[리뷰/고객 불안 분석]'],
+        social: ['[소셜 패턴 분석]'],
+      };
+      const isUsed = sectionHeaders[eng.key]?.some(h => researchInsight.includes(h));
+      if (isUsed) {
+        result.push({ name: eng.key, label: eng.label, status: 'used' });
+      }
+      // used도 available도 아니면 숨김 (표시 안 함)
+    }
+  }
+  return result;
+}
+
+// ─── 수정 E: Research Intel 엔진별 파싱 ───
+function parseInsightSections(insight: string, usedEngines: string[]): Array<{ engine: string; icon: string; color: string; lines: string[]; status: 'used' | 'available' }> {
+  const engineDefs = [
+    { key: 'youtube', name: 'YouTube', icon: '▶', color: '#FF6464', headers: ['[YouTube 분석]'] },
+    { key: 'market', name: 'Market', icon: '◆', color: '#64FF96', headers: ['[시장/시세 분석]'] },
+    { key: 'review', name: 'Review', icon: '◈', color: '#FF9664', headers: ['[리뷰/고객 불안 분석]'] },
+    { key: 'social', name: 'Social', icon: '◉', color: '#B482FF', headers: ['[소셜 패턴 분석]'] },
+  ];
+
+  const sections: Array<{ engine: string; icon: string; color: string; lines: string[]; status: 'used' | 'available' }> = [];
+
+  for (const def of engineDefs) {
+    const isUsed = usedEngines.length > 0
+      ? usedEngines.includes(def.key)
+      : def.headers.some(h => insight.includes(h));
+
+    if (!isUsed) continue; // 사용하지 않은 엔진은 Research Intel에서 숨김
+
+    // 해당 엔진 섹션 내용 추출
+    let lines: string[] = [];
+    for (const header of def.headers) {
+      const idx = insight.indexOf(header);
+      if (idx !== -1) {
+        const after = insight.slice(idx + header.length);
+        // 다음 섹션 헤더 또는 [카피 적용 방향] 전까지
+        const nextSectionMatch = after.match(/\n\[([^\]]+)\]/);
+        const content = nextSectionMatch
+          ? after.slice(0, nextSectionMatch.index)
+          : after.slice(0, 400);
+        lines = content.split('\n').filter(l => l.trim() && !l.startsWith('사용 엔진') && !l.startsWith('품목')).slice(0, 3);
+        break;
+      }
+    }
+
     if (lines.length > 0) {
-      sections.push({ engine: 'Research', icon: '◆', color: '#00F5FF', lines });
+      sections.push({ engine: def.name, icon: def.icon, color: def.color, lines, status: 'used' });
+    }
+  }
+
+  // 섹션이 없으면 전체를 하나로 (COPY-R.1/R.2/R.3/R.4 단일 엔진 케이스)
+  if (sections.length === 0 && insight.trim()) {
+    const cleanLines = insight.split('\n')
+      .filter(l => l.trim() && !l.startsWith('📊') && !l.startsWith('사용 엔진') && !l.startsWith('품목') && !l.startsWith('[카피') && !l.startsWith('[피해'))
+      .slice(0, 4);
+    if (cleanLines.length > 0) {
+      sections.push({ engine: 'Research', icon: '◆', color: '#00F5FF', lines: cleanLines, status: 'used' });
     }
   }
 
@@ -173,36 +254,6 @@ function parseSections(content: string): { title: string; body: string }[] {
   }
 
   return sections.filter(s => s.body.length > 0 || s.title.length > 0);
-}
-
-// Mission Feed 엔진 목록 생성
-function getMissionFeedEngines(researchInsight: string, excludedEngines: string[]): Array<{ name: string; label: string; status: 'used' | 'available' }> {
-  const allEngines = [
-    { key: 'youtube', label: 'YouTube Pattern' },
-    { key: 'market', label: 'Market Context' },
-    { key: 'review', label: 'Review Objection' },
-    { key: 'social', label: 'Social Pattern' },
-  ];
-
-  const result: Array<{ name: string; label: string; status: 'used' | 'available' }> = [];
-  for (const eng of allEngines) {
-    if (excludedEngines.includes(eng.key)) {
-      result.push({ name: eng.key, label: eng.label, status: 'available' });
-    } else {
-      // 인사이트에 해당 엔진 관련 내용이 있으면 used
-      const keywords: Record<string, string[]> = {
-        youtube: ['YouTube', '유튜브', 'youtube'],
-        market: ['Market', 'KAMIS', '시장', '시세'],
-        review: ['Review', '리뷰', '후기', '불안'],
-        social: ['Social', '소셜', '스레드', '패턴'],
-      };
-      const isUsed = keywords[eng.key]?.some(kw => researchInsight.includes(kw));
-      if (isUsed) {
-        result.push({ name: eng.key, label: eng.label, status: 'used' });
-      }
-    }
-  }
-  return result;
 }
 
 export default function ResultDeck({
@@ -242,31 +293,40 @@ export default function ResultDeck({
 
   const typeLabel = getTypeLabel(contentType);
   const { mode, label: modeLabel, color: modeColor } = detectCopyMode(isCopyR, researchInsight);
-  const displayItems: ResultItem[] = items.length > 0
+
+  // ─── 수정 B: 카드 데이터 상태 판단 ───
+  const hasItems = items.length > 0;
+  const hasFallbackContent = content && content.trim().length > 20;
+  const displayItems: ResultItem[] = hasItems
     ? items
-    : parseSections(content).map((s, i) => ({
-        id: `fallback-${i}`,
-        title: s.title || `${i + 1}번 결과`,
-        body: s.body,
-        tone: i === 0 ? '추천안' : '변형안'
-      }));
+    : hasFallbackContent
+      ? parseSections(content).map((s, i) => ({
+          id: `fallback-${i}`,
+          title: s.title || `${i + 1}번 결과`,
+          body: s.body,
+          tone: i === 0 ? '추천안' : '변형안'
+        }))
+      : [];
 
   // COPY-A v2 구조화 카드 여부 판단
   const isCopyACard = (item: ResultItem) => item.format === 'copy_a';
 
-  // Research Insight 섹션 파싱
+  // ─── 수정 A: 실제 사용 엔진 파싱 ───
+  const usedEngines = isCopyR ? parseUsedEnginesFromInsight(researchInsight) : [];
+
+  // ─── 수정 E: Research Insight 섹션 파싱 (실제 사용 엔진 기준) ───
   const insightSections = isCopyR && researchInsight
-    ? parseInsightSections(researchInsight.split('[COPY-A 주입 인사이트]')[0].trim())
+    ? parseInsightSections(researchInsight.split('[COPY-A 주입 인사이트]')[0].trim(), usedEngines)
     : [];
 
-  // Mission Feed
+  // ─── 수정 A: Mission Feed (실제 사용 엔진 기준) ───
   const missionFeed = isCopyR ? getMissionFeedEngines(researchInsight, excludedEngines) : [];
 
   return (
     <AnimatePresence>
       {visible && (
         <motion.div
-          className="result-deck-overlay"
+          className="result-deck-overlay rd-v12b"
           initial={{ opacity: 0, x: -60, scale: 0.95 }}
           animate={{ opacity: 1, x: 0, scale: 1 }}
           exit={{ opacity: 0, x: -40, scale: 0.96 }}
@@ -300,7 +360,7 @@ export default function ResultDeck({
           {/* ═══ Body ═══ */}
           <div className="rd-body" ref={scrollRef}>
 
-            {/* Mission Feed (COPY-R only) */}
+            {/* ─── 수정 A: Mission Feed (실제 사용 엔진만 표시) ─── */}
             {isCopyR && missionFeed.length > 0 && showContent && (
               <motion.div
                 className="rd-mission-feed"
@@ -323,7 +383,7 @@ export default function ResultDeck({
               </motion.div>
             )}
 
-            {/* Research Intel Panel (COPY-R only) */}
+            {/* ─── 수정 E: Research Intel Panel (실제 사용 엔진별 카드) ─── */}
             {isCopyR && insightSections.length > 0 && showContent && (
               <motion.div
                 className="rd-research-panel"
@@ -334,10 +394,10 @@ export default function ResultDeck({
                 <div className="rd-research-panel-title">RESEARCH INTEL</div>
                 <div className="rd-research-grid">
                   {insightSections.map((sec, i) => (
-                    <div key={i} className="rd-research-card" style={{ borderColor: `${sec.color}33` }}>
+                    <div key={i} className="rd-research-card" style={{ borderColor: `${sec.color}44` }}>
                       <div className="rd-research-card-header">
                         <span className="rd-research-card-icon" style={{ color: sec.color }}>{sec.icon}</span>
-                        <span className="rd-research-card-name">{sec.engine}</span>
+                        <span className="rd-research-card-name" style={{ color: 'rgba(220,230,240,0.9)' }}>{sec.engine}</span>
                         <span className="rd-research-card-status" style={{ color: sec.color }}>USED</span>
                       </div>
                       <div className="rd-research-card-body">
@@ -351,7 +411,16 @@ export default function ResultDeck({
               </motion.div>
             )}
 
-            {/* Copy Cards */}
+            {/* ─── 수정 B: 카드 상태 표시 ─── */}
+            {showContent && displayItems.length === 0 && (
+              <div className="rd-loading-state">
+                <div className="rd-loading-icon">⬡</div>
+                <div className="rd-loading-text">JARVIS IS COMPOSING COPY CARDS</div>
+                <div className="rd-loading-sub">리서치가 완료되었습니다. 카피 카드를 생성 중입니다.</div>
+              </div>
+            )}
+
+            {/* ─── Copy Cards ─── */}
             <AnimatePresence>
               {showContent && displayItems.map((item, idx) => (
                 <motion.div
@@ -439,28 +508,28 @@ export default function ResultDeck({
                 </motion.div>
               ))}
             </AnimatePresence>
-          </div>
 
-          {/* ═══ Excluded Engines (추가 조사 가능) ═══ */}
-          {isCopyR && excludedEngines && excludedEngines.length > 0 && (() => {
-            const engineLabelMap: Record<string, string> = {
-              youtube: 'YouTube 반응 분석',
-              market: 'KAMIS 시세 조회',
-              review: '리뷰/고객 불안 분석',
-              social: '소셜 패턴 분석',
-            };
-            return (
-              <div className="rd-excluded-panel">
-                <div className="rd-excluded-title">⚡ 추가 조사 가능</div>
-                {excludedEngines.map(e => (
-                  <div key={e} className="rd-excluded-item">
-                    <span className="rd-excluded-dot">○</span>
-                    <span>{engineLabelMap[e] || e}</span>
-                  </div>
-                ))}
-              </div>
-            );
-          })()}
+            {/* ─── Excluded Engines (추가 조사 가능) ─── */}
+            {isCopyR && excludedEngines && excludedEngines.length > 0 && (() => {
+              const engineLabelMap: Record<string, string> = {
+                youtube: 'YouTube 반응 분석',
+                market: 'KAMIS 시세 조회',
+                review: '리뷰/고객 불안 분석',
+                social: '소셜 패턴 분석',
+              };
+              return (
+                <div className="rd-excluded-panel">
+                  <div className="rd-excluded-title">⚡ 추가 조사 가능</div>
+                  {excludedEngines.map(e => (
+                    <div key={e} className="rd-excluded-item">
+                      <span className="rd-excluded-dot">○</span>
+                      <span>{engineLabelMap[e] || e}</span>
+                    </div>
+                  ))}
+                </div>
+              );
+            })()}
+          </div>
 
           {/* ═══ NEXT ACTIONS Footer ═══ */}
           <div className="rd-footer">
