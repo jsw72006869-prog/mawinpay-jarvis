@@ -1,6 +1,7 @@
 import React from 'react';
 
 type JarvisScene =
+  | 'home'
   | 'standby'
   | 'briefing'
   | 'orders'
@@ -9,7 +10,13 @@ type JarvisScene =
   | 'files'
   | 'approval'
   | 'voice'
-  | 'error';
+  | 'error'
+  | 'copy_research'
+  | 'smartstore_brief'
+  | 'keyword_radar'
+  | 'growth_link'
+  | 'cs_copilot'
+  | 'approval_gate';
 
 type MissionControlDeckProps = {
   state?: string;
@@ -34,6 +41,7 @@ const STATE_LABELS: Record<string, string> = {
 };
 
 const SCENE_LABELS: Record<JarvisScene, string> = {
+  home: 'MISSION CONTROL',
   standby: 'MISSION CONTROL',
   briefing: 'DAILY BRIEFING',
   orders: 'SMARTSTORE ORDERS',
@@ -43,6 +51,12 @@ const SCENE_LABELS: Record<JarvisScene, string> = {
   approval: 'APPROVAL GATE',
   voice: 'VOICE LINK',
   error: 'SYSTEM ALERT',
+  copy_research: 'COPY RESEARCH LAB',
+  smartstore_brief: 'SMARTSTORE BRIEF',
+  keyword_radar: 'KEYWORD RADAR',
+  growth_link: 'GROWTH LINK',
+  cs_copilot: 'CS COPILOT',
+  approval_gate: 'APPROVAL GATE',
 };
 
 const ENGINE_LABELS: Record<string, string> = {
@@ -69,7 +83,7 @@ export default function MissionControlDeck({
 
   // Scene별 Reveal 카드 렌더링 함수
   const renderRevealScene = () => {
-    if (scene === 'standby') return null;
+    if (scene === 'standby' || scene === 'home') return null;
 
     const cards: Record<JarvisScene, { main: string; left: string; right: string }> = {
       briefing: {
@@ -112,7 +126,38 @@ export default function MissionControlDeck({
         left: 'DIAGNOSTICS',
         right: 'RECOVERY',
       },
+      home: { main: '', left: '', right: '' },
       standby: { main: '', left: '', right: '' },
+      copy_research: {
+        main: 'COPY RESEARCH LAB',
+        left: 'VIRAL ANALYSIS',
+        right: 'CONTENT ENGINE',
+      },
+      smartstore_brief: {
+        main: 'SMARTSTORE BRIEF',
+        left: 'ORDER PIPELINE',
+        right: 'DAILY METRICS',
+      },
+      keyword_radar: {
+        main: 'KEYWORD RADAR',
+        left: 'RANK TRACKING',
+        right: 'SEARCH VOLUME',
+      },
+      growth_link: {
+        main: 'GROWTH LINK',
+        left: 'DEEP LINK GEN',
+        right: 'CHROME OPTIMIZE',
+      },
+      cs_copilot: {
+        main: 'CS COPILOT',
+        left: 'INQUIRY QUEUE',
+        right: 'AUTO RESPONSE',
+      },
+      approval_gate: {
+        main: 'APPROVAL GATE',
+        left: 'SECURITY CHECK',
+        right: 'EXECUTE PERMIT',
+      },
     };
 
     const currentCards = cards[scene];

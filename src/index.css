@@ -6804,3 +6804,183 @@ html, body {
   50%       { filter: brightness(1.02); }
 }
 
+
+/* ================================================================
+   SCREEN-A.1  Jarvis Scene Panel  (Scene Commander v1)
+   ================================================================ */
+
+.jarvis-scene-panel {
+  position: fixed;
+  bottom: 120px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: min(520px, 92vw);
+  z-index: 200;
+  pointer-events: auto;
+  opacity: 0;
+  will-change: opacity, transform;
+}
+
+.jarvis-scene-panel.scene-panel-enter {
+  animation: scenePanelIn 0.5s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+.jarvis-scene-panel.scene-panel-exit {
+  animation: scenePanelOut 0.4s cubic-bezier(0.55, 0, 1, 0.45) forwards;
+}
+
+@keyframes scenePanelIn {
+  0%   { opacity:0; transform:translateX(-50%) translateY(30px) scale(0.92); filter:blur(6px); }
+  100% { opacity:1; transform:translateX(-50%) translateY(0) scale(1); filter:blur(0); }
+}
+@keyframes scenePanelOut {
+  0%   { opacity:1; transform:translateX(-50%) translateY(0) scale(1); filter:blur(0); }
+  100% { opacity:0; transform:translateX(-50%) translateY(20px) scale(0.95); filter:blur(4px); }
+}
+
+.scene-panel-bg {
+  position: absolute; inset: 0;
+  border-radius: 16px; overflow: hidden; z-index: 0;
+}
+.scene-panel-grid {
+  position: absolute; inset: 0;
+  background:
+    linear-gradient(rgba(255,255,255,0.015) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255,255,255,0.015) 1px, transparent 1px);
+  background-size: 24px 24px;
+}
+.scene-panel-glow {
+  position: absolute; inset: -40%;
+  background: radial-gradient(ellipse at center, var(--scene-color,#C8A96E) 0%, transparent 70%);
+  opacity: 0.06;
+  animation: sceneGlowPulse 4s ease-in-out infinite;
+}
+@keyframes sceneGlowPulse {
+  0%,100% { opacity:0.04; transform:scale(1); }
+  50%     { opacity:0.08; transform:scale(1.05); }
+}
+
+.scene-panel-content {
+  position: relative; z-index: 1;
+  padding: 20px 24px 16px;
+  background: rgba(6,10,18,0.92);
+  border: 1px solid rgba(200,169,110,0.12);
+  border-radius: 16px;
+  backdrop-filter: blur(20px);
+  box-shadow:
+    0 8px 40px rgba(0,0,0,0.5),
+    inset 0 1px 0 rgba(255,255,255,0.04);
+}
+
+.scene-panel-header {
+  display: flex; align-items: center; gap: 14px; margin-bottom: 12px;
+}
+.scene-panel-icon {
+  font-size: 28px;
+  color: var(--scene-color,#C8A96E);
+  text-shadow: 0 0 12px var(--scene-color,#C8A96E);
+  flex-shrink: 0;
+  animation: sceneIconPulse 2s ease-in-out infinite;
+}
+@keyframes sceneIconPulse { 0%,100%{opacity:0.8;} 50%{opacity:1;} }
+
+.scene-panel-titles { flex:1; min-width:0; }
+.scene-panel-title {
+  margin:0; font-size:14px; font-weight:700;
+  letter-spacing:2px; color:var(--scene-color,#C8A96E);
+  text-transform:uppercase;
+  font-family:'JetBrains Mono','SF Mono',monospace;
+}
+.scene-panel-subtitle {
+  margin:2px 0 0; font-size:11px; color:#5A6A7A;
+  letter-spacing:0.5px;
+  font-family:'JetBrains Mono','SF Mono',monospace;
+}
+
+.scene-panel-scanline {
+  height:1px; margin:8px 0 12px;
+  background:linear-gradient(90deg,transparent 0%,var(--scene-color,#C8A96E) 30%,var(--scene-color,#C8A96E) 70%,transparent 100%);
+  opacity:0.2; animation:sceneScanline 3s ease-in-out infinite;
+}
+@keyframes sceneScanline { 0%,100%{opacity:0.1;} 50%{opacity:0.3;} }
+
+.scene-panel-commands { margin-bottom:10px; }
+.scene-panel-cmd-label {
+  display:block; font-size:9px; letter-spacing:2px; color:#5A6A7A;
+  margin-bottom:8px; font-family:'JetBrains Mono','SF Mono',monospace;
+}
+.scene-panel-cmd-grid { display:flex; flex-wrap:wrap; gap:6px; }
+.scene-panel-cmd-btn {
+  display:inline-flex; align-items:center; gap:6px;
+  padding:6px 12px; font-size:11px;
+  font-family:'JetBrains Mono','SF Mono',monospace;
+  color:#A8B8C8;
+  background:rgba(255,255,255,0.03);
+  border:1px solid rgba(200,169,110,0.1);
+  border-radius:8px; cursor:pointer;
+  transition:all 0.25s ease; letter-spacing:0.3px;
+}
+.scene-panel-cmd-btn:hover {
+  color:var(--scene-color,#C8A96E);
+  background:rgba(200,169,110,0.06);
+  border-color:rgba(200,169,110,0.25);
+}
+.cmd-btn-dot {
+  width:4px; height:4px; border-radius:50%;
+  background:var(--scene-color,#C8A96E); opacity:0.5; flex-shrink:0;
+}
+.scene-panel-cmd-btn:hover .cmd-btn-dot { opacity:1; }
+
+.scene-panel-status-bar {
+  display:flex; align-items:center; gap:8px;
+  padding-top:8px; border-top:1px solid rgba(255,255,255,0.03);
+}
+.scene-status-dot {
+  width:5px; height:5px; border-radius:50%;
+  background:var(--scene-color,#C8A96E);
+  animation:statusDotBlink 2s ease-in-out infinite;
+}
+@keyframes statusDotBlink { 0%,100%{opacity:0.4;} 50%{opacity:1;} }
+.scene-status-text {
+  font-size:9px; letter-spacing:2px; color:#5A6A7A;
+  font-family:'JetBrains Mono','SF Mono',monospace;
+}
+
+.scene-theme-copy_research    { --scene-color:#00F5FF; }
+.scene-theme-smartstore_brief { --scene-color:#00FF88; }
+.scene-theme-keyword_radar    { --scene-color:#9B8EC4; }
+.scene-theme-growth_link      { --scene-color:#FF9800; }
+.scene-theme-cs_copilot       { --scene-color:#4A90E2; }
+.scene-theme-approval_gate    { --scene-color:#FF4444; }
+.scene-theme-home             { --scene-color:#C8A96E; }
+.scene-theme-standby          { --scene-color:#C8A96E; }
+.scene-theme-briefing         { --scene-color:#00FF88; }
+.scene-theme-orders           { --scene-color:#00FF88; }
+.scene-theme-market           { --scene-color:#00F5FF; }
+.scene-theme-outreach         { --scene-color:#9B8EC4; }
+.scene-theme-files            { --scene-color:#FF9800; }
+.scene-theme-approval         { --scene-color:#FF4444; }
+.scene-theme-voice            { --scene-color:#C8A96E; }
+.scene-theme-error            { --scene-color:#FF4444; }
+
+.ui-e-scene-copy_research .ui-e-cinema-core-glow    { background:radial-gradient(circle,rgba(0,245,255,0.15) 0%,transparent 70%) !important; }
+.ui-e-scene-smartstore_brief .ui-e-cinema-core-glow { background:radial-gradient(circle,rgba(0,255,136,0.15) 0%,transparent 70%) !important; }
+.ui-e-scene-keyword_radar .ui-e-cinema-core-glow    { background:radial-gradient(circle,rgba(155,142,196,0.15) 0%,transparent 70%) !important; }
+.ui-e-scene-growth_link .ui-e-cinema-core-glow      { background:radial-gradient(circle,rgba(255,152,0,0.15) 0%,transparent 70%) !important; }
+.ui-e-scene-cs_copilot .ui-e-cinema-core-glow       { background:radial-gradient(circle,rgba(74,144,226,0.15) 0%,transparent 70%) !important; }
+.ui-e-scene-approval_gate .ui-e-cinema-core-glow    { background:radial-gradient(circle,rgba(255,68,68,0.15) 0%,transparent 70%) !important; }
+.ui-e-scene-home .ui-e-cinema-core-glow             { background:radial-gradient(circle,rgba(200,169,110,0.12) 0%,transparent 70%) !important; }
+
+.ui-e-scene-copy_research .ui-e-cinema-scene-label em    { color:#00F5FF !important; }
+.ui-e-scene-smartstore_brief .ui-e-cinema-scene-label em { color:#00FF88 !important; }
+.ui-e-scene-keyword_radar .ui-e-cinema-scene-label em    { color:#9B8EC4 !important; }
+.ui-e-scene-growth_link .ui-e-cinema-scene-label em      { color:#FF9800 !important; }
+.ui-e-scene-cs_copilot .ui-e-cinema-scene-label em       { color:#4A90E2 !important; }
+.ui-e-scene-approval_gate .ui-e-cinema-scene-label em    { color:#FF4444 !important; }
+.ui-e-scene-home .ui-e-cinema-scene-label em             { color:#C8A96E !important; }
+
+@media (max-width:600px) {
+  .jarvis-scene-panel { bottom:100px; width:95vw; }
+  .scene-panel-content { padding:16px 16px 12px; }
+  .scene-panel-title { font-size:12px; }
+  .scene-panel-cmd-btn { font-size:10px; padding:5px 10px; }
+}
