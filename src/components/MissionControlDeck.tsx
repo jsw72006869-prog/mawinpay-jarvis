@@ -18,6 +18,8 @@ type MissionControlDeckProps = {
   workspaceCount?: number;
   outreachCount?: number;
   actionType?: string;
+  isResearching?: boolean;
+  researchEngines?: string[];
 };
 
 const STATE_LABELS: Record<string, string> = {
@@ -43,6 +45,13 @@ const SCENE_LABELS: Record<JarvisScene, string> = {
   error: 'SYSTEM ALERT',
 };
 
+const ENGINE_LABELS: Record<string, string> = {
+  youtube: 'YT',
+  market: 'MKT',
+  review: 'REV',
+  social: 'SOC',
+};
+
 export default function MissionControlDeck({
   state = 'idle',
   scene = 'standby',
@@ -50,6 +59,8 @@ export default function MissionControlDeck({
   workspaceCount = 0,
   outreachCount = 0,
   actionType,
+  isResearching = false,
+  researchEngines = [],
 }: MissionControlDeckProps) {
   const safeState = STATE_LABELS[state] ? state : 'idle';
   const stateLabel = STATE_LABELS[safeState] || 'STANDBY';
@@ -129,9 +140,36 @@ export default function MissionControlDeck({
     );
   };
 
+  // Research Orbit 링 렌더링 (isResearching=true 일 때)
+  const renderResearchOrbit = () => {
+    if (!isResearching) return null;
+    const engines = researchEngines.length > 0 ? researchEngines : ['youtube', 'market'];
+    return (
+      <div className="ui-e-research-orbit" aria-hidden="true">
+        {/* 외부 orbit 링 */}
+        <span className="ui-e-orbit-ring orbit-outer" />
+        <span className="ui-e-orbit-ring orbit-mid" />
+        <span className="ui-e-orbit-ring orbit-inner" />
+        {/* 엔진 노드 */}
+        {engines.map((eng, i) => (
+          <span
+            key={eng}
+            className={`ui-e-orbit-node node-${eng}`}
+            style={{ '--orbit-idx': i, '--orbit-total': engines.length } as React.CSSProperties}
+          >
+            {ENGINE_LABELS[eng] || eng.toUpperCase().slice(0, 3)}
+          </span>
+        ))}
+        {/* 스캔 펄스 */}
+        <span className="ui-e-orbit-pulse" />
+        <div className="ui-e-orbit-label">RESEARCH ACTIVE</div>
+      </div>
+    );
+  };
+
   return (
     <div
-      className={`ui-e-mission-deck ui-e-cinema-v2 ui-e-state-${safeState} ui-e-scene-${scene} ui-e-central-reveal-v1`}
+      className={`ui-e-mission-deck ui-e-cinema-v2 ui-e-state-${safeState} ui-e-scene-${scene} ui-e-central-reveal-v1${isResearching ? ' ui-e-researching' : ''}`}
       aria-hidden="true"
     >
       <div className="ui-e-film-bars">
@@ -158,7 +196,10 @@ export default function MissionControlDeck({
           <span className="ui-e-cinema-core-ring ring-b" />
           <span className="ui-e-cinema-core-ring ring-c" />
           <span className="ui-e-cinema-scan-beam" />
-          
+
+          {/* Research Orbit — isResearching 시 표시 */}
+          {renderResearchOrbit()}
+
           {/* 중앙 Reveal Scene 삽입 */}
           {renderRevealScene()}
         </div>
@@ -192,6 +233,11 @@ export default function MissionControlDeck({
         <span className="ui-e-ribbon-pill">JARVIS STATE: {stateLabel}</span>
         <span className="ui-e-ribbon-pill">TIME: {currentTime}</span>
         <span className="ui-e-ribbon-pill">CAMERA: CINEMATIC V2</span>
+        {isResearching && (
+          <span className="ui-e-ribbon-pill ui-e-ribbon-research">
+            RESEARCH: {researchEngines.join('+').toUpperCase() || 'ACTIVE'}
+          </span>
+        )}
       </section>
 
       <div className="ui-e-axis-line ui-e-cinema-axis">

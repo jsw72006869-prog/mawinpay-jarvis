@@ -6496,3 +6496,311 @@ html, body {
   margin-left: auto;
   flex-shrink: 0;
 }
+
+
+/* ═══════════════════════════════════════════════════════════════════
+   UI-V2 Cinematic Living Interface — CSS
+   구현 A: Z-depth Layer System (CinematicLayer)
+   구현 B+C: Research Orbit (MissionControlDeck)
+   구현 D: Result Deck Forward Motion
+   구현 E: Camera Feel
+   구현 F: Ambient Motion
+   구현 G: NEXT ACTIONS 전경화
+   ═══════════════════════════════════════════════════════════════════ */
+
+/* ── A: CinematicLayer ── */
+.cinematic-layer {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  overflow: hidden;
+}
+
+/* Z-depth 그리드 */
+.cl-grid {
+  position: absolute;
+  inset: 0;
+  background-image:
+    linear-gradient(rgba(0,245,255,0.025) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(0,245,255,0.025) 1px, transparent 1px);
+  background-size: 80px 80px;
+  animation: cl-grid-drift 60s linear infinite;
+}
+@keyframes cl-grid-drift {
+  0%   { transform: translateY(0); }
+  100% { transform: translateY(80px); }
+}
+
+/* 앰비언트 파티클 */
+.cl-particles {
+  position: absolute;
+  inset: 0;
+}
+.cl-particle {
+  position: absolute;
+  width: 2px;
+  height: 2px;
+  border-radius: 50%;
+  background: rgba(0,245,255,0.5);
+  animation: cl-float 20s ease-in-out infinite;
+}
+.cl-particle.p-0  { left:  5%; top: 15%; animation-delay: 0s;    animation-duration: 18s; }
+.cl-particle.p-1  { left: 12%; top: 72%; animation-delay: -3s;   animation-duration: 22s; }
+.cl-particle.p-2  { left: 22%; top: 38%; animation-delay: -6s;   animation-duration: 16s; }
+.cl-particle.p-3  { left: 35%; top: 85%; animation-delay: -9s;   animation-duration: 24s; }
+.cl-particle.p-4  { left: 48%; top: 20%; animation-delay: -12s;  animation-duration: 20s; }
+.cl-particle.p-5  { left: 58%; top: 60%; animation-delay: -2s;   animation-duration: 19s; }
+.cl-particle.p-6  { left: 68%; top: 10%; animation-delay: -5s;   animation-duration: 23s; }
+.cl-particle.p-7  { left: 75%; top: 45%; animation-delay: -8s;   animation-duration: 17s; }
+.cl-particle.p-8  { left: 82%; top: 78%; animation-delay: -11s;  animation-duration: 21s; }
+.cl-particle.p-9  { left: 90%; top: 30%; animation-delay: -14s;  animation-duration: 25s; }
+.cl-particle.p-10 { left: 95%; top: 65%; animation-delay: -4s;   animation-duration: 18s; }
+.cl-particle.p-11 { left: 42%; top: 50%; animation-delay: -7s;   animation-duration: 22s; }
+@keyframes cl-float {
+  0%, 100% { transform: translate(0, 0) scale(1); opacity: 0.4; }
+  25%       { transform: translate(8px, -12px) scale(1.2); opacity: 0.8; }
+  50%       { transform: translate(-6px, 8px) scale(0.9); opacity: 0.5; }
+  75%       { transform: translate(10px, 4px) scale(1.1); opacity: 0.7; }
+}
+
+/* 수평 스캔 라인 */
+.cl-scanline {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(0,245,255,0.15), transparent);
+  animation: cl-scan 8s linear infinite;
+}
+@keyframes cl-scan {
+  0%   { top: -1px; opacity: 0; }
+  5%   { opacity: 1; }
+  95%  { opacity: 1; }
+  100% { top: 100vh; opacity: 0; }
+}
+
+/* 코너 데코레이션 */
+.cl-corner {
+  position: absolute;
+  width: 20px;
+  height: 20px;
+  opacity: 0.3;
+}
+.cl-corner-tl { top: 12px; left: 12px; border-top: 1px solid #00F5FF; border-left: 1px solid #00F5FF; }
+.cl-corner-tr { top: 12px; right: 12px; border-top: 1px solid #00F5FF; border-right: 1px solid #00F5FF; }
+.cl-corner-bl { bottom: 12px; left: 12px; border-bottom: 1px solid #00F5FF; border-left: 1px solid #00F5FF; }
+.cl-corner-br { bottom: 12px; right: 12px; border-bottom: 1px solid #00F5FF; border-right: 1px solid #00F5FF; }
+
+/* 좌우 수직 레일 */
+.cl-rail {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  background: linear-gradient(180deg, transparent, rgba(0,245,255,0.08) 30%, rgba(0,245,255,0.08) 70%, transparent);
+}
+.cl-rail-left  { left: 40px; }
+.cl-rail-right { right: 40px; }
+
+/* 크로스헤어 */
+.cl-crosshair-h,
+.cl-crosshair-v {
+  position: absolute;
+  background: rgba(0,245,255,0.04);
+  pointer-events: none;
+}
+.cl-crosshair-h {
+  left: 0; right: 0;
+  height: 1px;
+  top: 50%;
+}
+.cl-crosshair-v {
+  top: 0; bottom: 0;
+  width: 1px;
+  left: 50%;
+}
+
+/* ── B+C: Research Orbit (MissionControlDeck) ── */
+.ui-e-research-orbit {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+  z-index: 10;
+}
+
+.ui-e-orbit-ring {
+  position: absolute;
+  border-radius: 50%;
+  border: 1px solid rgba(0,245,255,0.3);
+  animation: orbit-spin 4s linear infinite;
+}
+.ui-e-orbit-ring.orbit-outer {
+  width: 160px; height: 160px;
+  border-color: rgba(0,245,255,0.25);
+  animation-duration: 6s;
+}
+.ui-e-orbit-ring.orbit-mid {
+  width: 120px; height: 120px;
+  border-color: rgba(0,245,255,0.35);
+  animation-duration: 4s;
+  animation-direction: reverse;
+}
+.ui-e-orbit-ring.orbit-inner {
+  width: 80px; height: 80px;
+  border-color: rgba(0,245,255,0.5);
+  animation-duration: 2.5s;
+}
+@keyframes orbit-spin {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
+}
+
+/* 엔진 노드 */
+.ui-e-orbit-node {
+  position: absolute;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: rgba(0,10,20,0.9);
+  border: 1px solid rgba(0,245,255,0.7);
+  color: #00F5FF;
+  font-family: 'Orbitron', monospace;
+  font-size: 7px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 0 8px rgba(0,245,255,0.4);
+  animation: orbit-node-spin 4s linear infinite;
+}
+.ui-e-orbit-node.node-youtube { border-color: rgba(255,80,80,0.8); color: #FF5050; box-shadow: 0 0 8px rgba(255,80,80,0.4); }
+.ui-e-orbit-node.node-market  { border-color: rgba(0,255,136,0.8); color: #00FF88; box-shadow: 0 0 8px rgba(0,255,136,0.4); }
+.ui-e-orbit-node.node-review  { border-color: rgba(200,169,110,0.8); color: #C8A96E; box-shadow: 0 0 8px rgba(200,169,110,0.4); }
+.ui-e-orbit-node.node-social  { border-color: rgba(155,142,196,0.8); color: #9B8EC4; box-shadow: 0 0 8px rgba(155,142,196,0.4); }
+
+/* 노드 궤도 위치 계산 (CSS custom property 기반) */
+.ui-e-orbit-node:nth-child(4)  { transform: rotate(0deg)   translateX(70px) rotate(0deg);   animation-delay: 0s; }
+.ui-e-orbit-node:nth-child(5)  { transform: rotate(90deg)  translateX(70px) rotate(-90deg);  animation-delay: -1s; }
+.ui-e-orbit-node:nth-child(6)  { transform: rotate(180deg) translateX(70px) rotate(-180deg); animation-delay: -2s; }
+.ui-e-orbit-node:nth-child(7)  { transform: rotate(270deg) translateX(70px) rotate(-270deg); animation-delay: -3s; }
+@keyframes orbit-node-spin {
+  from { transform: rotate(calc(var(--orbit-idx, 0) * 90deg)) translateX(70px) rotate(calc(var(--orbit-idx, 0) * -90deg)); }
+  to   { transform: rotate(calc(var(--orbit-idx, 0) * 90deg + 360deg)) translateX(70px) rotate(calc(var(--orbit-idx, 0) * -90deg - 360deg)); }
+}
+
+/* 스캔 펄스 */
+.ui-e-orbit-pulse {
+  position: absolute;
+  width: 40px; height: 40px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(0,245,255,0.3) 0%, transparent 70%);
+  animation: orbit-pulse 1.5s ease-in-out infinite;
+}
+@keyframes orbit-pulse {
+  0%, 100% { transform: scale(1); opacity: 0.6; }
+  50%       { transform: scale(2.5); opacity: 0; }
+}
+
+/* Research Orbit 레이블 */
+.ui-e-orbit-label {
+  position: absolute;
+  bottom: -30px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-family: 'Orbitron', monospace;
+  font-size: 7px;
+  letter-spacing: 2px;
+  color: rgba(0,245,255,0.7);
+  white-space: nowrap;
+  animation: orbit-label-blink 1.5s ease-in-out infinite;
+}
+@keyframes orbit-label-blink {
+  0%, 100% { opacity: 0.7; }
+  50%       { opacity: 1; }
+}
+
+/* Research Ribbon Pill */
+.ui-e-ribbon-research {
+  color: #00F5FF !important;
+  border-color: rgba(0,245,255,0.4) !important;
+  animation: ribbon-research-pulse 1.5s ease-in-out infinite;
+}
+@keyframes ribbon-research-pulse {
+  0%, 100% { box-shadow: none; }
+  50%       { box-shadow: 0 0 6px rgba(0,245,255,0.4); }
+}
+
+/* isResearching 시 core-glow 강화 */
+.ui-e-researching .ui-e-cinema-core-glow {
+  animation: core-glow-research 1.5s ease-in-out infinite !important;
+}
+@keyframes core-glow-research {
+  0%, 100% { box-shadow: 0 0 30px rgba(0,245,255,0.3), 0 0 60px rgba(0,245,255,0.15); }
+  50%       { box-shadow: 0 0 60px rgba(0,245,255,0.6), 0 0 120px rgba(0,245,255,0.3); }
+}
+
+/* ── D: Result Deck Forward Motion ── */
+.result-deck-overlay {
+  animation: rd-forward-in 0.5s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+@keyframes rd-forward-in {
+  from {
+    opacity: 0;
+    transform: perspective(1200px) translateZ(-80px) translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: perspective(1200px) translateZ(0) translateY(0);
+  }
+}
+
+/* ── E: Camera Feel — ResultDeck 배경 depth ── */
+.rd-v12b {
+  transform-style: preserve-3d;
+}
+.rd-v12b .rd-body {
+  transform: perspective(800px) rotateX(0.5deg);
+}
+
+/* ── G: NEXT ACTIONS 전경화 ── */
+.rd-action-chip,
+.rd-next-action-chip {
+  position: relative;
+  z-index: 2;
+  transition: all 0.2s ease;
+  cursor: pointer;
+  padding: 6px 14px;
+  border-radius: 20px;
+  font-family: 'Orbitron', monospace;
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 1px;
+  border: 1px solid rgba(0,245,255,0.25);
+  background: rgba(0,10,20,0.7);
+  color: rgba(0,245,255,0.8);
+  backdrop-filter: blur(4px);
+}
+.rd-action-chip:hover,
+.rd-next-action-chip:hover {
+  border-color: rgba(0,245,255,0.7);
+  color: #00F5FF;
+  background: rgba(0,245,255,0.08);
+  box-shadow: 0 0 12px rgba(0,245,255,0.3), inset 0 0 8px rgba(0,245,255,0.05);
+  transform: translateY(-1px) scale(1.03);
+}
+.rd-action-chip:active,
+.rd-next-action-chip:active {
+  transform: translateY(0) scale(0.98);
+}
+
+/* ── F: Ambient Motion — 전체 앱 미세 호흡 ── */
+@keyframes ambient-breathe {
+  0%, 100% { filter: brightness(1); }
+  50%       { filter: brightness(1.02); }
+}
+
