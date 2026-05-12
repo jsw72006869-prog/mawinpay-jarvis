@@ -453,7 +453,7 @@ function deterministicMatch(text: string): JarvisAction | null {
     // 기본 최대 2개, 명시 복합 최대 3개, 4개 전부 실행 절대 금지
     const enginesRaw: string[] = [];
     if (/리뷰|후기|댓글|불안|1점|별점/.test(lower)) enginesRaw.push('review');
-    if (/소셜|스레드.{0,5}(?:링크|참고|분석|패턴)|릴스.{0,5}(?:링크|참고|분석|패턴)|해외|틱톡.{0,5}(?:링크|참고|분석)/.test(lower)) enginesRaw.push('social');
+    if (/소셜|스레드.{0,5}(?:링크|참고|분석|패턴|느낌|스타일|형식|방식)|릴스.{0,5}(?:링크|참고|분석|패턴|느낌|스타일|형식|방식)|해외|틱톡.{0,5}(?:링크|참고|분석)/.test(lower)) enginesRaw.push('social');
     if (/유튜브|youtube|조회수|영상|반응/.test(lower)) enginesRaw.push('youtube');
     if (/시세|가격|시장|마켓/.test(lower)) enginesRaw.push('market');
     // "제대로 조사해서" 단독 → 기본 YouTube + Market (2개)
