@@ -434,14 +434,20 @@ function deterministicMatch(text: string): JarvisAction | null {
   const copyR2Keywords = /시세.{0,10}(보고|참고|기반|반영)|가격.{0,10}(흐름|참고|보고|반영|기반)|시장.{0,10}(상황|맥락|동향).{0,10}(보고|참고|반영|기반)|현재.?가격.{0,10}(참고|보고|반영|기반)/i;
   const hasCopyAction = /만들어|써줘|작성|생성|구성|제작|짜줘|뽑아줘/.test(lower);
   // ── Priority 0-R5: COPY-R.5 Research Orchestrator (복합 리서치 통합) ──
-  // 트리거 O: "제대로 조사해서", "유튜브랑 리뷰 참고해서", "시세랑 유튜브 조사해서", "아래 리뷰랑 유튜브 반응 참고해서"
+  // 트리거 O: "제대로 조사해서", "전체 조사해서", "전부 조사해서", "종합해서", "리서치해서", "유튜브랑 리뷰 참고해서", "시세랑 유튜브 조사해서", "아래 리뷰랑 유튜브 반응 참고해서"
   // 트리거 X: 단일 엔진 명령 (유튜브 조사만, 시세만, 리뷰만, 소셜만) → 기존 R.1~R.4 유지
   // 트리거 X: 일반 카피 명령 (블루베리 인스타 카피 3개 만들어줘) → COPY-A 유지
-  const copyR5Triggers = /제대로.{0,5}(?:조사|분석|리서치)|(?:유튜브|youtube).{0,10}(?:리뷰|후기|시세|가격|소셜|스레드|릴스)|(?:리뷰|후기).{0,10}(?:유튜브|youtube|시세|가격|소셜|스레드)|(?:시세|가격).{0,10}(?:리뷰|후기|유튜브|youtube|소셜|스레드)|(?:소셜|스레드|릴스).{0,10}(?:리뷰|후기|유튜브|youtube|시세|가격)|(?:아래|첨부).{0,5}(?:리뷰|후기).{0,10}(?:유튜브|youtube|반응|패턴).{0,10}(?:참고|분석|보고)/i;
+  const copyR5Triggers = /(?:제대로|전체|전부|종합|전체적으로|전부).{0,5}(?:조사|분석|리서치)|(?:리서치|자료.?조사).{0,5}해서|종합해서|(?:유튜브|youtube).{0,10}(?:리뷰|후기|시세|가격|소셜|스레드|릴스)|(?:리뷰|후기).{0,10}(?:유튜브|youtube|시세|가격|소셜|스레드)|(?:시세|가격).{0,10}(?:리뷰|후기|유튜브|youtube|소셜|스레드)|(?:소셜|스레드|릴스).{0,10}(?:리뷰|후기|유튜브|youtube|시세|가격)|(?:아래|첨부).{0,5}(?:리뷰|후기).{0,10}(?:유튜브|youtube|반응|패턴).{0,10}(?:참고|분석|보고)/i;
   if (copyR5Triggers.test(lower) && hasCopyAction) {
     // 품목명 추출
-    const productMatchR5 = lower.match(/([가-힣]+?)\s*(?:제대로|유튜브|시세|가격|리뷰|후기|소셜|스레드|릴스|인스타|카피|후킹|문구|썸네일|스크립트|대본|글)/)?.[1]?.trim()
-      || lower.match(/(?:조사|분석|참고|보고).{0,15}?([가-힣]+?)\s*(?:카피|문구|후킹|스레드|릴스|인스타|썸네일|스크립트|대본|글)/)?.[1]?.trim()
+    // 품목명 추출 — 우선순위:
+    // 1) 품목명 + 조사 키워드 (전체/전부/종합/제대로/리서치/자료) 패턴
+    // 2) 참고해서/보고해서 뒤 품목명 패턴
+    // 3) 품목명 + 콘텐츠타입 패턴 (엔진 키워드 제외)
+    const productMatchR5 =
+      lower.match(/([가-힣]{2,})\s+(?:제대로|전체|전부|종합|전체적으로|리서치|자료)/)?.[1]?.trim()
+      || lower.match(/(?:참고|보고)해서\s+([가-힣]{2,})\s+(?:카피|문구|후킹|스레드|릴스|인스타|썸네일|스크립트|대본|글)/)?.[1]?.trim()
+      || lower.match(/([가-힣]{2,})\s+(?:카피|문구|후킹|스레드|릴스|인스타|썸네일|스크립트|대본|글)/)?.[1]?.trim()
       || '';
     let contentType = 'headcopy';
     if (/릴스|reels|쇼츠|shorts|숏폼|스크립트|대본|틱톡/.test(lower)) contentType = 'reels_script';
@@ -456,9 +462,18 @@ function deterministicMatch(text: string): JarvisAction | null {
     if (/소셜|스레드.{0,5}(?:링크|참고|분석|패턴|느낌|스타일|형식|방식)|릴스.{0,5}(?:링크|참고|분석|패턴|느낌|스타일|형식|방식)|해외|틱톡.{0,5}(?:링크|참고|분석)/.test(lower)) enginesRaw.push('social');
     if (/유튜브|youtube|조회수|영상|반응/.test(lower)) enginesRaw.push('youtube');
     if (/시세|가격|시장|마켓/.test(lower)) enginesRaw.push('market');
-    // "제대로 조사해서" 단독 → 기본 YouTube + Market (2개)
-    if (/제대로.{0,5}(?:조사|분석|리서치)/.test(lower) && enginesRaw.length === 0) {
+    // "제대로/전체/전부/종합 조사해서" 단독 또는 단일 엔진 → 기본 YouTube + Market (2개)
+    const isOverallResearch = /(?:제대로|전체|전부|종합|전체적으로).{0,5}(?:조사|분석|리서치)|(?:리서치|자료.?조사).{0,5}해서|종합해서/.test(lower);
+    if (isOverallResearch && enginesRaw.length === 0) {
       enginesRaw.push('youtube', 'market');
+    }
+    // isOverallResearch이고 youtube만 있으면 market 보완 추가 (예: "종합해서 유튜브 썸네일")
+    if (isOverallResearch && enginesRaw.length === 1 && enginesRaw[0] === 'youtube' && !enginesRaw.includes('market')) {
+      enginesRaw.push('market');
+    }
+    // isOverallResearch이고 market만 있으면 youtube 보완 추가
+    if (isOverallResearch && enginesRaw.length === 1 && enginesRaw[0] === 'market' && !enginesRaw.includes('youtube')) {
+      enginesRaw.unshift('youtube');
     }
     // cap 적용: 명시 복합(2개 이상 키워드)이면 최대 3개, 기본이면 최대 2개
     const isExplicitComplex = enginesRaw.length >= 2;
