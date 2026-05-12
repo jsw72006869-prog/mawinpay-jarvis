@@ -1,9 +1,9 @@
 /**
- * ResultDeck.tsx — COPY-A v2
+ * ResultDeck.tsx — UI-V1 Viral Command Center
  *
  * Creative Director / 마케팅 콘텐츠 결과를 채팅창에서 분리하여
  * 1번 화면 좌측에 시네마틱 패널로 표시하는 컴포넌트.
- * COPY-A v2: 구조화 카드 (헤드카피/썸네일/첫3초/타깃/욕구/미래장면/본문/CTA/왜먹히는지/위험도/점수)
+ * UI-V1: 영상 촬영용 고급 디자인 (Mission Feed, Research Intel, Copy Cards, NEXT ACTIONS)
  */
 import { useEffect, useState, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -71,24 +71,34 @@ function getTypeLabel(type: string): string {
   }
 }
 
+// COPY-R 모드 감지
+function detectCopyMode(isCopyR: boolean, researchInsight: string): { mode: string; label: string; color: string } {
+  if (!isCopyR) return { mode: 'COPY-A', label: 'CREATIVE', color: '#00F5FF' };
+  if (researchInsight?.includes('통합 리서치 인사이트')) return { mode: 'COPY-R.5', label: 'ORCHESTRATOR', color: '#FFD700' };
+  if (researchInsight?.includes('리뷰/고객 불안 인사이트')) return { mode: 'COPY-R.4', label: 'REVIEW INTEL', color: '#FF9664' };
+  if (researchInsight?.includes('소셜 패턴 인사이트')) return { mode: 'COPY-R.3', label: 'SOCIAL INTEL', color: '#B482FF' };
+  if (researchInsight?.includes('시장/시즈 인사이트')) return { mode: 'COPY-R.2', label: 'MARKET INTEL', color: '#64FF96' };
+  return { mode: 'COPY-R.1', label: 'YOUTUBE INTEL', color: '#FF6464' };
+}
+
 // 위험도 색상
 function getRiskColor(risk?: string): string {
-  if (!risk) return 'rgba(34,197,94,0.8)';
-  if (risk.includes('주의')) return 'rgba(239,68,68,0.8)';
-  if (risk.includes('보통')) return 'rgba(255,152,0,0.8)';
-  return 'rgba(34,197,94,0.8)';
+  if (!risk) return '#22c55e';
+  if (risk.includes('주의')) return '#ef4444';
+  if (risk.includes('보통')) return '#f59e0b';
+  return '#22c55e';
 }
 
 // 점수 바 컴포넌트
 function ScoreBar({ label, value }: { label: string; value: number }) {
   const color = value >= 80 ? '#00FF88' : value >= 60 ? '#00F5FF' : '#FF9800';
   return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 3 }}>
-      <span style={{ fontSize: '0.55rem', color: 'rgba(148,163,184,0.7)', width: 52, flexShrink: 0 }}>{label}</span>
-      <div style={{ flex: 1, height: 3, background: 'rgba(255,255,255,0.08)', borderRadius: 2, overflow: 'hidden' }}>
-        <div style={{ width: `${Math.min(value, 100)}%`, height: '100%', background: color, borderRadius: 2, transition: 'width 0.8s ease' }} />
+    <div className="rd-score-bar-row">
+      <span className="rd-score-bar-label">{label}</span>
+      <div className="rd-score-bar-track">
+        <div className="rd-score-bar-fill" style={{ width: `${Math.min(value, 100)}%`, background: color }} />
       </div>
-      <span style={{ fontSize: '0.55rem', color, width: 24, textAlign: 'right' }}>{value}</span>
+      <span className="rd-score-bar-value" style={{ color }}>{value}</span>
     </div>
   );
 }
@@ -97,15 +107,42 @@ function ScoreBar({ label, value }: { label: string; value: number }) {
 function CopyACardSection({ label, value, icon }: { label: string; value: string; icon: string }) {
   if (!value) return null;
   return (
-    <div style={{ marginBottom: 8 }}>
-      <div style={{ fontSize: '0.5rem', color: 'rgba(0,245,255,0.6)', fontFamily: 'Orbitron, monospace', letterSpacing: '0.08em', marginBottom: 2 }}>
-        {icon} {label}
-      </div>
-      <div style={{ fontSize: '0.72rem', color: 'rgba(224,242,254,0.92)', lineHeight: 1.55, paddingLeft: 4, borderLeft: '2px solid rgba(0,245,255,0.2)' }}>
-        {value}
-      </div>
+    <div className="rd-card-section">
+      <div className="rd-card-section-label">{icon} {label}</div>
+      <div className="rd-card-section-value">{value}</div>
     </div>
   );
+}
+
+// Research Insight 엔진별 파싱
+function parseInsightSections(insight: string): Array<{ engine: string; icon: string; color: string; lines: string[] }> {
+  const sections: Array<{ engine: string; icon: string; color: string; lines: string[] }> = [];
+  const engineMap: Record<string, { icon: string; color: string }> = {
+    'YouTube': { icon: '▶', color: '#FF6464' },
+    'Market': { icon: '◆', color: '#64FF96' },
+    'Review': { icon: '◈', color: '#FF9664' },
+    'Social': { icon: '◉', color: '#B482FF' },
+  };
+
+  // 인사이트 텍스트에서 [YouTube 인사이트], [Market 인사이트] 등 섹션 파싱
+  const parts = insight.split(/\[([^\]]+)\s*인사이트\]/);
+  for (let i = 1; i < parts.length; i += 2) {
+    const engineKey = parts[i].trim();
+    const content = (parts[i + 1] || '').trim();
+    const lines = content.split('\n').filter(l => l.trim()).slice(0, 3);
+    const meta = engineMap[engineKey] || { icon: '●', color: '#00F5FF' };
+    sections.push({ engine: engineKey, icon: meta.icon, color: meta.color, lines });
+  }
+
+  // 섹션이 없으면 전체를 하나로
+  if (sections.length === 0 && insight.trim()) {
+    const lines = insight.split('\n').filter(l => l.trim() && !l.startsWith('📊') && !l.startsWith('사용 엔진')).slice(0, 4);
+    if (lines.length > 0) {
+      sections.push({ engine: 'Research', icon: '◆', color: '#00F5FF', lines });
+    }
+  }
+
+  return sections;
 }
 
 // 콘텐츠를 섹션별로 파싱 (items가 없을 때 fallback)
@@ -136,6 +173,36 @@ function parseSections(content: string): { title: string; body: string }[] {
   }
 
   return sections.filter(s => s.body.length > 0 || s.title.length > 0);
+}
+
+// Mission Feed 엔진 목록 생성
+function getMissionFeedEngines(researchInsight: string, excludedEngines: string[]): Array<{ name: string; label: string; status: 'used' | 'available' }> {
+  const allEngines = [
+    { key: 'youtube', label: 'YouTube Pattern' },
+    { key: 'market', label: 'Market Context' },
+    { key: 'review', label: 'Review Objection' },
+    { key: 'social', label: 'Social Pattern' },
+  ];
+
+  const result: Array<{ name: string; label: string; status: 'used' | 'available' }> = [];
+  for (const eng of allEngines) {
+    if (excludedEngines.includes(eng.key)) {
+      result.push({ name: eng.key, label: eng.label, status: 'available' });
+    } else {
+      // 인사이트에 해당 엔진 관련 내용이 있으면 used
+      const keywords: Record<string, string[]> = {
+        youtube: ['YouTube', '유튜브', 'youtube'],
+        market: ['Market', 'KAMIS', '시장', '시세'],
+        review: ['Review', '리뷰', '후기', '불안'],
+        social: ['Social', '소셜', '스레드', '패턴'],
+      };
+      const isUsed = keywords[eng.key]?.some(kw => researchInsight.includes(kw));
+      if (isUsed) {
+        result.push({ name: eng.key, label: eng.label, status: 'used' });
+      }
+    }
+  }
+  return result;
 }
 
 export default function ResultDeck({
@@ -174,6 +241,7 @@ export default function ResultDeck({
   };
 
   const typeLabel = getTypeLabel(contentType);
+  const { mode, label: modeLabel, color: modeColor } = detectCopyMode(isCopyR, researchInsight);
   const displayItems: ResultItem[] = items.length > 0
     ? items
     : parseSections(content).map((s, i) => ({
@@ -183,8 +251,16 @@ export default function ResultDeck({
         tone: i === 0 ? '추천안' : '변형안'
       }));
 
-  // COPY-A v2 구조화 카드 여부 판단 (format=copy_a이면 항상 구조화 렌더링)
+  // COPY-A v2 구조화 카드 여부 판단
   const isCopyACard = (item: ResultItem) => item.format === 'copy_a';
+
+  // Research Insight 섹션 파싱
+  const insightSections = isCopyR && researchInsight
+    ? parseInsightSections(researchInsight.split('[COPY-A 주입 인사이트]')[0].trim())
+    : [];
+
+  // Mission Feed
+  const missionFeed = isCopyR ? getMissionFeedEngines(researchInsight, excludedEngines) : [];
 
   return (
     <AnimatePresence>
@@ -196,146 +272,159 @@ export default function ResultDeck({
           exit={{ opacity: 0, x: -40, scale: 0.96 }}
           transition={{ duration: 0.5, ease: [0.22, 1, 0.36, 1] }}
         >
-          {/* Header */}
-          <div className="result-deck-header">
-            <div className="result-deck-header-left">
-              <span className="result-deck-badge">{typeLabel}</span>
-              {product && <span className="result-deck-product">{product}</span>}
-              <span style={{ fontSize: '0.45rem', color: 'rgba(0,245,255,0.5)', fontFamily: 'Orbitron, monospace', letterSpacing: '0.1em' }}>
-                {isCopyR ? (researchInsight?.includes('통합 리서치 인사이트') ? 'COPY-R.5' : researchInsight?.includes('리뷰/고객 불안 인사이트') ? 'COPY-R.4' : researchInsight?.includes('소셜 패턴 인사이트') ? 'COPY-R.3' : researchInsight?.includes('시장/시즈 인사이트') ? 'COPY-R.2' : 'COPY-R') : 'COPY-A'}
-              </span>
-              {isCopyR && videosFound > 0 && (
-                <span style={{ fontSize: '0.4rem', color: 'rgba(255,200,0,0.9)', fontFamily: 'Orbitron, monospace', background: 'rgba(255,200,0,0.1)', border: '1px solid rgba(255,200,0,0.3)', borderRadius: 4, padding: '1px 5px' }}>
-                  🔍 YouTube {videosFound}건 분석반영
-                </span>
-              )}
-              {isCopyR && researchInsight?.includes('시장/시즈 인사이트') && (
-                <span style={{ fontSize: '0.4rem', color: 'rgba(100,255,150,0.9)', fontFamily: 'Orbitron, monospace', background: 'rgba(100,255,150,0.1)', border: '1px solid rgba(100,255,150,0.3)', borderRadius: 4, padding: '1px 5px' }}>
-                  📊 KAMIS 시장 맥락 반영
-                </span>
-              )}
-              {isCopyR && researchInsight?.includes('소셜 패턴 인사이트') && (
-                <span style={{ fontSize: '0.4rem', color: 'rgba(180,130,255,0.9)', fontFamily: 'Orbitron, monospace', background: 'rgba(180,130,255,0.1)', border: '1px solid rgba(180,130,255,0.3)', borderRadius: 4, padding: '1px 5px' }}>
-                  🌐 소셜 패턴 분석 반영
-                </span>
-              )}
-              {isCopyR && researchInsight?.includes('리뷰/고객 불안 인사이트') && (
-                <span style={{ fontSize: '0.4rem', color: 'rgba(255,150,100,0.9)', fontFamily: 'Orbitron, monospace', background: 'rgba(255,150,100,0.1)', border: '1px solid rgba(255,150,100,0.3)', borderRadius: 4, padding: '1px 5px' }}>
-                  📋 리뷰 불안 분석 반영
-                </span>
-              )}
-              {isCopyR && researchInsight?.includes('통합 리서치 인사이트') && (
-                <span style={{ fontSize: '0.4rem', color: 'rgba(255,215,0,0.9)', fontFamily: 'Orbitron, monospace', background: 'rgba(255,215,0,0.1)', border: '1px solid rgba(255,215,0,0.3)', borderRadius: 4, padding: '1px 5px' }}>
-                  🎯 통합 리서치 반영
-                </span>
-              )}
+          {/* ═══ Header ═══ */}
+          <div className="rd-header">
+            <div className="rd-header-top">
+              <div className="rd-mode-badge" style={{ borderColor: `${modeColor}66`, background: `${modeColor}12` }}>
+                <span className="rd-mode-dot" style={{ background: modeColor }} />
+                <span className="rd-mode-text" style={{ color: modeColor }}>{mode}</span>
+              </div>
+              <span className="rd-mode-label">{modeLabel}</span>
+              <div className="rd-header-actions">
+                <button className="rd-btn" onClick={() => handleCopy()}>
+                  {copied ? '✓' : '⎘'}
+                </button>
+                <button className="rd-btn" onClick={onSaveToWorkspace}>⬇</button>
+                <button className="rd-btn rd-btn-close" onClick={onDismiss}>✕</button>
+              </div>
             </div>
-            <div className="result-deck-header-right">
-              <button className="result-deck-btn" onClick={() => handleCopy()}>
-                {copied ? '✓ 복사됨' : '전체 복사'}
-              </button>
-              <button className="result-deck-btn" onClick={onSaveToWorkspace}>
-                저장
-              </button>
-              <button className="result-deck-btn result-deck-btn-close" onClick={onDismiss}>
-                ✕
-              </button>
+            <div className="rd-header-meta">
+              <span className="rd-type-badge">{typeLabel}</span>
+              {product && <span className="rd-product">{product}</span>}
+              {displayItems.length > 0 && (
+                <span className="rd-card-count">{displayItems.length} cards</span>
+              )}
             </div>
           </div>
 
-          {/* Content */}
-          <div className="result-deck-body" ref={scrollRef}>
-            {/* COPY-R 인사이트 배너 (COPY-R.1.1: 카피 적용 방향 중심) */}
-            {isCopyR && researchInsight && showContent && (() => {
-              // [COPY-A 주입 인사이트] 이후는 내부 주입용이므로 UI에서 숨김
-              const displayInsight = researchInsight.split('[COPY-A 주입 인사이트]')[0].trim();
-              return (
-                <div style={{ background: 'rgba(255,200,0,0.07)', border: '1px solid rgba(255,200,0,0.25)', borderRadius: 8, padding: '10px 14px', marginBottom: 12, fontSize: '0.55rem', color: 'rgba(255,220,80,0.9)', fontFamily: 'monospace', whiteSpace: 'pre-wrap', lineHeight: 1.7 }}>
-                  {displayInsight}
+          {/* ═══ Body ═══ */}
+          <div className="rd-body" ref={scrollRef}>
+
+            {/* Mission Feed (COPY-R only) */}
+            {isCopyR && missionFeed.length > 0 && showContent && (
+              <motion.div
+                className="rd-mission-feed"
+                initial={{ opacity: 0, y: -10 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.4 }}
+              >
+                <div className="rd-mission-feed-title">MISSION FEED</div>
+                <div className="rd-mission-feed-list">
+                  {missionFeed.map(eng => (
+                    <div key={eng.name} className={`rd-mission-item ${eng.status}`}>
+                      <span className="rd-mission-icon">{eng.status === 'used' ? '✓' : '○'}</span>
+                      <span className="rd-mission-label">{eng.label}</span>
+                      <span className={`rd-mission-status ${eng.status}`}>
+                        {eng.status === 'used' ? 'ANALYZED' : 'AVAILABLE'}
+                      </span>
+                    </div>
+                  ))}
                 </div>
-              );
-            })()}
+              </motion.div>
+            )}
+
+            {/* Research Intel Panel (COPY-R only) */}
+            {isCopyR && insightSections.length > 0 && showContent && (
+              <motion.div
+                className="rd-research-panel"
+                initial={{ opacity: 0, y: -10 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.4, delay: 0.1 }}
+              >
+                <div className="rd-research-panel-title">RESEARCH INTEL</div>
+                <div className="rd-research-grid">
+                  {insightSections.map((sec, i) => (
+                    <div key={i} className="rd-research-card" style={{ borderColor: `${sec.color}33` }}>
+                      <div className="rd-research-card-header">
+                        <span className="rd-research-card-icon" style={{ color: sec.color }}>{sec.icon}</span>
+                        <span className="rd-research-card-name">{sec.engine}</span>
+                        <span className="rd-research-card-status" style={{ color: sec.color }}>USED</span>
+                      </div>
+                      <div className="rd-research-card-body">
+                        {sec.lines.map((line, j) => (
+                          <div key={j} className="rd-research-card-line">{line.replace(/^[-•]\s*/, '').slice(0, 80)}</div>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </motion.div>
+            )}
+
+            {/* Copy Cards */}
             <AnimatePresence>
               {showContent && displayItems.map((item, idx) => (
                 <motion.div
                   key={item.id || idx}
-                  className="result-deck-section"
+                  className="rd-copy-card"
                   initial={{ opacity: 0, y: 20, scale: 0.97 }}
                   animate={{ opacity: 1, y: 0, scale: 1 }}
-                  transition={{ delay: idx * 0.1, duration: 0.4, ease: [0.22, 1, 0.36, 1] }}
+                  transition={{ delay: 0.15 + idx * 0.08, duration: 0.4, ease: [0.22, 1, 0.36, 1] }}
                 >
-                  {/* 카드 헤더 */}
-                  <div className="result-deck-section-header">
-                    <div className="result-deck-section-title">
-                      {item.title}
-                      {item.tone && <span className="result-deck-tone-badge">{item.tone}</span>}
+                  {/* Card Header */}
+                  <div className="rd-copy-card-header">
+                    <div className="rd-copy-card-number">{String(idx + 1).padStart(2, '0')}</div>
+                    <div className="rd-copy-card-title">{item.title}</div>
+                    <div className="rd-copy-card-badges">
+                      {item.tone && <span className="rd-tone-chip">{item.tone}</span>}
                       {item.riskLevel && (
-                        <span style={{
-                          fontSize: '0.42rem',
-                          padding: '1px 5px',
-                          borderRadius: 3,
-                          background: 'rgba(0,0,0,0.3)',
-                          border: `1px solid ${getRiskColor(item.riskLevel)}`,
-                          color: getRiskColor(item.riskLevel),
-                          fontFamily: 'Orbitron, monospace',
-                          letterSpacing: '0.06em',
-                          marginLeft: 4,
-                        }}>
+                        <span className="rd-risk-chip" style={{ borderColor: getRiskColor(item.riskLevel), color: getRiskColor(item.riskLevel) }}>
                           {item.riskLevel}
                         </span>
                       )}
                     </div>
-                    <button className="result-deck-item-copy" onClick={() => handleCopy(item.body)}>
-                      복사
-                    </button>
+                    <button className="rd-copy-card-copy-btn" onClick={() => handleCopy(item.body)}>⎘</button>
                   </div>
 
                   {/* COPY-A v2 구조화 카드 렌더링 */}
                   {isCopyACard(item) ? (
-                    <div style={{ padding: '8px 0' }}>
-                      {/* 구조화 필드가 있으면 세션별 표시, 없으면 body 텍스트 전체 표시 */}
+                    <div className="rd-copy-card-body">
                       {(item.headline || item.storyBody || item.thumbnailText) ? (
                         <>
-                          <CopyACardSection label="헤드카피" value={item.headline || ''} icon="🎯" />
+                          {item.headline && (
+                            <div className="rd-headline-block">
+                              <div className="rd-headline-text">{item.headline}</div>
+                            </div>
+                          )}
                           <CopyACardSection label="썸네일 문구" value={item.thumbnailText || ''} icon="📸" />
-                          <CopyACardSection label="첫 3초 스크립트" value={item.firstThreeSeconds || ''} icon="⚡" />
+                          <CopyACardSection label="첫 3초" value={item.firstThreeSeconds || ''} icon="⚡" />
                           {item.reelsScript && <CopyACardSection label="릴스 대본" value={item.reelsScript} icon="🎬" />}
-                          <CopyACardSection label="타깃 고객" value={item.targetPersona || ''} icon="👤" />
-                          <CopyACardSection label="자극한 욕구" value={item.desireTrigger || ''} icon="💡" />
+                          <CopyACardSection label="타깃" value={item.targetPersona || ''} icon="👤" />
+                          <CopyACardSection label="욕구 자극" value={item.desireTrigger || ''} icon="💡" />
                           <CopyACardSection label="미래 장면" value={item.futureScene || ''} icon="🌅" />
-                          <CopyACardSection label="스토리 본문" value={item.storyBody || ''} icon="📖" />
-                          <CopyACardSection label="CTA" value={item.cta || ''} icon="📣" />
+                          <CopyACardSection label="본문" value={item.storyBody || ''} icon="📖" />
+                          {item.cta && (
+                            <div className="rd-cta-block">
+                              <span className="rd-cta-chip">{item.cta}</span>
+                            </div>
+                          )}
                           <CopyACardSection label="왜 먹히는지" value={item.whyItWorks || ''} icon="🔍" />
-                          {/* 이하 점수 바 렌더링 유지 */}
                         </>
                       ) : (
-                        /* 구조화 필드 없으면 body 텍스트 전체 표시 */
-                        <div className="result-deck-section-body">
+                        <div className="rd-copy-card-text">
                           {(item.body || '').split('\n').map((line, i) => (
-                            <p key={i} className={line.startsWith('-') || line.startsWith('•') ? 'result-deck-bullet' : ''}>
+                            <p key={i} className={line.startsWith('-') || line.startsWith('•') ? 'rd-bullet' : ''}>
                               {line}
                             </p>
                           ))}
                         </div>
                       )}
-                      {/* 점수 바 */}
+                      {/* COPY SCORE */}
                       {item.scores && (
-                        <div style={{ marginTop: 10, padding: '8px 10px', background: 'rgba(0,245,255,0.04)', borderRadius: 6, border: '1px solid rgba(0,245,255,0.1)' }}>
-                          <div style={{ fontSize: '0.45rem', color: 'rgba(0,245,255,0.5)', fontFamily: 'Orbitron, monospace', letterSpacing: '0.1em', marginBottom: 6 }}>
-                            COPY SCORE
-                          </div>
+                        <div className="rd-score-block">
+                          <div className="rd-score-title">COPY SCORE</div>
                           <ScoreBar label="클릭파워" value={item.scores.clickPower} />
                           <ScoreBar label="구매욕구" value={item.scores.purchaseDesire} />
-                          <ScoreBar label="스토리강도" value={item.scores.storyStrength} />
+                          <ScoreBar label="스토리" value={item.scores.storyStrength} />
                           <ScoreBar label="신뢰도" value={item.scores.trust} />
                         </div>
                       )}
                     </div>
                   ) : (
                     /* 기존 일반 카드 렌더링 */
-                    <div className="result-deck-section-body">
+                    <div className="rd-copy-card-text">
                       {item.body.split('\n').map((line, i) => (
-                        <p key={i} className={line.startsWith('-') || line.startsWith('•') ? 'result-deck-bullet' : ''}>
+                        <p key={i} className={line.startsWith('-') || line.startsWith('•') ? 'rd-bullet' : ''}>
                           {line}
                         </p>
                       ))}
@@ -343,9 +432,8 @@ export default function ResultDeck({
                   )}
 
                   {item.scoreLabel && !isCopyACard(item) && (
-                    <div className="result-deck-item-score">
-                      <span className="score-label">{item.scoreLabel}</span>
-                      <div className="score-bar"><div className="score-fill" style={{ width: '100%' }}></div></div>
+                    <div className="rd-legacy-score">
+                      <span>{item.scoreLabel}</span>
                     </div>
                   )}
                 </motion.div>
@@ -353,7 +441,7 @@ export default function ResultDeck({
             </AnimatePresence>
           </div>
 
-          {/* COPY-R.5.1 — 제외된 엔진 추가 조사 안내 */}
+          {/* ═══ Excluded Engines (추가 조사 가능) ═══ */}
           {isCopyR && excludedEngines && excludedEngines.length > 0 && (() => {
             const engineLabelMap: Record<string, string> = {
               youtube: 'YouTube 반응 분석',
@@ -361,32 +449,30 @@ export default function ResultDeck({
               review: '리뷰/고객 불안 분석',
               social: '소셜 패턴 분석',
             };
-            const engineCmdMap: Record<string, string> = {
-              youtube: '유튜브 반응 참고해서',
-              market: '시세 참고해서',
-              review: '리뷰 불안 참고해서',
-              social: '소셜 패턴 참고해서',
-            };
             return (
-              <div style={{ margin: '8px 0 4px', padding: '8px 12px', background: 'rgba(255,200,0,0.06)', border: '1px solid rgba(255,200,0,0.2)', borderRadius: 8 }}>
-                <div style={{ fontSize: '0.42rem', color: 'rgba(255,200,0,0.7)', fontFamily: 'Orbitron, monospace', letterSpacing: '0.1em', marginBottom: 6 }}>⚡ 추가 조사 가능</div>
-                <div style={{ fontSize: '0.5rem', color: 'rgba(255,220,100,0.85)', lineHeight: 1.8 }}>
-                  이번에 실행하지 않은 엔진입니다. 아래 명령으로 추가 조사할 수 있습니다.
-                </div>
+              <div className="rd-excluded-panel">
+                <div className="rd-excluded-title">⚡ 추가 조사 가능</div>
                 {excludedEngines.map(e => (
-                  <div key={e} style={{ marginTop: 4, fontSize: '0.48rem', color: 'rgba(255,200,0,0.9)', fontFamily: 'monospace' }}>
-                    • <strong>{engineLabelMap[e] || e}</strong> → <span style={{ color: 'rgba(180,230,255,0.85)' }}>"[제품명] {engineCmdMap[e] || e} 카피 써줘"</span>
+                  <div key={e} className="rd-excluded-item">
+                    <span className="rd-excluded-dot">○</span>
+                    <span>{engineLabelMap[e] || e}</span>
                   </div>
                 ))}
               </div>
             );
           })()}
 
-          {/* Footer */}
-          <div className="result-deck-footer">
-            <span className="result-deck-footer-hint">
-              "다시 써줘" · "더 자극적으로" · "더 짧게" · "스레드 스타일로"
-            </span>
+          {/* ═══ NEXT ACTIONS Footer ═══ */}
+          <div className="rd-footer">
+            <div className="rd-footer-actions">
+              <button className="rd-action-chip" onClick={() => {}}>↻ 다시</button>
+              <button className="rd-action-chip" onClick={() => {}}>⚡ 자극적</button>
+              <button className="rd-action-chip" onClick={() => {}}>✦ 고급</button>
+              <button className="rd-action-chip" onClick={() => {}}>⊘ 짧게</button>
+              <button className="rd-action-chip" onClick={() => {}}>◎ Threads</button>
+              <button className="rd-action-chip" onClick={() => {}}>▶ YouTube</button>
+              <button className="rd-action-chip" onClick={() => {}}>◈ Reels</button>
+            </div>
           </div>
         </motion.div>
       )}

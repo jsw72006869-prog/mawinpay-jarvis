@@ -4704,6 +4704,511 @@ html, body {
 }
 
 /* ═══════════════════════════════════════════════════════════════
+   UI-V1 — Viral Command Center ResultDeck Polish
+   ═══════════════════════════════════════════════════════════════ */
+
+/* ─── Header ─── */
+.rd-header {
+  padding: 14px 18px 10px;
+  border-bottom: 1px solid rgba(0,245,255,0.1);
+  background: linear-gradient(180deg, rgba(0,245,255,0.03) 0%, transparent 100%);
+}
+.rd-header-top {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+.rd-mode-badge {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 12px;
+  border-radius: 20px;
+  border: 1px solid;
+  backdrop-filter: blur(4px);
+}
+.rd-mode-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  animation: rdPulse 2s infinite;
+}
+@keyframes rdPulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+.rd-mode-text {
+  font-size: 11px;
+  font-weight: 700;
+  font-family: 'Orbitron', monospace;
+  letter-spacing: 1.2px;
+}
+.rd-mode-label {
+  font-size: 9px;
+  color: rgba(148,163,184,0.6);
+  font-family: 'Orbitron', monospace;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+}
+.rd-header-actions {
+  margin-left: auto;
+  display: flex;
+  gap: 4px;
+}
+.rd-btn {
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255,255,255,0.03);
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 6px;
+  color: rgba(200,210,220,0.7);
+  font-size: 13px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+.rd-btn:hover {
+  background: rgba(0,245,255,0.08);
+  border-color: rgba(0,245,255,0.3);
+  color: #00F5FF;
+}
+.rd-btn-close:hover {
+  color: #ff6b6b;
+  border-color: rgba(255,107,107,0.3);
+  background: rgba(255,107,107,0.06);
+}
+.rd-header-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.rd-type-badge {
+  font-size: 10px;
+  font-weight: 600;
+  color: #00F5FF;
+  background: rgba(0,245,255,0.08);
+  border: 1px solid rgba(0,245,255,0.2);
+  padding: 2px 8px;
+  border-radius: 4px;
+  letter-spacing: 0.3px;
+}
+.rd-product {
+  font-size: 12px;
+  color: rgba(200,169,110,0.9);
+  font-weight: 500;
+}
+.rd-card-count {
+  font-size: 9px;
+  color: rgba(148,163,184,0.5);
+  font-family: 'Orbitron', monospace;
+  letter-spacing: 1px;
+}
+
+/* ─── Body ─── */
+.rd-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.rd-body::-webkit-scrollbar { width: 3px; }
+.rd-body::-webkit-scrollbar-track { background: transparent; }
+.rd-body::-webkit-scrollbar-thumb { background: rgba(0,245,255,0.12); border-radius: 2px; }
+
+/* ─── Mission Feed ─── */
+.rd-mission-feed {
+  padding: 10px 12px;
+  background: rgba(0,245,255,0.02);
+  border: 1px solid rgba(0,245,255,0.08);
+  border-radius: 10px;
+}
+.rd-mission-feed-title {
+  font-size: 8px;
+  font-family: 'Orbitron', monospace;
+  color: rgba(0,245,255,0.5);
+  letter-spacing: 2px;
+  margin-bottom: 8px;
+}
+.rd-mission-feed-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.rd-mission-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 8px;
+  border-radius: 6px;
+  transition: background 0.2s;
+}
+.rd-mission-item.used {
+  background: rgba(0,255,136,0.04);
+}
+.rd-mission-item.available {
+  background: rgba(255,200,0,0.03);
+}
+.rd-mission-icon {
+  font-size: 11px;
+  width: 16px;
+  text-align: center;
+}
+.rd-mission-item.used .rd-mission-icon { color: #00FF88; }
+.rd-mission-item.available .rd-mission-icon { color: rgba(255,200,0,0.6); }
+.rd-mission-label {
+  font-size: 10px;
+  color: rgba(212,224,236,0.8);
+  flex: 1;
+}
+.rd-mission-status {
+  font-size: 8px;
+  font-family: 'Orbitron', monospace;
+  letter-spacing: 1px;
+}
+.rd-mission-status.used { color: rgba(0,255,136,0.7); }
+.rd-mission-status.available { color: rgba(255,200,0,0.5); }
+
+/* ─── Research Intel Panel ─── */
+.rd-research-panel {
+  padding: 10px 12px;
+  background: rgba(255,200,0,0.02);
+  border: 1px solid rgba(255,200,0,0.1);
+  border-radius: 10px;
+}
+.rd-research-panel-title {
+  font-size: 8px;
+  font-family: 'Orbitron', monospace;
+  color: rgba(255,200,0,0.6);
+  letter-spacing: 2px;
+  margin-bottom: 8px;
+}
+.rd-research-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.rd-research-card {
+  padding: 8px 10px;
+  background: rgba(255,255,255,0.02);
+  border: 1px solid;
+  border-radius: 8px;
+}
+.rd-research-card-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 4px;
+}
+.rd-research-card-icon {
+  font-size: 10px;
+}
+.rd-research-card-name {
+  font-size: 10px;
+  font-weight: 600;
+  color: rgba(212,224,236,0.9);
+  flex: 1;
+}
+.rd-research-card-status {
+  font-size: 7px;
+  font-family: 'Orbitron', monospace;
+  letter-spacing: 1px;
+}
+.rd-research-card-body {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.rd-research-card-line {
+  font-size: 10px;
+  color: rgba(200,210,220,0.7);
+  line-height: 1.5;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ─── Copy Card ─── */
+.rd-copy-card {
+  background: rgba(255,255,255,0.02);
+  border: 1px solid rgba(255,255,255,0.06);
+  border-radius: 12px;
+  overflow: hidden;
+  transition: all 0.3s;
+}
+.rd-copy-card:hover {
+  border-color: rgba(0,245,255,0.15);
+  background: rgba(0,245,255,0.02);
+  box-shadow: 0 0 20px rgba(0,245,255,0.04);
+}
+.rd-copy-card-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  border-bottom: 1px solid rgba(255,255,255,0.04);
+  background: rgba(0,0,0,0.15);
+}
+.rd-copy-card-number {
+  font-size: 18px;
+  font-weight: 800;
+  font-family: 'Orbitron', monospace;
+  color: rgba(0,245,255,0.4);
+  min-width: 32px;
+}
+.rd-copy-card-title {
+  font-size: 11px;
+  font-weight: 600;
+  color: rgba(212,224,236,0.9);
+  flex: 1;
+  letter-spacing: 0.3px;
+}
+.rd-copy-card-badges {
+  display: flex;
+  gap: 4px;
+}
+.rd-tone-chip {
+  font-size: 8px;
+  padding: 2px 6px;
+  border-radius: 3px;
+  background: rgba(0,245,255,0.08);
+  border: 1px solid rgba(0,245,255,0.2);
+  color: rgba(0,245,255,0.8);
+  font-family: 'Orbitron', monospace;
+}
+.rd-risk-chip {
+  font-size: 8px;
+  padding: 2px 6px;
+  border-radius: 3px;
+  background: rgba(0,0,0,0.3);
+  border: 1px solid;
+  font-family: 'Orbitron', monospace;
+}
+.rd-copy-card-copy-btn {
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 4px;
+  color: rgba(200,210,220,0.5);
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+.rd-copy-card-copy-btn:hover {
+  background: rgba(0,245,255,0.08);
+  border-color: rgba(0,245,255,0.3);
+  color: #00F5FF;
+}
+
+/* Card Body */
+.rd-copy-card-body {
+  padding: 12px 14px;
+}
+.rd-copy-card-text {
+  padding: 12px 14px;
+  color: rgba(212,224,236,0.85);
+  font-size: 13px;
+  line-height: 1.7;
+}
+.rd-copy-card-text p {
+  margin: 3px 0;
+}
+.rd-bullet {
+  padding-left: 12px;
+  position: relative;
+  color: rgba(212,224,236,0.7);
+  font-size: 12px;
+}
+.rd-bullet::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 8px;
+  width: 4px;
+  height: 4px;
+  background: rgba(0,245,255,0.5);
+  border-radius: 50%;
+}
+
+/* Headline Block */
+.rd-headline-block {
+  margin-bottom: 12px;
+  padding: 10px 12px;
+  background: linear-gradient(135deg, rgba(0,245,255,0.06) 0%, rgba(0,245,255,0.02) 100%);
+  border: 1px solid rgba(0,245,255,0.15);
+  border-radius: 8px;
+}
+.rd-headline-text {
+  font-size: 15px;
+  font-weight: 700;
+  color: rgba(224,242,254,0.95);
+  line-height: 1.5;
+  letter-spacing: -0.2px;
+}
+
+/* CTA Block */
+.rd-cta-block {
+  margin: 8px 0;
+}
+.rd-cta-chip {
+  display: inline-block;
+  padding: 6px 14px;
+  background: linear-gradient(135deg, rgba(0,245,255,0.12), rgba(0,245,255,0.04));
+  border: 1px solid rgba(0,245,255,0.3);
+  border-radius: 20px;
+  color: #00F5FF;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.3px;
+}
+
+/* Card Section */
+.rd-card-section {
+  margin-bottom: 8px;
+}
+.rd-card-section-label {
+  font-size: 9px;
+  color: rgba(0,245,255,0.5);
+  font-family: 'Orbitron', monospace;
+  letter-spacing: 0.5px;
+  margin-bottom: 2px;
+}
+.rd-card-section-value {
+  font-size: 12px;
+  color: rgba(224,242,254,0.9);
+  line-height: 1.55;
+  padding-left: 8px;
+  border-left: 2px solid rgba(0,245,255,0.15);
+}
+
+/* Score Block */
+.rd-score-block {
+  margin-top: 10px;
+  padding: 8px 10px;
+  background: rgba(0,245,255,0.03);
+  border-radius: 8px;
+  border: 1px solid rgba(0,245,255,0.08);
+}
+.rd-score-title {
+  font-size: 8px;
+  font-family: 'Orbitron', monospace;
+  color: rgba(0,245,255,0.5);
+  letter-spacing: 1.5px;
+  margin-bottom: 6px;
+}
+.rd-score-bar-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 3px;
+}
+.rd-score-bar-label {
+  font-size: 9px;
+  color: rgba(148,163,184,0.7);
+  width: 48px;
+  flex-shrink: 0;
+}
+.rd-score-bar-track {
+  flex: 1;
+  height: 3px;
+  background: rgba(255,255,255,0.06);
+  border-radius: 2px;
+  overflow: hidden;
+}
+.rd-score-bar-fill {
+  height: 100%;
+  border-radius: 2px;
+  transition: width 0.8s ease;
+}
+.rd-score-bar-value {
+  font-size: 9px;
+  width: 22px;
+  text-align: right;
+  font-family: 'Orbitron', monospace;
+}
+
+/* Legacy Score */
+.rd-legacy-score {
+  padding: 6px 14px;
+  font-size: 10px;
+  color: rgba(0,245,255,0.6);
+  border-top: 1px solid rgba(255,255,255,0.04);
+}
+
+/* ─── Excluded Panel ─── */
+.rd-excluded-panel {
+  padding: 8px 14px;
+  background: rgba(255,200,0,0.03);
+  border-top: 1px solid rgba(255,200,0,0.1);
+}
+.rd-excluded-title {
+  font-size: 8px;
+  font-family: 'Orbitron', monospace;
+  color: rgba(255,200,0,0.6);
+  letter-spacing: 1.5px;
+  margin-bottom: 4px;
+}
+.rd-excluded-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 10px;
+  color: rgba(255,200,0,0.7);
+  padding: 2px 0;
+}
+.rd-excluded-dot {
+  color: rgba(255,200,0,0.4);
+}
+
+/* ─── Footer / NEXT ACTIONS ─── */
+.rd-footer {
+  padding: 10px 14px;
+  border-top: 1px solid rgba(0,245,255,0.06);
+  background: rgba(0,0,0,0.2);
+}
+.rd-footer-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.rd-action-chip {
+  padding: 5px 10px;
+  font-size: 10px;
+  color: rgba(200,210,220,0.7);
+  background: rgba(255,255,255,0.03);
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 14px;
+  cursor: pointer;
+  transition: all 0.2s;
+  white-space: nowrap;
+}
+.rd-action-chip:hover {
+  background: rgba(0,245,255,0.08);
+  border-color: rgba(0,245,255,0.3);
+  color: #00F5FF;
+  box-shadow: 0 0 12px rgba(0,245,255,0.1);
+}
+
+/* ─── Copy Focus Mode Enhancement ─── */
+.copy-focus-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.6);
+  backdrop-filter: blur(4px);
+  z-index: 38;
+  pointer-events: none;
+  animation: copyFocusFadeIn 0.4s ease forwards;
+}
+
+/* ═══════════════════════════════════════════════════════════════
    UI-Q.1 — Cinematic Intel Wall (2번 화면)
    ═══════════════════════════════════════════════════════════════ */
 
@@ -5790,16 +6295,8 @@ html, body {
    COPY-A v2 — Copy Focus Mode + Result Deck 강화 스타일
    ══════════════════════════════════════════════════════ */
 
-/* Copy Focus Mode: 배경 딤 처리 */
-.copy-focus-overlay {
-  position: fixed;
-  inset: 0;
-  background: rgba(0, 0, 0, 0.45);
-  backdrop-filter: blur(2px);
-  z-index: 38;
-  pointer-events: none;
-  animation: copyFocusFadeIn 0.4s ease forwards;
-}
+/* Copy Focus Mode: (UI-V1에서 재정의됨 — 이전 버전 비활성) */
+/* .copy-focus-overlay-legacy { } */
 
 @keyframes copyFocusFadeIn {
   from { opacity: 0; }
