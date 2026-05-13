@@ -38,6 +38,8 @@ import DataWallView from './DataWallView';
 import ResultDeck from './ResultDeck';
 import CinematicLayer from './ui/CinematicLayer';
 import JarvisScenePanel from './ui/JarvisScenePanel';
+import PredictiveActionPanel from './ui/PredictiveActionPanel';
+import ApprovalGateCard from './ui/ApprovalGateCard';
 
 interface ContextRegistryItem {
   id: string;
@@ -157,6 +159,80 @@ type JarvisScene =
   | 'growth_link'
   | 'cs_copilot'
   | 'approval_gate';
+
+// ── ACTION-A.1: Predictive Action Types ──
+type PredictiveActionType = 'safe' | 'draft' | 'locked' | 'danger' | 'navigation';
+type PredictiveAction = {
+  id: string;
+  scene: JarvisScene;
+  type: PredictiveActionType;
+  title: string;
+  description: string;
+  primaryLabel: string;
+  secondaryLabel?: string;
+  tertiaryLabel?: string;
+  status: 'available' | 'locked' | 'preview' | 'disabled';
+  riskLevel: 'low' | 'medium' | 'high';
+};
+
+// ── ACTION-A.1: Scene별 Predictive Actions 규칙 (GPT 호출 금지, keyword 기반) ──
+function getPredictiveActions(scene: JarvisScene, _input?: string): PredictiveAction[] {
+  switch (scene) {
+    case 'smartstore_brief':
+      return [
+        { id: 'ss_orders', scene, type: 'safe', title: '주문 현황 조회', description: '오늘 신규주문 + 배송준비 현황', primaryLabel: '조회', status: 'available', riskLevel: 'low' },
+        { id: 'ss_shipping', scene, type: 'safe', title: '배송준비 보기', description: '배송준비 상태 주문 목록', primaryLabel: '보기', status: 'available', riskLevel: 'low' },
+        { id: 'ss_dryrun', scene, type: 'draft', title: '발주서 Dry-run', description: '발주서 초안 미리보기 (실행 없음)', primaryLabel: '미리보기', status: 'preview', riskLevel: 'medium' },
+        { id: 'ss_locked', scene, type: 'locked', title: '실행 잠금 유지', description: '발주확인/송장입력/발송처리 LOCKED', primaryLabel: 'LOCKED', status: 'locked', riskLevel: 'high' },
+      ];
+    case 'copy_research':
+      return [
+        { id: 'cr_retry', scene, type: 'safe', title: '다시 써줘', description: '현재 카피를 다시 생성', primaryLabel: '재생성', status: 'available', riskLevel: 'low' },
+        { id: 'cr_provocative', scene, type: 'safe', title: '더 자극적으로', description: '더 강한 후킹 문구', primaryLabel: '자극적', status: 'available', riskLevel: 'low' },
+        { id: 'cr_premium', scene, type: 'safe', title: '더 고급스럽게', description: '프리미엄 톤 카피', primaryLabel: '고급', status: 'available', riskLevel: 'low' },
+        { id: 'cr_threads', scene, type: 'safe', title: 'Threads 스타일', description: '스레드 최적화 카피', primaryLabel: 'Threads', status: 'available', riskLevel: 'low' },
+        { id: 'cr_reels', scene, type: 'safe', title: '릴스 스크립트', description: '릴스 대본 생성', primaryLabel: '릴스', status: 'available', riskLevel: 'low' },
+        { id: 'cr_record', scene, type: 'navigation', title: '성과 기록 준비', description: '다음 단계에서 연결 예정', primaryLabel: '준비', status: 'disabled', riskLevel: 'low' },
+      ];
+    case 'keyword_radar':
+      return [
+        { id: 'kw_input', scene, type: 'safe', title: '상품 링크 입력', description: '분석할 상품 URL 입력', primaryLabel: '입력', status: 'available', riskLevel: 'low' },
+        { id: 'kw_extract', scene, type: 'draft', title: '키워드 후보 추출 준비', description: '키워드 후보 추출 (SEO-K.1 예정)', primaryLabel: '준비', status: 'preview', riskLevel: 'low' },
+        { id: 'kw_rank', scene, type: 'draft', title: '순위 추적 시작 준비', description: '순위 추적 기능 준비 중', primaryLabel: '준비', status: 'preview', riskLevel: 'low' },
+        { id: 'kw_seo', scene, type: 'navigation', title: 'SEO-K.1 예정', description: '다음 단계에서 구현 예정', primaryLabel: '예정', status: 'disabled', riskLevel: 'low' },
+      ];
+    case 'growth_link':
+      return [
+        { id: 'gl_chrome', scene, type: 'draft', title: 'Chrome 최적화 Preview', description: '크롬 인앱 브라우저 최적화 미리보기', primaryLabel: '미리보기', status: 'preview', riskLevel: 'low' },
+        { id: 'gl_fallback', scene, type: 'draft', title: 'Fallback Preview', description: '폴백 링크 구조 미리보기', primaryLabel: '미리보기', status: 'preview', riskLevel: 'low' },
+        { id: 'gl_utm', scene, type: 'draft', title: 'UTM 구조 생성 준비', description: 'UTM 파라미터 구조 설계', primaryLabel: '준비', status: 'preview', riskLevel: 'low' },
+        { id: 'gl_link', scene, type: 'navigation', title: 'LINK-A.1 예정', description: '다음 단계에서 구현 예정', primaryLabel: '예정', status: 'disabled', riskLevel: 'low' },
+      ];
+    case 'cs_copilot':
+      return [
+        { id: 'cs_draft', scene, type: 'draft', title: '답변 초안 생성', description: 'CS 답변 초안 작성', primaryLabel: '초안', status: 'available', riskLevel: 'low' },
+        { id: 'cs_polite', scene, type: 'safe', title: '더 정중하게', description: '더 정중한 톤으로 수정', primaryLabel: '수정', status: 'available', riskLevel: 'low' },
+        { id: 'cs_approval', scene, type: 'locked', title: '대표 승인 필요', description: '발송 전 대표 승인 필요', primaryLabel: '승인 대기', status: 'locked', riskLevel: 'high' },
+        { id: 'cs_locked', scene, type: 'locked', title: '발송 잠금 유지', description: '실제 CS 발송 LOCKED', primaryLabel: 'LOCKED', status: 'locked', riskLevel: 'high' },
+      ];
+    case 'outreach':
+      return [
+        { id: 'or_draft', scene, type: 'draft', title: '제안 메일 초안', description: '인플루언서 제안 메일 초안', primaryLabel: '초안', status: 'available', riskLevel: 'low' },
+        { id: 'or_list', scene, type: 'safe', title: '후보 리스트', description: '인플루언서 후보 목록 확인', primaryLabel: '보기', status: 'available', riskLevel: 'low' },
+        { id: 'or_save', scene, type: 'draft', title: '초안만 저장', description: '초안을 Workspace에 저장', primaryLabel: '저장', status: 'available', riskLevel: 'low' },
+        { id: 'or_locked', scene, type: 'locked', title: '발송 승인 대기', description: '실제 발송 LOCKED', primaryLabel: 'LOCKED', status: 'locked', riskLevel: 'high' },
+      ];
+    case 'approval_gate':
+      return [
+        { id: 'ag_dryrun', scene, type: 'draft', title: 'Dry-run 보기', description: '실행 결과 미리보기 (실행 없음)', primaryLabel: '미리보기', status: 'preview', riskLevel: 'medium' },
+        { id: 'ag_preview', scene, type: 'draft', title: '초안만 보기', description: '초안/미리보기만 확인', primaryLabel: '초안', status: 'preview', riskLevel: 'medium' },
+        { id: 'ag_locked', scene, type: 'danger', title: '실행 잠금 유지', description: '이메일/발주/송장/발송/환불 LOCKED', primaryLabel: 'LOCKED', status: 'locked', riskLevel: 'high' },
+        { id: 'ag_cancel', scene, type: 'safe', title: '취소', description: '작업 취소', primaryLabel: '취소', status: 'available', riskLevel: 'low' },
+      ];
+    default:
+      return [];
+  }
+}
 
 function inferJarvisSceneFromCommand(input: string): JarvisScene {
   const text = (String(input || '') || '').toLowerCase().replace(/\s+/g, '');
@@ -504,6 +580,9 @@ export default function JarvisApp() {
   const [copyFocusMode, setCopyFocusMode] = useState(false);
   // ── SCREEN-A.1: Scene Panel visibility ──
   const [scenePanelVisible, setScenePanelVisible] = useState(false);
+  // ── ACTION-A.1: Predictive Action Cards ──
+  const [predictedActions, setPredictedActions] = useState<PredictiveAction[]>([]);
+  const [actionStatusMessage, setActionStatusMessage] = useState('');
   // ── SSoT: 스마트스토어 데이터 캐시 (5분 유효) ──
   const ssCountsCacheRef = useRef<{ data: any; fetchedAt: number } | null>(null);
   const lastClapActivateAtRef = useRef<number>(0);
@@ -4740,6 +4819,9 @@ G. Review Objection: 작다/비싸다/무르다/배송 손상/맛 기대와 다�
       } else {
         setScenePanelVisible(false);
       }
+      // ACTION-A.1: 음성 경로에서도 Predictive Actions 업데이트
+      setPredictedActions(getPredictiveActions(voiceScene, transcript));
+      setActionStatusMessage('');
     }
 
     // 캡차/2단계 인증 입력 대기 중이면 인증번호 전달
@@ -4819,11 +4901,13 @@ G. Review Objection: 작다/비싸다/무르다/배송 손상/맛 기대와 다�
     // Scene Panel: home/standby가 아닌 새 scene이면 패널 표시, ResultDeck visible 시 숨김
     if (nextScene !== 'home' && nextScene !== 'standby') {
       setScenePanelVisible(true);
-      // 4초 후 자동 숨김
       setTimeout(() => setScenePanelVisible(false), 4000);
     } else {
       setScenePanelVisible(false);
     }
+    // ACTION-A.1: scene 변경 시 Predictive Actions 업데이트
+    setPredictedActions(getPredictiveActions(nextScene, text));
+    setActionStatusMessage('');
 
     // 캡차/2단계 인증 입력 대기 중이면 인증번호 전달
     if (verificationResolveRef.current) {
@@ -6303,6 +6387,50 @@ G. Review Objection: 작다/비싸다/무르다/배송 손상/맛 기대와 다�
         scene={activeScene}
         visible={scenePanelVisible && !resultDeckVisible}
         onQuickCommand={(cmd) => handleTextSubmit(cmd)}
+      />
+
+      {/* ── ACTION-A.1: Predictive Action Panel (좌측 하단) ── */}
+      <PredictiveActionPanel
+        actions={predictedActions}
+        visible={predictedActions.length > 0 && activeScene !== 'approval_gate' && !copyFocusMode}
+        statusMessage={actionStatusMessage}
+        onActionClick={(action) => {
+          console.log('[ACTION-A.1] Action clicked:', action.id, action.type, action.status);
+          if (action.status === 'locked') {
+            setActionStatusMessage(`🔒 ${action.title} — LOCKED 상태입니다. 대표 승인 전 실행되지 않습니다.`);
+            setTimeout(() => setActionStatusMessage(''), 4000);
+          } else if (action.status === 'disabled') {
+            setActionStatusMessage(`⏳ ${action.title} — 다음 단계에서 연결 예정입니다.`);
+            setTimeout(() => setActionStatusMessage(''), 3000);
+          } else if (action.status === 'preview') {
+            setActionStatusMessage(`🔍 ${action.title} — Dry-run Preview는 다음 단계에서 연결됩니다.`);
+            setTimeout(() => setActionStatusMessage(''), 3000);
+          } else {
+            setActionStatusMessage(`✅ ${action.title} 요청됨`);
+            setTimeout(() => setActionStatusMessage(''), 2000);
+          }
+        }}
+      />
+
+      {/* ── ACTION-A.1: Approval Gate Card (중앙 하단) ── */}
+      <ApprovalGateCard
+        visible={activeScene === 'approval_gate' && predictedActions.length > 0 && !copyFocusMode}
+        statusMessage={actionStatusMessage}
+        onDryRun={() => {
+          console.log('[ACTION-A.1] Approval Gate: Dry-run clicked');
+          setActionStatusMessage('Dry-run Preview는 다음 단계에서 연결됩니다.');
+          setTimeout(() => setActionStatusMessage(''), 4000);
+        }}
+        onPreview={() => {
+          console.log('[ACTION-A.1] Approval Gate: Preview clicked');
+          setActionStatusMessage('초안 보기는 다음 단계에서 연결됩니다.');
+          setTimeout(() => setActionStatusMessage(''), 4000);
+        }}
+        onCancel={() => {
+          console.log('[ACTION-A.1] Approval Gate: Cancel clicked');
+          setPredictedActions([]);
+          setActionStatusMessage('');
+        }}
       />
 
       {/* ── ActionCard (Phase UI-D: 우측 중단 고정) ── */}

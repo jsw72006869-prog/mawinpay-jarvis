@@ -6984,3 +6984,33 @@ html, body {
   .scene-panel-title { font-size:12px; }
   .scene-panel-cmd-btn { font-size:10px; padding:5px 10px; }
 }
+
+/* ── ACTION-A.1: Predictive Action Panel CSS ── */
+.predictive-action-panel {
+  transform: translate3d(0, 24px, -40px) scale(.96);
+  opacity: 0;
+  transition: transform 0.4s cubic-bezier(0.22, 1, 0.36, 1), opacity 0.4s ease;
+}
+.predictive-action-panel.is-visible {
+  transform: translate3d(0, 0, 40px) scale(1);
+  opacity: 1;
+}
+
+/* Approval Gate Card glow animation */
+.approval-gate-card {
+  animation: approval-pulse 2s ease-in-out infinite alternate;
+}
+@keyframes approval-pulse {
+  0% { box-shadow: 0 0 40px rgba(255,23,68,0.12), 0 0 80px rgba(255,171,0,0.06); }
+  100% { box-shadow: 0 0 60px rgba(255,23,68,0.2), 0 0 100px rgba(255,171,0,0.1); }
+}
+
+/* Scrollbar for action panel */
+.predictive-action-panel::-webkit-scrollbar { width: 3px; }
+.predictive-action-panel::-webkit-scrollbar-track { background: transparent; }
+.predictive-action-panel::-webkit-scrollbar-thumb { background: rgba(0,229,255,0.2); border-radius: 2px; }
+
+@media (max-width:600px) {
+  .predictive-action-panel { left:8px !important; right:8px !important; width:auto !important; bottom:90px !important; max-height:300px !important; }
+  .approval-gate-card { width:92vw !important; left:4vw !important; transform:none !important; bottom:90px !important; }
+}
