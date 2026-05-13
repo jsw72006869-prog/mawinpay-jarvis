@@ -7014,3 +7014,335 @@ html, body {
   .predictive-action-panel { left:8px !important; right:8px !important; width:auto !important; bottom:90px !important; max-height:300px !important; }
   .approval-gate-card { width:92vw !important; left:4vw !important; transform:none !important; bottom:90px !important; }
 }
+
+/* ════════════════════════════════════════════════════════════════
+   UI-V3.1  Living Core Motion System
+   ════════════════════════════════════════════════════════════════ */
+
+/* ── A. Living Core Pulse ── scene별 코어 pulse 강화 ── */
+
+/* copy_research — cyan neural pulse */
+.ui-e-scene-copy_research .ui-e-cinema-core-glow {
+  animation: v31CoreCyan 2.6s ease-in-out infinite !important;
+}
+@keyframes v31CoreCyan {
+  0%,100% { filter:blur(18px); opacity:.7; transform:scale(1); }
+  50%     { filter:blur(28px); opacity:1;  transform:scale(1.12); }
+}
+
+/* keyword_radar — violet radar pulse */
+.ui-e-scene-keyword_radar .ui-e-cinema-core-glow {
+  animation: v31CoreViolet 3s ease-in-out infinite !important;
+}
+@keyframes v31CoreViolet {
+  0%,100% { filter:blur(18px); opacity:.65; transform:scale(1); }
+  35%     { filter:blur(30px); opacity:1;   transform:scale(1.15); }
+  70%     { filter:blur(22px); opacity:.8;  transform:scale(1.05); }
+}
+
+/* growth_link — amber route pulse */
+.ui-e-scene-growth_link .ui-e-cinema-core-glow {
+  animation: v31CoreAmber 2.4s ease-in-out infinite !important;
+}
+@keyframes v31CoreAmber {
+  0%,100% { filter:blur(18px); opacity:.7; transform:scale(1); }
+  50%     { filter:blur(26px); opacity:1;  transform:scale(1.1); }
+}
+
+/* cs_copilot — teal response pulse */
+.ui-e-scene-cs_copilot .ui-e-cinema-core-glow {
+  animation: v31CoreTeal 3.2s ease-in-out infinite !important;
+}
+@keyframes v31CoreTeal {
+  0%,100% { filter:blur(18px); opacity:.65; transform:scale(1); }
+  50%     { filter:blur(24px); opacity:.95; transform:scale(1.08); }
+}
+
+/* approval_gate — red warning pulse */
+.ui-e-scene-approval_gate .ui-e-cinema-core-glow {
+  animation: v31CoreRed 1.8s ease-in-out infinite !important;
+}
+@keyframes v31CoreRed {
+  0%,100% { filter:blur(18px); opacity:.7;  transform:scale(1); }
+  50%     { filter:blur(32px); opacity:1;   transform:scale(1.18); }
+}
+
+/* smartstore_brief — green operation pulse */
+.ui-e-scene-smartstore_brief .ui-e-cinema-core-glow {
+  animation: v31CoreGreen 2.8s ease-in-out infinite !important;
+}
+@keyframes v31CoreGreen {
+  0%,100% { filter:blur(18px); opacity:.7; transform:scale(1); }
+  50%     { filter:blur(25px); opacity:1;  transform:scale(1.1); }
+}
+
+/* idle / standby — slow ambient pulse */
+.ui-e-scene-standby .ui-e-cinema-core-glow,
+.ui-e-scene-home .ui-e-cinema-core-glow {
+  animation: v31CoreIdle 5s ease-in-out infinite !important;
+}
+@keyframes v31CoreIdle {
+  0%,100% { filter:blur(20px); opacity:.5; transform:scale(1); }
+  50%     { filter:blur(24px); opacity:.7; transform:scale(1.04); }
+}
+
+/* scene별 core-ring 색상 강화 */
+.ui-e-scene-copy_research .ui-e-cinema-core-ring    { border-color:rgba(0,245,255,0.35) !important; box-shadow:0 0 30px rgba(0,245,255,0.18) !important; }
+.ui-e-scene-keyword_radar .ui-e-cinema-core-ring    { border-color:rgba(155,142,196,0.35) !important; box-shadow:0 0 30px rgba(155,142,196,0.18) !important; }
+.ui-e-scene-growth_link .ui-e-cinema-core-ring      { border-color:rgba(255,152,0,0.35) !important; box-shadow:0 0 30px rgba(255,152,0,0.18) !important; }
+.ui-e-scene-cs_copilot .ui-e-cinema-core-ring       { border-color:rgba(74,144,226,0.35) !important; box-shadow:0 0 30px rgba(74,144,226,0.18) !important; }
+.ui-e-scene-approval_gate .ui-e-cinema-core-ring    { border-color:rgba(255,68,68,0.4) !important; box-shadow:0 0 36px rgba(255,68,68,0.22) !important; }
+.ui-e-scene-smartstore_brief .ui-e-cinema-core-ring { border-color:rgba(0,255,136,0.35) !important; box-shadow:0 0 30px rgba(0,255,136,0.18) !important; }
+
+/* ── B. Camera Drift ── 전체 화면 미세 카메라 움직임 ── */
+.cinematic-layer {
+  animation: v31CameraDrift 24s ease-in-out infinite;
+  transform-origin: center center;
+  will-change: transform;
+}
+@keyframes v31CameraDrift {
+  0%   { transform: translate3d(0, 0, 0)     scale(1)     rotateX(0deg)    rotateY(0deg); }
+  25%  { transform: translate3d(-1px, -2px, 0) scale(1.004) rotateX(.1deg)  rotateY(-.08deg); }
+  50%  { transform: translate3d(1px, 1px, 0)  scale(1.006) rotateX(-.08deg) rotateY(.12deg); }
+  75%  { transform: translate3d(0, -1px, 0)   scale(1.003) rotateX(.06deg)  rotateY(-.06deg); }
+  100% { transform: translate3d(0, 0, 0)      scale(1)     rotateX(0deg)    rotateY(0deg); }
+}
+
+/* MissionControlDeck에도 미세 카메라 drift */
+.ui-e-cinema-v2 {
+  animation: v31DeckDrift 30s ease-in-out infinite;
+}
+@keyframes v31DeckDrift {
+  0%   { transform: translate(-50%, -50%) scale(.98)  rotateX(0deg)    rotateY(0deg); }
+  33%  { transform: translate(-50%, -50%) scale(1.01) rotateX(.8deg)   rotateY(-.6deg); }
+  66%  { transform: translate(-50%, -50%) scale(.99)  rotateX(-.5deg)  rotateY(.7deg); }
+  100% { transform: translate(-50%, -50%) scale(.98)  rotateX(0deg)    rotateY(0deg); }
+}
+
+/* ── C. Incoming Panel Motion ── 깊은 곳에서 앞으로 날아오는 느낌 ── */
+
+/* ScenePanel */
+.jarvis-scene-panel {
+  animation: v31PanelIncoming .55s cubic-bezier(0.22,1,0.36,1) both;
+}
+/* PredictiveActionPanel */
+.predictive-action-panel.is-visible {
+  animation: v31PanelIncoming .5s cubic-bezier(0.22,1,0.36,1) both;
+}
+/* ApprovalGateCard */
+.approval-gate-card {
+  animation: v31PanelIncoming .6s cubic-bezier(0.22,1,0.36,1) both, approval-pulse 2s ease-in-out infinite alternate .6s;
+}
+
+@keyframes v31PanelIncoming {
+  0% {
+    transform: translate3d(0, 80px, -240px) scale(.82) rotateX(8deg);
+    opacity: 0;
+    filter: blur(8px);
+  }
+  100% {
+    transform: translate3d(0, 0, 0) scale(1) rotateX(0deg);
+    opacity: 1;
+    filter: blur(0);
+  }
+}
+
+/* ResultDeck도 깊은 곳에서 등장 */
+.result-deck-enter {
+  animation: v31ResultIncoming .6s cubic-bezier(0.22,1,0.36,1) both;
+}
+@keyframes v31ResultIncoming {
+  0% {
+    transform: translate3d(0, 60px, -180px) scale(.88) rotateX(5deg);
+    opacity: 0;
+    filter: blur(6px);
+  }
+  100% {
+    transform: translate3d(0, 0, 0) scale(1) rotateX(0deg);
+    opacity: 1;
+    filter: blur(0);
+  }
+}
+
+/* ── D. Orbital Scene Motion ── MissionControlDeck 노드 float/glow ── */
+
+/* scene 카드 노드 slow float */
+.ui-e-cinema-card {
+  animation: v31NodeFloat 6s ease-in-out infinite;
+  will-change: transform;
+}
+.ui-e-cinema-card:nth-child(2) { animation-delay: -2s; }
+.ui-e-cinema-card:nth-child(3) { animation-delay: -4s; }
+
+@keyframes v31NodeFloat {
+  0%,100% { transform: translateY(0) scale(1); }
+  50%     { transform: translateY(-4px) scale(1.02); }
+}
+
+/* 비활성 scene 노드 dim */
+.ui-e-cinema-card {
+  transition: opacity .4s ease, filter .4s ease;
+}
+
+/* orbit ring slow rotation 강화 */
+.ui-e-orbit-ring {
+  animation: v31OrbitSpin 40s linear infinite !important;
+}
+.ui-e-orbit-ring.orbit-mid  { animation-duration: 55s !important; animation-direction: reverse !important; }
+.ui-e-orbit-ring.orbit-inner { animation-duration: 70s !important; }
+
+@keyframes v31OrbitSpin {
+  0%   { transform: translate(-50%, -50%) rotateX(68deg) rotateZ(0deg); }
+  100% { transform: translate(-50%, -50%) rotateX(68deg) rotateZ(360deg); }
+}
+
+/* orbit node glow pulse */
+.ui-e-orbit-node {
+  animation: v31NodeGlow 3s ease-in-out infinite;
+}
+@keyframes v31NodeGlow {
+  0%,100% { box-shadow: 0 0 6px rgba(0,245,255,0.3); }
+  50%     { box-shadow: 0 0 14px rgba(0,245,255,0.6); }
+}
+
+/* ── E. Deep Space Layer ── 배경 깊이 강화 ── */
+
+/* 기존 cl-particle density 줄이기 + parallax depth */
+.cl-particle {
+  opacity: .25;
+}
+.cl-particle.p-0, .cl-particle.p-3, .cl-particle.p-6, .cl-particle.p-9 {
+  /* far layer — 작고 느리고 흐림 */
+  width: 1px; height: 1px;
+  opacity: .15;
+  filter: blur(1px);
+  animation-duration: 30s !important;
+}
+.cl-particle.p-1, .cl-particle.p-4, .cl-particle.p-7, .cl-particle.p-10 {
+  /* mid layer */
+  width: 2px; height: 2px;
+  opacity: .25;
+}
+.cl-particle.p-2, .cl-particle.p-5, .cl-particle.p-8, .cl-particle.p-11 {
+  /* near layer — 밝고 빠름 */
+  width: 3px; height: 3px;
+  opacity: .4;
+  animation-duration: 14s !important;
+}
+
+/* far fog layer */
+.cinematic-layer::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(ellipse at 50% 60%, rgba(0,10,20,0) 40%, rgba(0,5,15,0.6) 100%);
+  pointer-events: none;
+  z-index: 1;
+}
+
+/* ── F. Focus Depth ── 활성 패널 전경, 비활성 뒤로 ── */
+
+/* 활성 패널은 선명 + 전경 */
+.jarvis-scene-panel,
+.predictive-action-panel.is-visible,
+.approval-gate-card {
+  z-index: 80;
+}
+
+/* JARVIS Dialogue 패널 — 항상 선명 */
+/* Task Execution 패널 — 비활성 시 살짝 뒤로 */
+.ui-e-mission-deck {
+  transition: filter .5s ease, opacity .5s ease;
+}
+
+/* scene 전환 시 MissionControlDeck 살짝 뒤로 밀기 (패널 활성 시) */
+.jarvis-scene-panel ~ .ui-e-mission-deck {
+  filter: brightness(.92);
+}
+
+/* ── G. AI Thinking State Strip 강화 ── */
+
+/* 하단 ribbon pill 기본 스타일 강화 */
+.ui-e-ribbon-pill {
+  transition: color .3s ease, text-shadow .3s ease;
+}
+
+/* scene별 ribbon 색상 변경 */
+.ui-e-scene-copy_research .ui-e-ribbon-pill:first-child    { color: #00F5FF; text-shadow: 0 0 8px rgba(0,245,255,0.4); }
+.ui-e-scene-keyword_radar .ui-e-ribbon-pill:first-child    { color: #9B8EC4; text-shadow: 0 0 8px rgba(155,142,196,0.4); }
+.ui-e-scene-growth_link .ui-e-ribbon-pill:first-child      { color: #FF9800; text-shadow: 0 0 8px rgba(255,152,0,0.4); }
+.ui-e-scene-cs_copilot .ui-e-ribbon-pill:first-child       { color: #4A90E2; text-shadow: 0 0 8px rgba(74,144,226,0.4); }
+.ui-e-scene-approval_gate .ui-e-ribbon-pill:first-child    { color: #FF4444; text-shadow: 0 0 10px rgba(255,68,68,0.5); animation: v31StripPulse 1.5s ease-in-out infinite; }
+.ui-e-scene-smartstore_brief .ui-e-ribbon-pill:first-child { color: #00FF88; text-shadow: 0 0 8px rgba(0,255,136,0.4); }
+
+@keyframes v31StripPulse {
+  0%,100% { opacity: 1; }
+  50%     { opacity: .6; }
+}
+
+/* scene-label 상태 텍스트 강화 */
+.ui-e-cinema-scene-label {
+  transition: color .4s ease, text-shadow .4s ease;
+}
+.ui-e-scene-copy_research .ui-e-cinema-scene-label span    { color: #00F5FF !important; }
+.ui-e-scene-keyword_radar .ui-e-cinema-scene-label span    { color: #9B8EC4 !important; }
+.ui-e-scene-growth_link .ui-e-cinema-scene-label span      { color: #FF9800 !important; }
+.ui-e-scene-cs_copilot .ui-e-cinema-scene-label span       { color: #4A90E2 !important; }
+.ui-e-scene-approval_gate .ui-e-cinema-scene-label span    { color: #FF4444 !important; }
+.ui-e-scene-smartstore_brief .ui-e-cinema-scene-label span { color: #00FF88 !important; }
+
+/* ── H. Approval Gate Tension ── */
+
+/* red scan glow overlay */
+.ui-e-scene-approval_gate .ui-e-cinema-scan-beam {
+  background: linear-gradient(180deg, transparent 0%, rgba(255,23,68,0.06) 50%, transparent 100%) !important;
+}
+
+/* warning pulse on entire deck */
+.ui-e-scene-approval_gate.ui-e-cinema-v2 {
+  animation: v31ApprovalTension 2.5s ease-in-out infinite !important;
+}
+@keyframes v31ApprovalTension {
+  0%,100% { box-shadow: inset 0 0 80px rgba(255,23,68,0.03); }
+  50%     { box-shadow: inset 0 0 120px rgba(255,23,68,0.08); }
+}
+
+/* approval scene label blink */
+.ui-e-scene-approval_gate .ui-e-cinema-scene-label em {
+  animation: v31ApprovalBlink 1.2s step-end infinite !important;
+}
+@keyframes v31ApprovalBlink {
+  0%,100% { opacity: 1; }
+  50%     { opacity: .4; }
+}
+
+/* locked tension on core rings */
+.ui-e-scene-approval_gate .ui-e-cinema-core-ring {
+  animation: v31ApprovalRing 1.5s ease-in-out infinite !important;
+}
+@keyframes v31ApprovalRing {
+  0%,100% { transform: scale(1);    border-color: rgba(255,68,68,0.4); }
+  50%     { transform: scale(1.06); border-color: rgba(255,68,68,0.7); }
+}
+
+/* ── Reduced Motion 대응 ── */
+@media (prefers-reduced-motion: reduce) {
+  .cinematic-layer,
+  .ui-e-cinema-v2,
+  .ui-e-cinema-core-glow,
+  .ui-e-cinema-core-ring,
+  .ui-e-orbit-ring,
+  .ui-e-orbit-node,
+  .ui-e-cinema-card,
+  .cl-particle,
+  .cl-grid,
+  .cl-scanline,
+  .ui-e-ribbon-pill,
+  .ui-e-cinema-scene-label em,
+  .jarvis-scene-panel,
+  .predictive-action-panel,
+  .approval-gate-card {
+    animation: none !important;
+    transition: none !important;
+  }
+}
