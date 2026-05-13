@@ -43,6 +43,7 @@ import ApprovalGateCard from './ui/ApprovalGateCard';
 import ReactiveSignalLayer from './ui/ReactiveSignalLayer';
 import SystemPulseOverlay from './ui/SystemPulseOverlay';
 import SmartstoreCommandCenter from './ui/SmartstoreCommandCenter';
+import KeywordRadarPanel from './ui/KeywordRadarPanel';
 
 interface ContextRegistryItem {
   id: string;
@@ -6455,6 +6456,22 @@ G. Review Objection: 작다/비싸다/무르다/배송 손상/맛 기대와 다�
       <SmartstoreCommandCenter
         visible={activeScene === 'smartstore_brief' && !resultDeckVisible && !copyFocusMode}
       />
+
+      {/* ── SEO-K.1: Keyword Radar Panel ── */}
+      {activeScene === 'keyword_radar' && !resultDeckVisible && !copyFocusMode && (
+        <div className="kr-panel-wrapper" style={{
+          position: 'fixed',
+          top: '50%',
+          left: '50%',
+          transform: 'translate(-50%, -50%)',
+          zIndex: 72,
+          pointerEvents: 'auto',
+        }}>
+          <KeywordRadarPanel
+            onClose={() => setActiveScene('home')}
+          />
+        </div>
+      )}
 
       {/* ── ActionCard (Phase UI-D: 우측 중단 고정) ── */}
       <div style={{
