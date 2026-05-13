@@ -146,7 +146,7 @@ function generateKeywords(productName: string, manualKeywords?: string[]): strin
     if (!keywords.includes(withQty)) keywords.push(withQty);
   }
 
-  return keywords.slice(0, 5);
+  return keywords.filter(k => k.trim().length > 0).slice(0, 5);
 }
 
 // ── 네이버 쇼핑 검색으로 순위 측정 ──
