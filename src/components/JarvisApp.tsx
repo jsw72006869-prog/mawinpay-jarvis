@@ -40,6 +40,8 @@ import CinematicLayer from './ui/CinematicLayer';
 import JarvisScenePanel from './ui/JarvisScenePanel';
 import PredictiveActionPanel from './ui/PredictiveActionPanel';
 import ApprovalGateCard from './ui/ApprovalGateCard';
+import ReactiveSignalLayer from './ui/ReactiveSignalLayer';
+import SystemPulseOverlay from './ui/SystemPulseOverlay';
 
 interface ContextRegistryItem {
   id: string;
@@ -583,6 +585,7 @@ export default function JarvisApp() {
   // ── ACTION-A.1: Predictive Action Cards ──
   const [predictedActions, setPredictedActions] = useState<PredictiveAction[]>([]);
   const [actionStatusMessage, setActionStatusMessage] = useState('');
+  const [reactionPulse, setReactionPulse] = useState(false);
   // ── SSoT: 스마트스토어 데이터 캐시 (5분 유효) ──
   const ssCountsCacheRef = useRef<{ data: any; fetchedAt: number } | null>(null);
   const lastClapActivateAtRef = useRef<number>(0);
@@ -4822,6 +4825,11 @@ G. Review Objection: 작다/비싸다/무르다/배송 손상/맛 기대와 다�
       // ACTION-A.1: 음성 경로에서도 Predictive Actions 업데이트
       setPredictedActions(getPredictiveActions(voiceScene, transcript));
       setActionStatusMessage('');
+      // UI-V3.2: Reactive Intelligence Signal
+      if (voiceScene !== 'home' && voiceScene !== 'standby') {
+        setReactionPulse(true);
+        setTimeout(() => setReactionPulse(false), 2000);
+      }
     }
 
     // 캡차/2단계 인증 입력 대기 중이면 인증번호 전달
@@ -4908,6 +4916,11 @@ G. Review Objection: 작다/비싸다/무르다/배송 손상/맛 기대와 다�
     // ACTION-A.1: scene 변경 시 Predictive Actions 업데이트
     setPredictedActions(getPredictiveActions(nextScene, text));
     setActionStatusMessage('');
+    // UI-V3.2: Reactive Intelligence Signal
+    if (nextScene !== 'home' && nextScene !== 'standby') {
+      setReactionPulse(true);
+      setTimeout(() => setReactionPulse(false), 2000);
+    }
 
     // 캡차/2단계 인증 입력 대기 중이면 인증번호 전달
     if (verificationResolveRef.current) {
@@ -5933,6 +5946,10 @@ G. Review Objection: 작다/비싸다/무르다/배송 손상/맛 기대와 다�
 
       {/* ── UI-V2 Cinematic Layer (Z-depth + Ambient Motion) ── */}
       <CinematicLayer />
+
+      {/* ── UI-V3.2 Reactive Intelligence Layer ── */}
+      <ReactiveSignalLayer scene={activeScene} reactionPulse={reactionPulse} jarvisState={state as string} />
+      <SystemPulseOverlay scene={activeScene} jarvisState={state as string} />
 
       {/* ── Three.js 파티클 배경 ── */}
       <SparkleParticles state={state} audioLevel={micLevel} speakingLevel={speakingLevel} clapBurst={clapBurst} freqData={micFreqData ?? undefined} />

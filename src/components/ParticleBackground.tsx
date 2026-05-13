@@ -118,7 +118,7 @@ export default function ParticleBackground({ isActive }: { isActive: boolean }) 
 
       // ── 파티클 ──
       particlesRef.current = particlesRef.current.filter(p => p.life < p.maxLife);
-      const targetCount = active ? 130 : 80;
+      const targetCount = active ? 100 : 60; /* UI-V3.2: Particle Rebalance */
       while (particlesRef.current.length < targetCount) {
         particlesRef.current.push(createParticle());
       }

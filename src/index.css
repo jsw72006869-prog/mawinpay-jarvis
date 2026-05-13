@@ -7346,3 +7346,272 @@ html, body {
     transition: none !important;
   }
 }
+
+/* ══════════════════════════════════════════════════════════════
+   UI-V3.2 Reactive Intelligence Layer
+   "살아있는 자비스" 반응 시스템 CSS
+   ══════════════════════════════════════════════════════════════ */
+
+/* ── A. Reactive Intelligence Signal ── */
+.v32-reactive-layer { transition: opacity .3s ease; }
+.v32-signal-flash {
+  position: absolute; inset: 0;
+  transition: opacity .6s ease;
+  pointer-events: none;
+}
+.v32-pulse-active .v32-signal-flash {
+  animation: v32SignalFlash 1.8s ease-out forwards;
+}
+@keyframes v32SignalFlash {
+  0%   { opacity: 0; }
+  15%  { opacity: 1; }
+  100% { opacity: 0; }
+}
+
+/* ── B. Command Wave — 중앙 파동 링 ── */
+.v32-command-wave-container {
+  position: absolute;
+  top: 50%; left: 50%;
+  transform: translate(-50%, -50%);
+  width: 0; height: 0;
+}
+.v32-command-wave-ring {
+  position: absolute;
+  top: 50%; left: 50%;
+  width: 40px; height: 40px;
+  margin: -20px 0 0 -20px;
+  border: 1px solid;
+  border-radius: 50%;
+  opacity: 0;
+  animation: v32WaveExpand 1.5s ease-out forwards;
+}
+@keyframes v32WaveExpand {
+  0%   { width: 40px; height: 40px; margin: -20px 0 0 -20px; opacity: 0.6; }
+  100% { width: 600px; height: 600px; margin: -300px 0 0 -300px; opacity: 0; }
+}
+
+/* ── C. Neural Connection System ── */
+.v32-neural-connection {
+  position: fixed;
+  right: 20px; top: 50%;
+  transform: translateY(-50%);
+  display: flex; flex-direction: column;
+  gap: 0; z-index: 6;
+  opacity: 0;
+  animation: v32NeuralFadeIn .8s ease .3s forwards;
+}
+@keyframes v32NeuralFadeIn {
+  to { opacity: 1; }
+}
+.v32-neural-node {
+  display: flex; align-items: center; gap: 8px;
+  padding: 6px 12px;
+  font-family: 'Orbitron', monospace;
+  font-size: 0.55rem;
+  letter-spacing: 0.12em;
+  opacity: 0;
+  animation: v32NodeSlideIn .5s ease forwards;
+  position: relative;
+}
+@keyframes v32NodeSlideIn {
+  from { opacity: 0; transform: translateX(20px); }
+  to   { opacity: 0.7; transform: translateX(0); }
+}
+.v32-neural-dot {
+  width: 5px; height: 5px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  animation: v32DotPulse 2s ease-in-out infinite;
+}
+@keyframes v32DotPulse {
+  0%, 100% { opacity: 0.5; transform: scale(1); }
+  50%      { opacity: 1; transform: scale(1.4); }
+}
+.v32-neural-label {
+  white-space: nowrap;
+}
+.v32-neural-line {
+  position: absolute;
+  left: 14px; top: 100%;
+  width: 1px; height: 16px;
+}
+
+/* ── D. Smart HUD Reaction — 좌측 패널 반응 ── */
+.v32-pulse-active .jarvis-task-execution,
+.v32-pulse-active .jarvis-predicted-actions-panel {
+  animation: v32HudPulse 1.2s ease;
+}
+@keyframes v32HudPulse {
+  0%   { box-shadow: none; }
+  30%  { box-shadow: inset 0 0 20px rgba(0,245,255,0.08); }
+  100% { box-shadow: none; }
+}
+
+/* ── F. Floating Panel Physics — 미세 움직임 ── */
+.jarvis-scene-panel,
+.jarvis-predicted-actions-panel,
+.jarvis-approval-gate-card {
+  animation: v32FloatBreath 6s ease-in-out infinite;
+}
+@keyframes v32FloatBreath {
+  0%, 100% { transform: translateY(0); }
+  50%      { transform: translateY(-2px); }
+}
+/* ResultDeck은 더 느리게 */
+.jarvis-result-deck {
+  animation: v32FloatBreathSlow 8s ease-in-out infinite;
+}
+@keyframes v32FloatBreathSlow {
+  0%, 100% { transform: translateY(0); }
+  50%      { transform: translateY(-1.5px); }
+}
+
+/* ── G. Approval Gate 긴장감 강화 ── */
+.v32-reactive-layer[data-scene="approval_gate"] {
+  background: linear-gradient(180deg, transparent 0%, rgba(255,23,68,0.02) 100%);
+}
+.v32-reactive-layer[data-scene="approval_gate"] .v32-signal-flash {
+  background: radial-gradient(ellipse at center, rgba(255,68,68,0.06) 0%, transparent 70%) !important;
+}
+/* Approval Gate — security scan beam */
+.v32-reactive-layer[data-scene="approval_gate"]::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: repeating-linear-gradient(
+    0deg,
+    transparent 0px,
+    transparent 3px,
+    rgba(255,68,68,0.015) 3px,
+    rgba(255,68,68,0.015) 4px
+  );
+  animation: v32SecurityScan 4s linear infinite;
+  pointer-events: none;
+}
+@keyframes v32SecurityScan {
+  0%   { transform: translateY(0); }
+  100% { transform: translateY(4px); }
+}
+/* Approval Gate — locked signal pulse */
+.v32-reactive-layer[data-scene="approval_gate"] .v32-command-wave-ring {
+  border-color: #FF4444 !important;
+}
+
+/* ── H. Keyword Radar 강화 ── */
+.v32-reactive-layer[data-scene="keyword_radar"]::after {
+  content: '';
+  position: absolute;
+  top: 50%; left: 50%;
+  width: 300px; height: 300px;
+  margin: -150px 0 0 -150px;
+  border: 1px solid rgba(155,142,196,0.08);
+  border-radius: 50%;
+  animation: v32RadarSweep 4s linear infinite;
+  pointer-events: none;
+}
+@keyframes v32RadarSweep {
+  0%   { transform: rotate(0deg); border-color: rgba(155,142,196,0.08); }
+  50%  { border-color: rgba(155,142,196,0.15); }
+  100% { transform: rotate(360deg); border-color: rgba(155,142,196,0.08); }
+}
+/* Radar sweep line */
+.v32-reactive-layer[data-scene="keyword_radar"] .v32-signal-flash {
+  background: conic-gradient(from 0deg at 50% 50%, transparent 0deg, rgba(155,142,196,0.04) 30deg, transparent 60deg) !important;
+  animation: v32RadarSweepLine 4s linear infinite !important;
+}
+@keyframes v32RadarSweepLine {
+  0%   { transform: rotate(0deg); opacity: 1; }
+  100% { transform: rotate(360deg); opacity: 1; }
+}
+
+/* ── I. Growth Link Motion ── */
+.v32-reactive-layer[data-scene="growth_link"]::after {
+  content: '';
+  position: absolute;
+  top: 50%; left: 20%;
+  width: 60%; height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(255,152,0,0.15), rgba(255,152,0,0.3), rgba(255,152,0,0.15), transparent);
+  animation: v32RoutePulse 3s ease-in-out infinite;
+  pointer-events: none;
+}
+@keyframes v32RoutePulse {
+  0%, 100% { opacity: 0.3; transform: scaleX(0.8); }
+  50%      { opacity: 1; transform: scaleX(1); }
+}
+/* Path transfer dots */
+.v32-reactive-layer[data-scene="growth_link"] .v32-signal-dots .v32-signal-dot {
+  animation: v32PathTransfer 2s ease-in-out infinite !important;
+}
+@keyframes v32PathTransfer {
+  0%   { transform: translateX(-20px); opacity: 0; }
+  50%  { opacity: 1; }
+  100% { transform: translateX(20px); opacity: 0; }
+}
+
+/* ── J. CS Copilot 강화 ── */
+.v32-reactive-layer[data-scene="cs_copilot"]::after {
+  content: '';
+  position: absolute;
+  bottom: 30%; left: 50%;
+  width: 200px; height: 1px;
+  margin-left: -100px;
+  background: linear-gradient(90deg, transparent, rgba(74,144,226,0.2), transparent);
+  animation: v32InquiryPulse 2.5s ease-in-out infinite;
+  pointer-events: none;
+}
+@keyframes v32InquiryPulse {
+  0%, 100% { opacity: 0.4; width: 200px; margin-left: -100px; }
+  50%      { opacity: 1; width: 280px; margin-left: -140px; }
+}
+
+/* ── Signal Dots (공통) ── */
+.v32-signal-dots {
+  position: absolute; inset: 0;
+  pointer-events: none;
+}
+.v32-signal-dot {
+  position: absolute;
+  width: 2px; height: 2px;
+  border-radius: 50%;
+  opacity: 0;
+  animation: v32SignalDotFloat 4s ease-in-out infinite;
+}
+@keyframes v32SignalDotFloat {
+  0%   { opacity: 0; transform: translateY(0) scale(1); }
+  30%  { opacity: 0.6; }
+  70%  { opacity: 0.3; }
+  100% { opacity: 0; transform: translateY(-30px) scale(0.5); }
+}
+
+/* ── K. Particle Rebalance — CinematicLayer 입자 조정 ── */
+/* 큰 입자 opacity 감소 */
+.cl-particle {
+  opacity: 0.15 !important;
+}
+.cl-particle.p-0, .cl-particle.p-1, .cl-particle.p-2 {
+  opacity: 0.08 !important;
+}
+/* 중앙 텍스트 영역 간섭 감소 */
+.cl-particles {
+  mask-image: radial-gradient(ellipse 40% 30% at 50% 45%, transparent 0%, black 100%);
+  -webkit-mask-image: radial-gradient(ellipse 40% 30% at 50% 45%, transparent 0%, black 100%);
+}
+
+/* ── V3.2 Reduced Motion 대응 ── */
+@media (prefers-reduced-motion: reduce) {
+  .v32-command-wave-ring,
+  .v32-signal-flash,
+  .v32-neural-node,
+  .v32-neural-dot,
+  .v32-signal-dot,
+  .jarvis-scene-panel,
+  .jarvis-predicted-actions-panel,
+  .jarvis-approval-gate-card,
+  .jarvis-result-deck,
+  .v32-reactive-layer[data-scene="keyword_radar"]::after,
+  .v32-reactive-layer[data-scene="growth_link"]::after,
+  .v32-reactive-layer[data-scene="cs_copilot"]::after,
+  .v32-reactive-layer[data-scene="approval_gate"]::before {
+    animation: none !important;
+  }
+}
