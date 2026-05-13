@@ -42,6 +42,7 @@ import PredictiveActionPanel from './ui/PredictiveActionPanel';
 import ApprovalGateCard from './ui/ApprovalGateCard';
 import ReactiveSignalLayer from './ui/ReactiveSignalLayer';
 import SystemPulseOverlay from './ui/SystemPulseOverlay';
+import SmartstoreCommandCenter from './ui/SmartstoreCommandCenter';
 
 interface ContextRegistryItem {
   id: string;
@@ -6448,6 +6449,11 @@ G. Review Objection: 작다/비싸다/무르다/배송 손상/맛 기대와 다�
           setPredictedActions([]);
           setActionStatusMessage('');
         }}
+      />
+
+      {/* ── UI-V3: Smartstore Command Center ── */}
+      <SmartstoreCommandCenter
+        visible={activeScene === 'smartstore_brief' && !resultDeckVisible && !copyFocusMode}
       />
 
       {/* ── ActionCard (Phase UI-D: 우측 중단 고정) ── */}
