@@ -1,15 +1,26 @@
 import React, { useState } from 'react';
 
-/* ── SEO-K.1 Keyword Radar Panel ──
-   상품 링크 입력 → 키워드 순위 측정 → 결과 표시
+/* ── SEO-K.1.1 Keyword Radar Panel ──
+   상품 링크 입력 → productId 추출 + nl-query 힌트 → 키워드 순위 측정 → 결과 표시
    가짜 순위 표시 금지 / 첫 측정 전일 대비 없음 */
 
 interface KeywordResult {
   keyword: string;
   rank: number | null;
   status: 'found' | 'not_found' | 'error';
+  rankType?: 'organic_or_mixed' | 'unknown';
   checkedAt: string;
   source: string;
+}
+
+interface Diagnostics {
+  productId: string | null;
+  productIdExtracted: boolean;
+  keywordHint: string | null;
+  productNameExtracted: boolean;
+  checkedKeywords: number;
+  maxRank: number;
+  matchStrategy: string;
 }
 
 interface RadarResponse {
@@ -17,6 +28,7 @@ interface RadarResponse {
   productUrl: string;
   productName?: string;
   keywords: KeywordResult[];
+  diagnostics?: Diagnostics;
   message?: string;
 }
 
@@ -44,7 +56,7 @@ export default function KeywordRadarPanel({ onClose }: KeywordRadarPanelProps) {
     setResult(null);
 
     try {
-      const body: any = { productUrl: productUrl.trim() };
+      const body: Record<string, unknown> = { productUrl: productUrl.trim() };
       if (manualKeywords.trim()) {
         body.manualKeywords = manualKeywords
           .split(',')
@@ -70,14 +82,17 @@ export default function KeywordRadarPanel({ onClose }: KeywordRadarPanelProps) {
 
       setState('done');
       setResult(data);
-    } catch (err: any) {
+    } catch (err: unknown) {
       setState('error');
-      setErrorMsg(`네트워크 오류: ${err.message || '연결 실패'}`);
+      const msg = err instanceof Error ? err.message : '연결 실패';
+      setErrorMsg(`네트워크 오류: ${msg}`);
     }
   };
 
   const getRankDisplay = (item: KeywordResult) => {
     if (item.status === 'found' && item.rank !== null) {
+      if (item.rank <= 10) return { text: `${item.rank}위`, className: 'kr-rank-found kr-rank-top10' };
+      if (item.rank <= 30) return { text: `${item.rank}위`, className: 'kr-rank-found kr-rank-top30' };
       return { text: `${item.rank}위`, className: 'kr-rank-found' };
     }
     if (item.status === 'not_found') {
@@ -95,13 +110,20 @@ export default function KeywordRadarPanel({ onClose }: KeywordRadarPanelProps) {
     }
   };
 
+  // productId 마스킹 (앞 4자리만 표시)
+  const maskProductId = (id: string | null | undefined): string => {
+    if (!id) return '미추출';
+    if (id.length <= 4) return id + '...';
+    return id.slice(0, 4) + '...' + id.slice(-2);
+  };
+
   return (
     <div className="kr-panel">
       {/* Header */}
       <div className="kr-header">
         <span className="kr-dot" />
         <span className="kr-title">KEYWORD RADAR</span>
-        <span className="kr-badge">SEO-K.1</span>
+        <span className="kr-badge">SEO-K.1.1</span>
         {onClose && (
           <button className="kr-close" onClick={onClose}>CLOSE</button>
         )}
@@ -110,22 +132,28 @@ export default function KeywordRadarPanel({ onClose }: KeywordRadarPanelProps) {
       {/* Input Section */}
       <div className="kr-input-section">
         <div className="kr-input-group">
-          <label className="kr-label">상품 링크</label>
+          <label className="kr-label">
+            상품 링크
+            <span className="kr-label-hint"> (스마트스토어 상품 URL)</span>
+          </label>
           <input
             type="text"
             className="kr-input"
-            placeholder="https://smartstore.naver.com/.../products/..."
+            placeholder="https://smartstore.naver.com/{스토어}/products/{상품ID}"
             value={productUrl}
             onChange={(e) => setProductUrl(e.target.value)}
             disabled={state === 'loading'}
           />
         </div>
         <div className="kr-input-group">
-          <label className="kr-label">키워드 직접 입력 <span className="kr-optional">(선택)</span></label>
+          <label className="kr-label">
+            키워드 직접 입력
+            <span className="kr-optional"> (선택 — 쉼표 구분, 최대 5개)</span>
+          </label>
           <input
             type="text"
             className="kr-input"
-            placeholder="초당옥수수, 괴산 초당옥수수 (쉼표 구분, 최대 5개)"
+            placeholder="예: 복숭아, 황도복숭아, 딱딱한복숭아"
             value={manualKeywords}
             onChange={(e) => setManualKeywords(e.target.value)}
             disabled={state === 'loading'}
@@ -138,6 +166,11 @@ export default function KeywordRadarPanel({ onClose }: KeywordRadarPanelProps) {
         >
           {state === 'loading' ? '측정 중...' : '순위 측정'}
         </button>
+      </div>
+
+      {/* Measurement Basis Notice */}
+      <div className="kr-basis-notice">
+        측정 기준: 네이버 쇼핑 검색 API (sim 정렬) / 최대 100위 / 광고 포함 혼합 결과
       </div>
 
       {/* Status */}
@@ -166,12 +199,39 @@ export default function KeywordRadarPanel({ onClose }: KeywordRadarPanelProps) {
                 {result.productName || '추출 실패 (수동 키워드 사용)'}
               </span>
             </div>
+            {/* 구현 G: 상품 ID 표시 (마스킹) */}
+            {result.diagnostics && (
+              <div className="kr-product-row">
+                <span className="kr-product-label">상품 ID</span>
+                <span className={`kr-product-value kr-pid ${result.diagnostics.productIdExtracted ? 'kr-pid-ok' : 'kr-pid-fail'}`}>
+                  {result.diagnostics.productIdExtracted
+                    ? `${maskProductId(result.diagnostics.productId)} (추출됨)`
+                    : '미추출 — 순위 측정 불가'}
+                </span>
+              </div>
+            )}
+            {/* 구현 G: nl-query 힌트 표시 */}
+            {result.diagnostics?.keywordHint && (
+              <div className="kr-product-row">
+                <span className="kr-product-label">키워드 힌트</span>
+                <span className="kr-product-value kr-hint">{result.diagnostics.keywordHint}</span>
+              </div>
+            )}
             <div className="kr-product-row">
               <span className="kr-product-label">측정 시각</span>
               <span className="kr-product-value">
                 {result.keywords[0]?.checkedAt ? formatTime(result.keywords[0].checkedAt) : '-'}
               </span>
             </div>
+            {/* 구현 G: 매칭 전략 표시 */}
+            {result.diagnostics?.matchStrategy && (
+              <div className="kr-product-row">
+                <span className="kr-product-label">매칭 방식</span>
+                <span className="kr-product-value kr-match-strategy">
+                  {result.diagnostics.matchStrategy}
+                </span>
+              </div>
+            )}
           </div>
 
           {/* Keyword Results */}
@@ -190,11 +250,16 @@ export default function KeywordRadarPanel({ onClose }: KeywordRadarPanelProps) {
                     {display.text}
                   </span>
                   <span className={`kr-keyword-status kr-status-${item.status}`}>
-                    {item.status === 'found' ? '노출' : item.status === 'not_found' ? '미노출' : '오류'}
+                    {item.status === 'found' ? '노출' : item.status === 'not_found' ? '100위 밖' : '오류'}
                   </span>
                 </div>
               );
             })}
+          </div>
+
+          {/* Rank Type Notice */}
+          <div className="kr-rank-type-notice">
+            ※ 순위 기준: 네이버 쇼핑 검색 API (광고 포함 혼합 결과 / organic_or_mixed)
           </div>
 
           {/* First Measurement Notice */}
@@ -222,6 +287,14 @@ export default function KeywordRadarPanel({ onClose }: KeywordRadarPanelProps) {
               </div>
             </div>
           )}
+        </div>
+      )}
+
+      {/* productId 미추출 경고 */}
+      {result && result.diagnostics && !result.diagnostics.productIdExtracted && result.keywords.length === 0 && (
+        <div className="kr-status kr-status-error">
+          상품 ID를 추출할 수 없습니다.<br />
+          URL 형식: smartstore.naver.com/{'{스토어}'}/products/{'{숫자ID}'}
         </div>
       )}
     </div>
