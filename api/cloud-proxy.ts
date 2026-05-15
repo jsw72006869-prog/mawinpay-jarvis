@@ -1904,6 +1904,9 @@ async function sheetsRead(tab: string, range?: string): Promise<any> {
   return data;
 }
 
+// OUTREACH-SHEET.1B: 신규 CRM 탭 (기존 influencer_candidates는 legacy 보존)
+const OUTREACH_CRM_TAB = 'influencer_candidates_v2';
+
 const SHEET_HEADERS: Record<string, string[]> = {
   jarvis_records: ['recordId','createdAt','type','title','summary','sourceCommand','status','tags','linkedSheetTab','createdBy','safePreview'],
   briefings: ['briefingId','createdAt','todayOrders','currentNewOrders','pendingShipping','preShipTotal','todaySales','recommendedActions','briefingText'],
@@ -1911,6 +1914,7 @@ const SHEET_HEADERS: Record<string, string[]> = {
   growth_campaigns: ['campaignId','createdAt','product','source','targetUrl','directUrl','couponCode','campaignMemo','status'],
   purchase_order_drafts: ['draftId','createdAt','supplier','productSummary','totalQuantity','totalAmountIfAvailable','status','safePreview'],
   influencer_candidates: ['influencer_id','platform','channel_name','handle','profile_url','contact_email','contact_url','email_status','category_tags','source_keyword','source_product','followers_or_subscribers','avg_views','fit_score','fit_reason','outreach_status','last_contacted_at','reply_status','next_action','duplicate_hash','created_at','updated_at','notes'],
+  influencer_candidates_v2: ['influencer_id','platform','channel_name','handle','profile_url','contact_email','contact_url','email_status','category_tags','source_keyword','source_product','followers_or_subscribers','avg_views','fit_score','fit_reason','outreach_status','last_contacted_at','reply_status','next_action','duplicate_hash','created_at','updated_at','notes'],
   market_price_checks: ['checkId','createdAt','productName','rawMaterialCost','currentPrice','shippingCost','packagingCost','platformFeeRate','otherCosts','competitorPrices','competitorMinPrice','competitorAvgPrice','netSalesAmount','estimatedMargin','estimatedMarginRate','jarvisDecision','recommendedAction','sourceCommand'],
 };
 
@@ -2023,8 +2027,8 @@ async function handleWorkspaceSave(params: any) {
         data.recommendedAction || '', sourceCommand || ''
       ]]);
     } else if (type === 'influencer_candidate' && data) {
-      await ensureHeaders('influencer_candidates');
-      await sheetsAppend('influencer_candidates', [[
+      await ensureHeaders(OUTREACH_CRM_TAB);
+      await sheetsAppend(OUTREACH_CRM_TAB, [[
         recordId, now, data.platform || '', data.keyword || '',
         data.name || '', data.channelOrBlogUrl || '',
         data.recentContentTitle || '', data.recentContentUrl || '',
@@ -2048,7 +2052,7 @@ async function handleWorkspaceSave(params: any) {
       type === 'growth_campaign' ? 'growth_campaigns' :
       type === 'purchase_order_draft' ? 'purchase_order_drafts' :
       type === 'market_price_check' ? 'market_price_checks' :
-      type === 'influencer_candidate' ? 'influencer_candidates' : 'jarvis_records',
+      type === 'influencer_candidate' ? OUTREACH_CRM_TAB : 'jarvis_records',
       'jarvis', summary.slice(0, 100)
     ]]);
 
@@ -2620,9 +2624,9 @@ async function handleOutreachSaveCandidates(params: any) {
     return { success: false, error: 'Google Sheets not configured' };
   }
   try {
-    await ensureHeaders('influencer_candidates');
-    // 기존 시트 읽어서 duplicate_hash 목록 추출
-    const existing = await sheetsRead('influencer_candidates');
+    await ensureHeaders(OUTREACH_CRM_TAB);
+    // v2 탭 읽어서 duplicate_hash 목록 추출
+    const existing = await sheetsRead(OUTREACH_CRM_TAB);
     const existingRows: string[][] = existing.values || [];
     const headers: string[] = existingRows[0] || [];
     const hashColIdx = headers.indexOf('duplicate_hash');
@@ -2693,7 +2697,7 @@ async function handleOutreachSaveCandidates(params: any) {
         const updatedAtIdx = headers.indexOf('updated_at');
         if (updatedAtIdx >= 0) {
           const colLetter = String.fromCharCode(65 + updatedAtIdx);
-          const rangeStr = encodeURIComponent(`influencer_candidates!${colLetter}${rowNum}`);
+          const rangeStr = encodeURIComponent(`${OUTREACH_CRM_TAB}!${colLetter}${rowNum}`);
           const url = `https://sheets.googleapis.com/v4/spreadsheets/${WORKSPACE_SHEET_ID}/values/${rangeStr}?valueInputOption=RAW`;
           await fetch(url, {
             method: 'PUT',
@@ -2703,7 +2707,7 @@ async function handleOutreachSaveCandidates(params: any) {
         }
         updated++;
       } else {
-        await sheetsAppend('influencer_candidates', [row]);
+        await sheetsAppend(OUTREACH_CRM_TAB, [row]);
         saved++;
       }
     }
@@ -2721,8 +2725,8 @@ async function handleOutreachList(params: any) {
     return { success: false, error: 'Google Sheets not configured' };
   }
   try {
-    await ensureHeaders('influencer_candidates');
-    const result = await sheetsRead('influencer_candidates');
+    await ensureHeaders(OUTREACH_CRM_TAB);
+    const result = await sheetsRead(OUTREACH_CRM_TAB);
     const rows = result.values || [];
     if (rows.length < 2) return { success: true, candidates: [], total: 0 };
     const headers = rows[0];
