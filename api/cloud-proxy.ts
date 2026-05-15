@@ -275,18 +275,19 @@ async function getSmartstoreStatusCounts(queryDays: number = 30) {
     return _ssCountsCache.data;
   }
 
-  // SMARTSTORE-ORDERS-FIX.3: 4개 상태 완전 병렬 실행 (timeout 해결)
-  // 네이버 API 24시간 제한으로 1일 루프 불가피하나, 4개 상태를 동시에 병렬 실행하여 최대 소요시간 = 가장 긴 상태 1개 시간
-  // PAYED: 14일 (14번 호출) - 신규주문/배송준비는 대부분 최근 14일 이내
-  // DELIVERING: 7일 (7번 호출) - 배송중은 대부분 최근 7일 내 결제
-  // DELIVERED: 14일 (14번 호출) - 배송완료는 최근 2주 내 결제
-  // PURCHASE_DECIDED: 30일 (30번 호출) - 구매확정은 최근 30일
-  const PAYED_RANGE_DAYS = Math.min(queryDays, 14); // 신규주문/배송준비: 최근 14일
-  const SHIPPING_RANGE_DAYS = 7;   // 배송중: 최근 7일 결제 기준
-  const DELIVERED_RANGE_DAYS = 14; // 배송완료: 최근 14일 결제 기준
-  const DECIDED_RANGE_DAYS = 30;   // 구매확정: 최근 30일 결제 기준
+  // SMARTSTORE-ORDERS-FIX.3B: QuotaGuard 프록시 지연 고려, 날짜 범위 최소화
+  // 네이버 API 24시간 제한으로 1일 루프 불가피, QuotaGuard 경유 시 각 호출 ~2초
+  // 4개 병렬 실행 기준: 최대 소요시간 = DECIDED 14일 = 3 배치 × ~3초 = ~9초 목표
+  // PAYED: 7일 - 신규주문/배송준비 (대부분 최근 7일 이내)
+  // DELIVERING: 3일 - 배송중 (대부분 최근 3일 내 발송)
+  // DELIVERED: 7일 - 배송완료 (최근 1주 내 배송완료)
+  // PURCHASE_DECIDED: 14일 - 구매확정 (최근 2주)
+  const PAYED_RANGE_DAYS = Math.min(queryDays, 7); // 신규주문/배송준비: 최근 7일
+  const SHIPPING_RANGE_DAYS = 3;   // 배송중: 최근 3일 결제 기준
+  const DELIVERED_RANGE_DAYS = 7;  // 배송완료: 최근 7일 결제 기준
+  const DECIDED_RANGE_DAYS = 14;   // 구매확정: 최근 14일 결제 기준
 
-  // 4개 상태 완전 병렬 실행 (최대 소요시간 = DECIDED 30일 = 10 배치 × ~1.5초 = ~15초)
+  // 4개 상태 완전 병렬 실행 (최대 소요시간 = DECIDED 14일 = 3 배치 × ~3초 = ~9초)
   const [payedOrders, shippingOrders, deliveredOrders, decidedOrders] = await Promise.all([
     fetchOrders(['PAYED'], PAYED_RANGE_DAYS),
     fetchOrders(['DELIVERING'], SHIPPING_RANGE_DAYS),
