@@ -8542,3 +8542,209 @@ html, body {
 .kr-rank-top10 { color: #00FF88; font-weight: 700; }
 .kr-rank-top30 { color: #00CFFF; }
 /* ── end SEO-K.1.2 ── */
+
+/* ══════════════════════════════════════════════════════════════
+   CHAT-INPUT-D.1: Command Dock (bottom-center)
+   z-index 레이어: ApprovalGateCard(60) > PredictiveActionPanel(55) > CommandDock(52) > DUAL ARM(45)
+   ══════════════════════════════════════════════════════════════ */
+
+/* OFF 상태: pill 버튼 */
+.cmd-dock-pill {
+  position: fixed;
+  bottom: 22px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 52;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 7px 18px;
+  border-radius: 999px;
+  border: 1px solid rgba(0, 229, 255, 0.22);
+  background: rgba(3, 10, 22, 0.68);
+  color: rgba(0, 229, 255, 0.75);
+  font-family: 'Orbitron', monospace;
+  font-size: 0.55rem;
+  font-weight: 700;
+  letter-spacing: 0.18em;
+  cursor: pointer;
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  box-shadow: 0 0 16px rgba(0, 229, 255, 0.07);
+  transition: border-color 0.2s, box-shadow 0.2s, color 0.2s;
+  pointer-events: auto;
+  white-space: nowrap;
+}
+.cmd-dock-pill:hover {
+  border-color: rgba(0, 229, 255, 0.45);
+  box-shadow: 0 0 28px rgba(0, 229, 255, 0.18);
+  color: rgba(0, 229, 255, 1);
+}
+
+/* ON 상태: Command Input Dock 래퍼 */
+.cmd-dock-wrapper {
+  position: fixed;
+  bottom: 22px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 52;
+  width: min(640px, calc(100vw - 24px));
+  background: rgba(2, 8, 18, 0.94);
+  border: 1px solid rgba(0, 229, 255, 0.22);
+  border-radius: 10px;
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  box-shadow: 0 0 36px rgba(0, 229, 255, 0.1), 0 8px 32px rgba(0, 0, 0, 0.5);
+  padding: 14px 16px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  pointer-events: auto;
+}
+
+/* 헤더 행 */
+.cmd-dock-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.cmd-dock-label {
+  font-family: 'Orbitron', monospace;
+  font-size: 0.42rem;
+  font-weight: 700;
+  letter-spacing: 0.32em;
+  color: rgba(0, 229, 255, 0.65);
+}
+.cmd-dock-close {
+  width: 26px;
+  height: 26px;
+  border-radius: 4px;
+  border: 1px solid rgba(200, 200, 220, 0.18);
+  background: rgba(255, 255, 255, 0.04);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
+  padding: 0;
+}
+.cmd-dock-close:hover {
+  border-color: rgba(200, 200, 220, 0.45);
+  background: rgba(255, 255, 255, 0.09);
+}
+
+/* 입력 행 */
+.cmd-dock-input-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid rgba(0, 229, 255, 0.28);
+  border-radius: 6px;
+  background: rgba(0, 180, 255, 0.04);
+  box-shadow: 0 0 14px rgba(0, 229, 255, 0.08), inset 0 0 8px rgba(0, 0, 0, 0.25);
+  padding: 0 12px 0 0;
+  position: relative;
+  overflow: hidden;
+}
+.cmd-dock-scan-bar {
+  width: 2px;
+  height: 60%;
+  background: rgba(0, 229, 255, 0.65);
+  border-radius: 1px;
+  flex-shrink: 0;
+  margin-left: 2px;
+}
+.cmd-dock-input {
+  flex: 1;
+  background: transparent;
+  border: none;
+  outline: none;
+  color: #E2E8F0;
+  font-family: 'Orbitron', monospace;
+  font-size: clamp(0.6rem, 1.5vw, 0.82rem);
+  letter-spacing: 0.04em;
+  padding: 13px 8px;
+  caret-color: rgba(0, 229, 255, 0.9);
+  -webkit-user-select: text;
+  user-select: text;
+}
+.cmd-dock-input::placeholder {
+  color: rgba(180, 200, 220, 0.35);
+  font-family: 'Orbitron', monospace;
+}
+
+/* 제출 버튼 */
+.cmd-dock-send {
+  width: 38px;
+  height: 38px;
+  border-radius: 5px;
+  border: 1px solid rgba(0, 229, 255, 0.28);
+  background: rgba(0, 180, 255, 0.05);
+  color: rgba(0, 229, 255, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: all 0.18s;
+  padding: 0;
+}
+.cmd-dock-send.active {
+  border-color: rgba(0, 229, 255, 0.65);
+  background: rgba(0, 180, 255, 0.15);
+  color: rgba(0, 229, 255, 0.95);
+  box-shadow: 0 0 12px rgba(0, 229, 255, 0.25);
+}
+.cmd-dock-send:hover.active {
+  box-shadow: 0 0 20px rgba(0, 229, 255, 0.4);
+}
+
+/* 단축키 힌트 */
+.cmd-dock-hints {
+  display: flex;
+  gap: 14px;
+  align-items: center;
+}
+.cmd-dock-hint-item {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+.cmd-dock-hint-key {
+  font-family: 'Orbitron', monospace;
+  font-size: 0.34rem;
+  color: rgba(0, 229, 255, 0.6);
+  border: 1px solid rgba(0, 229, 255, 0.3);
+  padding: 1px 5px;
+  border-radius: 2px;
+  letter-spacing: 0.08em;
+}
+.cmd-dock-hint-desc {
+  font-size: 0.36rem;
+  color: rgba(180, 200, 220, 0.45);
+  font-family: monospace;
+  letter-spacing: 0.02em;
+}
+
+/* 모바일 대응 */
+@media (max-width: 768px) {
+  .cmd-dock-pill {
+    bottom: 14px;
+    font-size: 0.5rem;
+    padding: 6px 14px;
+  }
+  .cmd-dock-wrapper {
+    bottom: 14px;
+    width: calc(100vw - 24px);
+    border-radius: 8px;
+    padding: 12px 12px 10px;
+  }
+  .cmd-dock-input {
+    font-size: 0.7rem;
+    padding: 11px 6px;
+  }
+  .cmd-dock-hints {
+    display: none; /* 모바일에서 힌트 숨김 */
+  }
+}
+/* ── end CHAT-INPUT-D.1 ── */

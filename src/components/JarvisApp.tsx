@@ -6547,191 +6547,110 @@ G. Review Objection: 작다/비싸다/무르다/배송 손상/맛 기대와 다�
         )}
       </AnimatePresence>
 
-      {/* ── 타이핑 입력창 ── */}
+      {/* ── CHAT-INPUT-D.1: Command Dock (bottom-center) ── */}
+      {/* OFF 상태: 하단 중앙 pill 버튼 */}
       <AnimatePresence>
-        {textInputMode && (
+        {!textInputMode && (
           <motion.div
-            initial={{ opacity: 0, y: 40 }}
+            key="cmd-pill"
+            initial={{ opacity: 0, y: 12 }}
             animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: 40 }}
-            transition={{ duration: 0.25 }}
-            style={{
-              position: 'fixed', bottom: 0, left: 0, right: 0,
-              zIndex: 300,
-              padding: '0 0 0 0',
-              display: 'flex', flexDirection: 'column', alignItems: 'center',
+            exit={{ opacity: 0, y: 12 }}
+            transition={{ delay: 2, duration: 0.5 }}
+            onClick={e => {
+              e.stopPropagation();
+              setTextInputMode(true);
+              setTimeout(() => textInputRef.current?.focus(), 80);
             }}
-            onClick={e => e.stopPropagation()}
+            className="cmd-dock-pill"
           >
-            {/* 배경 블러 */}
-            <div style={{
-              position: 'absolute', inset: 0,
-              background: 'linear-gradient(to top, rgba(0,8,20,0.97) 0%, rgba(0,8,20,0.85) 60%, transparent 100%)',
-              pointerEvents: 'none',
-            }} />
-            <div style={{
-              position: 'relative', zIndex: 1,
-              width: '100%', maxWidth: 680,
-              padding: '20px 24px 28px',
-              display: 'flex', flexDirection: 'column', gap: 10,
-            }}>
-              {/* 입력창 라벨 */}
-              <div style={{
-                fontFamily: 'Orbitron, monospace',
-                color: THEME.blueLight,
-                fontSize: '0.42rem',
-                letterSpacing: '0.35em',
-                opacity: 0.7,
-                marginBottom: 2,
-              }}>
-                TEXT INPUT MODE
-              </div>
-              {/* 입력줄 */}
-              <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
-                <div style={{
-                  flex: 1,
-                  border: `1px solid ${THEME.blueLight}55`,
-                  borderRadius: 4,
-                  background: 'rgba(0, 180, 255, 0.04)',
-                  boxShadow: `0 0 16px ${THEME.blueLight}18, inset 0 0 8px rgba(0,0,0,0.3)`,
-                  display: 'flex', alignItems: 'center',
-                  padding: '0 14px',
-                  position: 'relative',
-                }}>
-                  {/* 주사 선 장식 */}
-                  <div style={{
-                    position: 'absolute', left: 0, top: '50%', transform: 'translateY(-50%)',
-                    width: 2, height: '60%', background: THEME.blueLight,
-                    opacity: 0.6, borderRadius: 1,
-                  }} />
-                  <input
-                    ref={textInputRef}
-                    type="text"
-                    value={textInputValue}
-                    onChange={e => setTextInputValue(e.target.value)}
-                    onKeyDown={e => {
-                      if (e.key === 'Enter' && textInputValue.trim()) {
-                        handleTextSubmit(textInputValue.trim());
-                      }
-                      if (e.key === 'Escape') {
-                        setTextInputMode(false);
-                        setTextInputValue('');
-                      }
-                    }}
-                    placeholder="명령을 입력하세요... (Enter 제출, Esc 취소)"
-                    autoFocus
-                    style={{
-                      flex: 1,
-                      background: 'transparent',
-                      border: 'none',
-                      outline: 'none',
-                      color: THEME.text,
-                      fontFamily: 'Orbitron, monospace',
-                      fontSize: 'clamp(0.55rem, 1.4vw, 0.8rem)',
-                      letterSpacing: '0.05em',
-                      padding: '14px 0',
-                      caretColor: THEME.blueLight,
-                    }}
-                  />
-                </div>
-                {/* 제출 버튼 */}
-                <motion.div
-                  whileHover={{ scale: 1.05 }}
-                  whileTap={{ scale: 0.95 }}
-                  onClick={() => textInputValue.trim() && handleTextSubmit(textInputValue.trim())}
-                  style={{
-                    width: 44, height: 44,
-                    borderRadius: 4,
-                    border: `1px solid ${THEME.blueLight}66`,
-                    background: textInputValue.trim() ? `rgba(0,180,255,0.15)` : 'rgba(0,180,255,0.04)',
-                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    cursor: 'pointer',
-                    boxShadow: textInputValue.trim() ? `0 0 12px ${THEME.blueLight}30` : 'none',
-                    transition: 'all 0.2s',
-                    flexShrink: 0,
-                  }}
-                >
-                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
-                    <path d="M22 2L11 13" stroke={THEME.blueLight} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                    <path d="M22 2L15 22L11 13L2 9L22 2Z" stroke={THEME.blueLight} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                  </svg>
-                </motion.div>
-                {/* 닫기 버튼 */}
-                <motion.div
-                  whileHover={{ scale: 1.05 }}
-                  whileTap={{ scale: 0.95 }}
-                  onClick={() => { setTextInputMode(false); setTextInputValue(''); }}
-                  style={{
-                    width: 44, height: 44,
-                    borderRadius: 4,
-                    border: `1px solid ${THEME.textDim}33`,
-                    background: 'rgba(255,255,255,0.03)',
-                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    cursor: 'pointer',
-                    flexShrink: 0,
-                  }}
-                >
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
-                    <path d="M18 6L6 18M6 6L18 18" stroke={THEME.textDim} strokeWidth="2" strokeLinecap="round"/>
-                  </svg>
-                </motion.div>
-              </div>
-              {/* 단축키 안내 */}
-              <div style={{ display: 'flex', gap: 16 }}>
-                {[['Enter', '제출'], ['Esc', '닫기'], ['Ctrl+K', '음성모드']].map(([key, desc]) => (
-                  <div key={key} style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
-                    <span style={{
-                      fontFamily: 'Orbitron, monospace',
-                      color: THEME.blueLight,
-                      fontSize: '0.35rem',
-                      letterSpacing: '0.1em',
-                      border: `1px solid ${THEME.blueLight}44`,
-                      padding: '1px 5px',
-                      borderRadius: 2,
-                      opacity: 0.7,
-                    }}>{key}</span>
-                    <span style={{ color: THEME.textDim, fontSize: '0.38rem', fontFamily: 'monospace', opacity: 0.6 }}>{desc}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" style={{ flexShrink: 0 }}>
+              <rect x="2" y="5" width="20" height="14" rx="2" stroke="rgba(0,229,255,0.7)" strokeWidth="1.8"/>
+              <path d="M6 9h1M9 9h1M12 9h1M15 9h1M18 9h1M6 12h1M9 12h1M12 12h1M15 12h1M6 15h6" stroke="rgba(0,229,255,0.7)" strokeWidth="1.8" strokeLinecap="round"/>
+              <path d="M15 15h3" stroke="rgba(0,229,255,0.7)" strokeWidth="1.8" strokeLinecap="round"/>
+            </svg>
+            <span>Ctrl+K · 타이핑 모드</span>
           </motion.div>
         )}
       </AnimatePresence>
 
-      {/* ── 타이핑 모드 토글 버튼 (좌측 하단) ── */}
-      <motion.div
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        transition={{ delay: 2, duration: 0.8 }}
-        onClick={e => {
-          e.stopPropagation();
-          setTextInputMode(prev => !prev);
-          if (!textInputMode) {
-            setTimeout(() => textInputRef.current?.focus(), 80);
-          }
-        }}
-        style={{
-          position: 'fixed', bottom: 20, left: 180, /* DUAL-MONITOR-A.1: DUAL ARM 패널(~160px) 오른쪽 */
-          zIndex: 52,
-          width: 42, height: 42,
-          borderRadius: 4,
-          border: `1px solid ${textInputMode ? THEME.blueLight : THEME.textDim}55`,
-          background: textInputMode ? `rgba(0,180,255,0.12)` : 'rgba(255,255,255,0.04)',
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-          cursor: 'pointer',
-          boxShadow: textInputMode ? `0 0 14px ${THEME.blueLight}30` : 'none',
-          transition: 'all 0.25s',
-        }}
-        title="타이핑 모드 (Ctrl+K)"
-      >
-        {/* 키보드 아이콘 */}
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
-          <rect x="2" y="5" width="20" height="14" rx="2" stroke={textInputMode ? THEME.blueLight : THEME.textDim} strokeWidth="1.5" opacity="0.8"/>
-          <path d="M6 9h1M9 9h1M12 9h1M15 9h1M18 9h1M6 12h1M9 12h1M12 12h1M15 12h1M6 15h6" stroke={textInputMode ? THEME.blueLight : THEME.textDim} strokeWidth="1.5" strokeLinecap="round" opacity="0.8"/>
-          <path d="M15 15h3" stroke={textInputMode ? THEME.blueLight : THEME.textDim} strokeWidth="1.5" strokeLinecap="round" opacity="0.8"/>
-        </svg>
-      </motion.div>
+      {/* ON 상태: Command Input Dock */}
+      <AnimatePresence>
+        {textInputMode && (
+          <motion.div
+            key="cmd-dock"
+            initial={{ opacity: 0, y: 32, scale: 0.97 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: 32, scale: 0.97 }}
+            transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
+            className="cmd-dock-wrapper"
+            onClick={e => e.stopPropagation()}
+          >
+            {/* 상단 라벨 + 닫기 */}
+            <div className="cmd-dock-header">
+              <span className="cmd-dock-label">COMMAND INPUT</span>
+              <motion.button
+                className="cmd-dock-close"
+                whileHover={{ scale: 1.1 }}
+                whileTap={{ scale: 0.9 }}
+                onClick={() => { setTextInputMode(false); setTextInputValue(''); }}
+                title="닫기 (Esc)"
+              >
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none">
+                  <path d="M18 6L6 18M6 6L18 18" stroke="rgba(200,200,220,0.7)" strokeWidth="2" strokeLinecap="round"/>
+                </svg>
+              </motion.button>
+            </div>
+
+            {/* 입력 행 */}
+            <div className="cmd-dock-input-row">
+              {/* 스캔 라인 장식 */}
+              <div className="cmd-dock-scan-bar" />
+              <input
+                ref={textInputRef}
+                type="text"
+                value={textInputValue}
+                onChange={e => setTextInputValue(e.target.value)}
+                onKeyDown={e => {
+                  if (e.key === 'Enter' && textInputValue.trim()) {
+                    handleTextSubmit(textInputValue.trim());
+                  }
+                  if (e.key === 'Escape') {
+                    setTextInputMode(false);
+                    setTextInputValue('');
+                  }
+                }}
+                placeholder="명령을 입력하세요..."
+                autoFocus
+                className="cmd-dock-input"
+              />
+              {/* 제출 버튼 */}
+              <motion.button
+                className={`cmd-dock-send${textInputValue.trim() ? ' active' : ''}`}
+                whileHover={{ scale: 1.06 }}
+                whileTap={{ scale: 0.94 }}
+                onClick={() => textInputValue.trim() && handleTextSubmit(textInputValue.trim())}
+                title="제출 (Enter)"
+              >
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+                  <path d="M22 2L11 13" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                  <path d="M22 2L15 22L11 13L2 9L22 2Z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                </svg>
+              </motion.button>
+            </div>
+
+            {/* 단축키 힌트 */}
+            <div className="cmd-dock-hints">
+              {[['Enter', '제출'], ['Esc', '닫기'], ['Ctrl+K', '토글']].map(([k, d]) => (
+                <div key={k} className="cmd-dock-hint-item">
+                  <span className="cmd-dock-hint-key">{k}</span>
+                  <span className="cmd-dock-hint-desc">{d}</span>
+                </div>
+              ))}
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* ── 하단 시스템 상태 ── */}
       <motion.footer
