@@ -396,7 +396,7 @@ async function getPayedOrdersFast(queryDays: number = 30, forceRefresh: boolean 
     newOrdersCount: newOrders.length,
     pendingShippingCount: pendingShipping.length,
     preShipTotal: payedOrders.length,
-    payedRangeDays: PAYED_RANGE_DAYS,
+    payedRangeDays: 30,
     isCached: false,
     cacheAgeMs: 0,
     fetchedAt: new Date().toISOString(),
