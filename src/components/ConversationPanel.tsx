@@ -381,13 +381,15 @@ export default function ConversationPanel({
       style={{
         position: 'fixed',
         top: 80,
-        right: 20,
-        bottom: 'calc(50% + 20px)',
-        width: 380,
+        left: '50%',
+        transform: 'translateX(-50%)',
+        maxHeight: 'calc(50vh - 80px)',
+        width: 'min(480px, 90vw)',
         zIndex: 50,
         pointerEvents: 'auto',
         display: 'flex',
         flexDirection: 'column',
+        overflowY: 'auto',
       }}
     >
       {/* STT Status Bar */}

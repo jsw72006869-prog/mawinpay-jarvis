@@ -7394,8 +7394,7 @@ html, body {
 /* ── C. Neural Connection System ── */
 .v32-neural-connection {
   position: fixed;
-  right: 20px; top: 50%;
-  transform: translateY(-50%);
+  left: 20px; bottom: 120px;
   display: flex; flex-direction: column;
   gap: 0; z-index: 6;
   opacity: 0;

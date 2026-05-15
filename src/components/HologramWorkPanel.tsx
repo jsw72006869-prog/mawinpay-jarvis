@@ -158,8 +158,9 @@ export default function HologramWorkPanel({ onCoreDimChange }: HologramWorkPanel
           transition={{ type: 'spring', stiffness: 400, damping: 30 }}
           style={{
             position: 'fixed',
-            top: '280px',
-            left: '20px',
+            top: '90px',
+            left: '50%',
+            transform: 'translateX(-50%)',
             width: '340px',
             background: 'rgba(6, 10, 18, 0.88)',
             border: '1px solid rgba(0, 212, 255, 0.25)',
