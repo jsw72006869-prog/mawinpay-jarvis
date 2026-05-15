@@ -187,29 +187,31 @@ async function getLastChangedItems(lastChangedType: string, days: number, useKST
   const now = new Date();
   const allItems: any[] = [];
 
+  // SMARTSTORE-ORDERS-FIX.2: 3개씩 병렬 배치 처리 (90일 × 3상태 = 270 API 호출 최적화)
+  const BATCH_SIZE = 3;
+  const dayRanges: Array<{ from: Date; to: Date }> = [];
   for (let d = 0; d < days; d++) {
     let from: Date, to: Date;
     if (useKST) {
-      // KST 기준 날짜 경계 (00:00:00 KST = 15:00:00 UTC 전날)
       const kstNow = new Date(now.getTime() + 9 * 60 * 60 * 1000);
       const kstToday = new Date(Date.UTC(kstNow.getUTCFullYear(), kstNow.getUTCMonth(), kstNow.getUTCDate()));
-      // KST 날짜 기준으로 from/to 계산 (UTC로 변환: -9시간)
       to = new Date(kstToday.getTime() - d * 24 * 60 * 60 * 1000 - 9 * 60 * 60 * 1000 + 24 * 60 * 60 * 1000);
       from = new Date(kstToday.getTime() - (d + 1) * 24 * 60 * 60 * 1000 - 9 * 60 * 60 * 1000 + 24 * 60 * 60 * 1000);
-      // d=0: from=오늘 KST 00:00(=어제 UTC 15:00), to=내일 KST 00:00(=오늘 UTC 15:00)
     } else {
       to = new Date(now.getTime() - d * 24 * 60 * 60 * 1000);
       from = new Date(now.getTime() - (d + 1) * 24 * 60 * 60 * 1000);
     }
+    dayRanges.push({ from, to });
+  }
+
+  async function fetchOneDayLastChanged(from: Date, to: Date): Promise<any[]> {
     const fromStr = from.toISOString().replace(/\.\d{3}Z$/, '.000Z');
     const toStr = to.toISOString().replace(/\.\d{3}Z$/, '.000Z');
-
     const params = new URLSearchParams({
       lastChangedFrom: fromStr,
       lastChangedTo: toStr,
       lastChangedType: lastChangedType,
     });
-
     for (let attempt = 0; attempt < 2; attempt++) {
       try {
         const result = await smartStoreRequest(
@@ -219,7 +221,7 @@ async function getLastChangedItems(lastChangedType: string, days: number, useKST
         if (result.status === 200) {
           const data = result.data?.data || result.data;
           const items = data?.lastChangeStatuses || data?.lastChangedStatuses || [];
-          allItems.push(...items);
+          const dayItems = [...items];
           if (data?.more) {
             let lastDate = items[items.length - 1]?.lastChangedDate || '';
             let hasMore = true;
@@ -236,19 +238,27 @@ async function getLastChangedItems(lastChangedType: string, days: number, useKST
               if (nr.status === 200) {
                 const nd = nr.data?.data || nr.data;
                 const ni = nd?.lastChangeStatuses || nd?.lastChangedStatuses || [];
-                allItems.push(...ni);
+                dayItems.push(...ni);
                 hasMore = nd?.more || false;
                 if (ni.length > 0) lastDate = ni[ni.length - 1]?.lastChangedDate || '';
                 else hasMore = false;
               } else hasMore = false;
             }
           }
-          break;
+          return dayItems;
         }
       } catch (err: any) {
-        if (attempt < 1) await new Promise(r => setTimeout(r, 500));
+        if (attempt < 1) await new Promise(r => setTimeout(r, 300));
       }
     }
+    return [];
+  }
+
+  // 3개씩 병렬 배치 실행
+  for (let b = 0; b < dayRanges.length; b += BATCH_SIZE) {
+    const batch = dayRanges.slice(b, b + BATCH_SIZE);
+    const results = await Promise.all(batch.map(({ from, to }) => fetchOneDayLastChanged(from, to)));
+    for (const items of results) allItems.push(...items);
   }
   return allItems;
 }
@@ -277,22 +287,27 @@ async function getSmartstoreStatusCounts(queryDays: number = 30) {
     return po.placeOrderStatus === 'OK';
   });
 
-  // 2) 배송중/배송완료: 45일 확대 조회
-  const shippingDeliveredOrders = await fetchOrders(['DELIVERING', 'DELIVERED'], 45);
-  let shippingCount = 0;
-  let deliveredCount = 0;
-  for (const o of shippingDeliveredOrders) {
-    const po = o.productOrder || o;
-    const status = po.productOrderStatus || o.productOrderStatus;
-    if (status === 'DELIVERING') shippingCount++;
-    else if (status === 'DELIVERED') deliveredCount++;
+  // SMARTSTORE-ORDERS-FIX.2: 배송중/배송완료/구매확정 last-changed-statuses 기반으로 전환 + 3상태 병렬 조회 (Promise.all)
+  // 2) 배송중: SHIPPING 30일 + 3) 배송완료: DELIVERED 30일 + 4) 구매확정: PURCHASE_DECIDED 90일
+  // 세 상태를 병렬 실행해 전체 시간 단축
+  const [shippingItems, deliveredItems, decidedItems] = await Promise.all([
+    getLastChangedItems('SHIPPING', 30, false),
+    getLastChangedItems('DELIVERED', 30, false),
+    getLastChangedItems('PURCHASE_DECIDED', 90, false),
+  ]);
+  const uniqueShipping = new Map<string, any>();
+  for (const item of shippingItems) {
+    if (item.productOrderId) uniqueShipping.set(item.productOrderId, item);
   }
-
-  // 3) 구매확정: PURCHASE_DECIDED KST 기준 7일 조회 (네이버 관리자 화면 기준 일치)
-  const decidedItems = await getLastChangedItems('PURCHASE_DECIDED', 7, true);
+  const shippingCount = uniqueShipping.size;
+  const uniqueDelivered = new Map<string, any>();
+  for (const item of deliveredItems) {
+    if (item.productOrderId) uniqueDelivered.set(item.productOrderId, item);
+  }
+  const deliveredCount = uniqueDelivered.size;
   const uniqueDecided = new Map<string, any>();
   for (const item of decidedItems) {
-    uniqueDecided.set(item.productOrderId, item);
+    if (item.productOrderId) uniqueDecided.set(item.productOrderId, item);
   }
   const decidedCount = uniqueDecided.size;
 
@@ -311,6 +326,14 @@ async function getSmartstoreStatusCounts(queryDays: number = 30) {
     delivered: deliveredCount,
     purchaseConfirmed: decidedCount,
     settlementExpectationAmount,
+    // SMARTSTORE-ORDERS-FIX.2: 상태별 조회 근거 (count_source)
+    countSource: {
+      newOrders: 'PAYED+placeOrderStatus!=OK',
+      pendingShipping: 'PAYED+placeOrderStatus=OK',
+      shipping: 'last-changed/SHIPPING/30d',
+      delivered: 'last-changed/DELIVERED/30d',
+      purchaseConfirmed: 'last-changed/PURCHASE_DECIDED/90d',
+    },
   };
 
   // 캐시 저장 (3분 유효)
