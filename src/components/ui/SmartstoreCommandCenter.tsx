@@ -295,7 +295,7 @@ export default function SmartstoreCommandCenter({
       animate={{ opacity: 1, scale: 1, y: 0 }}
       exit={{ opacity: 0, scale: 0.97, y: 10 }}
       transition={{ duration: 0.4, ease: [0.22, 1, 0.36, 1] }}
-      style={{ perspective: '1800px', transformStyle: 'preserve-3d', position: 'relative' }}
+      style={{ perspective: '1800px', transformStyle: 'preserve-3d' }}
     >
       {/* 배경 그리드 오버레이 */}
       <div style={{
