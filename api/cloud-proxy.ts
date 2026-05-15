@@ -2958,7 +2958,241 @@ function generateJarvisDecision(productName: string, calc: any): { decision: str
     }
   }
 
-  return { decision, action, jarvisMessage };
+   return { decision, action, jarvisMessage };
+}
+
+// ── OUTREACH-MAIL-A.1: 메일 발송 준비 (승인 전 조건 검증만, 실제 발송 없음) ──
+async function handleOutreachMailPrepare(params: any) {
+  const { influencer_id, profile_url, platform } = params;
+
+  // v2 탭에서 후보 조회
+  await ensureTab(OUTREACH_CRM_TAB);
+  await ensureHeaders(OUTREACH_CRM_TAB);
+  const sheetData = await sheetsRead(OUTREACH_CRM_TAB, `${OUTREACH_CRM_TAB}!A:Z`);
+  const rows = sheetData.values || [];
+  if (rows.length < 2) {
+    return { success: false, error: '후보 데이터가 없습니다.' };
+  }
+
+  const headers = rows[0] as string[];
+  const idx = (col: string) => headers.indexOf(col);
+
+  // 후보 찾기 (influencer_id 또는 profile_url 기준)
+  let targetRow: string[] | null = null;
+  let targetRowNum = -1;
+  for (let i = 1; i < rows.length; i++) {
+    const r = rows[i] as string[];
+    const rid = r[idx('influencer_id')] || '';
+    const rurl = r[idx('profile_url')] || '';
+    if ((influencer_id && rid === influencer_id) || (profile_url && rurl === profile_url)) {
+      targetRow = r;
+      targetRowNum = i + 1; // 1-indexed (header=1, data=2~)
+      break;
+    }
+  }
+  if (!targetRow) {
+    return { success: false, error: '해당 후보를 찾을 수 없습니다.' };
+  }
+
+  const get = (col: string) => (targetRow![idx(col)] || '').trim();
+
+  // 발송 가능 조건 검증
+  const contactEmail = get('contact_email');
+  const emailStatus = get('email_status');
+  const proposalSubject = get('proposal_subject');
+  const proposalDraft = get('proposal_draft');
+  const outreachStatus = get('outreach_status');
+  const channelName = get('channel_name');
+  const platformVal = get('platform') || platform || '';
+
+  const errors: string[] = [];
+  if (!contactEmail || !contactEmail.includes('@')) errors.push('contact_email 없음 또는 유효하지 않음');
+  if (emailStatus !== 'public_email') errors.push(`email_status가 public_email이 아님 (${emailStatus || 'unknown'})`);
+  if (!proposalSubject) errors.push('proposal_subject 없음');
+  if (!proposalDraft) errors.push('proposal_draft 없음');
+  if (outreachStatus === 'sent') errors.push('이미 발송 완료된 후보 (outreach_status=sent)');
+
+  if (errors.length > 0) {
+    return {
+      success: false,
+      sendable: false,
+      errors,
+      channelName,
+      platform: platformVal,
+      outreachStatus,
+      message: `발송 불가: ${errors.join(' / ')}`,
+    };
+  }
+
+  // 승인 게이트용 데이터 반환 (실제 발송 없음)
+  return {
+    success: true,
+    sendable: true,
+    approvalRequired: true,
+    channelName,
+    platform: platformVal,
+    toEmail: contactEmail.replace(/(.{2}).+(@.+)/, '$1***$2'), // 이메일 마스킹 (화면 표시용)
+    toEmailRaw: contactEmail, // 실제 발송용 (로그 미출력)
+    subject: proposalSubject,
+    bodyPreview: proposalDraft.slice(0, 200) + (proposalDraft.length > 200 ? '...' : ''),
+    influencer_id: get('influencer_id'),
+    profile_url: get('profile_url'),
+    rowNum: targetRowNum,
+    message: `[${channelName}] 발송 준비 완료. 대표님 승인 후 발송됩니다.`,
+  };
+}
+
+// ── OUTREACH-MAIL-A.1: 메일 실제 발송 (승인 후 호출 전용) ──
+async function handleOutreachMailSend(params: any) {
+  const { influencer_id, profile_url, approved } = params;
+
+  // 승인 플래그 필수 검증
+  if (approved !== true && approved !== 'true') {
+    return {
+      success: false,
+      error: '승인이 확인되지 않았습니다. approved=true 필수.',
+      blocked: true,
+    };
+  }
+
+  // v2 탭에서 후보 조회
+  await ensureTab(OUTREACH_CRM_TAB);
+  await ensureHeaders(OUTREACH_CRM_TAB);
+  const sheetData = await sheetsRead(OUTREACH_CRM_TAB, `${OUTREACH_CRM_TAB}!A:Z`);
+  const rows = sheetData.values || [];
+  if (rows.length < 2) {
+    return { success: false, error: '후보 데이터가 없습니다.' };
+  }
+
+  const headers = rows[0] as string[];
+  const idx = (col: string) => headers.indexOf(col);
+
+  // 후보 조회
+  let targetRow: string[] | null = null;
+  let targetRowNum = -1;
+  for (let i = 1; i < rows.length; i++) {
+    const r = rows[i] as string[];
+    const rid = r[idx('influencer_id')] || '';
+    const rurl = r[idx('profile_url')] || '';
+    if ((influencer_id && rid === influencer_id) || (profile_url && rurl === profile_url)) {
+      targetRow = r;
+      targetRowNum = i + 1;
+      break;
+    }
+  }
+  if (!targetRow) {
+    return { success: false, error: '해당 후보를 찾을 수 없습니다.' };
+  }
+
+  const get = (col: string) => (targetRow![idx(col)] || '').trim();
+
+  // 발송 조건 재검증
+  const contactEmail = get('contact_email');
+  const emailStatus = get('email_status');
+  const proposalSubject = get('proposal_subject');
+  const proposalDraft = get('proposal_draft');
+  const outreachStatus = get('outreach_status');
+  const channelName = get('channel_name');
+
+  if (!contactEmail || !contactEmail.includes('@')) {
+    return { success: false, error: '발송 중단: contact_email 없음', blocked: true };
+  }
+  if (emailStatus !== 'public_email') {
+    return { success: false, error: `발송 중단: email_status가 public_email이 아님 (${emailStatus})`, blocked: true };
+  }
+  if (!proposalSubject || !proposalDraft) {
+    return { success: false, error: '발송 중단: proposal_subject 또는 proposal_draft 없음', blocked: true };
+  }
+  if (outreachStatus === 'sent') {
+    return { success: false, error: '이미 발송 완료된 후보입니다.', blocked: true };
+  }
+
+  // 실제 발송: /api/send-email 호출
+  const now = new Date().toISOString();
+  let sendResult: any = null;
+  let sendSuccess = false;
+  let sendError = '';
+
+  try {
+    const baseUrl = process.env.VERCEL_URL
+      ? `https://${process.env.VERCEL_URL}`
+      : 'https://mawinpay-jarvis.vercel.app';
+
+    const emailHtml = `<div style="font-family:sans-serif;max-width:600px;margin:0 auto;">${proposalDraft.replace(/\n/g, '<br/>')}</div>`;
+
+    const sendRes = await fetch(`${baseUrl}/api/send-email`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        to: contactEmail,
+        subject: proposalSubject,
+        html: emailHtml,
+        testMode: false,
+      }),
+    });
+    sendResult = await sendRes.json();
+    // ALLOWED_TEST_RECIPIENTS 차단 여부 확인
+    if (sendResult.blocked > 0 || (sendResult.results && sendResult.results[0]?.status === 'blocked')) {
+      sendSuccess = false;
+      sendError = `발송 차단: 테스트 수신자 목록에 없는 이메일 (execute LOCKED)`;
+    } else if (sendResult.sent > 0) {
+      sendSuccess = true;
+    } else {
+      sendSuccess = false;
+      sendError = sendResult.results?.[0]?.reason || sendResult.error || '알 수 없는 발송 오류';
+    }
+  } catch (e: any) {
+    sendSuccess = false;
+    sendError = e.message || '네트워크 오류';
+  }
+
+  // Google Sheets v2 업데이트
+  const token = await getGoogleSheetsToken();
+  const updateRange = encodeURIComponent(`${OUTREACH_CRM_TAB}!A${targetRowNum}`);
+  const updateUrl = `https://sheets.googleapis.com/v4/spreadsheets/${WORKSPACE_SHEET_ID}/values/${updateRange}?valueInputOption=RAW`;
+
+  const updatedRow = [...(targetRow as string[])];
+  const setCol = (col: string, val: string) => {
+    const i = idx(col);
+    if (i >= 0) updatedRow[i] = val;
+  };
+
+  if (sendSuccess) {
+    setCol('outreach_status', 'sent');
+    setCol('last_contacted_at', now);
+    setCol('reply_status', 'waiting');
+    setCol('next_action', '답장 대기');
+    setCol('updated_at', now);
+  } else {
+    setCol('outreach_status', 'send_failed');
+    setCol('next_action', '발송 오류 확인 필요');
+    setCol('notes', `발송 실패 (${now.slice(0, 10)}): ${sendError.slice(0, 80)}`);
+    setCol('updated_at', now);
+  }
+
+  try {
+    await fetch(updateUrl, {
+      method: 'PUT',
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ values: [updatedRow] }),
+    });
+  } catch (sheetErr: any) {
+    console.error('[OUTREACH-MAIL] Sheets 업데이트 실패:', sheetErr.message);
+  }
+
+  return {
+    success: sendSuccess,
+    channelName,
+    toEmailMasked: contactEmail.replace(/(.{2}).+(@.+)/, '$1***$2'),
+    subject: proposalSubject,
+    sentAt: sendSuccess ? now : null,
+    sheetsUpdated: true,
+    outreachStatus: sendSuccess ? 'sent' : 'send_failed',
+    error: sendSuccess ? null : sendError,
+    message: sendSuccess
+      ? `✅ [${channelName}]에게 제안 메일 발송 완료. Google Sheets 업데이트 완료.`
+      : `❌ 발송 실패: ${sendError}`,
+  };
 }
 
 async function handleMarketPriceCheck(params: any) {
@@ -3486,6 +3720,16 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       }
       if (resolvedTask === 'outreach-save-candidates' || resolvedTask === 'outreach-save') {
         const result = await handleOutreachSaveCandidates(params || rest);
+        return res.status(200).json(result);
+      }
+
+      // ── OUTREACH-MAIL-A.1: 메일 발송 준비/실행 ──
+      if (resolvedTask === 'outreach-mail-prepare') {
+        const result = await handleOutreachMailPrepare(params || rest);
+        return res.status(200).json(result);
+      }
+      if (resolvedTask === 'outreach-mail-send') {
+        const result = await handleOutreachMailSend(params || rest);
         return res.status(200).json(result);
       }
 
