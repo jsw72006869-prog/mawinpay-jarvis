@@ -327,9 +327,10 @@ async function getPayedOrdersFast(queryDays: number = 30, forceRefresh: boolean 
   }
 
   // SMARTSTORE-ORDERS-FIX.8: fetchOrderIds 기반으로 전환
-  // 결제일 기준 90일 내 현재 productOrderStatus=PAYED인 주문을 정확히 조회
+  // 결제일 기준 30일 내 현재 productOrderStatus=PAYED인 주문을 정확히 조회
   // fetchOrderIds는 GET product-orders API를 1일 단위로 호출하여 ID만 수집 (빠름)
-  const PAYED_RANGE = 90;
+  // 30일이면 배송준비 주문 대부분을 커버 (90일은 API 호출 90회로 timeout 위험)
+  const PAYED_RANGE = 30;
   const { ids: uniqueIds, stats: fetchStats } = await fetchOrderIds(['PAYED'], PAYED_RANGE);
   console.log(`[getPayedOrdersFast] fetchOrderIds PAYED ${PAYED_RANGE}d: ${uniqueIds.length}건 (success=${fetchStats.success}, fail=${fetchStats.fail})`);
 
@@ -523,7 +524,7 @@ async function fetchOrderIds(statuses: string[], days: number): Promise<{ids: st
     return [];
   }
 
-  const BATCH_SIZE = 10; // ID만 조회하므로 병렬 높임 (90일 = 9배치)
+  const BATCH_SIZE = 15; // ID만 조회하므로 병렬 높임 (30일 = 2배치)
   for (let b = 0; b < dayRequests.length; b += BATCH_SIZE) {
     const batch = dayRequests.slice(b, b + BATCH_SIZE);
     const results = await Promise.all(batch.map(({ from, to }) => fetchDayIds(from, to)));
@@ -544,7 +545,7 @@ async function getSmartstoreStatusCounts(queryDays: number = 30) {
   }
 
   // SMARTSTORE-ORDERS-FIX.3: PAYED만 실시간 조회 (fast_snapshot)
-  const payedData = await getPayedOrdersFast(90);
+  const payedData = await getPayedOrdersFast(30);
 
   // Deep 캐시에서 배송중/배송완료/구매확정 읽기 (없으면 null)
   const deep = _ssDeepCache;
@@ -845,7 +846,7 @@ async function handleSmartstoreOrders(params: any) {
 
       // PAYED 실시간 조회 (30일 - 네이버 관리자 대시보드 일치)
       const forceRefresh = params?.forceRefresh === true || params?.forceRefresh === 'true';
-      const payedData = await getPayedOrdersFast(90, forceRefresh);
+      const payedData = await getPayedOrdersFast(30, forceRefresh);
       checkTimeout();
 
       const elapsed = Date.now() - budgetStart;
