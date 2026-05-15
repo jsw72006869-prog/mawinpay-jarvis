@@ -215,8 +215,9 @@ async function getLastChangedItems(lastChangedType: string, days: number, useKST
   const now = new Date();
   const allItems: any[] = [];
 
-  // SMARTSTORE-ORDERS-FIX.3B: 5개씩 병렬 배치 (QuotaGuard 동시연결 제한 내 최대 속도)
-  const BATCH_SIZE = 5;
+  // SMARTSTORE-ORDERS-FIX.11: 3개씩 병렬 배치 (QuotaGuard 동시연결 제한 고려, 안정성 우선)
+  const BATCH_SIZE = 3;
+  let _lcsStats = { success: 0, fail: 0 };
   const dayRanges: Array<{ from: Date; to: Date }> = [];
   for (let d = 0; d < days; d++) {
     let from: Date, to: Date;
@@ -240,7 +241,7 @@ async function getLastChangedItems(lastChangedType: string, days: number, useKST
       lastChangedTo: toStr,
       lastChangedType: lastChangedType,
     });
-    for (let attempt = 0; attempt < 2; attempt++) {
+    for (let attempt = 0; attempt < 3; attempt++) {
       try {
         const result = await smartStoreRequest(
           `/v1/pay-order/seller/product-orders/last-changed-statuses?${params.toString()}`,
@@ -273,12 +274,14 @@ async function getLastChangedItems(lastChangedType: string, days: number, useKST
               } else hasMore = false;
             }
           }
+          _lcsStats.success++;
           return dayItems;
         }
       } catch (err: any) {
-        if (attempt < 1) await new Promise(r => setTimeout(r, 300));
+        if (attempt < 2) await new Promise(r => setTimeout(r, 500 * (attempt + 1)));
       }
     }
+    _lcsStats.fail++;
     return [];
   }
 
@@ -288,6 +291,7 @@ async function getLastChangedItems(lastChangedType: string, days: number, useKST
     const results = await Promise.all(batch.map(({ from, to }) => fetchOneDayLastChanged(from, to)));
     for (const items of results) allItems.push(...items);
   }
+  console.log(`[getLastChangedItems] type=${lastChangedType} days=${days} => ${allItems.length}건 (success=${_lcsStats.success} fail=${_lcsStats.fail})`);
   return allItems;
 }
 
