@@ -37,9 +37,9 @@ const VERT = `
     float dist = max(-mvPos.z, 0.1);
 
     float sizeBoost = 1.0
-      + uAudioLevel    * 0.6
-      + uSpeakingLevel * 0.8
-      + uBurst         * 2.0
+      + uAudioLevel    * 0.3
+      + uSpeakingLevel * 0.5
+      + uBurst         * 1.0
       + uFaceBlend     * 0.5
       + uEntryPhase    * 0.6;
     gl_PointSize = aSize * sizeBoost * (280.0 / dist);
@@ -49,8 +49,8 @@ const VERT = `
     float pulse = 0.5 + 0.5 * sin(uTime * 2.0 + aPhase);
     float entryGlow = uEntryPhase * 0.5;
     vBrightness = aBrightness
-      * (0.35 + uAudioLevel * 0.35 + uSpeakingLevel * 0.5
-         + uBurst * 0.8 + uFaceBlend * 0.4 + entryGlow
+      * (0.35 + uAudioLevel * 0.2 + uSpeakingLevel * 0.35
+         + uBurst * 0.5 + uFaceBlend * 0.4 + entryGlow
          + pulse * 0.1);
     vColor = aColor;
   }
@@ -585,10 +585,10 @@ export default function SparkleParticles({ state, audioLevel, speakingLevel, cla
   useEffect(() => {
     if (!clapBurst) return;
 
-    // 폭발 효과
-    burstRef.current = 1.2;
+    // 폭발 효과 (강도 조절: 1.2 → 0.6)
+    burstRef.current = 0.6;
     const mat = materialRef.current;
-    if (mat) mat.uniforms.uBurst.value = 1.2;
+    if (mat) mat.uniforms.uBurst.value = 0.6;
 
     // Phase 1 시작
     entryPhaseRef.current = 1;
