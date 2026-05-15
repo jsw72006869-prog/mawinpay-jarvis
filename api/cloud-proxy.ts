@@ -347,7 +347,7 @@ async function getPayedOrdersFast(queryDays: number = 30, forceRefresh: boolean 
     for (const item of items) { if (item.productOrderId) allIds.add(item.productOrderId); }
   }
   const uniqueIds = [...allIds];
-  console.log(`[getPayedOrdersFast] types=${lastChangedTypes.join(',')} counts=${results.map(r => r.length).join(',')} unique=${uniqueIds.length}`);
+  console.log(`[getPayedOrdersFast] PAYED+supplements counts=${results.map(r => r.length).join(',')} unique=${uniqueIds.length}`);
 
   // 상세 조회로 현재 상태 확인 (이미 발송처리된 주문은 PAYED가 아님)
   let payedOrders: any[] = [];
