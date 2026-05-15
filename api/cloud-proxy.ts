@@ -558,7 +558,7 @@ async function getSmartstoreStatusCounts(queryDays: number = 30) {
   }
 
   // SMARTSTORE-ORDERS-FIX.3: PAYED만 실시간 조회 (fast_snapshot)
-  const payedData = await getPayedOrdersFast(Math.min(queryDays, 7));
+  const payedData = await getPayedOrdersFast(90);
 
   // Deep 캐시에서 배송중/배송완료/구매확정 읽기 (없으면 null)
   const deep = _ssDeepCache;
@@ -853,7 +853,7 @@ async function handleSmartstoreOrders(params: any) {
 
       // PAYED 실시간 조회 (30일 - 네이버 관리자 대시보드 일치)
       const forceRefresh = params?.forceRefresh === true || params?.forceRefresh === 'true';
-      const payedData = await getPayedOrdersFast(30, forceRefresh);
+      const payedData = await getPayedOrdersFast(90, forceRefresh);
       checkTimeout();
 
       const elapsed = Date.now() - budgetStart;
