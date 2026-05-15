@@ -211,12 +211,12 @@ function safeOrderMap(item: any) {
 }
 
 // ── product-orders/last-changed-statuses API (KST 일별 조회, top-level) ──
-async function getLastChangedItems(lastChangedType: string, days: number, useKST: boolean = false): Promise<any[]> {
+async function getLastChangedItems(lastChangedType: string, days: number, useKST: boolean = false, batchSize: number = 3): Promise<any[]> {
   const now = new Date();
   const allItems: any[] = [];
 
-  // SMARTSTORE-ORDERS-FIX.11: 3개씩 병렬 배치 (QuotaGuard 동시연결 제한 고려, 안정성 우선)
-  const BATCH_SIZE = 3;
+  // SMARTSTORE-ORDERS-FIX.11: 병렬 사이즈 파라미터화 (PAYED용=3, deep_sync용=5)
+  const BATCH_SIZE = batchSize;
   let _lcsStats = { success: 0, fail: 0 };
   const dayRanges: Array<{ from: Date; to: Date }> = [];
   for (let d = 0; d < days; d++) {
@@ -421,9 +421,9 @@ async function runDeepSync(rangeDays = 90) {
   // 3. 모든 ID 상세 조회 → 현재 productOrderStatus로 정확 분류
   const days = Math.min(rangeDays, 90);
 
-  // Step 1: last-changed-statuses로 ID 수집 (순차 실행)
-  const dispatchedItems = await getLastChangedItems('DISPATCHED', days);
-  const decidedItems = await getLastChangedItems('PURCHASE_DECIDED', days);
+  // Step 1: last-changed-statuses로 ID 수집 (순차 실행, batchSize=5로 속도 확보)
+  const dispatchedItems = await getLastChangedItems('DISPATCHED', days, false, 5);
+  const decidedItems = await getLastChangedItems('PURCHASE_DECIDED', days, false, 5);
 
   // Step 2: ID 추출 + 중복 제거
   const allIds = new Set<string>();
