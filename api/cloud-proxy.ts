@@ -320,9 +320,9 @@ let _ssCountsCache: { data: any; fetchedAt: number; queryDays: number } | null =
 const SS_CACHE_TTL = 3 * 60 * 1000; // 3분
 
 // PAYED 전용 실시간 조회 (신규주문 + 배송준비)
-async function getPayedOrdersFast(queryDays: number = 7) {
-  // 캐시 유효 시 즉시 반환
-  if (_ssPayedCache && (Date.now() - _ssPayedCache.fetchedAt) < SS_PAYED_CACHE_TTL) {
+async function getPayedOrdersFast(queryDays: number = 7, forceRefresh: boolean = false) {
+  // 캐시 유효 시 즉시 반환 (forceRefresh면 캐시 무시)
+  if (!forceRefresh && _ssPayedCache && (Date.now() - _ssPayedCache.fetchedAt) < SS_PAYED_CACHE_TTL) {
     return { ..._ssPayedCache.data, isCached: true, cacheAgeMs: Date.now() - _ssPayedCache.fetchedAt };
   }
 
@@ -718,7 +718,8 @@ async function handleSmartstoreOrders(params: any) {
       const budgetStart = Date.now();
 
       // PAYED 실시간 조회 (30일 - 네이버 관리자 대시보드 일치)
-      const payedData = await getPayedOrdersFast(30);
+      const forceRefresh = params?.forceRefresh === true || params?.forceRefresh === 'true';
+      const payedData = await getPayedOrdersFast(30, forceRefresh);
       checkTimeout();
 
       const elapsed = Date.now() - budgetStart;
