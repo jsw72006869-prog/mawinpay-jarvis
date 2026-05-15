@@ -11,6 +11,7 @@ interface SparkleParticlesProps {
   speakingLevel: number;
   clapBurst: boolean;
   freqData?: Uint8Array; // 마이크 주파수 배열 (32~128 bins)
+  textInputMode?: boolean; // 타이핑 모드 중 파티클 정지
 }
 
 // ── 버텍스 셸이더 (고급스러운 우주 효과) ──
@@ -142,7 +143,7 @@ for (let i = 0; i < COUNT; i++) {
 // phase 3: 얼굴 고정 (2.0s~)
 type EntryPhase = 0 | 1 | 2 | 3;
 
-export default function SparkleParticles({ state, audioLevel, speakingLevel, clapBurst, freqData }: SparkleParticlesProps) {
+export default function SparkleParticles({ state, audioLevel, speakingLevel, clapBurst, freqData, textInputMode }: SparkleParticlesProps) {
   const canvasRef    = useRef<HTMLCanvasElement>(null);
   const rendererRef  = useRef<THREE.WebGLRenderer | null>(null);
   const materialRef  = useRef<THREE.ShaderMaterial | null>(null);
@@ -611,6 +612,9 @@ export default function SparkleParticles({ state, audioLevel, speakingLevel, cla
         height: '100vh',
         pointerEvents: 'none',
         zIndex: 0,
+        // 타이핑 모드 중 파티클 숨김 (폭발 버그 완전 방지)
+        opacity: textInputMode ? 0 : 1,
+        transition: 'opacity 0.3s ease',
       }}
     />
   );
