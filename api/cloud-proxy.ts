@@ -287,35 +287,82 @@ async function getSmartstoreStatusCounts(queryDays: number = 30) {
     return po.placeOrderStatus === 'OK';
   });
 
-  // SMARTSTORE-ORDERS-FIX.2: 배송중/배송완료/구매확정 last-changed-statuses 기반으로 전환 + 3상태 병렬 조회 (Promise.all)
-  // 2) 배송중: SHIPPING 30일 + 3) 배송완료: DELIVERED 30일 + 4) 구매확정: PURCHASE_DECIDED 90일
-  // 세 상태를 병렬 실행해 전체 시간 단축
-  const [shippingItems, deliveredItems, decidedItems] = await Promise.all([
-    getLastChangedItems('SHIPPING', 30, false),
-    getLastChangedItems('DELIVERED', 30, false),
-    getLastChangedItems('PURCHASE_DECIDED', 90, false),
+  // SMARTSTORE-ORDERS-FIX.2B: product-orders 현재 상태 기준 조회 (last-changed-statuses 오판 제거)
+  // 배송중/배송완료/구매확정: fetchOrders로 현재 상태 기준 조회 (결제일 범위 내)
+  // 3상태 병렬 실행으로 전체 시간 단축
+  const SHIPPING_RANGE_DAYS = 30;  // 배송중/배송완료: 최근 30일 결제 기준
+  const DECIDED_RANGE_DAYS = 90;   // 구매확정: 최근 90일 결제 기준
+
+  const [shippingOrders, deliveredOrders, decidedOrders] = await Promise.all([
+    fetchOrders(['DELIVERING'], SHIPPING_RANGE_DAYS),
+    fetchOrders(['DELIVERED'], SHIPPING_RANGE_DAYS),
+    fetchOrders(['PURCHASE_DECIDED'], DECIDED_RANGE_DAYS),
   ]);
+
+  // ProductOrderId dedupe (상세 조회 기반)
   const uniqueShipping = new Map<string, any>();
-  for (const item of shippingItems) {
-    if (item.productOrderId) uniqueShipping.set(item.productOrderId, item);
+  for (const o of shippingOrders) {
+    const po = o.productOrder || o;
+    if (po.productOrderId) uniqueShipping.set(po.productOrderId, po);
   }
   const shippingCount = uniqueShipping.size;
+
   const uniqueDelivered = new Map<string, any>();
-  for (const item of deliveredItems) {
-    if (item.productOrderId) uniqueDelivered.set(item.productOrderId, item);
+  for (const o of deliveredOrders) {
+    const po = o.productOrder || o;
+    if (po.productOrderId) uniqueDelivered.set(po.productOrderId, po);
   }
   const deliveredCount = uniqueDelivered.size;
+
   const uniqueDecided = new Map<string, any>();
-  for (const item of decidedItems) {
-    if (item.productOrderId) uniqueDecided.set(item.productOrderId, item);
+  for (const o of decidedOrders) {
+    const po = o.productOrder || o;
+    if (po.productOrderId) uniqueDecided.set(po.productOrderId, po);
   }
   const decidedCount = uniqueDecided.size;
 
-  // 4) 정산예정 금액
+  // 정산예정 금액 (구매확정 기준)
   let settlementExpectationAmount = 0;
-  for (const item of uniqueDecided.values()) {
-    settlementExpectationAmount += Number(item.settlementExpectationAmount || 0);
+  for (const po of uniqueDecided.values()) {
+    settlementExpectationAmount += Number(po.settlementExpectationAmount || 0);
   }
+
+  // SMARTSTORE-ORDERS-FIX.2B: dashboardSnapshot + detailSync 2레이어 구조
+  const dashboardSnapshot = {
+    newOrders: newOrders.length,
+    pendingShipping: pendingShipping.length,
+    shipping: shippingCount,
+    delivered: deliveredCount,
+    purchaseConfirmed: decidedCount,
+    source: 'naver-api-product-orders',
+    // 조회 범위 명시 (실시간 전체가 아닌 날짜 범위 기반임을 표시)
+    rangeLimits: {
+      newOrders: `PAYED+placeOrderStatus!=OK / ${queryDays}d`,
+      pendingShipping: `PAYED+placeOrderStatus=OK / ${queryDays}d`,
+      shipping: `DELIVERING / ${SHIPPING_RANGE_DAYS}d`,
+      delivered: `DELIVERED / ${SHIPPING_RANGE_DAYS}d`,
+      purchaseConfirmed: `PURCHASE_DECIDED / ${DECIDED_RANGE_DAYS}d`,
+    },
+    // 범위 제한 여부 (30일/90일 외 주문 누락 가능성)
+    isRangeLimited: true,
+    rangeLimitNote: '배송중/배송완료는 최근 30일 결제 기준, 구매확정은 최근 90일 결제 기준입니다. 더 오래된 주문은 누락될 수 있습니다.',
+  };
+
+  const detailSync = {
+    // ProductOrderId 확보된 건수 (발주 가능 대상)
+    newOrdersWithId: newOrders.filter((o: any) => { const po = o.productOrder || o; return !!po.productOrderId; }).length,
+    pendingShippingWithId: pendingShipping.filter((o: any) => { const po = o.productOrder || o; return !!po.productOrderId; }).length,
+    shippingWithId: shippingCount,
+    deliveredWithId: deliveredCount,
+    decidedWithId: decidedCount,
+    // 상세 매칭 상태
+    detailStatus: 'matched', // product-orders 상세 조회 기반이므로 항상 matched
+    searchRangeUsed: {
+      payedDays: queryDays,
+      shippingDays: SHIPPING_RANGE_DAYS,
+      decidedDays: DECIDED_RANGE_DAYS,
+    },
+  };
 
   const result = {
     allOrders: payedOrders,
@@ -326,13 +373,16 @@ async function getSmartstoreStatusCounts(queryDays: number = 30) {
     delivered: deliveredCount,
     purchaseConfirmed: decidedCount,
     settlementExpectationAmount,
-    // SMARTSTORE-ORDERS-FIX.2: 상태별 조회 근거 (count_source)
+    // SMARTSTORE-ORDERS-FIX.2B: 2레이어 구조
+    dashboardSnapshot,
+    detailSync,
+    // 하위호환 countSource
     countSource: {
-      newOrders: 'PAYED+placeOrderStatus!=OK',
-      pendingShipping: 'PAYED+placeOrderStatus=OK',
-      shipping: 'last-changed/SHIPPING/30d',
-      delivered: 'last-changed/DELIVERED/30d',
-      purchaseConfirmed: 'last-changed/PURCHASE_DECIDED/90d',
+      newOrders: `PAYED+placeOrderStatus!=OK/${queryDays}d`,
+      pendingShipping: `PAYED+placeOrderStatus=OK/${queryDays}d`,
+      shipping: `DELIVERING/${SHIPPING_RANGE_DAYS}d`,
+      delivered: `DELIVERED/${SHIPPING_RANGE_DAYS}d`,
+      purchaseConfirmed: `PURCHASE_DECIDED/${DECIDED_RANGE_DAYS}d`,
     },
   };
 
@@ -539,6 +589,9 @@ async function handleSmartstoreOrders(params: any) {
           purchaseConfirmed: counts.purchaseConfirmed,
           settlementExpectationAmount: counts.settlementExpectationAmount || 0,
         },
+        // SMARTSTORE-ORDERS-FIX.2B: 2레이어 구조
+        dashboardSnapshot: counts.dashboardSnapshot,
+        detailSync: counts.detailSync,
         // 하위호환 top-level 필드 (프론트엔드 안전 매핑)
         newOrders: counts.newOrders.length,
         pendingShipping: counts.pendingShipping.length,
