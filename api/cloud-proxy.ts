@@ -326,28 +326,13 @@ async function getPayedOrdersFast(queryDays: number = 30, forceRefresh: boolean 
     return { ..._ssPayedCache.data, isCached: true, cacheAgeMs: Date.now() - _ssPayedCache.fetchedAt };
   }
 
-  // SMARTSTORE-ORDERS-FIX.7: 핵심 PAYED 30일 + 보조 타입 7일 (속도 최적화)
-  // PAYED: 결제 완료 (30일 범위 - 대부분의 배송준비 주문 포함)
-  // 보조 타입: 배송지변경/옵션변경/클레임철회 후 PAYED 상태 유지 (7일)
-  const payedItems = await getLastChangedItems('PAYED', 30).catch(() => []);
-  const supplementTypes = ['DELIVERY_ADDRESS_CHANGED', 'EXCHANGE_OPTION', 'CLAIM_REJECTED'] as const;
-  const supplementResults: any[][] = [];
-  for (const type of supplementTypes) {
-    try {
-      supplementResults.push(await getLastChangedItems(type, 7));
-    } catch {
-      supplementResults.push([]);
-    }
-  }
-  const results = [payedItems, ...supplementResults];
+  // SMARTSTORE-ORDERS-FIX.8: fetchOrderIds 기반으로 전환
+  // 결제일 기준 90일 내 현재 productOrderStatus=PAYED인 주문을 정확히 조회
+  // fetchOrderIds는 GET product-orders API를 1일 단위로 호출하여 ID만 수집 (빠름)
+  const PAYED_RANGE = 90;
+  const { ids: uniqueIds, stats: fetchStats } = await fetchOrderIds(['PAYED'], PAYED_RANGE);
+  console.log(`[getPayedOrdersFast] fetchOrderIds PAYED ${PAYED_RANGE}d: ${uniqueIds.length}건 (success=${fetchStats.success}, fail=${fetchStats.fail})`);
 
-  // ID 추출 + 중복 제거
-  const allIds = new Set<string>();
-  for (const items of results) {
-    for (const item of items) { if (item.productOrderId) allIds.add(item.productOrderId); }
-  }
-  const uniqueIds = [...allIds];
-  console.log(`[getPayedOrdersFast] PAYED+supplements counts=${results.map(r => r.length).join(',')} unique=${uniqueIds.length}`);
 
   // 상세 조회로 현재 상태 확인 (이미 발송처리된 주문은 PAYED가 아님)
   let payedOrders: any[] = [];
@@ -396,7 +381,7 @@ async function getPayedOrdersFast(queryDays: number = 30, forceRefresh: boolean 
     newOrdersCount: newOrders.length,
     pendingShippingCount: pendingShipping.length,
     preShipTotal: payedOrders.length,
-    payedRangeDays: 30,
+    payedRangeDays: PAYED_RANGE,
     isCached: false,
     cacheAgeMs: 0,
     fetchedAt: new Date().toISOString(),
@@ -486,7 +471,7 @@ async function runDeepSync(rangeDays = 90) {
 // 상태별 productOrderId 목록만 조회 (상세 조회 생략 → 빠름)
 // GET /v1/pay-order/seller/product-orders 엔드포인트 사용
 // rangeType=PAYED_DATETIME, 24시간 단위 조회 (네이버 API 제한: from~to 간격 최대 24시간)
-async function fetchOrderIds(statuses: string[], days: number): Promise<string[]> {
+async function fetchOrderIds(statuses: string[], days: number): Promise<{ids: string[], stats: {success: number, fail: number, lastError: string}}> {
   const now = new Date();
   const startDate = new Date();
   startDate.setDate(startDate.getDate() - days);
@@ -552,7 +537,7 @@ async function fetchOrderIds(statuses: string[], days: number): Promise<string[]
   // 중복 제거
   const uniqueIds = [...new Set(allIds)];
   console.log(`[fetchOrderIds] statuses=${statuses.join(',')} days=${days} => ${uniqueIds.length}건 (success=${_fetchDayStats.success} fail=${_fetchDayStats.fail} lastErr=${_fetchDayStats.lastError})`);
-  return uniqueIds;
+  return { ids: uniqueIds, stats: _fetchDayStats };
 }
 
 // 하위호환: 기존 getSmartstoreStatusCounts 호출 대응 (브리핑 등)
@@ -749,7 +734,8 @@ async function handleSmartstoreOrders(params: any) {
 
     // 테스트 5: fetchOrderIds(['PAYED'], 7) 직접 호출
     try {
-      const payedIds7 = await fetchOrderIds(['PAYED'], 7);
+      const payedIds7Result = await fetchOrderIds(['PAYED'], 7);
+      const payedIds7 = payedIds7Result.ids;
       results['fetchOrderIds_PAYED_7d'] = {
         count: payedIds7.length,
         ids: payedIds7.slice(0, 5),
@@ -760,7 +746,8 @@ async function handleSmartstoreOrders(params: any) {
 
     // 테스트 6: fetchOrderIds(['PAYED'], 30) 직접 호출
     try {
-      const payedIds30 = await fetchOrderIds(['PAYED'], 30);
+      const payedIds30Result = await fetchOrderIds(['PAYED'], 30);
+      const payedIds30 = payedIds30Result.ids;
       results['fetchOrderIds_PAYED_30d'] = {
         count: payedIds30.length,
         ids: payedIds30.slice(0, 5),
@@ -771,7 +758,8 @@ async function handleSmartstoreOrders(params: any) {
 
     // 테스트 7: fetchOrderIds(['DELIVERING'], 90) 직접 호출 (이건 작동했음)
     try {
-      const delIds = await fetchOrderIds(['DELIVERING'], 90);
+      const delIdsResult = await fetchOrderIds(['DELIVERING'], 90);
+      const delIds = delIdsResult.ids;
       results['fetchOrderIds_DELIVERING_90d'] = {
         count: delIds.length,
         ids: delIds.slice(0, 5),
