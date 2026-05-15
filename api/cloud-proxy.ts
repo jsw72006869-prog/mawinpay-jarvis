@@ -335,10 +335,16 @@ async function getPayedOrdersFast(queryDays: number = 30, forceRefresh: boolean 
   // - DELIVERY_ADDRESS_CHANGED: 배송지 변경 후에도 PAYED 상태 유지
   // - EXCHANGE_OPTION: 옵션 변경 후에도 PAYED 상태 유지
   // - CLAIM_REJECTED: 클레임 철회 후 PAYED 상태로 복귀
+  // 순차 실행 (QuotaGuard 동시 연결 제한 대응)
   const lastChangedTypes = ['PAYED', 'DELIVERY_ADDRESS_CHANGED', 'EXCHANGE_OPTION', 'CLAIM_REJECTED'] as const;
-  const results = await Promise.all(
-    lastChangedTypes.map(type => getLastChangedItems(type, PAYED_RANGE_DAYS).catch(() => []))
-  );
+  const results: any[][] = [];
+  for (const type of lastChangedTypes) {
+    try {
+      results.push(await getLastChangedItems(type, PAYED_RANGE_DAYS));
+    } catch {
+      results.push([]);
+    }
+  }
 
   // ID 추출 + 중복 제거
   const allIds = new Set<string>();
@@ -617,7 +623,7 @@ async function handleSmartstoreOrders(params: any) {
 
   // ── SMARTSTORE-ORDERS-FIX.1: 전체 함수 timeout 방어 ──
   // deep_sync는 최대 55초, 일반 액션은 9초
-  const HANDLER_TIMEOUT_MS = action === 'deep_sync' ? 55000 : (action === 'query_order_status' ? 25000 : 9000);
+  const HANDLER_TIMEOUT_MS = action === 'deep_sync' ? 55000 : (action === 'query_order_status' ? 45000 : 9000);
   let handlerTimedOut = false;
   const handlerTimeoutId = setTimeout(() => { handlerTimedOut = true; }, HANDLER_TIMEOUT_MS);
   const checkTimeout = () => {
