@@ -390,18 +390,66 @@ async function getPayedOrdersFast(queryDays: number = 7, forceRefresh: boolean =
 // 3상태 순차 = ~54초 (Vercel 60초 내 긴박)
 // → 각 상태별 건수만 필요하므로 상세 조회 생략 → 속도 대폭 향상
 async function runDeepSync(rangeDays = 90) {
-  // 각 상태별 productOrderId 목록만 조회 (상세 조회 X → 빠름)
-  // 순차 실행으로 QuotaGuard 동시연결 제한 방어
-  const deliveringIds = await fetchOrderIds(['DELIVERING'], rangeDays);
-  const deliveredIds = await fetchOrderIds(['DELIVERED'], rangeDays);
-  const decidedIds = await fetchOrderIds(['PURCHASE_DECIDED'], rangeDays);
+  // SMARTSTORE-ORDERS-FIX.5: last-changed-statuses + product-orders/query 조합
+  // 1. DISPATCHED(발송처리) 로 배송중+배송완료 ID 수집
+  // 2. PURCHASE_DECIDED(구매확정) 로 구매확정 ID 수집
+  // 3. 모든 ID 상세 조회 → 현재 productOrderStatus로 정확 분류
+  const days = Math.min(rangeDays, 90);
+
+  // Step 1: last-changed-statuses로 ID 수집 (순차 실행)
+  const dispatchedItems = await getLastChangedItems('DISPATCHED', days);
+  const decidedItems = await getLastChangedItems('PURCHASE_DECIDED', days);
+
+  // Step 2: ID 추출 + 중복 제거
+  const allIds = new Set<string>();
+  for (const item of dispatchedItems) {
+    if (item.productOrderId) allIds.add(item.productOrderId);
+  }
+  for (const item of decidedItems) {
+    if (item.productOrderId) allIds.add(item.productOrderId);
+  }
+  const uniqueIds = [...allIds];
+  console.log(`[runDeepSync] DISPATCHED=${dispatchedItems.length} DECIDED=${decidedItems.length} uniqueIds=${uniqueIds.length}`);
+
+  // Step 3: 상세 조회로 현재 상태 확인
+  let shipping = 0, delivered = 0, purchaseConfirmed = 0;
+  if (uniqueIds.length > 0) {
+    for (let i = 0; i < uniqueIds.length; i += 300) {
+      const batch = uniqueIds.slice(i, i + 300);
+      try {
+        const detailResult = await smartStoreRequest(
+          '/v1/pay-order/seller/product-orders/query',
+          { method: 'POST', body: JSON.stringify({ productOrderIds: batch }) }
+        );
+        if (detailResult.status === 200) {
+          const detailData = detailResult.data.data || detailResult.data;
+          if (Array.isArray(detailData)) {
+            for (const item of detailData) {
+              const po = item.productOrder || item;
+              const status = po.productOrderStatus;
+              if (status === 'DELIVERING') shipping++;
+              else if (status === 'DELIVERED') delivered++;
+              else if (status === 'PURCHASE_DECIDED') purchaseConfirmed++;
+            }
+          }
+        }
+      } catch (err: any) {
+        console.warn(`[runDeepSync] 상세 조회 실패:`, err.message);
+      }
+    }
+  }
 
   const deepResult = {
-    shipping: deliveringIds.length,
-    delivered: deliveredIds.length,
-    purchaseConfirmed: decidedIds.length,
+    shipping,
+    delivered,
+    purchaseConfirmed,
     syncedAt: Date.now(),
-    syncRangeDays: rangeDays,
+    syncRangeDays: days,
+    _debug: {
+      dispatchedRaw: dispatchedItems.length,
+      decidedRaw: decidedItems.length,
+      uniqueIds: uniqueIds.length,
+    },
   };
 
   _ssDeepCache = deepResult;
