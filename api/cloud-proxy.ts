@@ -320,23 +320,35 @@ let _ssCountsCache: { data: any; fetchedAt: number; queryDays: number } | null =
 const SS_CACHE_TTL = 3 * 60 * 1000; // 3분
 
 // PAYED 전용 실시간 조회 (신규주문 + 배송준비)
-async function getPayedOrdersFast(queryDays: number = 7, forceRefresh: boolean = false) {
+async function getPayedOrdersFast(queryDays: number = 30, forceRefresh: boolean = false) {
   // 캐시 유효 시 즉시 반환 (forceRefresh면 캐시 무시)
   if (!forceRefresh && _ssPayedCache && (Date.now() - _ssPayedCache.fetchedAt) < SS_PAYED_CACHE_TTL) {
     return { ..._ssPayedCache.data, isCached: true, cacheAgeMs: Date.now() - _ssPayedCache.fetchedAt };
   }
 
-  const PAYED_RANGE_DAYS = Math.min(queryDays, 30);
+  const PAYED_RANGE_DAYS = Math.min(queryDays, 90);
 
-  // Step 1: ID만 빠르게 수집 (BATCH_SIZE=10, 30일 = 3배치 ≈ 3초)
-  const payedIds = await fetchOrderIds(['PAYED'], PAYED_RANGE_DAYS);
-  console.log(`[getPayedOrdersFast] fetchOrderIds PAYED ${PAYED_RANGE_DAYS}d => ${payedIds.length}건, ids: ${payedIds.slice(0,3).join(',')}`);
+  // SMARTSTORE-ORDERS-FIX.5: last-changed-statuses PAYED + PLACE_ORDER_CONFIRMED 기반
+  // 결제일 기준(fetchOrderIds)이 아닌 상태변경일 기준으로 조회
+  // PAYED: 결제된 주문 / PLACE_ORDER_CONFIRMED: 발주확인된 주문 (배송준비)
+  // → 둘 다 조회해야 네이버 관리자 대시보드의 "신규주문 + 배송준비"와 일치
+  const [payedItems, confirmedItems] = await Promise.all([
+    getLastChangedItems('PAYED', PAYED_RANGE_DAYS),
+    getLastChangedItems('PLACE_ORDER_CONFIRMED', PAYED_RANGE_DAYS),
+  ]);
 
-  // Step 2: ID로 상세 조회 (1회 POST, 최대 300건)
+  // ID 추출 + 중복 제거
+  const allIds = new Set<string>();
+  for (const item of payedItems) { if (item.productOrderId) allIds.add(item.productOrderId); }
+  for (const item of confirmedItems) { if (item.productOrderId) allIds.add(item.productOrderId); }
+  const uniqueIds = [...allIds];
+  console.log(`[getPayedOrdersFast] PAYED=${payedItems.length} CONFIRMED=${confirmedItems.length} unique=${uniqueIds.length}`);
+
+  // 상세 조회로 현재 상태 확인 (이미 발송처리된 주문은 PAYED가 아님)
   let payedOrders: any[] = [];
-  if (payedIds.length > 0) {
-    for (let i = 0; i < payedIds.length; i += 300) {
-      const idBatch = payedIds.slice(i, i + 300);
+  if (uniqueIds.length > 0) {
+    for (let i = 0; i < uniqueIds.length; i += 300) {
+      const idBatch = uniqueIds.slice(i, i + 300);
       try {
         const detailResult = await smartStoreRequest(
           '/v1/pay-order/seller/product-orders/query',
@@ -344,13 +356,23 @@ async function getPayedOrdersFast(queryDays: number = 7, forceRefresh: boolean =
         );
         if (detailResult.status === 200) {
           const detailData = detailResult.data.data || detailResult.data;
-          if (Array.isArray(detailData)) payedOrders = payedOrders.concat(detailData);
+          if (Array.isArray(detailData)) {
+            // 현재 상태가 PAYED인 것만 필터 (발송처리된 것 제외)
+            for (const item of detailData) {
+              const po = item.productOrder || item;
+              if (po.productOrderStatus === 'PAYED') {
+                payedOrders.push(item);
+              }
+            }
+          }
         }
       } catch (err: any) {
         console.warn(`[cloud-proxy] PAYED 상세 조회 실패:`, err.message);
       }
     }
   }
+
+  console.log(`[getPayedOrdersFast] 현재 PAYED 상태: ${payedOrders.length}건`);
 
   const newOrders = payedOrders.filter((o: any) => {
     const po = o.productOrder || o;
