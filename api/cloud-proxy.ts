@@ -326,25 +326,20 @@ async function getPayedOrdersFast(queryDays: number = 30, forceRefresh: boolean 
     return { ..._ssPayedCache.data, isCached: true, cacheAgeMs: Date.now() - _ssPayedCache.fetchedAt };
   }
 
-  const PAYED_RANGE_DAYS = Math.min(queryDays, 90);
-
-  // SMARTSTORE-ORDERS-FIX.6: 모든 가능한 lastChangedType 조회
-  // PAYED 상태 주문의 lastChangedType이 다양할 수 있음:
-  // - PAYED: 결제 완료
-  // - PLACE_ORDER_CONFIRMED: 발주확인 (없는 경우도 있음)
-  // - DELIVERY_ADDRESS_CHANGED: 배송지 변경 후에도 PAYED 상태 유지
-  // - EXCHANGE_OPTION: 옵션 변경 후에도 PAYED 상태 유지
-  // - CLAIM_REJECTED: 클레임 철회 후 PAYED 상태로 복귀
-  // 순차 실행 (QuotaGuard 동시 연결 제한 대응)
-  const lastChangedTypes = ['PAYED', 'DELIVERY_ADDRESS_CHANGED', 'EXCHANGE_OPTION', 'CLAIM_REJECTED'] as const;
-  const results: any[][] = [];
-  for (const type of lastChangedTypes) {
+  // SMARTSTORE-ORDERS-FIX.7: 핵심 PAYED 30일 + 보조 타입 7일 (속도 최적화)
+  // PAYED: 결제 완료 (30일 범위 - 대부분의 배송준비 주문 포함)
+  // 보조 타입: 배송지변경/옵션변경/클레임철회 후 PAYED 상태 유지 (7일)
+  const payedItems = await getLastChangedItems('PAYED', 30).catch(() => []);
+  const supplementTypes = ['DELIVERY_ADDRESS_CHANGED', 'EXCHANGE_OPTION', 'CLAIM_REJECTED'] as const;
+  const supplementResults: any[][] = [];
+  for (const type of supplementTypes) {
     try {
-      results.push(await getLastChangedItems(type, PAYED_RANGE_DAYS));
+      supplementResults.push(await getLastChangedItems(type, 7));
     } catch {
-      results.push([]);
+      supplementResults.push([]);
     }
   }
+  const results = [payedItems, ...supplementResults];
 
   // ID 추출 + 중복 제거
   const allIds = new Set<string>();
