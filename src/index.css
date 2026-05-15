@@ -7692,6 +7692,8 @@ html, body {
     border-radius: 16px;
     overflow-y: auto;
   }
+}
+
 /* ── UI-LAYOUT-ORCH-A.1: mission-layout grid ── */
 .mission-layout {
   display: grid;
@@ -7797,7 +7799,7 @@ html, body {
     grid-template-columns: 1fr;
     overflow: visible;
   }
-}
+
 
 /* ── Mission Status Strip (상단) ── */
 .scc-mission-strip {
