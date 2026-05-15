@@ -457,11 +457,7 @@ async function runDeepSync(rangeDays = 90) {
     purchaseConfirmed,
     syncedAt: Date.now(),
     syncRangeDays: days,
-    _debug: {
-      dispatchedRaw: dispatchedItems.length,
-      decidedRaw: decidedItems.length,
-      uniqueIds: uniqueIds.length,
-    },
+    // _debug 필드는 프로덕션에서 제거됨
   };
 
   _ssDeepCache = deepResult;
@@ -614,8 +610,11 @@ async function handleSmartstoreOrders(params: any) {
 
   // ── debug_last_changed: 디버그용 - 다양한 API 엔드포인트/파라미터 테스트 ──
   if (action === 'debug_last_changed') {
-    // SMARTSTORE-ORDERS-FIX.3B: 임시 디버그 허용 (0건 반환 원인 분석)
-    // TODO: 디버그 완료 후 프로덕션 차단 복원
+    // 프로덕션 차단 (디버그 전용)
+    if (process.env.NODE_ENV === 'production' || process.env.VERCEL) {
+      clearTimeout(handlerTimeoutId);
+      return { success: false, error: 'DEBUG_DISABLED', message: '디버그 엔드포인트는 프로덕션에서 비활성화됩니다.' };
+    }
     const now = new Date();
     const from24h = new Date(now.getTime() - 24 * 60 * 60 * 1000);
     const fromUtc24 = from24h.toISOString().replace(/\.\d{3}Z$/, '.000Z');
@@ -862,12 +861,7 @@ async function handleSmartstoreOrders(params: any) {
       return {
         success: true,
         mode: 'fast_snapshot',
-        _debug: {
-          payedIdsCount: payedData.preShipTotal,
-          payedRangeDays: payedData.payedRangeDays,
-          isCached: payedData.isCached,
-          cacheAgeMs: payedData.cacheAgeMs,
-        },
+        // _debug 필드는 프로덕션에서 제거됨
         source: 'naver-commerce-api',
         fetchedAt,
         // 실시간 조회 항목 (PAYED)
