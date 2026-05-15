@@ -4530,10 +4530,11 @@ html, body {
 
 .result-deck-overlay {
   position: fixed;
-  top: 80px;
-  left: 20px;
-  bottom: 80px;
-  width: 460px;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: min(860px, 92vw);
+  max-height: 82vh;
   background: linear-gradient(165deg, rgba(6,10,18,0.97) 0%, rgba(10,16,28,0.98) 100%);
   border: 1px solid rgba(0,245,255,0.15);
   border-radius: 18px;
@@ -7625,20 +7626,29 @@ html, body {
 /* ── Root Container ── */
 .scc-root {
   position: fixed;
-  inset: 0;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -46%) scale(0.97);
+  width: min(1100px, 96vw);
+  max-height: 86vh;
   z-index: 52;
   display: flex;
   flex-direction: column;
-  padding: 60px 24px 120px;
+  padding: 20px 20px 20px;
   pointer-events: none;
   opacity: 0;
-  transform: translateZ(-40px) scale(0.97);
-  transition: opacity 0.6s ease, transform 0.6s ease;
+  transition: opacity 0.5s ease, transform 0.5s ease;
   perspective: 1200px;
+  background: rgba(4, 8, 18, 0.92);
+  border: 1px solid rgba(34,211,238,0.18);
+  border-radius: 20px;
+  backdrop-filter: blur(24px);
+  box-shadow: 0 0 80px rgba(0,229,255,0.08), 0 40px 120px rgba(0,0,0,0.6);
+  overflow: hidden;
 }
 .scc-root.scc-visible {
   opacity: 1;
-  transform: translateZ(0) scale(1);
+  transform: translate(-50%, -50%) scale(1);
   pointer-events: auto;
 }
 
@@ -7682,8 +7692,8 @@ html, body {
 /* ── Grid Layout ── */
 .scc-grid {
   display: grid;
-  grid-template-columns: 1fr 1.3fr 1fr;
-  gap: 12px;
+  grid-template-columns: 1fr 1.4fr 1fr;
+  gap: 10px;
   flex: 1;
   min-height: 0;
   overflow-y: auto;
@@ -8756,9 +8766,10 @@ html, body {
 
 .acp-panel {
   position: fixed;
-  right: 20px;
+  left: 50%;
+  transform: translateX(-50%);
   bottom: 72px;
-  width: 320px;
+  width: min(520px, 92vw);
   max-height: 480px;
   overflow-y: auto;
   z-index: 55;
