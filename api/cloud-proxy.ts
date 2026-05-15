@@ -326,8 +326,30 @@ async function getPayedOrdersFast(queryDays: number = 7, forceRefresh: boolean =
     return { ..._ssPayedCache.data, isCached: true, cacheAgeMs: Date.now() - _ssPayedCache.fetchedAt };
   }
 
-  const PAYED_RANGE_DAYS = Math.min(queryDays, 30); // 최대 30일 (배송준비 누락 방지)
-  const payedOrders = await fetchOrders(['PAYED'], PAYED_RANGE_DAYS);
+  const PAYED_RANGE_DAYS = Math.min(queryDays, 30);
+
+  // Step 1: ID만 빠르게 수집 (BATCH_SIZE=10, 30일 = 3배치 ≈ 3초)
+  const payedIds = await fetchOrderIds(['PAYED'], PAYED_RANGE_DAYS);
+
+  // Step 2: ID로 상세 조회 (1회 POST, 최대 300건)
+  let payedOrders: any[] = [];
+  if (payedIds.length > 0) {
+    for (let i = 0; i < payedIds.length; i += 300) {
+      const idBatch = payedIds.slice(i, i + 300);
+      try {
+        const detailResult = await smartStoreRequest(
+          '/v1/pay-order/seller/product-orders/query',
+          { method: 'POST', body: JSON.stringify({ productOrderIds: idBatch }) }
+        );
+        if (detailResult.status === 200) {
+          const detailData = detailResult.data.data || detailResult.data;
+          if (Array.isArray(detailData)) payedOrders = payedOrders.concat(detailData);
+        }
+      } catch (err: any) {
+        console.warn(`[cloud-proxy] PAYED 상세 조회 실패:`, err.message);
+      }
+    }
+  }
 
   const newOrders = payedOrders.filter((o: any) => {
     const po = o.productOrder || o;
