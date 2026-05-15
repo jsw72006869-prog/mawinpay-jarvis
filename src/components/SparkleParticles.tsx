@@ -292,6 +292,8 @@ export default function SparkleParticles({ state, audioLevel, speakingLevel, cla
       if (!mat) return;
 
       const curState  = stateRef.current;
+      // audioLevel smoothing: 급격한 변화(Ctrl+K 폭발 등) 방지
+      audioRef.current += (audioTargetRef.current - audioRef.current) * 0.12;
       const audio     = audioRef.current;
       const speaking  = speakRef.current;
       const faceBlend = faceBlendRef.current;
@@ -577,7 +579,9 @@ export default function SparkleParticles({ state, audioLevel, speakingLevel, cla
     }
   }, [state]);
 
-  useEffect(() => { audioRef.current = audioLevel; }, [audioLevel]);
+  // audioLevel 급격한 변화 방지: 목표값만 저장, animate loop에서 lerp 처리
+  const audioTargetRef = useRef(0);
+  useEffect(() => { audioTargetRef.current = audioLevel; }, [audioLevel]);
   useEffect(() => { speakRef.current = speakingLevel; }, [speakingLevel]);
   useEffect(() => { freqRef.current = freqData ?? null; }, [freqData]);
 
