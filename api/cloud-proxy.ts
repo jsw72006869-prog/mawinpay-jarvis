@@ -1933,8 +1933,12 @@ async function ensureHeaders(tab: string): Promise<void> {
   const headers = SHEET_HEADERS[tab];
   if (!headers) return;
   try {
-    const result = await sheetsRead(tab, `${tab}!A1:A1`);
-    if (!result.values || result.values.length === 0) {
+    // OUTREACH-COPY.1: 헤더 행 전체 읽어서 컬럼 수 비교 후 부족하면 업데이트
+    const lastCol = String.fromCharCode(64 + headers.length); // e.g. Z for 26 cols
+    const result = await sheetsRead(tab, `${tab}!A1:${lastCol}1`);
+    const existingHeaders: string[] = result.values?.[0] || [];
+    if (existingHeaders.length === 0) {
+      // 헤더 없음 - 새로 쓰기
       const token = await getGoogleSheetsToken();
       const range = encodeURIComponent(`${tab}!A1`);
       const url = `https://sheets.googleapis.com/v4/spreadsheets/${WORKSPACE_SHEET_ID}/values/${range}?valueInputOption=RAW`;
@@ -1943,7 +1947,20 @@ async function ensureHeaders(tab: string): Promise<void> {
         headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
         body: JSON.stringify({ values: [headers] }),
       });
+    } else if (existingHeaders.length < headers.length) {
+      // 헤더 컬럼 수 부족 - 누락된 컬럼만 추가
+      const missingHeaders = headers.slice(existingHeaders.length);
+      const startColLetter = String.fromCharCode(65 + existingHeaders.length); // 다음 빈 컬럼
+      const token = await getGoogleSheetsToken();
+      const range = encodeURIComponent(`${tab}!${startColLetter}1`);
+      const url = `https://sheets.googleapis.com/v4/spreadsheets/${WORKSPACE_SHEET_ID}/values/${range}?valueInputOption=RAW`;
+      await fetch(url, {
+        method: 'PUT',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ values: [missingHeaders] }),
+      });
     }
+    // 헤더 수 동일하면 그대로 유지
   } catch (e: any) {
     // Tab doesn't exist - create it first
     if (e.message?.includes('Unable to parse range') || e.message?.includes('400') || e.message?.includes('404')) {
