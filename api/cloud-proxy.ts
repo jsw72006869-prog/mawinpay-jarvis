@@ -356,34 +356,35 @@ async function getPayedOrdersFast(queryDays: number = 7) {
   return result;
 }
 
-// 정밀 동기화 (DELIVERING/DELIVERED/PURCHASE_DECIDED) - 별도 액션으로 호출
-// SMARTSTORE-ORDERS-FIX.3B: last-changed-statuses 기반 deep_sync
-// fetchOrders(PAYED_DATETIME)는 결제일 기준이라 배송중/배송완료/구매확정 주문을 놓침
-// → lastChangedType 기반으로 전환: 상태 변경일 기준 조회 → 네이버 관리자 숫자와 일치
-// shippingDays=7, deliveredDays=7, decidedDays=14 (기본값)
-// 7일 × 5개 배치 = 2배치 × ~2초 = ~4초, 3개 병렬 = ~8초 (55초 timeout 내 안전)
-async function runDeepSync(shippingDays = 7, deliveredDays = 7, decidedDays = 14) {
-  // last-changed-statuses API: lastChangedType에 상태명 전달
-  // DELIVERING → 배송중으로 변경된 주문 (최근 N일 내 상태 변경)
-  // DELIVERED → 배송완료로 변경된 주문
-  // PURCHASE_DECIDED → 구매확정으로 변경된 주문
-  const [shippingItems, deliveredItems, decidedItems] = await Promise.all([
-    getLastChangedItems('DELIVERING', shippingDays),
-    getLastChangedItems('DELIVERED', deliveredDays),
+// 정밀 동기화 (배송중/배송완료/구매확정) - 별도 액션으로 호출
+// SMARTSTORE-ORDERS-FIX.3C: lastChangedType 정확한 값 사용
+// 네이버 API 공식 답변 (Discussion #1847):
+//   "발송처리~배송완료 때까지는 lastChangedType이 DISPATCHED로 나타납니다."
+//   즉, DELIVERING/DELIVERED는 lastChangedType 값이 아님 → DISPATCHED 사용
+//   배송중/배송완료 구분은 응답의 productOrderStatus로 필터링
+// dispatchedDays: DISPATCHED(배송중+배송완료) 조회 범위
+// decidedDays: PURCHASE_DECIDED(구매확정) 조회 범위
+async function runDeepSync(dispatchedDays = 14, decidedDays = 30) {
+  // DISPATCHED: 발송처리~배송완료 (배송중+배송완료 모두 포함)
+  // PURCHASE_DECIDED: 구매확정
+  const [dispatchedItems, decidedItems] = await Promise.all([
+    getLastChangedItems('DISPATCHED', dispatchedDays),
     getLastChangedItems('PURCHASE_DECIDED', decidedDays),
   ]);
 
-  // productOrderId 기준 중복 제거 (같은 주문이 여러 번 상태 변경될 수 있음)
+  // DISPATCHED 결과에서 productOrderStatus로 배송중/배송완료 분리
   const uniqueShipping = new Map<string, any>();
-  for (const item of shippingItems) {
-    const id = item.productOrderId;
-    if (id) uniqueShipping.set(id, item);
-  }
-
   const uniqueDelivered = new Map<string, any>();
-  for (const item of deliveredItems) {
+  for (const item of dispatchedItems) {
     const id = item.productOrderId;
-    if (id) uniqueDelivered.set(id, item);
+    if (!id) continue;
+    const status = item.productOrderStatus;
+    if (status === 'DELIVERING') {
+      uniqueShipping.set(id, item);
+    } else if (status === 'DELIVERED') {
+      uniqueDelivered.set(id, item);
+    }
+    // PURCHASE_DECIDED 등 다른 상태는 무시 (이미 상태가 변경된 주문)
   }
 
   const uniqueDecided = new Map<string, any>();
@@ -392,15 +393,9 @@ async function runDeepSync(shippingDays = 7, deliveredDays = 7, decidedDays = 14
     if (id) uniqueDecided.set(id, item);
   }
 
-  // 배송완료 목록에서 이미 구매확정된 주문 제외 (현재 상태 기준 정확도 향상)
+  // 구매확정 목록에 있는 주문은 배송완료/배송중에서 제외 (중복 방지)
   for (const id of uniqueDecided.keys()) {
     uniqueDelivered.delete(id);
-  }
-  // 배송중 목록에서 이미 배송완료/구매확정된 주문 제외
-  for (const id of uniqueDelivered.keys()) {
-    uniqueShipping.delete(id);
-  }
-  for (const id of uniqueDecided.keys()) {
     uniqueShipping.delete(id);
   }
 
@@ -409,7 +404,7 @@ async function runDeepSync(shippingDays = 7, deliveredDays = 7, decidedDays = 14
     delivered: uniqueDelivered.size,
     purchaseConfirmed: uniqueDecided.size,
     syncedAt: Date.now(),
-    syncRangeDays: { shipping: shippingDays, delivered: deliveredDays, decided: decidedDays },
+    syncRangeDays: { dispatched: dispatchedDays, decided: decidedDays },
   };
 
   _ssDeepCache = deepResult;
@@ -760,13 +755,13 @@ async function handleSmartstoreOrders(params: any) {
   if (action === 'deep_sync') {
     try {
       checkTimeout();
-      // SMARTSTORE-ORDERS-FIX.3B: last-changed-statuses 기반 → 기본값 7/7/14일
-      // Vercel Hobby 60초 hard limit 방어: 3상태 병렬 × 최대 14일 = 42호출, BATCH_SIZE=5 → ~18초
-      const shippingDays = Number(params?.shippingDays) || 7;
-      const deliveredDays = Number(params?.deliveredDays) || 7;
-      const decidedDays = Number(params?.decidedDays) || 14;
+      // SMARTSTORE-ORDERS-FIX.3C: DISPATCHED + PURCHASE_DECIDED 기반
+      // DISPATCHED = 배송중+배송완료 (productOrderStatus로 분리)
+      // dispatchedDays=14, decidedDays=30 (기본값)
+      const dispatchedDays = Number(params?.dispatchedDays) || Number(params?.shippingDays) || 14;
+      const decidedDays = Number(params?.decidedDays) || 30;
 
-      const deepResult = await runDeepSync(shippingDays, deliveredDays, decidedDays);
+      const deepResult = await runDeepSync(dispatchedDays, decidedDays);
       clearTimeout(handlerTimeoutId);
       return {
         success: true,
