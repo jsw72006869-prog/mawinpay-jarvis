@@ -8748,3 +8748,259 @@ html, body {
   }
 }
 /* ── end CHAT-INPUT-D.1 ── */
+
+/* ══════════════════════════════════════════════════════════════
+   DUAL-MONITOR-C.1: Apple-grade Action Command Panel
+   Dark cinematic glass morphism — 라운드/블러/여백/부드러운 모션
+   ══════════════════════════════════════════════════════════════ */
+
+.acp-panel {
+  position: fixed;
+  right: 20px;
+  bottom: 72px;
+  width: 320px;
+  max-height: 480px;
+  overflow-y: auto;
+  z-index: 55;
+  background: rgba(12, 12, 18, 0.72);
+  border: 1px solid rgba(255, 255, 255, 0.10);
+  border-radius: 22px;
+  backdrop-filter: blur(24px) saturate(1.3);
+  -webkit-backdrop-filter: blur(24px) saturate(1.3);
+  box-shadow:
+    0 8px 32px rgba(0, 0, 0, 0.35),
+    0 1px 0 rgba(255, 255, 255, 0.04) inset;
+  padding: 20px 18px;
+  font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Helvetica Neue', sans-serif;
+  pointer-events: auto;
+  scrollbar-width: none;
+}
+.acp-panel::-webkit-scrollbar { display: none; }
+
+/* ── Sections ── */
+.acp-section {
+  padding: 4px 0;
+}
+.acp-section-label {
+  display: block;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  color: rgba(255, 255, 255, 0.32);
+  margin-bottom: 8px;
+  text-transform: uppercase;
+}
+.acp-divider {
+  height: 1px;
+  background: rgba(255, 255, 255, 0.06);
+  margin: 10px 0;
+}
+
+/* ── S1: Header ── */
+.acp-header-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+.acp-header-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #30D158;
+  box-shadow: 0 0 8px rgba(48, 209, 88, 0.5);
+  animation: acp-pulse 2.5s ease-in-out infinite;
+}
+@keyframes acp-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+.acp-header-label {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  color: rgba(255, 255, 255, 0.80);
+}
+.acp-header-scene {
+  font-size: 18px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: rgba(255, 255, 255, 0.92);
+  line-height: 1.3;
+  margin-top: 2px;
+}
+
+/* ── S2: System Status ── */
+.acp-status-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.acp-status-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.acp-status-text {
+  font-size: 13px;
+  font-weight: 500;
+  color: rgba(255, 255, 255, 0.60);
+  letter-spacing: 0.01em;
+}
+
+/* ── S3: Action Cards ── */
+.acp-actions-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.acp-card {
+  padding: 10px 12px;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  transition: background 0.25s ease, border-color 0.25s ease, transform 0.2s ease;
+  cursor: default;
+}
+.acp-card.acp-clickable {
+  cursor: pointer;
+}
+.acp-card.acp-clickable:hover {
+  background: rgba(255, 255, 255, 0.07);
+  border-color: rgba(255, 255, 255, 0.12);
+  transform: translateY(-1px);
+}
+.acp-card.acp-locked {
+  opacity: 0.65;
+}
+.acp-card-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 4px;
+}
+.acp-card-title-row {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+.acp-card-dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.acp-card-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.88);
+  letter-spacing: 0.01em;
+}
+.acp-card-badge {
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  padding: 2px 7px;
+  border: 1px solid;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.03);
+}
+.acp-card-desc {
+  font-size: 12px;
+  font-weight: 400;
+  color: rgba(255, 255, 255, 0.45);
+  line-height: 1.5;
+  letter-spacing: 0.01em;
+}
+
+/* ── Action Buttons ── */
+.acp-card-btns {
+  display: flex;
+  gap: 6px;
+  margin-top: 8px;
+}
+.acp-btn {
+  font-size: 11px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.75);
+  padding: 4px 12px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  cursor: pointer;
+  transition: background 0.2s ease, border-color 0.2s ease;
+  letter-spacing: 0.02em;
+}
+.acp-btn:hover {
+  background: rgba(255, 255, 255, 0.10);
+  border-color: rgba(255, 255, 255, 0.15);
+}
+.acp-btn-sec {
+  color: rgba(255, 255, 255, 0.40);
+  background: rgba(255, 255, 255, 0.03);
+  border-color: rgba(255, 255, 255, 0.05);
+}
+
+/* ── S4: Execution Lock ── */
+.acp-lock-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.acp-lock-icon {
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.45);
+}
+.acp-lock-icon.acp-lock-active {
+  animation: acp-amber-pulse 2s ease-in-out infinite;
+}
+@keyframes acp-amber-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.55; }
+}
+.acp-lock-text {
+  font-size: 12px;
+  font-weight: 500;
+  color: rgba(255, 255, 255, 0.45);
+  letter-spacing: 0.01em;
+}
+.acp-lock-text.acp-lock-active {
+  color: #FFD60A;
+}
+
+/* ── S5: Command Trail ── */
+.acp-trail-msg {
+  font-size: 12px;
+  font-weight: 500;
+  color: #FFD60A;
+  line-height: 1.5;
+  letter-spacing: 0.01em;
+}
+.acp-trail-idle {
+  font-size: 12px;
+  font-weight: 400;
+  color: rgba(255, 255, 255, 0.30);
+  letter-spacing: 0.01em;
+}
+
+/* ── Mobile: compact / hide ── */
+@media (max-width: 768px) {
+  .acp-panel {
+    right: 8px;
+    bottom: 68px;
+    width: calc(100vw - 16px);
+    max-height: 320px;
+    border-radius: 18px;
+    padding: 16px 14px;
+  }
+  .acp-header-scene {
+    font-size: 15px;
+  }
+}
+@media (max-width: 480px) {
+  .acp-panel {
+    display: none;
+  }
+}
+/* ── end DUAL-MONITOR-C.1 ── */
