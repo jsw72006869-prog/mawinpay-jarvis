@@ -387,20 +387,19 @@ async function runDeepSync(rangeDays = 90) {
 
 // 상태별 productOrderId 목록만 조회 (상세 조회 생략 → 빠름)
 // GET /v1/pay-order/seller/product-orders 엔드포인트 사용
-// rangeType=PAYED_DATETIME, 7일 단위 조회 (1일 단위 대비 7배 빠름)
+// rangeType=PAYED_DATETIME, 24시간 단위 조회 (네이버 API 제한: from~to 간격 최대 24시간)
 async function fetchOrderIds(statuses: string[], days: number): Promise<string[]> {
   const now = new Date();
   const startDate = new Date();
   startDate.setDate(startDate.getDate() - days);
 
-  const CHUNK_DAYS = 7; // 7일 단위로 조회 (API 최대 6개월 지원)
   const dayRequests: Array<{ from: Date; to: Date }> = [];
-  let cursor = new Date(startDate);
-  while (cursor < now) {
-    const chunkEnd = new Date(cursor.getTime() + CHUNK_DAYS * 24 * 60 * 60 * 1000);
-    const to = chunkEnd > now ? new Date(now) : chunkEnd;
-    dayRequests.push({ from: new Date(cursor), to });
-    cursor = new Date(to);
+  for (let i = 0; i < days; i++) {
+    const dayFrom = new Date(startDate.getTime() + i * 24 * 60 * 60 * 1000);
+    const dayTo = new Date(dayFrom.getTime() + 24 * 60 * 60 * 1000);
+    if (dayFrom >= now) break;
+    if (dayTo > now) dayTo.setTime(now.getTime());
+    dayRequests.push({ from: dayFrom, to: dayTo });
   }
 
   let allIds: string[] = [];
@@ -439,7 +438,7 @@ async function fetchOrderIds(statuses: string[], days: number): Promise<string[]
     return [];
   }
 
-  const BATCH_SIZE = 5;
+  const BATCH_SIZE = 10; // ID만 조회하므로 병렬 높임 (90일 = 9배치)
   for (let b = 0; b < dayRequests.length; b += BATCH_SIZE) {
     const batch = dayRequests.slice(b, b + BATCH_SIZE);
     const results = await Promise.all(batch.map(({ from, to }) => fetchDayIds(from, to)));
@@ -884,15 +883,14 @@ async function fetchOrders(statuses: string[], days: number): Promise<any[]> {
   const startDate = new Date();
   startDate.setDate(startDate.getDate() - days);
 
-  // 7일 단위 조회 (1일 단위 대비 7배 빠름, API 최대 6개월 지원)
-  const CHUNK_DAYS = 7;
+  // 24시간 단위 조회 (네이버 API 제한: from~to 간격 최대 24시간)
   const dayRequests: Array<{ from: Date; to: Date }> = [];
-  let cursor = new Date(startDate);
-  while (cursor < now) {
-    const chunkEnd = new Date(cursor.getTime() + CHUNK_DAYS * 24 * 60 * 60 * 1000);
-    const to = chunkEnd > now ? new Date(now) : chunkEnd;
-    dayRequests.push({ from: new Date(cursor), to });
-    cursor = new Date(to);
+  for (let i = 0; i < days; i++) {
+    const dayFrom = new Date(startDate.getTime() + i * 24 * 60 * 60 * 1000);
+    const dayTo = new Date(dayFrom.getTime() + 24 * 60 * 60 * 1000);
+    if (dayFrom >= now) break;
+    if (dayTo > now) dayTo.setTime(now.getTime());
+    dayRequests.push({ from: dayFrom, to: dayTo });
   }
 
   // QuotaGuard 동시연결 제한 대응: 순차 실행 + 재시도 (2회)
