@@ -357,63 +357,96 @@ async function getPayedOrdersFast(queryDays: number = 7) {
 }
 
 // 정밀 동기화 (배송중/배송완료/구매확정) - 별도 액션으로 호출
-// SMARTSTORE-ORDERS-FIX.3C: lastChangedType 정확한 값 사용
-// 네이버 API 공식 답변 (Discussion #1847):
-//   "발송처리~배송완료 때까지는 lastChangedType이 DISPATCHED로 나타납니다."
-//   즉, DELIVERING/DELIVERED는 lastChangedType 값이 아님 → DISPATCHED 사용
-//   배송중/배송완료 구분은 응답의 productOrderStatus로 필터링
-// dispatchedDays: DISPATCHED(배송중+배송완료) 조회 범위
-// decidedDays: PURCHASE_DECIDED(구매확정) 조회 범위
-async function runDeepSync(dispatchedDays = 14, decidedDays = 30) {
-  // DISPATCHED: 발송처리~배송완료 (배송중+배송완료 모두 포함)
-  // PURCHASE_DECIDED: 구매확정
-  const [dispatchedItems, decidedItems] = await Promise.all([
-    getLastChangedItems('DISPATCHED', dispatchedDays),
-    getLastChangedItems('PURCHASE_DECIDED', decidedDays),
-  ]);
-
-  // DISPATCHED 결과에서 productOrderStatus로 배송중/배송완료 분리
-  const uniqueShipping = new Map<string, any>();
-  const uniqueDelivered = new Map<string, any>();
-  for (const item of dispatchedItems) {
-    const id = item.productOrderId;
-    if (!id) continue;
-    const status = item.productOrderStatus;
-    if (status === 'DELIVERING') {
-      uniqueShipping.set(id, item);
-    } else if (status === 'DELIVERED') {
-      uniqueDelivered.set(id, item);
-    }
-    // PURCHASE_DECIDED 등 다른 상태는 무시 (이미 상태가 변경된 주문)
-  }
-
-  const uniqueDecided = new Map<string, any>();
-  for (const item of decidedItems) {
-    const id = item.productOrderId;
-    if (id) uniqueDecided.set(id, item);
-  }
-
-  // 구매확정 목록에 있는 주문은 배송완료/배송중에서 제외 (중복 방지)
-  for (const id of uniqueDecided.keys()) {
-    uniqueDelivered.delete(id);
-    uniqueShipping.delete(id);
-  }
+// SMARTSTORE-ORDERS-FIX.4: productOrderStatuses 기반 조회로 전환
+// 네이버 관리자 대시보드는 "현재 productOrderStatus" 기준으로 건수 표시
+// last-changed-statuses API는 "마지막 상태 변경" 기준이라 대시보드와 불일치
+// → GET product-orders (productOrderStatuses 필터) + POST product-orders/query (상세) 조합
+// 이 방식은 rangeType=PAYED_DATETIME 기준이므로 충분한 범위(60일) 필요
+// 순차 실행: 배송중(60일) → 배송완료(60일) → 구매확정(60일)
+// 각 상태별 60일 = 60호출, BATCH_SIZE=5 → 12배치 × ~1.5초 = ~18초
+// 3상태 순차 = ~54초 (Vercel 60초 내 긴박)
+// → 각 상태별 건수만 필요하므로 상세 조회 생략 → 속도 대폭 향상
+async function runDeepSync(rangeDays = 60) {
+  // 각 상태별 productOrderId 목록만 조회 (상세 조회 X → 빠름)
+  // 순차 실행으로 QuotaGuard 동시연결 제한 방어
+  const deliveringIds = await fetchOrderIds(['DELIVERING'], rangeDays);
+  const deliveredIds = await fetchOrderIds(['DELIVERED'], rangeDays);
+  const decidedIds = await fetchOrderIds(['PURCHASE_DECIDED'], rangeDays);
 
   const deepResult = {
-    shipping: uniqueShipping.size,
-    delivered: uniqueDelivered.size,
-    purchaseConfirmed: uniqueDecided.size,
+    shipping: deliveringIds.length,
+    delivered: deliveredIds.length,
+    purchaseConfirmed: decidedIds.length,
     syncedAt: Date.now(),
-    syncRangeDays: { dispatched: dispatchedDays, decided: decidedDays },
+    syncRangeDays: rangeDays,
   };
 
   _ssDeepCache = deepResult;
-
-  // SMARTSTORE-ORDERS-FIX.3A: TiDB 저장 제거 → 클라이언트 localStorage 캐시 기반
-  // deep_sync 결과는 API 응답으로 반환 → 클라이언트가 localStorage에 저장
-  // 서버 메모리 캐시(_ssDeepCache)는 같은 인스턴스 내에서만 유효
-
   return deepResult;
+}
+
+// 상태별 productOrderId 목록만 조회 (상세 조회 생략 → 빠름)
+// GET /v1/pay-order/seller/product-orders 엔드포인트 사용
+// rangeType=PAYED_DATETIME, 24시간 단위 조회
+async function fetchOrderIds(statuses: string[], days: number): Promise<string[]> {
+  const now = new Date();
+  const startDate = new Date();
+  startDate.setDate(startDate.getDate() - days);
+
+  const dayRequests: Array<{ from: Date; to: Date }> = [];
+  for (let i = 0; i < days; i++) {
+    const dayFrom = new Date(startDate.getTime() + i * 24 * 60 * 60 * 1000);
+    const dayTo = new Date(dayFrom.getTime() + 24 * 60 * 60 * 1000);
+    if (dayFrom >= now) break;
+    if (dayTo > now) dayTo.setTime(now.getTime());
+    dayRequests.push({ from: dayFrom, to: dayTo });
+  }
+
+  let allIds: string[] = [];
+
+  async function fetchDayIds(from: Date, to: Date): Promise<string[]> {
+    const params = new URLSearchParams();
+    params.append('from', formatNaverDate(from));
+    params.append('to', formatNaverDate(to));
+    params.append('rangeType', 'PAYED_DATETIME');
+    params.append('pageSize', '300');
+    params.append('page', '1');
+    statuses.forEach(s => params.append('productOrderStatuses', s));
+
+    for (let attempt = 0; attempt < 2; attempt++) {
+      try {
+        const result = await smartStoreRequest(
+          `/v1/pay-order/seller/product-orders?${params.toString()}`,
+          { method: 'GET' }
+        );
+        if (result.status === 200) {
+          const responseData = result.data.data || result.data;
+          const contents = responseData.contents || responseData || [];
+          if (Array.isArray(contents)) {
+            return contents.map((item: any) => {
+              const po = item.productOrder || item;
+              return po.productOrderId || null;
+            }).filter(Boolean);
+          }
+          return [];
+        }
+        if (attempt < 1) await new Promise(r => setTimeout(r, 500));
+      } catch (err: any) {
+        if (attempt < 1) await new Promise(r => setTimeout(r, 500));
+      }
+    }
+    return [];
+  }
+
+  const BATCH_SIZE = 5;
+  for (let b = 0; b < dayRequests.length; b += BATCH_SIZE) {
+    const batch = dayRequests.slice(b, b + BATCH_SIZE);
+    const results = await Promise.all(batch.map(({ from, to }) => fetchDayIds(from, to)));
+    for (const ids of results) allIds.push(...ids);
+  }
+
+  // 중복 제거
+  return [...new Set(allIds)];
 }
 
 // 하위호환: 기존 getSmartstoreStatusCounts 호출 대응 (브리핑 등)
@@ -755,13 +788,12 @@ async function handleSmartstoreOrders(params: any) {
   if (action === 'deep_sync') {
     try {
       checkTimeout();
-      // SMARTSTORE-ORDERS-FIX.3C: DISPATCHED + PURCHASE_DECIDED 기반
-      // DISPATCHED = 배송중+배송완료 (productOrderStatus로 분리)
-      // dispatchedDays=14, decidedDays=30 (기본값)
-      const dispatchedDays = Number(params?.dispatchedDays) || Number(params?.shippingDays) || 14;
-      const decidedDays = Number(params?.decidedDays) || 30;
+      // SMARTSTORE-ORDERS-FIX.4: productOrderStatuses 기반 조회
+      // 네이버 관리자 대시보드와 동일한 기준 (현재 productOrderStatus)
+      // rangeDays=60 (기본값, 결제일 기준 60일 내 주문)
+      const rangeDays = Number(params?.rangeDays) || 60;
 
-      const deepResult = await runDeepSync(dispatchedDays, decidedDays);
+      const deepResult = await runDeepSync(rangeDays);
       clearTimeout(handlerTimeoutId);
       return {
         success: true,
