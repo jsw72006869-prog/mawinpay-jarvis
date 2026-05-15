@@ -1914,7 +1914,7 @@ const SHEET_HEADERS: Record<string, string[]> = {
   growth_campaigns: ['campaignId','createdAt','product','source','targetUrl','directUrl','couponCode','campaignMemo','status'],
   purchase_order_drafts: ['draftId','createdAt','supplier','productSummary','totalQuantity','totalAmountIfAvailable','status','safePreview'],
   influencer_candidates: ['influencer_id','platform','channel_name','handle','profile_url','contact_email','contact_url','email_status','category_tags','source_keyword','source_product','followers_or_subscribers','avg_views','fit_score','fit_reason','outreach_status','last_contacted_at','reply_status','next_action','duplicate_hash','created_at','updated_at','notes'],
-  influencer_candidates_v2: ['influencer_id','platform','channel_name','handle','profile_url','contact_email','contact_url','email_status','category_tags','source_keyword','source_product','followers_or_subscribers','avg_views','fit_score','fit_reason','outreach_status','last_contacted_at','reply_status','next_action','duplicate_hash','created_at','updated_at','notes'],
+  influencer_candidates_v2: ['influencer_id','platform','channel_name','handle','profile_url','contact_email','contact_url','email_status','category_tags','source_keyword','source_product','followers_or_subscribers','avg_views','fit_score','fit_reason','outreach_status','last_contacted_at','reply_status','next_action','duplicate_hash','created_at','updated_at','notes','proposal_angle','proposal_subject','proposal_draft'],
   market_price_checks: ['checkId','createdAt','productName','rawMaterialCost','currentPrice','shippingCost','packagingCost','platformFeeRate','otherCosts','competitorPrices','competitorMinPrice','competitorAvgPrice','netSalesAmount','estimatedMargin','estimatedMarginRate','jarvisDecision','recommendedAction','sourceCommand'],
 };
 
@@ -2170,15 +2170,61 @@ function calculateProductFitScore(channel: any, keyword: string, product: string
   return { score: Math.min(score, 100), reason: reasons.join('. ') + '.' };
 }
 
+// ── 품목별 제안 각도 키워드 맵 ──
+const PRODUCT_ANGLE_MAP: Record<string, string[]> = {
+  '복숭아': ['제철 과일 / 향과 당도', '여름 시즌 선물 수요', '먹방/캠핑/가족 콘텐츠 궁합', '짧은 수확 시즌 긴박감'],
+  '옥수수': ['여름 간식 / 쫀득한 식감', '산지직송 신뢰', '캠핑/휴가철 간식', '가족 재구매 유도'],
+  '찰옥수수': ['여름 간식 / 쫀득한 식감', '산지직송 신뢰', '캠핑/휴가철 간식', '가족 재구매 유도'],
+  '절임배추': ['김장철 예약 수요', '산지 원물 안정성', '배송 일정 신뢰', '가족 단위 구매'],
+  '배추': ['김장철 예약 수요', '산지 원물 안정성', '배송 일정 신뢰', '가족 단위 구매'],
+  '딸기': ['겨울/봄 제철 과일', '당도와 신선도', '선물/디저트 수요', '먹방/베이킹 콘텐츠 궁합'],
+  '수박': ['여름 제철 과일', '가족 간식', '캠핑/피크닉 콘텐츠', '산지직송 신선도'],
+  '감자': ['사계절 간편 식재료', '집밥/요리 콘텐츠', '산지직송 신뢰', '대용량 가성비'],
+  '고구마': ['가을/겨울 간식', '건강 간식 수요', '캠핑/군고구마 콘텐츠', '아이 간식'],
+  '사과': ['가을 제철 과일', '선물 수요', '당도/식감 강조', '가족 건강 간식'],
+  '배': ['가을 제철 과일', '선물 수요', '수분/당도 강조', '명절 선물 각도'],
+};
+
+function getProductAngles(product: string, keyword: string): string[] {
+  const p = product || keyword;
+  for (const [key, angles] of Object.entries(PRODUCT_ANGLE_MAP)) {
+    if (p.includes(key)) return angles;
+  }
+  // 기본 각도 (미등록 품목)
+  return [`제철 ${p} 산지직송`, `${p} 공동구매 시즌 수요`, `가족/일상 콘텐츠와 연결 가능`, '체험 후 공동구매 제안'];
+}
+
 function generateOfferAngle(channel: any, keyword: string, product: string): string {
+  const angles = getProductAngles(product, keyword);
   const name = channel.title || channel.name || '채널';
-  const contentTitle = channel.recentContentTitle || '';
-  const angles = [
-    `${name}님의 최근 "${contentTitle.slice(0,30)}" 콘텐츠와 ${product || keyword} 공동구매가 자연스럽게 연결됩니다.`,
-    `구독자분들이 좋아할 제철 ${product || keyword}를 체험형 공동구매로 제안하면 좋겠습니다.`,
-    `"캠핑장에서 바로 먹는 간식" 또는 "집에서 간편하게 즐기는 제철 먹거리" 각도가 적합합니다.`,
-  ];
-  return angles[Math.floor(Math.random() * angles.length)];
+  const category = (channel.description || channel.recentContentTitle || '').slice(0, 40);
+  const p = product || keyword;
+  // 채널 카테고리와 상품 연결 이유를 구체적으로 생성
+  const categoryHint = category ? `${category} 콘텐츠` : '콘텐츠';
+  return `${name}님의 ${categoryHint}와 ${p} 공동구매 연결 포인트: ${angles.slice(0, 2).join(' / ')}`;
+}
+
+function generateProposalAngle(channel: any, keyword: string, product: string): string {
+  const angles = getProductAngles(product, keyword);
+  return angles.join(' / ');
+}
+
+function generateProposalSubject(product: string, keyword: string): string {
+  const p = product || keyword;
+  return `제철 ${p} 공동구매 제안드립니다`;
+}
+
+function generateProposalDraft(channel: any, keyword: string, product: string): string {
+  const name = channel.title || channel.name || '크리에이터';
+  const p = product || keyword;
+  const angles = getProductAngles(p, keyword);
+  const angleStr = angles.slice(0, 2).join(', ');
+  return `안녕하세요, ${name}님.\n` +
+    `채널에서 ${angleStr} 관련 콘텐츠와 잘 맞는 상품을 제안드리고 싶어 연락드립니다.\n` +
+    `이번 상품은 ${p} 공동구매입니다.\n` +
+    `${p}는 ${angles[0]}로 짧은 기간 안에 반응을 만들기 좋은 품목입니다.\n` +
+    `${name}님의 콘텐츠 톤과도 잘 맞아 구독자분들이 부담 없이 관심을 가질 수 있을 것 같습니다.\n` +
+    `조건이 맞으시면 샘플/공동구매 조건을 간단히 전달드리겠습니다.`;
 }
 
 function generateFirstEmailDraft(channel: any, keyword: string, product: string): string {
@@ -2453,7 +2499,10 @@ async function handleOutreachCollect(params: any) {
             subscriberOrVisitor: subs > 0 ? (subs >= 10000 ? `${(subs/10000).toFixed(1)}만` : `${subs.toLocaleString()}`) : '-',
             viewCount: views > 0 ? (views >= 100000000 ? `${(views/100000000).toFixed(1)}억` : views >= 10000 ? `${(views/10000).toFixed(0)}만` : views.toLocaleString()) : '-',
             publicContactStatus: channelData.publicContactStatus,
+            // OUTREACH-COPY.1: 마스킹 이메일은 publicEmailMasked에만 보관, contact_email에는 저장하지 않음
             publicEmailMasked: contact.email ? maskEmail(contact.email) : '',
+            // 공개 이메일(***미포함)만 contact_email로 저장
+            contact_email: (contact.email && !contact.email.includes('***')) ? contact.email : '',
             emailSource: hasEmail ? 'channel_description' : '',
             productFitScore: fit.score,
             productFitReason: fit.reason,
@@ -2466,6 +2515,10 @@ async function handleOutreachCollect(params: any) {
             notes: trendChannelIds.includes(ch.id) ? '🔥 트렌드 발견' : '',
             thumbnailUrl: snippet.thumbnails?.medium?.url || snippet.thumbnails?.default?.url || '',
             excludedReason: '',
+            // OUTREACH-COPY.1: 품목별 맞치형 제안 3콼럼
+            proposal_angle: generateProposalAngle(channelData, keyword, productName),
+            proposal_subject: generateProposalSubject(productName, keyword),
+            proposal_draft: generateProposalDraft(channelData, keyword, productName),
           };
 
           // 이메일 필수 조건 처리
@@ -2539,6 +2592,7 @@ async function handleOutreachCollect(params: any) {
           viewCount: '-',
           publicContactStatus: 'unknown',
           publicEmailMasked: '',
+          contact_email: '',
           emailSource: '',
           productFitScore: fit.score,
           productFitReason: fit.reason,
@@ -2550,6 +2604,10 @@ async function handleOutreachCollect(params: any) {
           responseStatus: 'none',
           notes: `최근 글: ${cleanTitle.substring(0, 40)}`,
           excludedReason: '',
+          // OUTREACH-COPY.1: 품목별 맞치형 제안 3콼럼
+          proposal_angle: generateProposalAngle(channelData, keyword, productName),
+          proposal_subject: generateProposalSubject(productName, keyword),
+          proposal_draft: generateProposalDraft(channelData, keyword, productName),
         };
 
         if (requireEmail) {
@@ -2644,7 +2702,11 @@ async function handleOutreachSaveCandidates(params: any) {
       const profileUrl = c.profile_url || c.channelOrBlogUrl || '';
       const channelName = c.channel_name || c.name || '';
       const handle = c.handle || '';
-      const contactEmail = c.contact_email || c.publicEmailMasked || '';
+      // OUTREACH-COPY.1: 이메일 저장 정책 — 공개 이메일만 저장, 마스킹 이메일은 저장하지 않음
+      const rawContactEmail = c.contact_email || '';
+      const hasMasked = (c.publicEmailMasked || '').includes('***');
+      // 마스킹된 이메일(***포함)은 contact_email에 저장하지 않음 (email_status로만 표시)
+      const contactEmail = rawContactEmail && !rawContactEmail.includes('***') ? rawContactEmail : '';
       const contactUrl = c.contact_url || '';
       // email_status 검증 (허용값만)
       const allowedEmailStatus = ['public_email', 'contact_form', 'not_found', 'unknown'];
@@ -2679,11 +2741,21 @@ async function handleOutreachSaveCandidates(params: any) {
         outreachStatus,
         c.last_contacted_at || c.lastContactedAt || '',
         replyStatus,
-        c.next_action || '',
+        // OUTREACH-COPY.1: next_action 실행 상태 문구 자동 생성
+        c.next_action || (() => {
+          if (emailStatus === 'public_email') return '이메일 초안 작성 후 발송 승인 요청';
+          if (emailStatus === 'contact_form') return '협업 문의 폼 URL 확인 후 초안 작성';
+          if (emailStatus === 'not_found') return '연락처 수동 확인 필요';
+          return '연락처 확인 후 제안 방식 결정';
+        })(),
         dupHash,
         c.created_at || c.collectedAt || now,
         now,
         c.notes || '',
+        // OUTREACH-COPY.1: proposal_angle/subject/draft 자동 생성
+        c.proposal_angle || generateProposalAngle(c, c.source_keyword || c.keyword || c.seedKeyword || '', c.source_product || c.suggestedProduct || ''),
+        c.proposal_subject || generateProposalSubject(c.source_product || c.suggestedProduct || '', c.source_keyword || c.keyword || c.seedKeyword || ''),
+        c.proposal_draft || generateProposalDraft(c, c.source_keyword || c.keyword || c.seedKeyword || '', c.source_product || c.suggestedProduct || ''),
       ];
       if (dryRun) {
         const isDup = existingHashes.has(dupHash);
