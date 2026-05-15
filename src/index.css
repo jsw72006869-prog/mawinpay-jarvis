@@ -9004,3 +9004,26 @@ html, body {
   }
 }
 /* ── end DUAL-MONITOR-C.1 ── */
+
+/* ── UI-V3 추가: Radar Scan Line ── */
+.scc-radar-scan {
+  position: relative;
+  height: 2px;
+  margin: 8px 0 4px;
+  overflow: hidden;
+  border-radius: 1px;
+  background: rgba(255,255,255,0.04);
+}
+.scc-radar-scan-line {
+  position: absolute;
+  top: 0;
+  left: -40%;
+  width: 40%;
+  height: 100%;
+  background: linear-gradient(90deg, transparent, #22d3ee, transparent);
+  animation: scc-scan-sweep 2.4s linear infinite;
+}
+@keyframes scc-scan-sweep {
+  0%   { left: -40%; }
+  100% { left: 100%; }
+}
