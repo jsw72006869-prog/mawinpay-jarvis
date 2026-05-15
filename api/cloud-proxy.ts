@@ -524,7 +524,7 @@ async function fetchOrderIds(statuses: string[], days: number): Promise<{ids: st
     return [];
   }
 
-  const BATCH_SIZE = 15; // ID만 조회하므로 병렬 높임 (30일 = 2배치)
+  const BATCH_SIZE = 10; // QuotaGuard 동시연결 제한 고려 (30일 = 3배치)
   for (let b = 0; b < dayRequests.length; b += BATCH_SIZE) {
     const batch = dayRequests.slice(b, b + BATCH_SIZE);
     const results = await Promise.all(batch.map(({ from, to }) => fetchDayIds(from, to)));
