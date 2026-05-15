@@ -187,8 +187,8 @@ async function getLastChangedItems(lastChangedType: string, days: number, useKST
   const now = new Date();
   const allItems: any[] = [];
 
-  // SMARTSTORE-ORDERS-FIX.2: 3개씩 병렬 배치 처리 (90일 × 3상태 = 270 API 호출 최적화)
-  const BATCH_SIZE = 3;
+  // SMARTSTORE-ORDERS-FIX.3B: 5개씩 병렬 배치 (QuotaGuard 동시연결 제한 내 최대 속도)
+  const BATCH_SIZE = 5;
   const dayRanges: Array<{ from: Date; to: Date }> = [];
   for (let d = 0; d < days; d++) {
     let from: Date, to: Date;
@@ -332,9 +332,9 @@ async function getPayedOrdersFast(queryDays: number = 7) {
 // SMARTSTORE-ORDERS-FIX.3B: last-changed-statuses 기반 deep_sync
 // fetchOrders(PAYED_DATETIME)는 결제일 기준이라 배송중/배송완료/구매확정 주문을 놓침
 // → lastChangedType 기반으로 전환: 상태 변경일 기준 조회 → 네이버 관리자 숫자와 일치
-// shippingDays=14, deliveredDays=14, decidedDays=30 (기본값)
-// 14일 × 3개 배치 = 5배치 × ~2초 = ~10초, 3개 병렬 = ~10초 (55초 timeout 내 안전)
-async function runDeepSync(shippingDays = 14, deliveredDays = 14, decidedDays = 30) {
+// shippingDays=7, deliveredDays=7, decidedDays=14 (기본값)
+// 7일 × 5개 배치 = 2배치 × ~2초 = ~4초, 3개 병렬 = ~8초 (55초 timeout 내 안전)
+async function runDeepSync(shippingDays = 7, deliveredDays = 7, decidedDays = 14) {
   // last-changed-statuses API: lastChangedType에 상태명 전달
   // DELIVERING → 배송중으로 변경된 주문 (최근 N일 내 상태 변경)
   // DELIVERED → 배송완료로 변경된 주문
@@ -734,11 +734,11 @@ async function handleSmartstoreOrders(params: any) {
   if (action === 'deep_sync') {
     try {
       checkTimeout();
-      // SMARTSTORE-ORDERS-FIX.3B: last-changed-statuses 기반 → 기본값 14/14/30일
-      // 상태 변경일 기준이므로 결제일 기준보다 더 정확하게 현재 상태 반영
-      const shippingDays = Number(params?.shippingDays) || 14;
-      const deliveredDays = Number(params?.deliveredDays) || 14;
-      const decidedDays = Number(params?.decidedDays) || 30;
+      // SMARTSTORE-ORDERS-FIX.3B: last-changed-statuses 기반 → 기본값 7/7/14일
+      // Vercel Hobby 60초 hard limit 방어: 3상태 병렬 × 최대 14일 = 42호출, BATCH_SIZE=5 → ~18초
+      const shippingDays = Number(params?.shippingDays) || 7;
+      const deliveredDays = Number(params?.deliveredDays) || 7;
+      const decidedDays = Number(params?.decidedDays) || 14;
 
       const deepResult = await runDeepSync(shippingDays, deliveredDays, decidedDays);
       clearTimeout(handlerTimeoutId);
