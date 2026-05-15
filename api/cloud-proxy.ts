@@ -663,6 +663,39 @@ async function handleSmartstoreOrders(params: any) {
       results['PAYED_direct_7d'] = { error: err.message };
     }
 
+    // 테스트 5: fetchOrderIds(['PAYED'], 7) 직접 호출
+    try {
+      const payedIds7 = await fetchOrderIds(['PAYED'], 7);
+      results['fetchOrderIds_PAYED_7d'] = {
+        count: payedIds7.length,
+        ids: payedIds7.slice(0, 5),
+      };
+    } catch (err: any) {
+      results['fetchOrderIds_PAYED_7d'] = { error: err.message };
+    }
+
+    // 테스트 6: fetchOrderIds(['PAYED'], 30) 직접 호출
+    try {
+      const payedIds30 = await fetchOrderIds(['PAYED'], 30);
+      results['fetchOrderIds_PAYED_30d'] = {
+        count: payedIds30.length,
+        ids: payedIds30.slice(0, 5),
+      };
+    } catch (err: any) {
+      results['fetchOrderIds_PAYED_30d'] = { error: err.message };
+    }
+
+    // 테스트 7: fetchOrderIds(['DELIVERING'], 90) 직접 호출 (이건 작동했음)
+    try {
+      const delIds = await fetchOrderIds(['DELIVERING'], 90);
+      results['fetchOrderIds_DELIVERING_90d'] = {
+        count: delIds.length,
+        ids: delIds.slice(0, 5),
+      };
+    } catch (err: any) {
+      results['fetchOrderIds_DELIVERING_90d'] = { error: err.message };
+    }
+
     return { success: true, debug: results, from: fromUtc24, to: toUtc };
   }
 
