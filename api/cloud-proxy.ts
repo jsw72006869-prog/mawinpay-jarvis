@@ -611,6 +611,36 @@ async function handleSmartstoreOrders(params: any) {
       }
     }
 
+    // 테스트 4: PAYED 상태 직접 조회 (fetchOrders와 동일한 방식)
+    const payedFrom = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+    const payedParams = new URLSearchParams({
+      from: formatNaverDate(payedFrom),
+      to: formatNaverDate(now),
+      rangeType: 'PAYED_DATETIME',
+      pageSize: '300',
+      page: '1',
+      productOrderStatuses: 'PAYED',
+    });
+    try {
+      const r = await smartStoreRequest(
+        `/v1/pay-order/seller/product-orders?${payedParams.toString()}`,
+        { method: 'GET' }
+      );
+      const data = r.data?.data || r.data;
+      const contents = data?.contents || data || [];
+      results['PAYED_direct_7d'] = {
+        httpStatus: r.status,
+        errorCode: r.data?.code,
+        errorMessage: r.data?.message,
+        itemCount: Array.isArray(contents) ? contents.length : 'not_array',
+        dataKeys: Object.keys(data || {}),
+        contentsType: typeof contents,
+        rawDataSample: JSON.stringify(data).substring(0, 500),
+      };
+    } catch (err: any) {
+      results['PAYED_direct_7d'] = { error: err.message };
+    }
+
     return { success: true, debug: results, from: fromUtc24, to: toUtc };
   }
 
