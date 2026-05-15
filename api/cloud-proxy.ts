@@ -329,7 +329,9 @@ async function getPayedOrdersFast(queryDays: number = 7) {
 }
 
 // 정밀 동기화 (DELIVERING/DELIVERED/PURCHASE_DECIDED) - 별도 액션으로 호출
-async function runDeepSync(shippingDays = 30, deliveredDays = 30, decidedDays = 90) {
+// SMARTSTORE-ORDERS-FIX.3: 기본값 축소 (Vercel 60s timeout 방어)
+// shippingDays=7, deliveredDays=7, decidedDays=14 → 최대 14번 순차 × ~2s = ~28s
+async function runDeepSync(shippingDays = 7, deliveredDays = 7, decidedDays = 14) {
   const [shippingOrders, deliveredOrders, decidedOrders] = await Promise.all([
     fetchOrders(['DELIVERING'], shippingDays),
     fetchOrders(['DELIVERED'], deliveredDays),
@@ -427,8 +429,9 @@ async function handleSmartstoreOrders(params: any) {
   const status = params?.status || 'payed';
   const fetchedAt = new Date().toISOString();
 
-  // ── SMARTSTORE-ORDERS-FIX.1: 전체 함수 timeout 방어 (9초) ──
-  const HANDLER_TIMEOUT_MS = 9000;
+  // ── SMARTSTORE-ORDERS-FIX.1: 전체 함수 timeout 방어 ──
+  // deep_sync는 최대 55초, 일반 액션은 9초
+  const HANDLER_TIMEOUT_MS = action === 'deep_sync' ? 55000 : 9000;
   let handlerTimedOut = false;
   const handlerTimeoutId = setTimeout(() => { handlerTimedOut = true; }, HANDLER_TIMEOUT_MS);
   const checkTimeout = () => {
@@ -705,9 +708,10 @@ async function handleSmartstoreOrders(params: any) {
   if (action === 'deep_sync') {
     try {
       checkTimeout();
-      const shippingDays = Number(body?.shippingDays) || 30;
-      const deliveredDays = Number(body?.deliveredDays) || 30;
-      const decidedDays = Number(body?.decidedDays) || 90;
+      // SMARTSTORE-ORDERS-FIX.3 bugfix: body → params + 기본값 축소 7/7/14일 (Vercel 60s timeout 방어)
+      const shippingDays = Number(params?.shippingDays) || 7;
+      const deliveredDays = Number(params?.deliveredDays) || 7;
+      const decidedDays = Number(params?.decidedDays) || 14;
 
       const deepResult = await runDeepSync(shippingDays, deliveredDays, decidedDays);
       clearTimeout(handlerTimeoutId);
