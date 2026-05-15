@@ -264,36 +264,42 @@ async function getLastChangedItems(lastChangedType: string, days: number, useKST
 }
 
 // ── Single Source of Truth: 스마트스토어 전체 건수 조회 (top-level) ──
+// ── SMARTSTORE-ORDERS-FIX.3: Cache-first Order Snapshot 구조 ──
 // 모든 핸들러(주문현황, 브리핑, 대시보드)가 이 함수만 호출해야 함
-// 서버 인메모리 캐시 (3분 유효 - Vercel cold start 대응)
+//
+// 설계 원칙:
+// 1. PAYED(신규주문/배송준비)만 실시간 조회 → 7일 × 1 = 7번 API 호출 → ~7초 이내
+// 2. DELIVERING/DELIVERED/PURCHASE_DECIDED는 _ssDeepCache에서 읽기
+// 3. 캐시 없으면 null 반환 (0건 위장 금지)
+// 4. deep_sync 액션으로 정밀 동기화 (별도 호출, 결과 _ssDeepCache 저장)
+
+// PAYED 캐시 (3분 TTL)
+let _ssPayedCache: { data: any; fetchedAt: number } | null = null;
+const SS_PAYED_CACHE_TTL = 3 * 60 * 1000; // 3분
+
+// Deep 캐시 (30분 TTL) - DELIVERING/DELIVERED/PURCHASE_DECIDED
+let _ssDeepCache: {
+  shipping: number;
+  delivered: number;
+  purchaseConfirmed: number;
+  syncedAt: number;
+  syncRangeDays: { shipping: number; delivered: number; decided: number };
+} | null = null;
+const SS_DEEP_CACHE_TTL = 30 * 60 * 1000; // 30분
+
+// 하위호환: 기존 코드가 getSmartstoreStatusCounts를 호출하는 경우 대응
 let _ssCountsCache: { data: any; fetchedAt: number; queryDays: number } | null = null;
 const SS_CACHE_TTL = 3 * 60 * 1000; // 3분
 
-async function getSmartstoreStatusCounts(queryDays: number = 30) {
-  // 캐시가 유효하면 즉시 반환 (동일 queryDays일 때만)
-  if (_ssCountsCache && _ssCountsCache.queryDays === queryDays && (Date.now() - _ssCountsCache.fetchedAt) < SS_CACHE_TTL) {
-    return _ssCountsCache.data;
+// PAYED 전용 실시간 조회 (신규주문 + 배송준비)
+async function getPayedOrdersFast(queryDays: number = 7) {
+  // 캐시 유효 시 즉시 반환
+  if (_ssPayedCache && (Date.now() - _ssPayedCache.fetchedAt) < SS_PAYED_CACHE_TTL) {
+    return { ..._ssPayedCache.data, isCached: true, cacheAgeMs: Date.now() - _ssPayedCache.fetchedAt };
   }
 
-  // SMARTSTORE-ORDERS-FIX.3B: QuotaGuard 프록시 지연 고려, 날짜 범위 최소화
-  // 네이버 API 24시간 제한으로 1일 루프 불가피, QuotaGuard 경유 시 각 호출 ~2초
-  // 4개 병렬 실행 기준: 최대 소요시간 = DECIDED 14일 = 3 배치 × ~3초 = ~9초 목표
-  // PAYED: 7일 - 신규주문/배송준비 (대부분 최근 7일 이내)
-  // DELIVERING: 3일 - 배송중 (대부분 최근 3일 내 발송)
-  // DELIVERED: 7일 - 배송완료 (최근 1주 내 배송완료)
-  // PURCHASE_DECIDED: 14일 - 구매확정 (최근 2주)
-  const PAYED_RANGE_DAYS = Math.min(queryDays, 7); // 신규주문/배송준비: 최근 7일
-  const SHIPPING_RANGE_DAYS = 3;   // 배송중: 최근 3일 결제 기준
-  const DELIVERED_RANGE_DAYS = 7;  // 배송완료: 최근 7일 결제 기준
-  const DECIDED_RANGE_DAYS = 14;   // 구매확정: 최근 14일 결제 기준
-
-  // 4개 상태 완전 병렬 실행 (최대 소요시간 = DECIDED 14일 = 3 배치 × ~3초 = ~9초)
-  const [payedOrders, shippingOrders, deliveredOrders, decidedOrders] = await Promise.all([
-    fetchOrders(['PAYED'], PAYED_RANGE_DAYS),
-    fetchOrders(['DELIVERING'], SHIPPING_RANGE_DAYS),
-    fetchOrders(['DELIVERED'], DELIVERED_RANGE_DAYS),
-    fetchOrders(['PURCHASE_DECIDED'], DECIDED_RANGE_DAYS),
-  ]);
+  const PAYED_RANGE_DAYS = Math.min(queryDays, 7); // 최대 7일 (7번 API 호출)
+  const payedOrders = await fetchOrders(['PAYED'], PAYED_RANGE_DAYS);
 
   const newOrders = payedOrders.filter((o: any) => {
     const po = o.productOrder || o;
@@ -304,97 +310,113 @@ async function getSmartstoreStatusCounts(queryDays: number = 30) {
     return po.placeOrderStatus === 'OK';
   });
 
-  // ProductOrderId dedupe (상세 조회 기반)
+  const result = {
+    allOrders: payedOrders,
+    payed: payedOrders,
+    newOrders,
+    pendingShipping,
+    newOrdersCount: newOrders.length,
+    pendingShippingCount: pendingShipping.length,
+    preShipTotal: payedOrders.length,
+    payedRangeDays: PAYED_RANGE_DAYS,
+    isCached: false,
+    cacheAgeMs: 0,
+    fetchedAt: new Date().toISOString(),
+  };
+
+  _ssPayedCache = { data: result, fetchedAt: Date.now() };
+  return result;
+}
+
+// 정밀 동기화 (DELIVERING/DELIVERED/PURCHASE_DECIDED) - 별도 액션으로 호출
+async function runDeepSync(shippingDays = 30, deliveredDays = 30, decidedDays = 90) {
+  const [shippingOrders, deliveredOrders, decidedOrders] = await Promise.all([
+    fetchOrders(['DELIVERING'], shippingDays),
+    fetchOrders(['DELIVERED'], deliveredDays),
+    fetchOrders(['PURCHASE_DECIDED'], decidedDays),
+  ]);
+
   const uniqueShipping = new Map<string, any>();
   for (const o of shippingOrders) {
     const po = o.productOrder || o;
     if (po.productOrderId) uniqueShipping.set(po.productOrderId, po);
   }
-  const shippingCount = uniqueShipping.size;
 
   const uniqueDelivered = new Map<string, any>();
   for (const o of deliveredOrders) {
     const po = o.productOrder || o;
     if (po.productOrderId) uniqueDelivered.set(po.productOrderId, po);
   }
-  const deliveredCount = uniqueDelivered.size;
 
   const uniqueDecided = new Map<string, any>();
   for (const o of decidedOrders) {
     const po = o.productOrder || o;
     if (po.productOrderId) uniqueDecided.set(po.productOrderId, po);
   }
-  const decidedCount = uniqueDecided.size;
 
-  // 정산예정 금액 (구매확정 기준)
-  let settlementExpectationAmount = 0;
-  for (const po of uniqueDecided.values()) {
-    settlementExpectationAmount += Number(po.settlementExpectationAmount || 0);
+  const deepResult = {
+    shipping: uniqueShipping.size,
+    delivered: uniqueDelivered.size,
+    purchaseConfirmed: uniqueDecided.size,
+    syncedAt: Date.now(),
+    syncRangeDays: { shipping: shippingDays, delivered: deliveredDays, decided: decidedDays },
+  };
+
+  _ssDeepCache = deepResult;
+  return deepResult;
+}
+
+// 하위호환: 기존 getSmartstoreStatusCounts 호출 대응 (브리핑 등)
+async function getSmartstoreStatusCounts(queryDays: number = 30) {
+  // 캐시가 유효하면 즉시 반환
+  if (_ssCountsCache && _ssCountsCache.queryDays === queryDays && (Date.now() - _ssCountsCache.fetchedAt) < SS_CACHE_TTL) {
+    return _ssCountsCache.data;
   }
 
-  // SMARTSTORE-ORDERS-FIX.2B: dashboardSnapshot + detailSync 2레이어 구조
-  const dashboardSnapshot = {
-    newOrders: newOrders.length,
-    pendingShipping: pendingShipping.length,
-    shipping: shippingCount,
-    delivered: deliveredCount,
-    purchaseConfirmed: decidedCount,
-    source: 'naver-api-product-orders',
-    // 조회 범위 명시 (실시간 전체가 아닌 날짜 범위 기반임을 표시)
-    rangeLimits: {
-      newOrders: `PAYED+placeOrderStatus!=OK / ${PAYED_RANGE_DAYS}d`,
-      pendingShipping: `PAYED+placeOrderStatus=OK / ${PAYED_RANGE_DAYS}d`,
-      shipping: `DELIVERING / ${SHIPPING_RANGE_DAYS}d`,
-      delivered: `DELIVERED / ${DELIVERED_RANGE_DAYS}d`,
-      purchaseConfirmed: `PURCHASE_DECIDED / ${DECIDED_RANGE_DAYS}d`,
-    },
-    // 범위 제한 여부 (30일/90일 외 주문 누락 가능성)
-    isRangeLimited: true,
-    rangeLimitNote: `배송중 ${SHIPPING_RANGE_DAYS}일/배송완료 ${DELIVERED_RANGE_DAYS}일/구매확정 ${DECIDED_RANGE_DAYS}일 결제일 기준. 더 오래된 주문은 누락될 수 있습니다.`,
-  };
+  // SMARTSTORE-ORDERS-FIX.3: PAYED만 실시간 조회 (fast_snapshot)
+  const payedData = await getPayedOrdersFast(Math.min(queryDays, 7));
 
-  const detailSync = {
-    // ProductOrderId 확보된 건수 (발주 가능 대상)
-    newOrdersWithId: newOrders.filter((o: any) => { const po = o.productOrder || o; return !!po.productOrderId; }).length,
-    pendingShippingWithId: pendingShipping.filter((o: any) => { const po = o.productOrder || o; return !!po.productOrderId; }).length,
-    shippingWithId: shippingCount,
-    deliveredWithId: deliveredCount,
-    decidedWithId: decidedCount,
-    // 상세 매칭 상태
-    detailStatus: 'matched', // product-orders 상세 조회 기반이므로 항상 matched
-    searchRangeUsed: {
-      payedDays: PAYED_RANGE_DAYS,
-      shippingDays: SHIPPING_RANGE_DAYS,
-      deliveredDays: DELIVERED_RANGE_DAYS,
-      decidedDays: DECIDED_RANGE_DAYS,
-    },
-  };
+  // Deep 캐시에서 배송중/배송완료/구매확정 읽기 (없으면 null)
+  const deep = _ssDeepCache;
 
   const result = {
-    allOrders: payedOrders,
-    payed: payedOrders,
-    newOrders,
-    pendingShipping,
-    shipping: shippingCount,
-    delivered: deliveredCount,
-    purchaseConfirmed: decidedCount,
-    settlementExpectationAmount,
-    // SMARTSTORE-ORDERS-FIX.2B: 2레이어 구조
-    dashboardSnapshot,
-    detailSync,
-    // 하위호환 countSource
+    allOrders: payedData.payed,
+    payed: payedData.payed,
+    newOrders: payedData.newOrders,
+    pendingShipping: payedData.pendingShipping,
+    shipping: deep?.shipping ?? null,
+    delivered: deep?.delivered ?? null,
+    purchaseConfirmed: deep?.purchaseConfirmed ?? null,
+    settlementExpectationAmount: 0,
+    dashboardSnapshot: {
+      newOrders: payedData.newOrdersCount,
+      pendingShipping: payedData.pendingShippingCount,
+      shipping: deep?.shipping ?? null,
+      delivered: deep?.delivered ?? null,
+      purchaseConfirmed: deep?.purchaseConfirmed ?? null,
+      source: 'naver-api-product-orders',
+      isRangeLimited: true,
+      rangeLimitNote: `신규주문/배송준비: 최근 ${payedData.payedRangeDays}일 결제 기준 실시간. 배송중/배송완료/구매확정: ${deep ? `마지막 동기화 기준 (${new Date(deep.syncedAt).toLocaleString('ko-KR')})` : '동기화 필요 — 정밀 동기화를 실행해주세요.'}`,
+    },
+    detailSync: {
+      newOrdersWithId: payedData.newOrders.filter((o: any) => { const po = o.productOrder || o; return !!po.productOrderId; }).length,
+      pendingShippingWithId: payedData.pendingShipping.filter((o: any) => { const po = o.productOrder || o; return !!po.productOrderId; }).length,
+      shippingWithId: deep?.shipping ?? null,
+      deliveredWithId: deep?.delivered ?? null,
+      decidedWithId: deep?.purchaseConfirmed ?? null,
+      detailStatus: deep ? 'cached' : 'missing',
+      deepCacheAge: deep ? Math.round((Date.now() - deep.syncedAt) / 60000) + '분 전' : null,
+    },
     countSource: {
-      newOrders: `PAYED+placeOrderStatus!=OK/${PAYED_RANGE_DAYS}d`,
-      pendingShipping: `PAYED+placeOrderStatus=OK/${PAYED_RANGE_DAYS}d`,
-      shipping: `DELIVERING/${SHIPPING_RANGE_DAYS}d`,
-      delivered: `DELIVERED/${DELIVERED_RANGE_DAYS}d`,
-      purchaseConfirmed: `PURCHASE_DECIDED/${DECIDED_RANGE_DAYS}d`,
+      newOrders: `PAYED+placeOrderStatus!=OK/${payedData.payedRangeDays}d (실시간)`,
+      pendingShipping: `PAYED+placeOrderStatus=OK/${payedData.payedRangeDays}d (실시간)`,
+      shipping: deep ? `DELIVERING/${deep.syncRangeDays.shipping}d (캐시)` : 'missing',
+      delivered: deep ? `DELIVERED/${deep.syncRangeDays.delivered}d (캐시)` : 'missing',
+      purchaseConfirmed: deep ? `PURCHASE_DECIDED/${deep.syncRangeDays.decided}d (캐시)` : 'missing',
     },
   };
 
-  // 캐시 저장 (3분 유효)
   _ssCountsCache = { data: result, fetchedAt: Date.now(), queryDays };
-
   return result;
 }
 
@@ -572,41 +594,88 @@ async function handleSmartstoreOrders(params: any) {
     };
   }
 
-  // ── query_order_status: 전체 주문 현황 (대시보드용) ──
+  // ── query_order_status: fast_snapshot 모드 (PAYED 실시간 + deep 캐시) ──
+  // SMARTSTORE-ORDERS-FIX.3: 504 timeout 완전 해결
+  // - PAYED만 실시간 조회 (7일, 7번 API 호출, ~7초 이내)
+  // - DELIVERING/DELIVERED/PURCHASE_DECIDED는 _ssDeepCache에서 읽기 (없으면 null)
+  // - 캐시 없으면 null 반환 (0건 위장 금지)
   if (action === 'query_order_status') {
     try {
       checkTimeout();
-      const counts = await getSmartstoreStatusCounts(30);
+      const BUDGET_MS = 7500; // 7.5초 budget
+      const budgetStart = Date.now();
+
+      // PAYED 실시간 조회 (7일)
+      const payedData = await getPayedOrdersFast(7);
       checkTimeout();
-      const allOrders = counts.allOrders.map(safeOrderMap);
+
+      const elapsed = Date.now() - budgetStart;
+      const isPartial = elapsed > BUDGET_MS;
+
+      // Deep 캐시 읽기
+      const deep = _ssDeepCache;
+      const deepCacheAge = deep ? Math.round((Date.now() - deep.syncedAt) / 60000) : null;
+      const deepIsStale = deep ? (Date.now() - deep.syncedAt) > SS_DEEP_CACHE_TTL : false;
+
       clearTimeout(handlerTimeoutId);
       return {
         success: true,
+        mode: 'fast_snapshot',
         source: 'naver-commerce-api',
         fetchedAt,
-        cacheAgeMs: 0,
-        isCached: false,
-        counts: {
-          newOrders: counts.newOrders.length,
-          pendingShipping: counts.pendingShipping.length,
-          preShipTotal: counts.payed.length,
-          shipping: counts.shipping,
-          delivered: counts.delivered,
-          purchaseConfirmed: counts.purchaseConfirmed,
-          settlementExpectationAmount: counts.settlementExpectationAmount || 0,
+        // 실시간 조회 항목 (PAYED)
+        actionable: {
+          source: 'live',
+          isLive: true,
+          isCached: payedData.isCached,
+          cacheAgeMs: payedData.cacheAgeMs,
+          newOrders: payedData.newOrdersCount,
+          pendingShipping: payedData.pendingShippingCount,
+          preShipTotal: payedData.preShipTotal,
+          productOrderIdsMatched: payedData.newOrders.filter((o: any) => { const po = o.productOrder || o; return !!po.productOrderId; }).length +
+            payedData.pendingShipping.filter((o: any) => { const po = o.productOrder || o; return !!po.productOrderId; }).length,
+          rangeDays: payedData.payedRangeDays,
         },
-        // SMARTSTORE-ORDERS-FIX.2B: 2레이어 구조
-        dashboardSnapshot: counts.dashboardSnapshot,
-        detailSync: counts.detailSync,
+        // 캐시 항목 (DELIVERING/DELIVERED/PURCHASE_DECIDED)
+        dashboardSnapshot: {
+          source: deep ? 'cache' : 'missing',
+          isCached: !!deep,
+          lastSyncedAt: deep ? new Date(deep.syncedAt).toISOString() : null,
+          cacheAgeMinutes: deepCacheAge,
+          isStale: deepIsStale,
+          delivering: deep?.shipping ?? null,
+          delivered: deep?.delivered ?? null,
+          purchaseDecided: deep?.purchaseConfirmed ?? null,
+          syncRangeDays: deep?.syncRangeDays ?? null,
+        },
+        // 동기화 상태
+        syncStatus: {
+          status: isPartial ? 'partial' : (deep ? (deepIsStale ? 'stale' : 'fresh') : 'missing'),
+          message: isPartial
+            ? `응답 시간 초과 (${Math.round(elapsed/1000)}초). 부분 결과입니다.`
+            : deep
+            ? (deepIsStale
+              ? `마지막 동기화 ${deepCacheAge}분 전. 정밀 동기화를 실행해주세요.`
+              : `배송중/배송완료/구매확정: 마지막 동기화 ${deepCacheAge}분 전 기준.`)
+            : '배송중/배송완료/구매확정 동기화 필요 — 정밀 동기화를 실행해주세요.',
+        },
         // 하위호환 top-level 필드 (프론트엔드 안전 매핑)
-        newOrders: counts.newOrders.length,
-        pendingShipping: counts.pendingShipping.length,
-        preShipTotal: counts.payed.length,
-        shipping: counts.shipping,
-        delivered: counts.delivered,
-        purchaseConfirmed: counts.purchaseConfirmed,
-        data: allOrders,
-        orders: allOrders,
+        newOrders: payedData.newOrdersCount,
+        pendingShipping: payedData.pendingShippingCount,
+        preShipTotal: payedData.preShipTotal,
+        shipping: deep?.shipping ?? null,
+        delivered: deep?.delivered ?? null,
+        purchaseConfirmed: deep?.purchaseConfirmed ?? null,
+        counts: {
+          newOrders: payedData.newOrdersCount,
+          pendingShipping: payedData.pendingShippingCount,
+          preShipTotal: payedData.preShipTotal,
+          shipping: deep?.shipping ?? null,
+          delivered: deep?.delivered ?? null,
+          purchaseConfirmed: deep?.purchaseConfirmed ?? null,
+        },
+        data: payedData.allOrders.map(safeOrderMap),
+        orders: payedData.allOrders.map(safeOrderMap),
       };
     } catch (err: any) {
       clearTimeout(handlerTimeoutId);
@@ -616,15 +685,56 @@ async function handleSmartstoreOrders(params: any) {
         success: false,
         errorCode: code,
         errorMessage: isTimeout
-          ? '스마트스토어 API 응답 시간 초과 (9초). 잠시 후 다시 시도하거나 일수 범위를 줄여주세요.'
+          ? '스마트스토어 API 응답 시간 초과. 잠시 후 다시 시도해주세요.'
           : code === 'SMARTSTORE_AUTH_ERROR'
           ? '스마트스토어 API 인증 오류. 토큰을 확인해주세요.'
           : `스마트스토어 API 오류: ${err?.message || '알 수 없는 오류'}`,
         fetchedAt,
         source: 'naver-commerce-api',
-        counts: { newOrders: 0, pendingShipping: 0, preShipTotal: 0, shipping: 0, delivered: 0, purchaseConfirmed: 0 },
-        newOrders: 0, pendingShipping: 0, preShipTotal: 0, shipping: 0, delivered: 0, purchaseConfirmed: 0,
+        mode: 'fast_snapshot',
+        counts: { newOrders: 0, pendingShipping: 0, preShipTotal: 0, shipping: null, delivered: null, purchaseConfirmed: null },
+        newOrders: 0, pendingShipping: 0, preShipTotal: 0, shipping: null, delivered: null, purchaseConfirmed: null,
         data: [], orders: [],
+      };
+    }
+  }
+
+  // ── deep_sync: 정밀 동기화 (배송중/배송완료/구매확정) ──
+  // SMARTSTORE-ORDERS-FIX.3: 별도 액션으로 분리, 결과 _ssDeepCache 저장
+  // 주의: Vercel 60초 timeout 있음. 정밀 동기화는 시간이 오래 걸릴 수 있음.
+  if (action === 'deep_sync') {
+    try {
+      checkTimeout();
+      const shippingDays = Number(body?.shippingDays) || 30;
+      const deliveredDays = Number(body?.deliveredDays) || 30;
+      const decidedDays = Number(body?.decidedDays) || 90;
+
+      const deepResult = await runDeepSync(shippingDays, deliveredDays, decidedDays);
+      clearTimeout(handlerTimeoutId);
+      return {
+        success: true,
+        mode: 'deep_sync',
+        source: 'naver-commerce-api',
+        fetchedAt,
+        result: {
+          shipping: deepResult.shipping,
+          delivered: deepResult.delivered,
+          purchaseConfirmed: deepResult.purchaseConfirmed,
+          syncedAt: new Date(deepResult.syncedAt).toISOString(),
+          syncRangeDays: deepResult.syncRangeDays,
+        },
+        message: `정밀 동기화 완료. 배송중 ${deepResult.shipping}건 / 배송완료 ${deepResult.delivered}건 / 구매확정 ${deepResult.purchaseConfirmed}건`,
+      };
+    } catch (err: any) {
+      clearTimeout(handlerTimeoutId);
+      const code = err?.code || (err?.message?.includes('401') ? 'SMARTSTORE_AUTH_ERROR' : err?.message?.includes('TIMEOUT') ? 'SMARTSTORE_TIMEOUT' : 'SMARTSTORE_API_ERROR');
+      return {
+        success: false,
+        errorCode: code,
+        errorMessage: `정밀 동기화 실패: ${err?.message || '알 수 없는 오류'}`,
+        fetchedAt,
+        source: 'naver-commerce-api',
+        mode: 'deep_sync',
       };
     }
   }
