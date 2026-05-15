@@ -290,12 +290,18 @@ async function getSmartstoreStatusCounts(queryDays: number = 30) {
   // SMARTSTORE-ORDERS-FIX.2B: product-orders 현재 상태 기준 조회 (last-changed-statuses 오판 제거)
   // 배송중/배송완료/구매확정: fetchOrders로 현재 상태 기준 조회 (결제일 범위 내)
   // 3상태 병렬 실행으로 전체 시간 단축
-  const SHIPPING_RANGE_DAYS = 30;  // 배송중/배송완료: 최근 30일 결제 기준
-  const DECIDED_RANGE_DAYS = 90;   // 구매확정: 최근 90일 결제 기준
+  // SMARTSTORE-ORDERS-FIX.2C: timeout 방지를 위해 범위 최소화
+  // 각 상태의 API 호출 횟수 = 날짜 범위 일수에 비례함
+  // DELIVERING: 7일 (7번 호출) - 배송중은 대부분 최근 7일 내 결제
+  // DELIVERED: 14일 (14번 호출) - 배송완료는 최근 2주 내 결제
+  // PURCHASE_DECIDED: 30일 (30번 호출) - 구매확정은 최근 30일
+  const SHIPPING_RANGE_DAYS = 7;   // 배송중: 최근 7일 결제 기준
+  const DELIVERED_RANGE_DAYS = 14; // 배송완료: 최근 14일 결제 기준
+  const DECIDED_RANGE_DAYS = 30;   // 구매확정: 최근 30일 결제 기준
 
   const [shippingOrders, deliveredOrders, decidedOrders] = await Promise.all([
     fetchOrders(['DELIVERING'], SHIPPING_RANGE_DAYS),
-    fetchOrders(['DELIVERED'], SHIPPING_RANGE_DAYS),
+    fetchOrders(['DELIVERED'], DELIVERED_RANGE_DAYS),
     fetchOrders(['PURCHASE_DECIDED'], DECIDED_RANGE_DAYS),
   ]);
 
@@ -340,12 +346,12 @@ async function getSmartstoreStatusCounts(queryDays: number = 30) {
       newOrders: `PAYED+placeOrderStatus!=OK / ${queryDays}d`,
       pendingShipping: `PAYED+placeOrderStatus=OK / ${queryDays}d`,
       shipping: `DELIVERING / ${SHIPPING_RANGE_DAYS}d`,
-      delivered: `DELIVERED / ${SHIPPING_RANGE_DAYS}d`,
+      delivered: `DELIVERED / ${DELIVERED_RANGE_DAYS}d`,
       purchaseConfirmed: `PURCHASE_DECIDED / ${DECIDED_RANGE_DAYS}d`,
     },
     // 범위 제한 여부 (30일/90일 외 주문 누락 가능성)
     isRangeLimited: true,
-    rangeLimitNote: '배송중/배송완료는 최근 30일 결제 기준, 구매확정은 최근 90일 결제 기준입니다. 더 오래된 주문은 누락될 수 있습니다.',
+    rangeLimitNote: `배송중 ${SHIPPING_RANGE_DAYS}일/배송완료 ${DELIVERED_RANGE_DAYS}일/구매확정 ${DECIDED_RANGE_DAYS}일 결제일 기준. 더 오래된 주문은 누락될 수 있습니다.`,
   };
 
   const detailSync = {
@@ -360,6 +366,7 @@ async function getSmartstoreStatusCounts(queryDays: number = 30) {
     searchRangeUsed: {
       payedDays: queryDays,
       shippingDays: SHIPPING_RANGE_DAYS,
+      deliveredDays: DELIVERED_RANGE_DAYS,
       decidedDays: DECIDED_RANGE_DAYS,
     },
   };
@@ -381,7 +388,7 @@ async function getSmartstoreStatusCounts(queryDays: number = 30) {
       newOrders: `PAYED+placeOrderStatus!=OK/${queryDays}d`,
       pendingShipping: `PAYED+placeOrderStatus=OK/${queryDays}d`,
       shipping: `DELIVERING/${SHIPPING_RANGE_DAYS}d`,
-      delivered: `DELIVERED/${SHIPPING_RANGE_DAYS}d`,
+      delivered: `DELIVERED/${DELIVERED_RANGE_DAYS}d`,
       purchaseConfirmed: `PURCHASE_DECIDED/${DECIDED_RANGE_DAYS}d`,
     },
   };
