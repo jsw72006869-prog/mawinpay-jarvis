@@ -493,9 +493,9 @@ async function getSmartstoreStatusCounts(queryDays: number = 30) {
     countSource: {
       newOrders: `PAYED+placeOrderStatus!=OK/${payedData.payedRangeDays}d (실시간)`,
       pendingShipping: `PAYED+placeOrderStatus=OK/${payedData.payedRangeDays}d (실시간)`,
-      shipping: deep ? `DELIVERING/${deep.syncRangeDays.shipping}d (캐시)` : 'missing',
-      delivered: deep ? `DELIVERED/${deep.syncRangeDays.delivered}d (캐시)` : 'missing',
-      purchaseConfirmed: deep ? `PURCHASE_DECIDED/${deep.syncRangeDays.decided}d (캐시)` : 'missing',
+      shipping: deep ? `DELIVERING/${deep.syncRangeDays}d (캐시)` : 'missing',
+      delivered: deep ? `DELIVERED/${deep.syncRangeDays}d (캐시)` : 'missing',
+      purchaseConfirmed: deep ? `PURCHASE_DECIDED/${deep.syncRangeDays}d (캐시)` : 'missing',
     },
   };
 
