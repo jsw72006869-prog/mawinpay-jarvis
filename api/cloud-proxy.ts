@@ -3839,7 +3839,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
       // ── 스마트스토어 주문 조회 ──
       if (resolvedTask === 'smartstore-orders') {
-        const result = await handleSmartstoreOrders(params || rest);
+        // SMARTSTORE-ORDERS-FIX.4: action이 body 최상위에 있을 수 있으므로 params와 병합
+        const mergedParams = { ...rest, ...(params || {}) };
+        const result = await handleSmartstoreOrders(mergedParams);
         return res.status(200).json(result);
       }
 
