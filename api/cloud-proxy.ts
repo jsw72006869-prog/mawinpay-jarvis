@@ -330,6 +330,7 @@ async function getPayedOrdersFast(queryDays: number = 7, forceRefresh: boolean =
 
   // Step 1: ID만 빠르게 수집 (BATCH_SIZE=10, 30일 = 3배치 ≈ 3초)
   const payedIds = await fetchOrderIds(['PAYED'], PAYED_RANGE_DAYS);
+  console.log(`[getPayedOrdersFast] fetchOrderIds PAYED ${PAYED_RANGE_DAYS}d => ${payedIds.length}건, ids: ${payedIds.slice(0,3).join(',')}`);
 
   // Step 2: ID로 상세 조회 (1회 POST, 최대 300건)
   let payedOrders: any[] = [];
@@ -790,6 +791,12 @@ async function handleSmartstoreOrders(params: any) {
       return {
         success: true,
         mode: 'fast_snapshot',
+        _debug: {
+          payedIdsCount: payedData.preShipTotal,
+          payedRangeDays: payedData.payedRangeDays,
+          isCached: payedData.isCached,
+          cacheAgeMs: payedData.cacheAgeMs,
+        },
         source: 'naver-commerce-api',
         fetchedAt,
         // 실시간 조회 항목 (PAYED)
