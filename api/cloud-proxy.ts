@@ -326,6 +326,16 @@ async function handleSmartstoreOrders(params: any) {
   const status = params?.status || 'payed';
   const fetchedAt = new Date().toISOString();
 
+  // ── SMARTSTORE-ORDERS-FIX.1: 전체 함수 timeout 방어 (9초) ──
+  const HANDLER_TIMEOUT_MS = 9000;
+  let handlerTimedOut = false;
+  const handlerTimeoutId = setTimeout(() => { handlerTimedOut = true; }, HANDLER_TIMEOUT_MS);
+  const checkTimeout = () => {
+    if (handlerTimedOut) {
+      throw Object.assign(new Error('SMARTSTORE_TIMEOUT'), { code: 'SMARTSTORE_TIMEOUT' });
+    }
+  };
+
   // ── debug_last_changed: 디버그용 - 다양한 API 엔드포인트/파라미터 테스트 ──
   if (action === 'debug_last_changed') {
     // 프로덕션에서는 디버그 엔드포인트 차단
@@ -485,9 +495,70 @@ async function handleSmartstoreOrders(params: any) {
 
   // ── query_order_status: 전체 주문 현황 (대시보드용) ──
   if (action === 'query_order_status') {
-    const counts = await getSmartstoreStatusCounts(30);
-    const allOrders = counts.allOrders.map(safeOrderMap);
+    try {
+      checkTimeout();
+      const counts = await getSmartstoreStatusCounts(30);
+      checkTimeout();
+      const allOrders = counts.allOrders.map(safeOrderMap);
+      clearTimeout(handlerTimeoutId);
+      return {
+        success: true,
+        source: 'naver-commerce-api',
+        fetchedAt,
+        cacheAgeMs: 0,
+        isCached: false,
+        counts: {
+          newOrders: counts.newOrders.length,
+          pendingShipping: counts.pendingShipping.length,
+          preShipTotal: counts.payed.length,
+          shipping: counts.shipping,
+          delivered: counts.delivered,
+          purchaseConfirmed: counts.purchaseConfirmed,
+          settlementExpectationAmount: counts.settlementExpectationAmount || 0,
+        },
+        // 하위호환 top-level 필드 (프론트엔드 안전 매핑)
+        newOrders: counts.newOrders.length,
+        pendingShipping: counts.pendingShipping.length,
+        preShipTotal: counts.payed.length,
+        shipping: counts.shipping,
+        delivered: counts.delivered,
+        purchaseConfirmed: counts.purchaseConfirmed,
+        data: allOrders,
+        orders: allOrders,
+      };
+    } catch (err: any) {
+      clearTimeout(handlerTimeoutId);
+      const code = err?.code || (err?.message?.includes('401') ? 'SMARTSTORE_AUTH_ERROR' : err?.message?.includes('TIMEOUT') ? 'SMARTSTORE_TIMEOUT' : 'SMARTSTORE_API_ERROR');
+      const isTimeout = code === 'SMARTSTORE_TIMEOUT';
+      return {
+        success: false,
+        errorCode: code,
+        errorMessage: isTimeout
+          ? '스마트스토어 API 응답 시간 초과 (9초). 잠시 후 다시 시도하거나 일수 범위를 줄여주세요.'
+          : code === 'SMARTSTORE_AUTH_ERROR'
+          ? '스마트스토어 API 인증 오류. 토큰을 확인해주세요.'
+          : `스마트스토어 API 오류: ${err?.message || '알 수 없는 오류'}`,
+        fetchedAt,
+        source: 'naver-commerce-api',
+        counts: { newOrders: 0, pendingShipping: 0, preShipTotal: 0, shipping: 0, delivered: 0, purchaseConfirmed: 0 },
+        newOrders: 0, pendingShipping: 0, preShipTotal: 0, shipping: 0, delivered: 0, purchaseConfirmed: 0,
+        data: [], orders: [],
+      };
+    }
+  }
 
+  // ── 일반 주문 조회 ──
+  try {
+    checkTimeout();
+    const statusMap: Record<string, string[]> = {
+      'new': ['PAYED'], 'payed': ['PAYED'], 'delivering': ['DELIVERING'],
+      'delivered': ['DELIVERED'], 'decided': ['PURCHASE_DECIDED'],
+      'canceled': ['CANCELED'],
+      'all': ['PAYMENT_WAITING', 'PAYED', 'DELIVERING', 'DELIVERED', 'PURCHASE_DECIDED'],
+    };
+    const productOrderStatuses = statusMap[status?.toLowerCase()] || ['PAYED'];
+    const orders = await fetchOrders(productOrderStatuses, days);
+    clearTimeout(handlerTimeoutId);
     return {
       success: true,
       source: 'naver-commerce-api',
@@ -495,58 +566,39 @@ async function handleSmartstoreOrders(params: any) {
       cacheAgeMs: 0,
       isCached: false,
       counts: {
-        newOrders: counts.newOrders.length,
-        pendingShipping: counts.pendingShipping.length,
-        preShipTotal: counts.payed.length,
-        shipping: counts.shipping,
-        delivered: counts.delivered,
-        purchaseConfirmed: counts.purchaseConfirmed,
-        settlementExpectationAmount: counts.settlementExpectationAmount || 0,
+        newOrders: 0,
+        pendingShipping: 0,
+        preShipTotal: 0,
+        shipping: 0,
+        delivered: 0,
+        purchaseConfirmed: 0,
       },
-      // 하위호환 top-level 필드 (프론트엔드 안전 매핑)
-      newOrders: counts.newOrders.length,
-      pendingShipping: counts.pendingShipping.length,
-      preShipTotal: counts.payed.length,
-      shipping: counts.shipping,
-      delivered: counts.delivered,
-      purchaseConfirmed: counts.purchaseConfirmed,
-      data: allOrders,
-      orders: allOrders,
-    };
-  }
-
-  // ── 일반 주문 조회 ──
-  const statusMap: Record<string, string[]> = {
-    'new': ['PAYED'], 'payed': ['PAYED'], 'delivering': ['DELIVERING'],
-    'delivered': ['DELIVERED'], 'decided': ['PURCHASE_DECIDED'],
-    'canceled': ['CANCELED'],
-    'all': ['PAYMENT_WAITING', 'PAYED', 'DELIVERING', 'DELIVERED', 'PURCHASE_DECIDED'],
-  };
-  const productOrderStatuses = statusMap[status?.toLowerCase()] || ['PAYED'];
-  const orders = await fetchOrders(productOrderStatuses, days);
-
-  return {
-    success: true,
-    source: 'naver-commerce-api',
-    fetchedAt,
-    cacheAgeMs: 0,
-    isCached: false,
-    counts: {
+      total: orders.length,
       newOrders: 0,
       pendingShipping: 0,
       preShipTotal: 0,
-      shipping: 0,
-      delivered: 0,
-      purchaseConfirmed: 0,
-    },
-    total: orders.length,
-    newOrders: 0,
-    pendingShipping: 0,
-    preShipTotal: 0,
-    orders: orders.map(safeOrderMap),
-    data: orders.map(safeOrderMap),
-    queryInfo: { statuses: productOrderStatuses, days },
-  };
+      orders: orders.map(safeOrderMap),
+      data: orders.map(safeOrderMap),
+      queryInfo: { statuses: productOrderStatuses, days },
+    };
+  } catch (err: any) {
+    clearTimeout(handlerTimeoutId);
+    const code = err?.code || (err?.message?.includes('401') ? 'SMARTSTORE_AUTH_ERROR' : err?.message?.includes('TIMEOUT') ? 'SMARTSTORE_TIMEOUT' : 'SMARTSTORE_API_ERROR');
+    return {
+      success: false,
+      errorCode: code,
+      errorMessage: code === 'SMARTSTORE_TIMEOUT'
+        ? '스마트스토어 API 응답 시간 초과 (9초). 일수 범위를 줄이거나 잠시 후 다시 시도해주세요.'
+        : code === 'SMARTSTORE_AUTH_ERROR'
+        ? '스마트스토어 API 인증 오류. 토큰을 확인해주세요.'
+        : `스마트스토어 API 오류: ${err?.message || '알 수 없는 오류'}`,
+      fetchedAt,
+      source: 'naver-commerce-api',
+      counts: { newOrders: 0, pendingShipping: 0, preShipTotal: 0, shipping: 0, delivered: 0, purchaseConfirmed: 0 },
+      newOrders: 0, pendingShipping: 0, preShipTotal: 0, shipping: 0, delivered: 0, purchaseConfirmed: 0,
+      total: 0, data: [], orders: [],
+    };
+  }
 }
 
 // ── 주문 목록 + 상세 조회 (24시간 단위 + QuotaGuard 동시연결 제한 대응) ──
