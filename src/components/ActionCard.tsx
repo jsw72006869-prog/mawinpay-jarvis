@@ -537,8 +537,8 @@ export default function ActionCard({ context, onActionSelect, onDismiss, workflo
         {/* Action Buttons Grid */}
         <div style={{
           display: 'grid',
-          gridTemplateColumns: 'repeat(2, 1fr)',
-          gap: 8,
+          gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
+          gap: 6,
         }}>
           {actions.map((action) => (
             <motion.button
@@ -564,10 +564,12 @@ export default function ActionCard({ context, onActionSelect, onDismiss, workflo
               <div style={{ display: 'flex', alignItems: 'center', gap: 6, width: '100%' }}>
                 <span style={{ fontSize: '0.9rem' }}>{action.icon}</span>
                 <span style={{
-                  fontSize: '0.72rem',
+                  fontSize: '0.65rem',
                   color: action.disabled ? THEME.textDim : THEME.text,
                   fontWeight: 500,
                   flex: 1,
+                  wordBreak: 'break-word',
+                  lineHeight: 1.3,
                 }}>
                   {action.label}
                 </span>
