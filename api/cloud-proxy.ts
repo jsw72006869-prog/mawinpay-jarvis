@@ -427,6 +427,7 @@ async function fetchOrderIds(statuses: string[], days: number): Promise<string[]
 
   let allIds: string[] = [];
 
+  let _fetchDayStats = { success: 0, fail: 0, lastError: '' };
   async function fetchDayIds(from: Date, to: Date): Promise<string[]> {
     const params = new URLSearchParams();
     params.append('from', formatNaverDate(from));
@@ -446,18 +447,23 @@ async function fetchOrderIds(statuses: string[], days: number): Promise<string[]
           const responseData = result.data.data || result.data;
           const contents = responseData.contents || responseData || [];
           if (Array.isArray(contents)) {
+            _fetchDayStats.success++;
             return contents.map((item: any) => {
               const po = item.productOrder || item;
               return po.productOrderId || null;
             }).filter(Boolean);
           }
+          _fetchDayStats.success++;
           return [];
         }
+        _fetchDayStats.lastError = `HTTP ${result.status}: ${JSON.stringify(result.data).slice(0, 100)}`;
         if (attempt < 1) await new Promise(r => setTimeout(r, 500));
       } catch (err: any) {
+        _fetchDayStats.lastError = err.message;
         if (attempt < 1) await new Promise(r => setTimeout(r, 500));
       }
     }
+    _fetchDayStats.fail++;
     return [];
   }
 
@@ -469,7 +475,9 @@ async function fetchOrderIds(statuses: string[], days: number): Promise<string[]
   }
 
   // 중복 제거
-  return [...new Set(allIds)];
+  const uniqueIds = [...new Set(allIds)];
+  console.log(`[fetchOrderIds] statuses=${statuses.join(',')} days=${days} => ${uniqueIds.length}건 (success=${_fetchDayStats.success} fail=${_fetchDayStats.fail} lastErr=${_fetchDayStats.lastError})`);
+  return uniqueIds;
 }
 
 // 하위호환: 기존 getSmartstoreStatusCounts 호출 대응 (브리핑 등)
@@ -535,7 +543,7 @@ async function handleSmartstoreOrders(params: any) {
 
   // ── SMARTSTORE-ORDERS-FIX.1: 전체 함수 timeout 방어 ──
   // deep_sync는 최대 55초, 일반 액션은 9초
-  const HANDLER_TIMEOUT_MS = action === 'deep_sync' ? 55000 : 9000;
+  const HANDLER_TIMEOUT_MS = action === 'deep_sync' ? 55000 : (action === 'query_order_status' ? 25000 : 9000);
   let handlerTimedOut = false;
   const handlerTimeoutId = setTimeout(() => { handlerTimedOut = true; }, HANDLER_TIMEOUT_MS);
   const checkTimeout = () => {
