@@ -9027,3 +9027,66 @@ html, body {
   0%   { left: -40%; }
   100% { left: 100%; }
 }
+
+/* ══════════════════════════════════════════════════════════════
+   UI-LAYER-FIX-A.1 — Result Focus Mode
+   resultDeckVisible=true 시 main에 result-focus-active 클래스 부여
+   HUD 패널들을 z축 뒤로 보내고 ResultDeck을 전면으로 확보
+   ══════════════════════════════════════════════════════════════ */
+
+/* ── ResultDeck 전면 고정 (z-index 보강) ── */
+.result-focus-active .result-deck-overlay {
+  z-index: 95 !important;
+  pointer-events: auto !important;
+}
+
+/* ── Smartstore HUD 후퇴 ── */
+.result-focus-active .scc-root {
+  transform: perspective(1200px) translateZ(-120px) scale(0.92) !important;
+  opacity: 0.35 !important;
+  filter: blur(1px) !important;
+  pointer-events: none !important;
+  transition: transform 0.45s ease, opacity 0.45s ease, filter 0.45s ease !important;
+}
+
+/* ── Action Command Panel (acp-panel) 후퇴 ── */
+.result-focus-active .acp-panel {
+  transform: perspective(1200px) translateZ(-80px) scale(0.94) !important;
+  opacity: 0.30 !important;
+  filter: blur(1px) !important;
+  pointer-events: none !important;
+  transition: transform 0.4s ease, opacity 0.4s ease, filter 0.4s ease !important;
+}
+
+/* ── Predictive Action Panel 후퇴 ── */
+.result-focus-active .predictive-action-panel {
+  transform: translate3d(0, 0, -80px) scale(0.94) !important;
+  opacity: 0.25 !important;
+  pointer-events: none !important;
+  transition: transform 0.4s ease, opacity 0.4s ease !important;
+}
+
+/* ── Approval Gate Card: 항상 최상위 유지 ── */
+.result-focus-active [class*="approval-gate"] {
+  z-index: 100 !important;
+  pointer-events: auto !important;
+  opacity: 1 !important;
+  filter: none !important;
+}
+
+/* ── DUAL ARM / ACTIVATE 버튼 후퇴 ── */
+.result-focus-active .jarvis-dual-arm-panel {
+  opacity: 0.25 !important;
+  pointer-events: none !important;
+  transition: opacity 0.4s ease !important;
+}
+
+/* ── HUD 복귀 트랜지션 (result-focus-active 제거 시 자동 복귀) ── */
+.scc-root,
+.acp-panel,
+.predictive-action-panel,
+.jarvis-dual-arm-panel {
+  transition: transform 0.45s ease, opacity 0.45s ease, filter 0.45s ease;
+}
+
+/* ── end UI-LAYER-FIX-A.1 ── */
