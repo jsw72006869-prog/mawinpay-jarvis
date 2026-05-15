@@ -101,23 +101,51 @@ async function getSmartStoreToken(): Promise<string> {
     type: 'SELF',
   });
 
-  const res = await proxyFetch(`${NAVER_API_BASE}/v1/oauth2/token?${params.toString()}`, {
-    method: 'POST',
-    headers: { 'content-type': 'application/x-www-form-urlencoded' },
-  });
+  // SMARTSTORE-ORDERS-FIX.3B: 토큰 발급 재시도 + text 파싱 (QuotaGuard 프록시 응답 깨짐 방어)
+  for (let tokenAttempt = 0; tokenAttempt < 3; tokenAttempt++) {
+    try {
+      const res = await proxyFetch(`${NAVER_API_BASE}/v1/oauth2/token?${params.toString()}`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/x-www-form-urlencoded' },
+      });
 
-  const data = await res.json();
-  if (!data.access_token) {
-    const errorCode = data.code || data.error || '';
-    throw new Error(`Token failed: ${errorCode}`);
+      const rawText = await res.text();
+      let data: any;
+      try {
+        data = JSON.parse(rawText);
+      } catch (parseErr) {
+        // JSON 파싱 실패 → 재시도
+        if (tokenAttempt < 2) {
+          await new Promise(r => setTimeout(r, 500));
+          continue;
+        }
+        throw new Error(`Token JSON parse failed (attempt ${tokenAttempt + 1}): ${rawText.slice(0, 100)}`);
+      }
+
+      if (!data.access_token) {
+        const errorCode = data.code || data.error || '';
+        if (tokenAttempt < 2) {
+          await new Promise(r => setTimeout(r, 500));
+          continue;
+        }
+        throw new Error(`Token failed: ${errorCode}`);
+      }
+
+      // 토큰 캐시 (25분간 유효)
+      _cachedToken = {
+        token: data.access_token,
+        expiresAt: Date.now() + 25 * 60 * 1000,
+      };
+      return data.access_token;
+    } catch (err: any) {
+      if (tokenAttempt < 2) {
+        await new Promise(r => setTimeout(r, 500));
+        continue;
+      }
+      throw err;
+    }
   }
-
-  // 토큰 캐시 (25분간 유효)
-  _cachedToken = {
-    token: data.access_token,
-    expiresAt: Date.now() + 25 * 60 * 1000,
-  };
-  return data.access_token;
+  throw new Error('Token failed after 3 attempts');
 }
 
 // ── 인증 포함 스마트스토어 API 요청 (프록시 경유) ──
