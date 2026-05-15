@@ -685,11 +685,11 @@ async function handleSmartstoreOrders(params: any) {
   if (action === 'query_order_status') {
     try {
       checkTimeout();
-      const BUDGET_MS = 7500; // 7.5초 budget
+      const BUDGET_MS = 15000; // 15초 budget (30일 범위 대응)
       const budgetStart = Date.now();
 
-      // PAYED 실시간 조회 (7일)
-      const payedData = await getPayedOrdersFast(7);
+      // PAYED 실시간 조회 (30일 - 네이버 관리자 대시보드 일치)
+      const payedData = await getPayedOrdersFast(30);
       checkTimeout();
 
       const elapsed = Date.now() - budgetStart;
