@@ -611,8 +611,8 @@ async function handleSmartstoreOrders(params: any) {
       }
     }
 
-    // 테스트 4: PAYED 상태 직접 조회 (fetchOrders와 동일한 방식)
-    const payedFrom = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+    // 테스트 4: PAYED 상태 직접 조회 (fetchOrders와 동일한 방식, 24시간 범위)
+    const payedFrom = new Date(now.getTime() - 24 * 60 * 60 * 1000);
     const payedParams = new URLSearchParams({
       from: formatNaverDate(payedFrom),
       to: formatNaverDate(now),
