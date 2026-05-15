@@ -328,21 +328,25 @@ async function getPayedOrdersFast(queryDays: number = 30, forceRefresh: boolean 
 
   const PAYED_RANGE_DAYS = Math.min(queryDays, 90);
 
-  // SMARTSTORE-ORDERS-FIX.5: last-changed-statuses PAYED + PLACE_ORDER_CONFIRMED 기반
-  // 결제일 기준(fetchOrderIds)이 아닌 상태변경일 기준으로 조회
-  // PAYED: 결제된 주문 / PLACE_ORDER_CONFIRMED: 발주확인된 주문 (배송준비)
-  // → 둘 다 조회해야 네이버 관리자 대시보드의 "신규주문 + 배송준비"와 일치
-  const [payedItems, confirmedItems] = await Promise.all([
-    getLastChangedItems('PAYED', PAYED_RANGE_DAYS),
-    getLastChangedItems('PLACE_ORDER_CONFIRMED', PAYED_RANGE_DAYS),
-  ]);
+  // SMARTSTORE-ORDERS-FIX.6: 모든 가능한 lastChangedType 조회
+  // PAYED 상태 주문의 lastChangedType이 다양할 수 있음:
+  // - PAYED: 결제 완료
+  // - PLACE_ORDER_CONFIRMED: 발주확인 (없는 경우도 있음)
+  // - DELIVERY_ADDRESS_CHANGED: 배송지 변경 후에도 PAYED 상태 유지
+  // - EXCHANGE_OPTION: 옵션 변경 후에도 PAYED 상태 유지
+  // - CLAIM_REJECTED: 클레임 철회 후 PAYED 상태로 복귀
+  const lastChangedTypes = ['PAYED', 'DELIVERY_ADDRESS_CHANGED', 'EXCHANGE_OPTION', 'CLAIM_REJECTED'] as const;
+  const results = await Promise.all(
+    lastChangedTypes.map(type => getLastChangedItems(type, PAYED_RANGE_DAYS).catch(() => []))
+  );
 
   // ID 추출 + 중복 제거
   const allIds = new Set<string>();
-  for (const item of payedItems) { if (item.productOrderId) allIds.add(item.productOrderId); }
-  for (const item of confirmedItems) { if (item.productOrderId) allIds.add(item.productOrderId); }
+  for (const items of results) {
+    for (const item of items) { if (item.productOrderId) allIds.add(item.productOrderId); }
+  }
   const uniqueIds = [...allIds];
-  console.log(`[getPayedOrdersFast] PAYED=${payedItems.length} CONFIRMED=${confirmedItems.length} unique=${uniqueIds.length}`);
+  console.log(`[getPayedOrdersFast] types=${lastChangedTypes.join(',')} counts=${results.map(r => r.length).join(',')} unique=${uniqueIds.length}`);
 
   // 상세 조회로 현재 상태 확인 (이미 발송처리된 주문은 PAYED가 아님)
   let payedOrders: any[] = [];
