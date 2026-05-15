@@ -331,7 +331,9 @@ async function getPayedOrdersFast(queryDays: number = 7) {
 // 정밀 동기화 (DELIVERING/DELIVERED/PURCHASE_DECIDED) - 별도 액션으로 호출
 // SMARTSTORE-ORDERS-FIX.3: 기본값 축소 (Vercel 60s timeout 방어)
 // shippingDays=7, deliveredDays=7, decidedDays=14 → 최대 14번 순차 × ~2s = ~28s
-async function runDeepSync(shippingDays = 7, deliveredDays = 7, decidedDays = 14) {
+// SMARTSTORE-ORDERS-FIX.3A: 기본 범위 30일 (55초 timeout 내 처리)
+// 30일 × 5개 배치 = 6 배치 × ~3초 = ~18초, 3개 병렬 = ~18초
+async function runDeepSync(shippingDays = 30, deliveredDays = 30, decidedDays = 30) {
   const [shippingOrders, deliveredOrders, decidedOrders] = await Promise.all([
     fetchOrders(['DELIVERING'], shippingDays),
     fetchOrders(['DELIVERED'], deliveredDays),
@@ -366,32 +368,11 @@ async function runDeepSync(shippingDays = 7, deliveredDays = 7, decidedDays = 14
 
   _ssDeepCache = deepResult;
 
-  // SMARTSTORE-ORDERS-FIX.3: TiDB에 저장 (인스턴스 재시작에도 유지)
-  try {
-    const conn = await getDbConnection();
-    await conn.execute(
-      `CREATE TABLE IF NOT EXISTS ss_order_snapshot (
-        id INT AUTO_INCREMENT PRIMARY KEY,
-        shipping INT NOT NULL DEFAULT 0,
-        delivered INT NOT NULL DEFAULT 0,
-        purchase_confirmed INT NOT NULL DEFAULT 0,
-        synced_at BIGINT NOT NULL,
-        sync_range_days JSON,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-      )`
-    );
-    await conn.execute(
-      `INSERT INTO ss_order_snapshot (shipping, delivered, purchase_confirmed, synced_at, sync_range_days)
-       VALUES (?, ?, ?, ?, ?)`,
-      [deepResult.shipping, deepResult.delivered, deepResult.purchaseConfirmed, deepResult.syncedAt, JSON.stringify(deepResult.syncRangeDays)]
-    );
-    // 오래된 스냅샷 정리 (30개 이상 유지 시 싹제)
-    await conn.execute(`DELETE FROM ss_order_snapshot WHERE id NOT IN (SELECT id FROM (SELECT id FROM ss_order_snapshot ORDER BY synced_at DESC LIMIT 30) t)`);
-    await conn.end();
-  } catch (dbErr: any) {
-    // DB 저장 실패는 경고만 (메모리 캐시는 유지)
-    console.warn('[JARVIS] deep_sync DB 저장 실패:', dbErr?.message);
-  }
+  // SMARTSTORE-ORDERS-FIX.3A: TiDB 저장 제거 → 클라이언트 localStorage 캐시 기반
+  // deep_sync 결과는 API 응답으로 반환 → 클라이언트가 localStorage에 저장
+  // 서버 메모리 캐시(_ssDeepCache)는 같은 인스턴스 내에서만 유효
+  /* TiDB 저장 코드 제거됨 (ECONNREFUSED 방지) */
+
 
   return deepResult;
 }
@@ -643,30 +624,9 @@ async function handleSmartstoreOrders(params: any) {
       const elapsed = Date.now() - budgetStart;
       const isPartial = elapsed > BUDGET_MS;
 
-      // Deep 캐시 읽기 (메모리 먼저, 없으면 TiDB 폴백)
-      let deep = _ssDeepCache;
-      if (!deep) {
-        try {
-          const conn = await getDbConnection();
-          const [rows] = await conn.execute(
-            `SELECT shipping, delivered, purchase_confirmed, synced_at, sync_range_days FROM ss_order_snapshot ORDER BY synced_at DESC LIMIT 1`
-          ) as any;
-          await conn.end();
-          if (rows && rows.length > 0) {
-            const row = rows[0];
-            deep = {
-              shipping: row.shipping,
-              delivered: row.delivered,
-              purchaseConfirmed: row.purchase_confirmed,
-              syncedAt: Number(row.synced_at),
-              syncRangeDays: typeof row.sync_range_days === 'string' ? JSON.parse(row.sync_range_days) : row.sync_range_days,
-            };
-            _ssDeepCache = deep; // 메모리에도 캐싱
-          }
-        } catch (dbErr: any) {
-          console.warn('[JARVIS] deep 캐시 DB 읽기 실패:', dbErr?.message);
-        }
-      }
+      // SMARTSTORE-ORDERS-FIX.3A: Deep 캐시는 서버 메모리에서만 읽기
+      // 캐시가 없으면 null 반환 → 클라이언트가 localStorage에서 읽거나 deep_sync 자동 호출
+      const deep = _ssDeepCache;
       const deepCacheAge = deep ? Math.round((Date.now() - deep.syncedAt) / 60000) : null;
       const deepIsStale = deep ? (Date.now() - deep.syncedAt) > SS_DEEP_CACHE_TTL : false;
 
