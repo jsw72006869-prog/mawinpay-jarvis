@@ -311,7 +311,7 @@ let _ssDeepCache: {
   delivered: number;
   purchaseConfirmed: number;
   syncedAt: number;
-  syncRangeDays: { shipping: number; delivered: number; decided: number };
+  syncRangeDays: number;
 } | null = null;
 const SS_DEEP_CACHE_TTL = 30 * 60 * 1000; // 30분
 
@@ -326,7 +326,7 @@ async function getPayedOrdersFast(queryDays: number = 7) {
     return { ..._ssPayedCache.data, isCached: true, cacheAgeMs: Date.now() - _ssPayedCache.fetchedAt };
   }
 
-  const PAYED_RANGE_DAYS = Math.min(queryDays, 7); // 최대 7일 (7번 API 호출)
+  const PAYED_RANGE_DAYS = Math.min(queryDays, 30); // 최대 30일 (배송준비 누락 방지)
   const payedOrders = await fetchOrders(['PAYED'], PAYED_RANGE_DAYS);
 
   const newOrders = payedOrders.filter((o: any) => {
@@ -366,7 +366,7 @@ async function getPayedOrdersFast(queryDays: number = 7) {
 // 각 상태별 60일 = 60호출, BATCH_SIZE=5 → 12배치 × ~1.5초 = ~18초
 // 3상태 순차 = ~54초 (Vercel 60초 내 긴박)
 // → 각 상태별 건수만 필요하므로 상세 조회 생략 → 속도 대폭 향상
-async function runDeepSync(rangeDays = 60) {
+async function runDeepSync(rangeDays = 90) {
   // 각 상태별 productOrderId 목록만 조회 (상세 조회 X → 빠름)
   // 순차 실행으로 QuotaGuard 동시연결 제한 방어
   const deliveringIds = await fetchOrderIds(['DELIVERING'], rangeDays);
@@ -387,19 +387,20 @@ async function runDeepSync(rangeDays = 60) {
 
 // 상태별 productOrderId 목록만 조회 (상세 조회 생략 → 빠름)
 // GET /v1/pay-order/seller/product-orders 엔드포인트 사용
-// rangeType=PAYED_DATETIME, 24시간 단위 조회
+// rangeType=PAYED_DATETIME, 7일 단위 조회 (1일 단위 대비 7배 빠름)
 async function fetchOrderIds(statuses: string[], days: number): Promise<string[]> {
   const now = new Date();
   const startDate = new Date();
   startDate.setDate(startDate.getDate() - days);
 
+  const CHUNK_DAYS = 7; // 7일 단위로 조회 (API 최대 6개월 지원)
   const dayRequests: Array<{ from: Date; to: Date }> = [];
-  for (let i = 0; i < days; i++) {
-    const dayFrom = new Date(startDate.getTime() + i * 24 * 60 * 60 * 1000);
-    const dayTo = new Date(dayFrom.getTime() + 24 * 60 * 60 * 1000);
-    if (dayFrom >= now) break;
-    if (dayTo > now) dayTo.setTime(now.getTime());
-    dayRequests.push({ from: dayFrom, to: dayTo });
+  let cursor = new Date(startDate);
+  while (cursor < now) {
+    const chunkEnd = new Date(cursor.getTime() + CHUNK_DAYS * 24 * 60 * 60 * 1000);
+    const to = chunkEnd > now ? new Date(now) : chunkEnd;
+    dayRequests.push({ from: new Date(cursor), to });
+    cursor = new Date(to);
   }
 
   let allIds: string[] = [];
@@ -790,8 +791,8 @@ async function handleSmartstoreOrders(params: any) {
       checkTimeout();
       // SMARTSTORE-ORDERS-FIX.4: productOrderStatuses 기반 조회
       // 네이버 관리자 대시보드와 동일한 기준 (현재 productOrderStatus)
-      // rangeDays=60 (기본값, 결제일 기준 60일 내 주문)
-      const rangeDays = Number(params?.rangeDays) || 60;
+      // rangeDays=90 (기본값, 결제일 기준 90일 내 주문)
+      const rangeDays = Number(params?.rangeDays) || 90;
 
       const deepResult = await runDeepSync(rangeDays);
       clearTimeout(handlerTimeoutId);
@@ -883,14 +884,15 @@ async function fetchOrders(statuses: string[], days: number): Promise<any[]> {
   const startDate = new Date();
   startDate.setDate(startDate.getDate() - days);
 
-  // 일별 24시간 단위 조회 (네이버 API 제한: from~to 간격 최대 24시간)
+  // 7일 단위 조회 (1일 단위 대비 7배 빠름, API 최대 6개월 지원)
+  const CHUNK_DAYS = 7;
   const dayRequests: Array<{ from: Date; to: Date }> = [];
-  for (let i = 0; i < days; i++) {
-    const dayFrom = new Date(startDate.getTime() + i * 24 * 60 * 60 * 1000);
-    const dayTo = new Date(dayFrom.getTime() + 24 * 60 * 60 * 1000);
-    if (dayFrom >= now) break;
-    if (dayTo > now) dayTo.setTime(now.getTime());
-    dayRequests.push({ from: dayFrom, to: dayTo });
+  let cursor = new Date(startDate);
+  while (cursor < now) {
+    const chunkEnd = new Date(cursor.getTime() + CHUNK_DAYS * 24 * 60 * 60 * 1000);
+    const to = chunkEnd > now ? new Date(now) : chunkEnd;
+    dayRequests.push({ from: new Date(cursor), to });
+    cursor = new Date(to);
   }
 
   // QuotaGuard 동시연결 제한 대응: 순차 실행 + 재시도 (2회)
