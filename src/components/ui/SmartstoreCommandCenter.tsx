@@ -13,12 +13,20 @@ import MissionStatusStrip from './MissionStatusStrip';
    실제 실행 금지, Preview only
    3D perspective + 중앙 모달 레이아웃 */
 
+interface OrderData {
+  newOrders?: number;
+  pendingShipping?: number;
+  purchaseConfirmed?: number;
+  fetchedAt?: string | null;
+}
+
 interface Props {
   visible: boolean;
   onClose?: () => void;
+  orderData?: OrderData | null;
 }
 
-export default function SmartstoreCommandCenter({ visible, onClose }: Props) {
+export default function SmartstoreCommandCenter({ visible, onClose, orderData }: Props) {
   if (!visible) return null;
 
   return (
@@ -110,7 +118,7 @@ export default function SmartstoreCommandCenter({ visible, onClose }: Props) {
       >
         {/* 좌측 열: Daily Brief + CS Risk */}
         <div className="scc-col scc-col-left">
-          <DailyBriefPanel />
+          <DailyBriefPanel orderData={orderData} />
           <CsRiskPanel />
         </div>
 
