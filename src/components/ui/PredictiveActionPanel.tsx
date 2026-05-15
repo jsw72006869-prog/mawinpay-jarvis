@@ -67,7 +67,7 @@ const PredictiveActionPanel: React.FC<PredictiveActionPanelProps> = ({
           style={{
             position: 'fixed',
             left: 20,
-            bottom: 20,
+            bottom: 72, /* DUAL-MONITOR-A.1: DUAL ARM 패널 위로 */
             width: 340,
             maxHeight: 420,
             overflowY: 'auto',

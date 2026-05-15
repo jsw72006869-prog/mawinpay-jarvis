@@ -1910,7 +1910,7 @@ const SHEET_HEADERS: Record<string, string[]> = {
   creative_scripts: ['scriptId','createdAt','product','platform','hook','caption','threadPost','kakaoMessage','reelsScript','recommendedGrowthLink','status','sourceCommand'],
   growth_campaigns: ['campaignId','createdAt','product','source','targetUrl','directUrl','couponCode','campaignMemo','status'],
   purchase_order_drafts: ['draftId','createdAt','supplier','productSummary','totalQuantity','totalAmountIfAvailable','status','safePreview'],
-  influencer_candidates: ['candidateId','collectedAt','platform','keyword','name','channelOrBlogUrl','recentContentTitle','recentContentUrl','subscriberOrVisitor','viewCount','publicContactStatus','publicEmailMasked','emailSource','productFitScore','productFitReason','suggestedProduct','suggestedOfferAngle','practicalSegment','outreachStatus','firstEmailDraft','followUpDraft','lastContactedAt','responseStatus','notes'],
+  influencer_candidates: ['influencer_id','platform','channel_name','handle','profile_url','contact_email','contact_url','email_status','category_tags','source_keyword','source_product','followers_or_subscribers','avg_views','fit_score','fit_reason','outreach_status','last_contacted_at','reply_status','next_action','duplicate_hash','created_at','updated_at','notes'],
   market_price_checks: ['checkId','createdAt','productName','rawMaterialCost','currentPrice','shippingCost','packagingCost','platformFeeRate','otherCosts','competitorPrices','competitorMinPrice','competitorAvgPrice','netSalesAmount','estimatedMargin','estimatedMarginRate','jarvisDecision','recommendedAction','sourceCommand'],
 };
 
@@ -2599,8 +2599,20 @@ async function handleOutreachCollect(params: any) {
   };
 }
 
+// OUTREACH-SHEET.1: duplicate_hash 생성 헬퍼
+function buildDuplicateHash(platform: string, profileUrl: string, channelName: string, handle: string): string {
+  const norm = (s: string) => (s || '').toLowerCase().replace(/[\s\/\?#&=]+/g, '').trim();
+  const base = profileUrl ? `${norm(platform)}::${norm(profileUrl)}` : `${norm(platform)}::${norm(channelName)}::${norm(handle)}`;
+  // 간단한 해시 (FNV-like)
+  let h = 2166136261;
+  for (let i = 0; i < base.length; i++) {
+    h ^= base.charCodeAt(i);
+    h = (h * 16777619) >>> 0;
+  }
+  return h.toString(16).padStart(8, '0');
+}
 async function handleOutreachSaveCandidates(params: any) {
-  const { candidates } = params;
+  const { candidates, dryRun } = params;
   if (!candidates || !Array.isArray(candidates) || candidates.length === 0) {
     return { success: false, error: 'candidates array required' };
   }
@@ -2609,24 +2621,96 @@ async function handleOutreachSaveCandidates(params: any) {
   }
   try {
     await ensureHeaders('influencer_candidates');
-    let saved = 0;
-    for (const c of candidates) {
-      await sheetsAppend('influencer_candidates', [[
-        c.candidateId || generateRecordId('inf'), c.collectedAt || new Date().toISOString(),
-        c.platform || '', c.seedKeyword || c.keyword || '', c.name || '',
-        c.channelOrBlogUrl || '', c.recentContentTitle || '', c.recentContentUrl || '',
-        String(c.subscriberOrVisitor || ''), String(c.viewCount || ''),
-        c.publicContactStatus || 'unknown', c.publicEmailMasked || '',
-        c.emailSource || '',
-        String(c.productFitScore || 0), c.productFitReason || '',
-        c.suggestedProduct || c.productName || '', c.suggestedOfferAngle || '',
-        c.practicalSegment || '',
-        c.outreachStatus || 'pending', c.firstEmailDraft || '',
-        c.followUpDraft || '', '', 'none', c.notes || ''
-      ]]);
-      saved++;
+    // 기존 시트 읽어서 duplicate_hash 목록 추출
+    const existing = await sheetsRead('influencer_candidates');
+    const existingRows: string[][] = existing.values || [];
+    const headers: string[] = existingRows[0] || [];
+    const hashColIdx = headers.indexOf('duplicate_hash');
+    const idColIdx = headers.indexOf('influencer_id');
+    const existingHashes: Map<string, number> = new Map(); // hash -> row index (1-based)
+    for (let i = 1; i < existingRows.length; i++) {
+      const row = existingRows[i];
+      const hash = hashColIdx >= 0 ? (row[hashColIdx] || '') : '';
+      if (hash) existingHashes.set(hash, i + 1); // 1-based row
     }
-    return { success: true, saved, total: candidates.length, message: `${saved}명의 후보를 Google Sheets에 저장했습니다.` };
+    let saved = 0, updated = 0, skipped = 0;
+    const dryRunLog: any[] = [];
+    for (const c of candidates) {
+      const platform = c.platform || '';
+      const profileUrl = c.profile_url || c.channelOrBlogUrl || '';
+      const channelName = c.channel_name || c.name || '';
+      const handle = c.handle || '';
+      const contactEmail = c.contact_email || c.publicEmailMasked || '';
+      const contactUrl = c.contact_url || '';
+      // email_status 검증 (허용값만)
+      const allowedEmailStatus = ['public_email', 'contact_form', 'not_found', 'unknown'];
+      const rawEmailStatus = c.email_status || c.publicContactStatus || 'unknown';
+      const emailStatus = allowedEmailStatus.includes(rawEmailStatus) ? rawEmailStatus : 'unknown';
+      // outreach_status 검증
+      const allowedOutreachStatus = ['not_sent', 'drafted', 'sent', 'replied', 'follow_up_needed', 'closed'];
+      const rawOutreachStatus = c.outreach_status || c.outreachStatus || 'not_sent';
+      const outreachStatus = allowedOutreachStatus.includes(rawOutreachStatus) ? rawOutreachStatus : 'not_sent';
+      // reply_status 검증
+      const allowedReplyStatus = ['none', 'positive', 'neutral', 'negative', 'bounced'];
+      const rawReplyStatus = c.reply_status || c.responseStatus || 'none';
+      const replyStatus = allowedReplyStatus.includes(rawReplyStatus) ? rawReplyStatus : 'none';
+      const dupHash = buildDuplicateHash(platform, profileUrl, channelName, handle);
+      const now = new Date().toISOString();
+      const row = [
+        c.influencer_id || c.candidateId || generateRecordId('inf'),
+        platform,
+        channelName,
+        handle,
+        profileUrl,
+        contactEmail,
+        contactUrl,
+        emailStatus,
+        c.category_tags || c.practicalSegment || '',
+        c.source_keyword || c.keyword || c.seedKeyword || '',
+        c.source_product || c.suggestedProduct || '',
+        String(c.followers_or_subscribers || c.subscriberOrVisitor || ''),
+        String(c.avg_views || c.viewCount || ''),
+        String(c.fit_score || c.productFitScore || 0),
+        c.fit_reason || c.productFitReason || '',
+        outreachStatus,
+        c.last_contacted_at || c.lastContactedAt || '',
+        replyStatus,
+        c.next_action || '',
+        dupHash,
+        c.created_at || c.collectedAt || now,
+        now,
+        c.notes || '',
+      ];
+      if (dryRun) {
+        const isDup = existingHashes.has(dupHash);
+        dryRunLog.push({ channelName, platform, dupHash, action: isDup ? 'update' : 'append', emailStatus, outreachStatus });
+        continue;
+      }
+      if (existingHashes.has(dupHash)) {
+        // 기존 행 업데이트 (updated_at만 갱신, outreach_status/reply_status 덮어쓰지 않음)
+        const rowNum = existingHashes.get(dupHash)!;
+        const token = await getGoogleSheetsToken();
+        const updatedAtIdx = headers.indexOf('updated_at');
+        if (updatedAtIdx >= 0) {
+          const colLetter = String.fromCharCode(65 + updatedAtIdx);
+          const rangeStr = encodeURIComponent(`influencer_candidates!${colLetter}${rowNum}`);
+          const url = `https://sheets.googleapis.com/v4/spreadsheets/${WORKSPACE_SHEET_ID}/values/${rangeStr}?valueInputOption=RAW`;
+          await fetch(url, {
+            method: 'PUT',
+            headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+            body: JSON.stringify({ values: [[now]] }),
+          });
+        }
+        updated++;
+      } else {
+        await sheetsAppend('influencer_candidates', [row]);
+        saved++;
+      }
+    }
+    if (dryRun) {
+      return { success: true, dryRun: true, log: dryRunLog, total: candidates.length };
+    }
+    return { success: true, saved, updated, skipped, total: candidates.length, message: `신규 ${saved}명 저장, 중복 ${updated}명 업데이트 완료.` };
   } catch (e: any) {
     return { success: false, error: e.message };
   }
@@ -2645,15 +2729,20 @@ async function handleOutreachList(params: any) {
     let records = rows.slice(1).map((row: string[]) => {
       const obj: any = {};
       headers.forEach((h: string, i: number) => { obj[h] = row[i] || ''; });
-      obj.productFitScore = parseInt(obj.productFitScore || '0', 10);
+      // OUTREACH-SHEET.1: 새 CRM 컬럼 기준 숫자 파싱
+      obj.fit_score = parseInt(obj.fit_score || obj.productFitScore || '0', 10);
+      obj.followers_or_subscribers = parseInt(obj.followers_or_subscribers || obj.subscriberOrVisitor || '0', 10);
+      obj.avg_views = parseInt(obj.avg_views || obj.viewCount || '0', 10);
       return obj;
     });
-    // 필터
-    const { minScore, keyword: filterKw, platform: filterPlatform } = params || {};
-    if (minScore) records = records.filter((r: any) => r.productFitScore >= minScore);
-    if (filterKw) records = records.filter((r: any) => (r.keyword || '').includes(filterKw));
+    // 필터 (새 컬럼명 우선, 구 컬럼명 fallback)
+    const { minScore, keyword: filterKw, platform: filterPlatform, outreachStatus: filterOutreach, emailStatus: filterEmail } = params || {};
+    if (minScore) records = records.filter((r: any) => r.fit_score >= Number(minScore));
+    if (filterKw) records = records.filter((r: any) => (r.source_keyword || r.keyword || '').includes(filterKw));
     if (filterPlatform) records = records.filter((r: any) => (r.platform || '').toLowerCase().includes(filterPlatform.toLowerCase()));
-    records.sort((a: any, b: any) => b.productFitScore - a.productFitScore);
+    if (filterOutreach) records = records.filter((r: any) => (r.outreach_status || r.outreachStatus || '') === filterOutreach);
+    if (filterEmail) records = records.filter((r: any) => (r.email_status || r.publicContactStatus || '') === filterEmail);
+    records.sort((a: any, b: any) => b.fit_score - a.fit_score);
     const limit = params?.limit || 20;
     return { success: true, candidates: records.slice(0, limit), total: records.length };
   } catch (e: any) {
