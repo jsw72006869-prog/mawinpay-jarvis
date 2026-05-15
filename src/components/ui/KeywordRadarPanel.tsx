@@ -1,8 +1,18 @@
 import React, { useState } from 'react';
 
-/* ── SEO-K.1.1 Keyword Radar Panel ──
-   상품 링크 입력 → productId 추출 + nl-query 힌트 → 키워드 순위 측정 → 결과 표시
-   가짜 순위 표시 금지 / 첫 측정 전일 대비 없음 */
+/* ── SEO-K.1.2 Keyword Radar Panel ──
+   상품 링크 입력 → productId 추출 + nl-query 힌트 → 상품명 추출 보강 → 키워드 순위 측정 → 결과 표시
+   상품명 추출 우선순위: og:title → title → json_ld → search_result → keyword_hint → manual → failed
+   가짜 상품명/순위 표시 금지 / keyword_hint는 상품명이 아님을 정직하게 표시 */
+
+type ProductNameSource =
+  | 'og:title'
+  | 'title'
+  | 'json_ld'
+  | 'search_result'
+  | 'keyword_hint'
+  | 'manual'
+  | 'failed';
 
 interface KeywordResult {
   keyword: string;
@@ -16,8 +26,9 @@ interface KeywordResult {
 interface Diagnostics {
   productId: string | null;
   productIdExtracted: boolean;
+  productNameResolved: boolean;
+  productNameSource: ProductNameSource;
   keywordHint: string | null;
-  productNameExtracted: boolean;
   checkedKeywords: number;
   maxRank: number;
   matchStrategy: string;
@@ -27,6 +38,7 @@ interface RadarResponse {
   success: boolean;
   productUrl: string;
   productName?: string;
+  productNameSource?: ProductNameSource;
   keywords: KeywordResult[];
   diagnostics?: Diagnostics;
   message?: string;
@@ -37,6 +49,28 @@ type MeasureState = 'idle' | 'loading' | 'done' | 'error';
 interface KeywordRadarPanelProps {
   onClose?: () => void;
 }
+
+// 상품명 출처 한국어 레이블
+const SOURCE_LABEL: Record<ProductNameSource, string> = {
+  'og:title': 'og:title',
+  'title': 'title',
+  'json_ld': 'JSON-LD',
+  'search_result': '검색결과 역추출',
+  'keyword_hint': '키워드 힌트',
+  'manual': '수동 입력',
+  'failed': '추출 실패',
+};
+
+// 상품명 출처 CSS 클래스
+const SOURCE_CLASS: Record<ProductNameSource, string> = {
+  'og:title': 'kr-source-html',
+  'title': 'kr-source-html',
+  'json_ld': 'kr-source-html',
+  'search_result': 'kr-source-search',
+  'keyword_hint': 'kr-source-hint',
+  'manual': 'kr-source-manual',
+  'failed': 'kr-source-failed',
+};
 
 export default function KeywordRadarPanel({ onClose }: KeywordRadarPanelProps) {
   const [productUrl, setProductUrl] = useState('');
@@ -117,13 +151,34 @@ export default function KeywordRadarPanel({ onClose }: KeywordRadarPanelProps) {
     return id.slice(0, 4) + '...' + id.slice(-2);
   };
 
+  // 상품명 표시 텍스트 결정
+  const getProductNameDisplay = (
+    productName: string | undefined,
+    source: ProductNameSource | undefined
+  ): { label: string; note: string; isHint: boolean } => {
+    if (!source || source === 'failed') {
+      return { label: '상품명 자동 추출 실패', note: 'manualKeywords 사용 중', isHint: false };
+    }
+    if (source === 'keyword_hint') {
+      return {
+        label: productName || '',
+        note: '상품명 자동 추출 실패 / 검색 키워드 힌트 사용 중',
+        isHint: true,
+      };
+    }
+    return { label: productName || '', note: '', isHint: false };
+  };
+
+  const src = result?.productNameSource ?? result?.diagnostics?.productNameSource;
+  const nameDisplay = getProductNameDisplay(result?.productName, src);
+
   return (
     <div className="kr-panel">
       {/* Header */}
       <div className="kr-header">
         <span className="kr-dot" />
         <span className="kr-title">KEYWORD RADAR</span>
-        <span className="kr-badge">SEO-K.1.1</span>
+        <span className="kr-badge">SEO-K.1.2</span>
         {onClose && (
           <button className="kr-close" onClick={onClose}>CLOSE</button>
         )}
@@ -193,13 +248,44 @@ export default function KeywordRadarPanel({ onClose }: KeywordRadarPanelProps) {
         <div className="kr-results">
           {/* Product Info */}
           <div className="kr-product-info">
+
+            {/* 구현 F: 상품명 + 출처 표시 */}
             <div className="kr-product-row">
               <span className="kr-product-label">상품명</span>
-              <span className="kr-product-value">
-                {result.productName || '추출 실패 (수동 키워드 사용)'}
+              <span className={`kr-product-value ${nameDisplay.isHint ? 'kr-name-hint' : ''}`}>
+                {nameDisplay.label || '추출 실패'}
               </span>
             </div>
-            {/* 구현 G: 상품 ID 표시 (마스킹) */}
+
+            {/* 구현 F: 상품명 출처 표시 */}
+            {src && (
+              <div className="kr-product-row">
+                <span className="kr-product-label">상품명 출처</span>
+                <span className={`kr-product-value kr-source-badge ${SOURCE_CLASS[src] || ''}`}>
+                  {SOURCE_LABEL[src] || src}
+                </span>
+              </div>
+            )}
+
+            {/* keyword_hint 경고 메시지 */}
+            {nameDisplay.isHint && (
+              <div className="kr-product-row kr-hint-warning">
+                <span className="kr-hint-warning-text">
+                  ⚠ {nameDisplay.note}
+                </span>
+              </div>
+            )}
+
+            {/* 상품명 추출 실패 시 안내 */}
+            {src === 'failed' && (
+              <div className="kr-product-row kr-hint-warning">
+                <span className="kr-hint-warning-text">
+                  ⚠ 상품명 자동 추출 실패 — manualKeywords 사용 중
+                </span>
+              </div>
+            )}
+
+            {/* 상품 ID 표시 (마스킹) */}
             {result.diagnostics && (
               <div className="kr-product-row">
                 <span className="kr-product-label">상품 ID</span>
@@ -210,20 +296,23 @@ export default function KeywordRadarPanel({ onClose }: KeywordRadarPanelProps) {
                 </span>
               </div>
             )}
-            {/* 구현 G: nl-query 힌트 표시 */}
+
+            {/* nl-query 힌트 표시 */}
             {result.diagnostics?.keywordHint && (
               <div className="kr-product-row">
                 <span className="kr-product-label">키워드 힌트</span>
                 <span className="kr-product-value kr-hint">{result.diagnostics.keywordHint}</span>
               </div>
             )}
+
             <div className="kr-product-row">
               <span className="kr-product-label">측정 시각</span>
               <span className="kr-product-value">
                 {result.keywords[0]?.checkedAt ? formatTime(result.keywords[0].checkedAt) : '-'}
               </span>
             </div>
-            {/* 구현 G: 매칭 전략 표시 */}
+
+            {/* 매칭 전략 표시 */}
             {result.diagnostics?.matchStrategy && (
               <div className="kr-product-row">
                 <span className="kr-product-label">매칭 방식</span>

@@ -8478,3 +8478,67 @@ html, body {
   .kr-dot { animation: none; }
   .kr-spinner { animation: none; }
 }
+
+/* ── SEO-K.1.2 Product Name Source Styles ── */
+.kr-source-badge {
+  font-size: 10px;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-family: 'Courier New', monospace;
+  letter-spacing: 0.04em;
+}
+.kr-source-html {
+  color: #00FF88;
+  background: rgba(0, 255, 136, 0.08);
+  border: 1px solid rgba(0, 255, 136, 0.25);
+}
+.kr-source-search {
+  color: #00CFFF;
+  background: rgba(0, 207, 255, 0.08);
+  border: 1px solid rgba(0, 207, 255, 0.25);
+}
+.kr-source-hint {
+  color: rgba(255, 180, 80, 0.9);
+  background: rgba(255, 180, 80, 0.08);
+  border: 1px solid rgba(255, 180, 80, 0.25);
+}
+.kr-source-manual {
+  color: rgba(155, 142, 196, 0.9);
+  background: rgba(155, 142, 196, 0.08);
+  border: 1px solid rgba(155, 142, 196, 0.25);
+}
+.kr-source-failed {
+  color: rgba(255, 100, 100, 0.8);
+  background: rgba(255, 100, 100, 0.06);
+  border: 1px solid rgba(255, 100, 100, 0.2);
+}
+.kr-name-hint {
+  color: rgba(255, 180, 80, 0.9) !important;
+}
+.kr-hint-warning {
+  padding: 4px 0;
+}
+.kr-hint-warning-text {
+  font-size: 10px;
+  color: rgba(255, 180, 80, 0.75);
+  font-style: italic;
+  letter-spacing: 0.02em;
+}
+.kr-pid-ok { color: #00FF88; }
+.kr-pid-fail { color: rgba(255, 100, 100, 0.8); }
+.kr-hint { color: rgba(255, 180, 80, 0.85); }
+.kr-match-strategy {
+  font-size: 10px;
+  font-family: 'Courier New', monospace;
+  color: rgba(0, 207, 255, 0.7);
+}
+.kr-rank-type-notice {
+  font-size: 10px;
+  color: rgba(255, 255, 255, 0.3);
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+}
+.kr-rank-top10 { color: #00FF88; font-weight: 700; }
+.kr-rank-top30 { color: #00CFFF; }
+/* ── end SEO-K.1.2 ── */
