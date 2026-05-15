@@ -419,11 +419,13 @@ async function runDeepSync(rangeDays = 90) {
   // 1. DISPATCHED(발송처리) 로 배송중+배송완료 ID 수집
   // 2. PURCHASE_DECIDED(구매확정) 로 구매확정 ID 수집
   // 3. 모든 ID 상세 조회 → 현재 productOrderStatus로 정확 분류
-  const days = Math.min(rangeDays, 90);
+  // SMARTSTORE-ORDERS-FIX.11d: 60일로 제한 + batchSize=7 (Vercel 60초 timeout 내 완료)
+  // 60일 × batchSize=7 = 9배치 × 2상태 = 18배치 × ~1.5초 = ~27초 + 상세조회 ~10초 = ~37초
+  const days = Math.min(rangeDays, 60);
 
-  // Step 1: last-changed-statuses로 ID 수집 (순차 실행, batchSize=5로 속도 확보)
-  const dispatchedItems = await getLastChangedItems('DISPATCHED', days, false, 5);
-  const decidedItems = await getLastChangedItems('PURCHASE_DECIDED', days, false, 5);
+  // Step 1: last-changed-statuses로 ID 수집 (순차 실행, batchSize=7로 속도 확보)
+  const dispatchedItems = await getLastChangedItems('DISPATCHED', days, false, 7);
+  const decidedItems = await getLastChangedItems('PURCHASE_DECIDED', days, false, 7);
 
   // Step 2: ID 추출 + 중복 제거
   const allIds = new Set<string>();
