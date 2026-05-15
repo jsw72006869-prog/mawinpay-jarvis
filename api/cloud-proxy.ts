@@ -320,22 +320,30 @@ let _ssCountsCache: { data: any; fetchedAt: number; queryDays: number } | null =
 const SS_CACHE_TTL = 3 * 60 * 1000; // 3분
 
 // PAYED 전용 실시간 조회 (신규주문 + 배송준비)
+// SMARTSTORE-ORDERS-FIX.11: last-changed-statuses 기반으로 전환
+// fetchOrderIds(PAYED_DATETIME 기준) 대신 last-changed-statuses(PAYED) 사용
+// 이유: PAYED_DATETIME은 결제일 기준이라 30일 이전 결제 주문을 놓침
+// last-changed-statuses는 상태 변경일 기준이라 모든 PAYED 주문을 잡을 수 있음
 async function getPayedOrdersFast(queryDays: number = 30, forceRefresh: boolean = false) {
   // 캐시 유효 시 즉시 반환 (forceRefresh면 캐시 무시)
   if (!forceRefresh && _ssPayedCache && (Date.now() - _ssPayedCache.fetchedAt) < SS_PAYED_CACHE_TTL) {
     return { ..._ssPayedCache.data, isCached: true, cacheAgeMs: Date.now() - _ssPayedCache.fetchedAt };
   }
 
-  // SMARTSTORE-ORDERS-FIX.8: fetchOrderIds 기반으로 전환
-  // 결제일 기준 30일 내 현재 productOrderStatus=PAYED인 주문을 정확히 조회
-  // fetchOrderIds는 GET product-orders API를 1일 단위로 호출하여 ID만 수집 (빠름)
-  // 30일이면 배송준비 주문 대부분을 커버 (90일은 API 호출 90회로 timeout 위험)
+  // Step 1: last-changed-statuses(PAYED)로 PAYED 상태로 변경된 주문 ID 수집
+  // 상태 변경일 기준이므로 30일이면 충분 (30호출 × BATCH_SIZE=5 = 6배치 ≈ 9초)
   const PAYED_RANGE = 30;
-  const { ids: uniqueIds, stats: fetchStats } = await fetchOrderIds(['PAYED'], PAYED_RANGE);
-  console.log(`[getPayedOrdersFast] fetchOrderIds PAYED ${PAYED_RANGE}d: ${uniqueIds.length}건 (success=${fetchStats.success}, fail=${fetchStats.fail})`);
+  const payedItems = await getLastChangedItems('PAYED', PAYED_RANGE);
+  
+  // Step 2: ID 추출 + 중복 제거
+  const idSet = new Set<string>();
+  for (const item of payedItems) {
+    if (item.productOrderId) idSet.add(item.productOrderId);
+  }
+  const uniqueIds = [...idSet];
+  console.log(`[getPayedOrdersFast] last-changed PAYED ${PAYED_RANGE}d: ${payedItems.length}건 → unique ${uniqueIds.length}건`);
 
-
-  // 상세 조회로 현재 상태 확인 (이미 발송처리된 주문은 PAYED가 아님)
+  // Step 3: 상세 조회로 현재 상태 확인 (이미 발송처리된 주문은 PAYED가 아님)
   let payedOrders: any[] = [];
   if (uniqueIds.length > 0) {
     for (let i = 0; i < uniqueIds.length; i += 300) {
