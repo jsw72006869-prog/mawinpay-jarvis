@@ -329,33 +329,51 @@ async function getPayedOrdersFast(queryDays: number = 7) {
 }
 
 // 정밀 동기화 (DELIVERING/DELIVERED/PURCHASE_DECIDED) - 별도 액션으로 호출
-// SMARTSTORE-ORDERS-FIX.3: 기본값 축소 (Vercel 60s timeout 방어)
-// shippingDays=7, deliveredDays=7, decidedDays=14 → 최대 14번 순차 × ~2s = ~28s
-// SMARTSTORE-ORDERS-FIX.3A: 기본 범위 30일 (55초 timeout 내 처리)
-// 30일 × 5개 배치 = 6 배치 × ~3초 = ~18초, 3개 병렬 = ~18초
-async function runDeepSync(shippingDays = 30, deliveredDays = 30, decidedDays = 30) {
-  const [shippingOrders, deliveredOrders, decidedOrders] = await Promise.all([
-    fetchOrders(['DELIVERING'], shippingDays),
-    fetchOrders(['DELIVERED'], deliveredDays),
-    fetchOrders(['PURCHASE_DECIDED'], decidedDays),
+// SMARTSTORE-ORDERS-FIX.3B: last-changed-statuses 기반 deep_sync
+// fetchOrders(PAYED_DATETIME)는 결제일 기준이라 배송중/배송완료/구매확정 주문을 놓침
+// → lastChangedType 기반으로 전환: 상태 변경일 기준 조회 → 네이버 관리자 숫자와 일치
+// shippingDays=14, deliveredDays=14, decidedDays=30 (기본값)
+// 14일 × 3개 배치 = 5배치 × ~2초 = ~10초, 3개 병렬 = ~10초 (55초 timeout 내 안전)
+async function runDeepSync(shippingDays = 14, deliveredDays = 14, decidedDays = 30) {
+  // last-changed-statuses API: lastChangedType에 상태명 전달
+  // DELIVERING → 배송중으로 변경된 주문 (최근 N일 내 상태 변경)
+  // DELIVERED → 배송완료로 변경된 주문
+  // PURCHASE_DECIDED → 구매확정으로 변경된 주문
+  const [shippingItems, deliveredItems, decidedItems] = await Promise.all([
+    getLastChangedItems('DELIVERING', shippingDays),
+    getLastChangedItems('DELIVERED', deliveredDays),
+    getLastChangedItems('PURCHASE_DECIDED', decidedDays),
   ]);
 
+  // productOrderId 기준 중복 제거 (같은 주문이 여러 번 상태 변경될 수 있음)
   const uniqueShipping = new Map<string, any>();
-  for (const o of shippingOrders) {
-    const po = o.productOrder || o;
-    if (po.productOrderId) uniqueShipping.set(po.productOrderId, po);
+  for (const item of shippingItems) {
+    const id = item.productOrderId;
+    if (id) uniqueShipping.set(id, item);
   }
 
   const uniqueDelivered = new Map<string, any>();
-  for (const o of deliveredOrders) {
-    const po = o.productOrder || o;
-    if (po.productOrderId) uniqueDelivered.set(po.productOrderId, po);
+  for (const item of deliveredItems) {
+    const id = item.productOrderId;
+    if (id) uniqueDelivered.set(id, item);
   }
 
   const uniqueDecided = new Map<string, any>();
-  for (const o of decidedOrders) {
-    const po = o.productOrder || o;
-    if (po.productOrderId) uniqueDecided.set(po.productOrderId, po);
+  for (const item of decidedItems) {
+    const id = item.productOrderId;
+    if (id) uniqueDecided.set(id, item);
+  }
+
+  // 배송완료 목록에서 이미 구매확정된 주문 제외 (현재 상태 기준 정확도 향상)
+  for (const id of uniqueDecided.keys()) {
+    uniqueDelivered.delete(id);
+  }
+  // 배송중 목록에서 이미 배송완료/구매확정된 주문 제외
+  for (const id of uniqueDelivered.keys()) {
+    uniqueShipping.delete(id);
+  }
+  for (const id of uniqueDecided.keys()) {
+    uniqueShipping.delete(id);
   }
 
   const deepResult = {
@@ -371,8 +389,6 @@ async function runDeepSync(shippingDays = 30, deliveredDays = 30, decidedDays = 
   // SMARTSTORE-ORDERS-FIX.3A: TiDB 저장 제거 → 클라이언트 localStorage 캐시 기반
   // deep_sync 결과는 API 응답으로 반환 → 클라이언트가 localStorage에 저장
   // 서버 메모리 캐시(_ssDeepCache)는 같은 인스턴스 내에서만 유효
-  /* TiDB 저장 코드 제거됨 (ECONNREFUSED 방지) */
-
 
   return deepResult;
 }
@@ -718,10 +734,11 @@ async function handleSmartstoreOrders(params: any) {
   if (action === 'deep_sync') {
     try {
       checkTimeout();
-      // SMARTSTORE-ORDERS-FIX.3 bugfix: body → params + 기본값 축소 7/7/14일 (Vercel 60s timeout 방어)
-      const shippingDays = Number(params?.shippingDays) || 7;
-      const deliveredDays = Number(params?.deliveredDays) || 7;
-      const decidedDays = Number(params?.decidedDays) || 14;
+      // SMARTSTORE-ORDERS-FIX.3B: last-changed-statuses 기반 → 기본값 14/14/30일
+      // 상태 변경일 기준이므로 결제일 기준보다 더 정확하게 현재 상태 반영
+      const shippingDays = Number(params?.shippingDays) || 14;
+      const deliveredDays = Number(params?.deliveredDays) || 14;
+      const decidedDays = Number(params?.decidedDays) || 30;
 
       const deepResult = await runDeepSync(shippingDays, deliveredDays, decidedDays);
       clearTimeout(handlerTimeoutId);
