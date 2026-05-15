@@ -275,8 +275,24 @@ async function getSmartstoreStatusCounts(queryDays: number = 30) {
     return _ssCountsCache.data;
   }
 
-  // 1) PAYED: 결제일 기준 조회 (신규주문 + 배송준비)
-  const payedOrders = await fetchOrders(['PAYED'], queryDays);
+  // SMARTSTORE-ORDERS-FIX.3: 4개 상태 완전 병렬 실행 (timeout 해결)
+  // 네이버 API 24시간 제한으로 1일 루프 불가피하나, 4개 상태를 동시에 병렬 실행하여 최대 소요시간 = 가장 긴 상태 1개 시간
+  // PAYED: 14일 (14번 호출) - 신규주문/배송준비는 대부분 최근 14일 이내
+  // DELIVERING: 7일 (7번 호출) - 배송중은 대부분 최근 7일 내 결제
+  // DELIVERED: 14일 (14번 호출) - 배송완료는 최근 2주 내 결제
+  // PURCHASE_DECIDED: 30일 (30번 호출) - 구매확정은 최근 30일
+  const PAYED_RANGE_DAYS = Math.min(queryDays, 14); // 신규주문/배송준비: 최근 14일
+  const SHIPPING_RANGE_DAYS = 7;   // 배송중: 최근 7일 결제 기준
+  const DELIVERED_RANGE_DAYS = 14; // 배송완료: 최근 14일 결제 기준
+  const DECIDED_RANGE_DAYS = 30;   // 구매확정: 최근 30일 결제 기준
+
+  // 4개 상태 완전 병렬 실행 (최대 소요시간 = DECIDED 30일 = 10 배치 × ~1.5초 = ~15초)
+  const [payedOrders, shippingOrders, deliveredOrders, decidedOrders] = await Promise.all([
+    fetchOrders(['PAYED'], PAYED_RANGE_DAYS),
+    fetchOrders(['DELIVERING'], SHIPPING_RANGE_DAYS),
+    fetchOrders(['DELIVERED'], DELIVERED_RANGE_DAYS),
+    fetchOrders(['PURCHASE_DECIDED'], DECIDED_RANGE_DAYS),
+  ]);
 
   const newOrders = payedOrders.filter((o: any) => {
     const po = o.productOrder || o;
@@ -286,24 +302,6 @@ async function getSmartstoreStatusCounts(queryDays: number = 30) {
     const po = o.productOrder || o;
     return po.placeOrderStatus === 'OK';
   });
-
-  // SMARTSTORE-ORDERS-FIX.2B: product-orders 현재 상태 기준 조회 (last-changed-statuses 오판 제거)
-  // 배송중/배송완료/구매확정: fetchOrders로 현재 상태 기준 조회 (결제일 범위 내)
-  // 3상태 병렬 실행으로 전체 시간 단축
-  // SMARTSTORE-ORDERS-FIX.2C: timeout 방지를 위해 범위 최소화
-  // 각 상태의 API 호출 횟수 = 날짜 범위 일수에 비례함
-  // DELIVERING: 7일 (7번 호출) - 배송중은 대부분 최근 7일 내 결제
-  // DELIVERED: 14일 (14번 호출) - 배송완료는 최근 2주 내 결제
-  // PURCHASE_DECIDED: 30일 (30번 호출) - 구매확정은 최근 30일
-  const SHIPPING_RANGE_DAYS = 7;   // 배송중: 최근 7일 결제 기준
-  const DELIVERED_RANGE_DAYS = 14; // 배송완료: 최근 14일 결제 기준
-  const DECIDED_RANGE_DAYS = 30;   // 구매확정: 최근 30일 결제 기준
-
-  const [shippingOrders, deliveredOrders, decidedOrders] = await Promise.all([
-    fetchOrders(['DELIVERING'], SHIPPING_RANGE_DAYS),
-    fetchOrders(['DELIVERED'], DELIVERED_RANGE_DAYS),
-    fetchOrders(['PURCHASE_DECIDED'], DECIDED_RANGE_DAYS),
-  ]);
 
   // ProductOrderId dedupe (상세 조회 기반)
   const uniqueShipping = new Map<string, any>();
@@ -343,8 +341,8 @@ async function getSmartstoreStatusCounts(queryDays: number = 30) {
     source: 'naver-api-product-orders',
     // 조회 범위 명시 (실시간 전체가 아닌 날짜 범위 기반임을 표시)
     rangeLimits: {
-      newOrders: `PAYED+placeOrderStatus!=OK / ${queryDays}d`,
-      pendingShipping: `PAYED+placeOrderStatus=OK / ${queryDays}d`,
+      newOrders: `PAYED+placeOrderStatus!=OK / ${PAYED_RANGE_DAYS}d`,
+      pendingShipping: `PAYED+placeOrderStatus=OK / ${PAYED_RANGE_DAYS}d`,
       shipping: `DELIVERING / ${SHIPPING_RANGE_DAYS}d`,
       delivered: `DELIVERED / ${DELIVERED_RANGE_DAYS}d`,
       purchaseConfirmed: `PURCHASE_DECIDED / ${DECIDED_RANGE_DAYS}d`,
@@ -364,7 +362,7 @@ async function getSmartstoreStatusCounts(queryDays: number = 30) {
     // 상세 매칭 상태
     detailStatus: 'matched', // product-orders 상세 조회 기반이므로 항상 matched
     searchRangeUsed: {
-      payedDays: queryDays,
+      payedDays: PAYED_RANGE_DAYS,
       shippingDays: SHIPPING_RANGE_DAYS,
       deliveredDays: DELIVERED_RANGE_DAYS,
       decidedDays: DECIDED_RANGE_DAYS,
@@ -385,8 +383,8 @@ async function getSmartstoreStatusCounts(queryDays: number = 30) {
     detailSync,
     // 하위호환 countSource
     countSource: {
-      newOrders: `PAYED+placeOrderStatus!=OK/${queryDays}d`,
-      pendingShipping: `PAYED+placeOrderStatus=OK/${queryDays}d`,
+      newOrders: `PAYED+placeOrderStatus!=OK/${PAYED_RANGE_DAYS}d`,
+      pendingShipping: `PAYED+placeOrderStatus=OK/${PAYED_RANGE_DAYS}d`,
       shipping: `DELIVERING/${SHIPPING_RANGE_DAYS}d`,
       delivered: `DELIVERED/${DELIVERED_RANGE_DAYS}d`,
       purchaseConfirmed: `PURCHASE_DECIDED/${DECIDED_RANGE_DAYS}d`,
@@ -744,8 +742,9 @@ async function fetchOrders(statuses: string[], days: number): Promise<any[]> {
     return [];
   }
 
-  // 3개씩 병렬 배치 실행 (QuotaGuard 동시연결 3개 제한 대응)
-  const BATCH_SIZE = 3;
+  // SMARTSTORE-ORDERS-FIX.3: BATCH_SIZE 3→5로 확대 (처리 속도 향상)
+  // QuotaGuard 동시연결 제한 내에서 최대한 병렬 처리
+  const BATCH_SIZE = 5;
   for (let b = 0; b < dayRequests.length; b += BATCH_SIZE) {
     const batch = dayRequests.slice(b, b + BATCH_SIZE);
     const results = await Promise.all(batch.map(({ from, to }) => fetchDayWithRetry(from, to)));
