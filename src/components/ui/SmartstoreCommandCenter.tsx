@@ -1,5 +1,5 @@
-import React, { useRef, useEffect } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+import React, { useRef, useEffect, useState } from 'react';
+import { motion, AnimatePresence, useAnimation } from 'framer-motion';
 import DailyBriefPanel from './DailyBriefPanel';
 import OrderFlowRadar from './OrderFlowRadar';
 import ApprovalQueuePanel from './ApprovalQueuePanel';
@@ -118,10 +118,10 @@ const bottomVariants = {
 // ── 주문현황 결과 카드 (compact metric tile) ──
 function OrderResultCard({
   messages,
-  isFirstRender,
+  animateState,
 }: {
   messages: Message[];
-  isFirstRender: boolean;
+  animateState: 'hidden' | 'visible';
 }) {
   const pkgMsg = [...messages].reverse().find(
     m => m.role === 'jarvis' && m.text.includes('[PKG]')
@@ -175,9 +175,9 @@ function OrderResultCard({
       {/* ── Compact Metric Tile Grid ── */}
       <motion.div
         className="metric-tile-grid"
-        variants={isFirstRender ? metricGridVariants : undefined}
-        initial={isFirstRender ? 'hidden' : false}
-        animate={isFirstRender ? 'visible' : undefined}
+        variants={metricGridVariants}
+        initial="hidden"
+        animate={animateState}
       >
         {dataLines.map((line, i) => {
           const parts = line.replace(/[-•]/g, '').trim().split(/[:：]/);
@@ -193,9 +193,9 @@ function OrderResultCard({
             <motion.div
               key={`tile-${label}`}
               className="metric-tile"
-              variants={isFirstRender ? metricCardVariants : undefined}
-              initial={isFirstRender ? 'hidden' : false}
-              animate={isFirstRender ? 'visible' : undefined}
+              variants={metricCardVariants}
+              initial="hidden"
+              animate={animateState}
               style={{
                 background: isNew
                   ? 'linear-gradient(135deg, rgba(0,245,255,0.09), rgba(0,245,255,0.03))'
@@ -313,16 +313,22 @@ export default function SmartstoreCommandCenter({
   onApprovalDismiss,
 }: Props) {
   // ── 최초 등장 1회만 staged entrance 실행 ──
+  // useState로 관리하여 animate prop이 'visible'로 안정적으로 유지되도록 함
+  const [animateState, setAnimateState] = useState<'hidden' | 'visible'>('hidden');
   const hasEnteredRef = useRef(false);
-  const isFirstRender = !hasEnteredRef.current;
 
   useEffect(() => {
-    if (visible && !hasEnteredRef.current) {
-      hasEnteredRef.current = true;
-    }
-    if (!visible) {
-      // workspace가 닫히면 다음 열림 시 다시 entrance 실행
+    if (visible) {
+      if (!hasEnteredRef.current) {
+        hasEnteredRef.current = true;
+        // 최초 등장: hidden → visible 트랜지션 실행
+        setAnimateState('visible');
+      }
+      // 이미 entered: animateState는 'visible' 유지 (재트랜지션 없음)
+    } else {
+      // 닫힐 때: 다음 열림 시 다시 entrance 실행하도록 리셋
       hasEnteredRef.current = false;
+      setAnimateState('hidden');
     }
   }, [visible]);
 
@@ -405,20 +411,20 @@ export default function SmartstoreCommandCenter({
           {/* ── Stage 3+4: main 주문현황 compact metric tiles ── */}
           <motion.div
             className="order-focus-main"
-            variants={isFirstRender ? mainVariants : undefined}
-            initial={isFirstRender ? 'hidden' : false}
-            animate={isFirstRender ? 'visible' : undefined}
+            variants={mainVariants}
+            initial="hidden"
+            animate={animateState}
             style={{ position: 'relative', zIndex: 1 }}
           >
-            <OrderResultCard messages={messages} isFirstRender={isFirstRender} />
+            <OrderResultCard messages={messages} animateState={animateState} />
           </motion.div>
 
           {/* ── Stage 5: side (오른쪽에서 12~14px 미세하게 들어옴) ── */}
           <motion.div
             className="order-focus-side"
-            variants={isFirstRender ? sideVariants : undefined}
-            initial={isFirstRender ? 'hidden' : false}
-            animate={isFirstRender ? 'visible' : undefined}
+            variants={sideVariants}
+            initial="hidden"
+            animate={animateState}
             style={{ position: 'relative', zIndex: 1 }}
           >
             <div className="sidecar-actions">
@@ -454,9 +460,9 @@ export default function SmartstoreCommandCenter({
           {/* ── Stage 6: flow + log (마지막에 은은하게) ── */}
           <motion.div
             className="order-focus-flow"
-            variants={isFirstRender ? bottomVariants : undefined}
-            initial={isFirstRender ? 'hidden' : false}
-            animate={isFirstRender ? 'visible' : undefined}
+            variants={bottomVariants}
+            initial="hidden"
+            animate={animateState}
             style={{ position: 'relative', zIndex: 1 }}
           >
             <OrderFlowRadar variant="horizontal" />
@@ -464,9 +470,9 @@ export default function SmartstoreCommandCenter({
 
           <motion.div
             className="order-focus-log"
-            variants={isFirstRender ? { ...bottomVariants, visible: { ...bottomVariants.visible, transition: { delay: 0.5, duration: 0.28, ease: EASE_OUT_QUART } } } : undefined}
-            initial={isFirstRender ? 'hidden' : false}
-            animate={isFirstRender ? 'visible' : undefined}
+            variants={{ hidden: { opacity: 0, y: 8 }, visible: { opacity: 1, y: 0, transition: { delay: 0.5, duration: 0.28, ease: EASE_OUT_QUART } } }}
+            initial="hidden"
+            animate={animateState}
             style={{ position: 'relative', zIndex: 1 }}
           >
             <div style={{
