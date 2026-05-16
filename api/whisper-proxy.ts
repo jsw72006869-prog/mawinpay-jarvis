@@ -40,7 +40,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const contentType = req.headers['content-type'] || '';
 
     // OpenAI Whisper API로 프록시 (서버 측 API 키만 사용)
-    const openaiRes = await fetch('https://api.openai.com/v1/audio/transcriptions', {
+    const openaiRes: any = await fetch('https://api.openai.com/v1/audio/transcriptions', {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${apiKey}`,

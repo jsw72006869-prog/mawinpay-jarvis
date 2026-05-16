@@ -40,7 +40,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       if (action === 'load') {
         // 서버에서 저장된 대화/학습 데이터 불러오기
         try {
-          const serverRes = await fetch(`${CLOUD_SERVER}/api/memory?action=load`, {
+          const serverRes: any = await fetch(`${CLOUD_SERVER}/api/memory?action=load`, {
             signal: AbortSignal.timeout(8000),
           });
           if (serverRes.ok) {
@@ -55,7 +55,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
       if (action === 'stats') {
         try {
-          const serverRes = await fetch(`${CLOUD_SERVER}/api/memory?action=stats`, {
+          const serverRes: any = await fetch(`${CLOUD_SERVER}/api/memory?action=stats`, {
             signal: AbortSignal.timeout(5000),
           });
           if (serverRes.ok) {

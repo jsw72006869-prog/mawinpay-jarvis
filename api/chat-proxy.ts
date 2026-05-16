@@ -27,7 +27,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   try {
     const { model, messages, tools, tool_choice, max_tokens, temperature } = req.body;
 
-    const openaiRes = await fetch('https://api.openai.com/v1/chat/completions', {
+    const openaiRes: any = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',

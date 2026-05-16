@@ -162,7 +162,7 @@ async function resolveProductName(
   try {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 6000);
-    const res = await fetch(productUrl, {
+    const res: any = await fetch(productUrl, {
       headers: {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
         'Accept': 'text/html,application/xhtml+xml',
@@ -188,7 +188,7 @@ async function resolveProductName(
   if (productId && keywordHint) {
     try {
       const searchUrl = `https://openapi.naver.com/v1/search/shop.json?query=${encodeURIComponent(keywordHint)}&display=100&sort=sim`;
-      const searchRes = await fetch(searchUrl, {
+      const searchRes: any = await fetch(searchUrl, {
         headers: {
           'X-Naver-Client-Id': clientId,
           'X-Naver-Client-Secret': clientSecret,
@@ -351,7 +351,7 @@ async function measureRank(
 
   try {
     const searchUrl = `https://openapi.naver.com/v1/search/shop.json?query=${encodeURIComponent(keyword)}&display=${Math.min(maxRank, 100)}&sort=sim`;
-    const res = await fetch(searchUrl, {
+    const res: any = await fetch(searchUrl, {
       headers: {
         'X-Naver-Client-Id': clientId,
         'X-Naver-Client-Secret': clientSecret,

@@ -1601,7 +1601,7 @@ ${sanitizedReview.slice(0, 3000)}
 - 가짜 평점/가짜 반응을 생성하지 마세요`;
 
     try {
-      const analysisRes = await fetch('https://api.openai.com/v1/chat/completions', {
+      const analysisRes: any = await fetch('https://api.openai.com/v1/chat/completions', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -1712,7 +1712,7 @@ async function handleCopySocialResearch(params: any) {
       // URL에서 텍스트 콘텐츠 추출 시도
       const controller = new AbortController();
       const timeout = setTimeout(() => controller.abort(), 8000);
-      const res = await fetch(sourceUrl, {
+      const res: any = await fetch(sourceUrl, {
         headers: { 'User-Agent': 'Mozilla/5.0 (compatible; JarvisBot/1.0)' },
         signal: controller.signal,
       });
@@ -1826,7 +1826,7 @@ CTA 패턴: (분석 결과)
 (카피 생성 시 반영할 핵심 지시 3~5줄)`;
 
   try {
-    const gptRes = await fetch('https://api.openai.com/v1/chat/completions', {
+    const gptRes: any = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -2270,14 +2270,14 @@ async function searchYouTubeDirect(keyword: string, maxResults: number = 10) {
   for (const kw of keywords) {
     if (allResults.length >= count) break;
     const searchUrl = `https://www.googleapis.com/youtube/v3/search?part=snippet&type=channel&q=${encodeURIComponent(kw)}&maxResults=50&regionCode=KR&hl=ko&key=${YOUTUBE_API_KEY}`;
-    const searchRes = await fetch(searchUrl);
+    const searchRes: any = await fetch(searchUrl);
     if (!searchRes.ok) continue;
     const searchData = await searchRes.json();
     if (!searchData.items || searchData.items.length === 0) continue;
 
     const channelIds = searchData.items.map((item: any) => item.snippet.channelId || item.id.channelId).join(',');
     const channelsUrl = `https://www.googleapis.com/youtube/v3/channels?part=snippet,statistics,brandingSettings&id=${channelIds}&key=${YOUTUBE_API_KEY}`;
-    const channelsRes = await fetch(channelsUrl);
+    const channelsRes: any = await fetch(channelsUrl);
     if (!channelsRes.ok) continue;
     const channelsData = await channelsRes.json();
 
@@ -2320,14 +2320,14 @@ async function searchPopularVideos(keyword: string, maxResults: number = 5, peri
   let searchUrl = `https://www.googleapis.com/youtube/v3/search?part=snippet&type=video&q=${encodeURIComponent(keyword)}&order=viewCount&maxResults=${count}&regionCode=KR&hl=ko&key=${YOUTUBE_API_KEY}`;
   if (publishedAfter) searchUrl += `&publishedAfter=${publishedAfter}`;
 
-  const searchRes = await fetch(searchUrl);
+  const searchRes: any = await fetch(searchUrl);
   if (!searchRes.ok) throw new Error(`YouTube Search API 오류: ${searchRes.status}`);
   const searchData = await searchRes.json();
   if (!searchData.items || searchData.items.length === 0) return { success: true, videos: [], analysis: '', summary: '검색 결과가 없습니다.' };
 
   const videoIds = searchData.items.map((item: any) => item.id.videoId).join(',');
   const videosUrl = `https://www.googleapis.com/youtube/v3/videos?part=snippet,statistics,contentDetails&id=${videoIds}&key=${YOUTUBE_API_KEY}`;
-  const videosRes = await fetch(videosUrl);
+  const videosRes: any = await fetch(videosUrl);
   if (!videosRes.ok) throw new Error(`YouTube Videos API 오류: ${videosRes.status}`);
   const videosData = await videosRes.json();
 
@@ -2373,7 +2373,7 @@ async function getGoogleSheetsToken(): Promise<string> {
   sign.update(`${header}.${payload}`);
   const signature = sign.sign(credentials.private_key, 'base64url');
   const jwt = `${header}.${payload}.${signature}`;
-  const tokenRes = await fetch('https://oauth2.googleapis.com/token', {
+  const tokenRes: any = await fetch('https://oauth2.googleapis.com/token', {
     method: 'POST',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
     body: `grant_type=urn%3Aietf%3Aparams%3Aoauth%3Agrant-type%3Ajwt-bearer&assertion=${jwt}`,
@@ -2387,7 +2387,7 @@ async function sheetsAppend(tab: string, values: string[][]): Promise<any> {
   const token = await getGoogleSheetsToken();
   const range = encodeURIComponent(`${tab}!A1`);
   const url = `https://sheets.googleapis.com/v4/spreadsheets/${WORKSPACE_SHEET_ID}/values/${range}:append?valueInputOption=RAW&insertDataOption=INSERT_ROWS`;
-  const res = await fetch(url, {
+  const res: any = await fetch(url, {
     method: 'POST',
     headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
     body: JSON.stringify({ values }),
@@ -2401,7 +2401,7 @@ async function sheetsRead(tab: string, range?: string): Promise<any> {
   const token = await getGoogleSheetsToken();
   const r = range || `${tab}!A1:Z1000`;
   const url = `https://sheets.googleapis.com/v4/spreadsheets/${WORKSPACE_SHEET_ID}/values/${encodeURIComponent(r)}`;
-  const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
+  const res: any = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
   const data = await res.json();
   if (!res.ok) throw new Error(`Sheets read error (${res.status}): ${JSON.stringify(data.error?.message || data)}`);
   return data;
@@ -2869,7 +2869,7 @@ async function handleOutreachCollect(params: any) {
     try {
       // A-1: 키워드 관련 인기 영상 검색 (viewCount 순)
       const trendSearchUrl = `https://www.googleapis.com/youtube/v3/search?part=snippet&type=video&q=${encodeURIComponent(productName + ' 리뷰')}&order=viewCount&maxResults=15&regionCode=KR&hl=ko&key=${YOUTUBE_API_KEY}`;
-      const trendRes = await fetch(trendSearchUrl);
+      const trendRes: any = await fetch(trendSearchUrl);
       telemetry.apiCalls++; telemetry.searchCalls++; telemetry.quotaUsed += 100;
 
       if (trendRes.ok) {
@@ -2894,7 +2894,7 @@ async function handleOutreachCollect(params: any) {
       // A-2: 추가 트렌드 검색 (최근 1주일 인기)
       const weekAgo = new Date(Date.now() - 7 * 86400000).toISOString();
       const recentTrendUrl = `https://www.googleapis.com/youtube/v3/search?part=snippet&type=video&q=${encodeURIComponent(productName)}&order=viewCount&maxResults=10&regionCode=KR&hl=ko&publishedAfter=${weekAgo}&key=${YOUTUBE_API_KEY}`;
-      const recentRes = await fetch(recentTrendUrl);
+      const recentRes: any = await fetch(recentTrendUrl);
       telemetry.apiCalls++; telemetry.searchCalls++; telemetry.quotaUsed += 100;
 
       if (recentRes.ok) {
@@ -2933,7 +2933,7 @@ async function handleOutreachCollect(params: any) {
       for (let i = 0; i < maxSearches; i++) {
         const { segment, query } = searchQueries[i];
         const searchUrl = `https://www.googleapis.com/youtube/v3/search?part=snippet&type=channel&q=${encodeURIComponent(query)}&maxResults=${Math.min(perSearchMax, 20)}&regionCode=KR&hl=ko&key=${YOUTUBE_API_KEY}`;
-        const searchRes = await fetch(searchUrl);
+        const searchRes: any = await fetch(searchUrl);
         telemetry.apiCalls++; telemetry.searchCalls++; telemetry.quotaUsed += 100;
 
         if (!searchRes.ok) {
@@ -2967,7 +2967,7 @@ async function handleOutreachCollect(params: any) {
       for (let batchStart = 0; batchStart < allChannelIds.length; batchStart += batchSize) {
         const batch = allChannelIds.slice(batchStart, batchStart + batchSize);
         const channelsUrl = `https://www.googleapis.com/youtube/v3/channels?part=snippet,statistics,brandingSettings&id=${batch.join(',')}&key=${YOUTUBE_API_KEY}`;
-        const channelsRes = await fetch(channelsUrl);
+        const channelsRes: any = await fetch(channelsUrl);
         telemetry.apiCalls++; telemetry.channelCalls++; telemetry.quotaUsed += 1;
 
         if (!channelsRes.ok) continue;
@@ -3071,7 +3071,7 @@ async function handleOutreachCollect(params: any) {
 
       const naverQuery = `${productName} 공동구매 리뷰`;
       const naverUrl = `https://openapi.naver.com/v1/search/blog.json?query=${encodeURIComponent(naverQuery)}&display=${max * 2}&sort=sim`;
-      const naverRes = await fetch(naverUrl, {
+      const naverRes: any = await fetch(naverUrl, {
         headers: { 'X-Naver-Client-Id': NAVER_CLIENT_ID, 'X-Naver-Client-Secret': NAVER_CLIENT_SECRET },
       });
       telemetry.apiCalls++; telemetry.naverCalls++;
@@ -3665,7 +3665,7 @@ async function handleOutreachMailSend(params: any) {
 
     const emailHtml = `<div style="font-family:sans-serif;max-width:600px;margin:0 auto;">${proposalDraft.replace(/\n/g, '<br/>')}</div>`;
 
-    const sendRes = await fetch(`${baseUrl}/api/send-email`, {
+    const sendRes: any = await fetch(`${baseUrl}/api/send-email`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -3887,7 +3887,7 @@ async function handleKamisMini(params: any) {
     `&p_convert_kg_yn=N`;
 
   try {
-    const response = await fetch(url);
+    const response: any = await fetch(url);
     const data = await response.json() as any;
 
     if (!data || data.error_code === '001') {
@@ -4545,7 +4545,7 @@ async function sendTelegramMessage(text: string): Promise<{sent: boolean; error?
   }
   try {
     const url = `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`;
-    const res = await fetch(url, {
+    const res: any = await fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
