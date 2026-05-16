@@ -585,7 +585,7 @@ const DataWallView: React.FC = () => {
       <header className="aw-header">
         <div className="aw-header-left">
           <h1 className="aw-header-title">AGENT WORKSTATION</h1>
-          <span className="aw-header-sub">JARVIS 작업 관제실 · COPY-BRAIN-A.1B</span>
+          <span className="aw-header-sub">JARVIS 작업 관제실 · COPY-BRAIN-A.1C</span>
         </div>
         <div className="aw-header-center">
           <div className="aw-platform-tabs">
@@ -805,6 +805,12 @@ const DataWallView: React.FC = () => {
                   </div>
                   {(hotYoutube === undefined && hotThreads === undefined) && (
                     <div className="aw-brief-note">Hot Content collector not connected yet</div>
+                  )}
+                  {briefData?.notes && briefData.notes.includes('hot_content_prod_') && (
+                    <div className="aw-brief-note" style={{color:'#4ade80'}}>운영 {briefData.notes.match(/hot_content_prod_(\d+)/)?.[1] ?? '?'}건 · 테스트 {briefData.notes.match(/test_(\d+)/)?.[1] ?? '?'}건 (테스트 제외 집계)</div>
+                  )}
+                  {briefData?.notes && briefData.notes.includes('hot_content_test_only_') && (
+                    <div className="aw-brief-note" style={{color:'#facc15'}}>운영 0건 · 테스트 {briefData.notes.match(/test_only_(\d+)/)?.[1] ?? '?'}건만 존재 (운영 데이터 수집 필요)</div>
                   )}
                 </div>
                 <div className="aw-brief-section">

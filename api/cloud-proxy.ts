@@ -4673,7 +4673,8 @@ async function handleDailyBrief24h(params: any) {
         const row = vcsData.values[i];
         const p = (row[platformIdx] || '').toLowerCase();
         const n = row[notesIdx] || '';
-        if (n === 'TEST_DELETE_ME') continue; // 테스트 row 제외
+        // isTestViralContentRow 정책과 동일: TEST_ 포함 또는 TEST_DELETE_ME
+        if (n.includes('TEST_') || n === 'TEST_DELETE_ME') continue; // 테스트 row 제외
         if (p.includes('youtube')) hotContent.youtube++;
         else if (p.includes('thread')) hotContent.threads++;
         else if (p.includes('instagram')) hotContent.instagram++;
@@ -4681,7 +4682,16 @@ async function handleDailyBrief24h(params: any) {
         else if (p.includes('naver') || p.includes('blog')) hotContent.naverBlog++;
       }
       const totalHot = hotContent.youtube + hotContent.threads + hotContent.instagram + hotContent.tiktok + hotContent.naverBlog;
-      if (totalHot > 0) hotContentNotes = `hot_content_connected_total_${totalHot}`;
+      // test row 수 별도 집계
+      let testRowCount = 0;
+      for (let i = 1; i < vcsData.values.length; i++) {
+        const n = vcsData.values[i][notesIdx] || '';
+        if (n.includes('TEST_') || n === 'TEST_DELETE_ME') testRowCount++;
+      }
+      (hotContent as any).test_count = testRowCount;
+      (hotContent as any).prod_count = totalHot;
+      if (totalHot > 0) hotContentNotes = `hot_content_prod_${totalHot}_test_${testRowCount}`;
+      else if (testRowCount > 0) hotContentNotes = `hot_content_test_only_${testRowCount}`;
     }
   } catch (e) {
     // viral_content_swipe 탭이 없으면 not_connected 유지
