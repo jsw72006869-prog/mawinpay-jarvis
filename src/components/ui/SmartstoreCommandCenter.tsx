@@ -83,7 +83,10 @@ function OrderResultCard({ messages }: { messages: Message[] }) {
   }
 
   const lines = pkgMsg.text.replace('[PKG]', '').trim().split('\n').filter(l => l.trim());
-  const title = lines[0]?.replace(/\*\*/g, '') || '주문 현황';
+  let title = lines[0]?.replace(/\*\*/g, '') || '주문 현황';
+  if (title.includes('전체 주문/발주 현황')) {
+    title = '실시간 주문/발주 현황';
+  }
   const dataLines = lines.slice(1).filter(l => l.includes(':') || l.includes('건') || l.includes('원'));
   const fetchTime = lines.find(l => l.includes('기준') || l.includes('조회')) || '';
 
@@ -106,8 +109,11 @@ function OrderResultCard({ messages }: { messages: Message[] }) {
       {/* 주문 수치 그리드 */}
       <div style={{
         display: 'grid',
-        gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))',
-        gap: 12, flex: 1,
+        gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))',
+        gap: 14, flex: 1,
+        minHeight: 0,
+        overflowY: 'auto',
+        paddingRight: 4,
       }}>
         {dataLines.map((line, i) => {
           const parts = line.replace(/[-•]/g, '').trim().split(/[:：]/);

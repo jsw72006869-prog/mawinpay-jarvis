@@ -7625,16 +7625,14 @@ html, body {
 /* ── Root Container ── */
 /* ── UI-ORCH-A.2: scc-stage (위치 담당 — transform 사용 금지) ── */
 .scc-stage {
-  /* 위치만 담당: fixed inset:0, grid center */
   position: fixed;
   inset: 0;
   z-index: 40;
   display: grid;
   place-items: center;
-  padding: clamp(4px, 1vw, 16px);
+  padding: 6px 10px;
   box-sizing: border-box;
   pointer-events: none;
-  /* transform 사용 금지 — Framer Motion x/y 사용 금지 */
 }
 
 /* ── dim backdrop ── */
@@ -7651,13 +7649,14 @@ html, body {
 .scc-workspace {
   pointer-events: auto;
   position: relative;
-  width: min(1600px, calc(100vw - 24px));
-  height: min(860px, calc(100vh - 60px));
-  max-height: calc(100vh - 60px);
+  width: min(1760px, calc(100vw - 20px));
+  height: min(900px, calc(100vh - 64px));
+  max-width: calc(100vw - 20px);
+  max-height: calc(100vh - 64px);
   display: flex;
   flex-direction: column;
   gap: 0;
-  padding: 16px 18px 14px;
+  padding: 22px;
   box-sizing: border-box;
   background: rgba(4, 8, 18, 0.94);
   border: 1px solid rgba(34,211,238,0.16);
@@ -7665,7 +7664,6 @@ html, body {
   backdrop-filter: blur(28px);
   box-shadow: 0 0 100px rgba(0,229,255,0.07), 0 50px 140px rgba(0,0,0,0.7);
   overflow: hidden;
-  /* transform 위치 제어 금지 — Framer Motion이 scale만 제어 */
 }
 
 /* ── scc-grid-main: 3열 레이아웃 ── */
@@ -7694,32 +7692,35 @@ html, body {
   }
 }
 
-/* ── UI-LAYOUT-ORCH-A.1: mission-layout grid ── */
+/* ── UI-LAYOUT-ORCH-A.1.mission-layout grid ── */
 .mission-layout {
   display: grid;
-  grid-template-columns: minmax(240px, 0.8fr) minmax(560px, 2fr) minmax(300px, 1fr);
+  grid-template-columns: minmax(320px, 0.95fr) minmax(680px, 1.9fr) minmax(340px, 1fr);
   grid-template-rows: minmax(0, 1fr);
   gap: 18px;
   flex: 1;
   min-height: 0;
   overflow: hidden;
 }
-
-.mission-layout.layout-focus-result {
-  grid-template-columns: minmax(230px, 0.8fr) minmax(580px, 2.1fr) minmax(280px, 0.9fr);
+@media (max-width: 1400px) {
+ .mission-layout {
+    grid-template-columns: minmax(300px, 0.9fr) minmax(560px, 1.6fr) minmax(310px, 1fr);
+  }
 }
-
+.mission-layout.layout-focus-result {
+  grid-template-columns: minmax(320px, 0.95fr) minmax(680px, 1.9fr) minmax(340px, 1fr);
+}
 .mission-layout.layout-with-sidecar {
-  grid-template-columns: minmax(230px, 0.85fr) minmax(520px, 1.9fr) minmax(280px, 1fr);
+  grid-template-columns: minmax(320px, 0.95fr) minmax(680px, 1.9fr) minmax(340px, 1fr);
 }
 
 /* mission-left: Brief + Order Flow */
 .mission-left {
   grid-column: 1;
   display: grid;
-  grid-template-rows: auto minmax(145px, auto) 1fr;
-  gap: 14px;
-  overflow: hidden;
+  grid-template-rows: minmax(230px, auto) minmax(180px, auto) minmax(0, 1fr);
+  gap: 16px;
+  overflow: visible;
   min-height: 0;
 }
 
@@ -7741,8 +7742,8 @@ html, body {
 .mission-sidecar {
   grid-column: 3;
   display: grid;
-  grid-template-rows: minmax(180px, 0.9fr) minmax(210px, 1fr);
-  gap: 12px;
+  grid-template-rows: minmax(200px, 0.9fr) minmax(240px, 1fr);
+  gap: 16px;
   overflow: hidden;
   min-height: 0;
 }
@@ -7770,17 +7771,17 @@ html, body {
   border-radius: 12px;
   padding: 8px 14px;
   height: 82px;
-  max-height: 90px;
-  overflow: hidden;
+  max-height: 82px;
+  overflow: auto;
   flex-shrink: 0;
   margin-top: 12px;
 }
 
 /* ── 820px 이하 반응형: 세로 stack ── */
 @media (max-width: 780px) {
-  .mission-layout,
-  .mission-layout.layout-focus-result,
-  .mission-layout.layout-with-sidecar {
+ .mission-layout,
+ .mission-layout.layout-focus-result,
+ .mission-layout.layout-with-sidecar {
     grid-template-columns: 1fr;
     grid-template-rows: auto auto auto;
     overflow-y: auto;
