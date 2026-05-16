@@ -19,7 +19,11 @@ const FLOW_NODES: FlowNode[] = [
   { label: '구매 확정', sub: '조회 대기', color: '#f59e0b' },
 ];
 
-export default function OrderFlowRadar() {
+interface Props {
+  variant?: 'vertical' | 'horizontal';
+}
+
+export default function OrderFlowRadar({ variant = 'vertical' }: Props) {
   const [pulse, setPulse] = useState(0);
 
   useEffect(() => {
@@ -28,6 +32,40 @@ export default function OrderFlowRadar() {
     }, 1400);
     return () => clearInterval(id);
   }, []);
+
+  if (variant === 'horizontal') {
+    return (
+      <div className="order-flow-strip">
+        <div className="flow-strip-header">
+          <span className="scc-panel-dot" style={{ background: '#10b981', animation: 'scc-dot-pulse 1.2s ease-in-out infinite' }} />
+          ORDER FLOW RADAR
+        </div>
+        <div className="flow-strip-pipeline">
+          {FLOW_NODES.map((node, i) => (
+            <React.Fragment key={i}>
+              <div className={`flow-strip-node ${i === pulse ? 'active' : ''}`}>
+                <div className="node-dot" style={{ background: i === pulse ? node.color : 'rgba(255,255,255,0.15)' }} />
+                <div className="node-text">
+                  <span className="node-label" style={{ color: i === pulse ? node.color : 'rgba(255,255,255,0.5)' }}>{node.label}</span>
+                  <span className="node-sub">{node.sub}</span>
+                </div>
+              </div>
+              {i < FLOW_NODES.length - 1 && (
+                <div className="flow-strip-connector">
+                  <div className="connector-line" style={{
+                    background: i < pulse
+                      ? `linear-gradient(90deg, ${FLOW_NODES[i].color}, ${FLOW_NODES[i+1].color})`
+                      : 'rgba(255,255,255,0.1)'
+                  }} />
+                  <span className="connector-arrow" style={{ color: i < pulse ? '#22d3ee' : 'rgba(255,255,255,0.2)' }}>›</span>
+                </div>
+              )}
+            </React.Fragment>
+          ))}
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="scc-order-flow">

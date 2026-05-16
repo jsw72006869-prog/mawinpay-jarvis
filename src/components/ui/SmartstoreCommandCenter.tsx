@@ -7,31 +7,19 @@ import MissionStatusStrip from './MissionStatusStrip';
 import ActionCard, { type ActionContext, type WorkflowStep, type ApprovalPreviewData } from '../ActionCard';
 import type { Message, STTStatus } from '../ConversationPanel';
 
-/* ── UI-LAYOUT-ORCH-A.1: Collision-aware Panel Layout ──
+/* ── UI-ORCH-A.9: Smartstore Order Focus Layout ──
    
    구조:
    scc-stage (fixed inset:0, grid place-items:center, z:40)
      └─ scc-dim (backdrop, z:39)
      └─ scc-workspace (motion panel, opacity/scale only, z:auto)
-           └─ workspace-header (Mission Status Strip + title)
-           └─ mission-layout (CSS grid: left-rail | main | sidecar)
-                 ├─ .mission-left   (Brief + Order Flow)
-                 ├─ .mission-main   (주문현황 결과 카드 — 항상 중앙)
-                 └─ .mission-sidecar (Next Actions + Approval Queue)
+           ├─ workspace-header (Mission Status Strip + title)
+           ├─ compact-brief-strip (Horizontal Daily Brief)
+           ├─ order-focus-layout (Grid: main | sidecar)
+           │     ├─ .order-focus-main (주문현황 결과 카드 — 최대화)
+           │     └─ .order-focus-side (Next Actions + Approval Queue)
+           ├─ order-flow-strip (Horizontal Order Flow)
            └─ .mission-log (Dialogue Log — 하단 full-width)
-   
-   패널 우선순위:
-   1. ApprovalGate modal (z:60)
-   2. Command Dock (z:70)
-   3. Main Result (mission-main)
-   4. Next Actions / Approval Queue (mission-sidecar)
-   5. Dialogue / Workflow Log (mission-log)
-   6. Background HUD
-   
-   금지:
-   - z-index 땜질 금지
-   - transform으로 위치 제어 금지 (Framer Motion x/y 금지)
-   - 패널 랜덤 fixed 배치 금지
 */
 
 interface OrderData {
@@ -56,7 +44,7 @@ interface Props {
   onApprovalDismiss?: () => void;
 }
 
-// ── 주문현황 결과 카드 (mission-main 슬롯) ──
+// ── 주문현황 결과 카드 (order-focus-main 슬롯) ──
 function OrderResultCard({ messages }: { messages: Message[] }) {
   const pkgMsg = [...messages].reverse().find(
     m => m.role === 'jarvis' && m.text.includes('[PKG]')
@@ -274,7 +262,7 @@ export default function SmartstoreCommandCenter({
       <div className="scc-stage">
         {/* ── scc-workspace: 애니메이션 담당 (opacity/scale only) ── */}
         <motion.div
-          className="scc-workspace"
+          className="scc-workspace order-focus-layout"
           initial={{ opacity: 0, scale: 0.96 }}
           animate={{ opacity: 1, scale: 1 }}
           exit={{ opacity: 0, scale: 0.97 }}
@@ -321,102 +309,76 @@ export default function SmartstoreCommandCenter({
             </button>
           )}
 
-          {/* ── workspace-header: Mission Status Strip + 타이틀 ── */}
-          <div className="workspace-header" style={{ position: 'relative', zIndex: 1 }}>
-            <motion.div
-              initial={{ opacity: 0, y: -6 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.05, duration: 0.3 }}
-            >
-              <MissionStatusStrip />
-            </motion.div>
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              transition={{ delay: 0.1, duration: 0.3 }}
-              style={{ textAlign: 'center', marginTop: 6, marginBottom: 10 }}
-            >
-              <span style={{
-                fontSize: 10, fontWeight: 700, letterSpacing: '3px',
-                color: 'rgba(34,211,238,0.45)', textTransform: 'uppercase', fontFamily: 'monospace',
-              }}>
-                ── SMARTSTORE MISSION WORKSPACE ──
-              </span>
-            </motion.div>
+          {/* ── status: Mission Status Strip ── */}
+          <div className="order-focus-status" style={{ position: 'relative', zIndex: 1 }}>
+            <MissionStatusStrip />
           </div>
 
-          {/* ── mission-layout: 3열 grid (left-rail | main | sidecar) ── */}
-          <div className={`mission-layout${hasActionContext ? ' layout-with-sidecar' : ' layout-focus-result'}`}
+          {/* ── brief: Compact Brief Strip ── */}
+          <div className="order-focus-brief" style={{ position: 'relative', zIndex: 1 }}>
+            <DailyBriefPanel orderData={orderData} variant="horizontal" />
+          </div>
+
+          {/* ── main: 주문현황 결과 카드 (Focus) ── */}
+          <motion.div
+            className="order-focus-main"
+            initial={{ opacity: 0, y: 14 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.15, duration: 0.4, ease: [0.22, 1, 0.36, 1] }}
             style={{ position: 'relative', zIndex: 1 }}
           >
-            {/* ── mission-left: Brief + Order Flow ── */}
-            <motion.div
-              className="mission-left"
-              initial={{ opacity: 0, x: -10 }}
-              animate={{ opacity: 1, x: 0 }}
-              transition={{ delay: 0.15, duration: 0.35, ease: [0.22, 1, 0.36, 1] }}
-            >
-              <DailyBriefPanel orderData={orderData} />
-              <OrderFlowRadar />
-            </motion.div>
+            <OrderResultCard messages={messages} />
+          </motion.div>
 
-            {/* ── mission-main: 주문현황 결과 카드 (항상 중앙, 가장 크게) ── */}
-            <motion.div
-              className="mission-main"
-              initial={{ opacity: 0, y: 14 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.2, duration: 0.4, ease: [0.22, 1, 0.36, 1] }}
-            >
-              <OrderResultCard messages={messages} />
-            </motion.div>
-
-            {/* ── mission-sidecar: Next Actions + Approval Queue ── */}
-            <motion.div
-              className="mission-sidecar"
-              initial={{ opacity: 0, x: 10 }}
-              animate={{ opacity: 1, x: 0 }}
-              transition={{ delay: 0.25, duration: 0.35, ease: [0.22, 1, 0.36, 1] }}
-            >
-              {/* Next Actions 슬롯 */}
-              <div className="sidecar-actions">
-                {hasActionContext && onActionSelect && onActionDismiss ? (
-                  <ActionCard
-                    context={actionContext!}
-                    workflowSteps={workflowSteps}
-                    approvalPreview={approvalPreview}
-                    onApprovalDismiss={onApprovalDismiss}
-                    onActionSelect={onActionSelect}
-                    onDismiss={onActionDismiss}
-                  />
-                ) : (
-                  <div style={{
-                    display: 'flex', flexDirection: 'column', gap: 6,
-                    alignItems: 'center', justifyContent: 'center',
-                    padding: '20px 0', opacity: 0.35,
-                  }}>
-                    <div style={{ fontFamily: 'Orbitron, monospace', fontSize: '0.5rem', color: '#22C55E', letterSpacing: '0.15em' }}>
-                      NEXT ACTIONS
-                    </div>
-                    <div style={{ fontSize: '0.62rem', color: 'rgba(148,163,184,0.5)' }}>
-                      주문 조회 후 표시됩니다
-                    </div>
+          {/* ── side: Next Actions + Approval Queue ── */}
+          <motion.div
+            className="order-focus-side"
+            initial={{ opacity: 0, x: 10 }}
+            animate={{ opacity: 1, x: 0 }}
+            transition={{ delay: 0.2, duration: 0.35, ease: [0.22, 1, 0.36, 1] }}
+            style={{ position: 'relative', zIndex: 1 }}
+          >
+            <div className="sidecar-actions">
+              {hasActionContext && onActionSelect && onActionDismiss ? (
+                <ActionCard
+                  context={actionContext!}
+                  workflowSteps={workflowSteps}
+                  approvalPreview={approvalPreview}
+                  onApprovalDismiss={onApprovalDismiss}
+                  onActionSelect={onActionSelect}
+                  onDismiss={onActionDismiss}
+                />
+              ) : (
+                <div style={{
+                  display: 'flex', flexDirection: 'column', gap: 6,
+                  alignItems: 'center', justifyContent: 'center',
+                  padding: '20px 0', opacity: 0.35,
+                }}>
+                  <div style={{ fontFamily: 'Orbitron, monospace', fontSize: '0.5rem', color: '#22C55E', letterSpacing: '0.15em' }}>
+                    NEXT ACTIONS
                   </div>
-                )}
-              </div>
+                  <div style={{ fontSize: '0.62rem', color: 'rgba(148,163,184,0.5)' }}>
+                    주문 조회 후 표시됩니다
+                  </div>
+                </div>
+              )}
+            </div>
+            <div className="sidecar-approval">
+              <ApprovalQueuePanel />
+            </div>
+          </motion.div>
 
-              {/* Approval Queue 슬롯 */}
-              <div className="sidecar-approval">
-                <ApprovalQueuePanel />
-              </div>
-            </motion.div>
+          {/* ── flow: Horizontal Order Flow Radar ── */}
+          <div className="order-focus-flow" style={{ position: 'relative', zIndex: 1 }}>
+            <OrderFlowRadar variant="horizontal" />
           </div>
 
-          {/* ── mission-log: Dialogue / Workflow Log (하단 full-width) ── */}
+          {/* ── log: Dialogue / Workflow Log ── */}
           <motion.div
-            className="mission-log"
+            className="order-focus-log"
             initial={{ opacity: 0, y: 8 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.3, duration: 0.35, ease: [0.22, 1, 0.36, 1] }}
+            transition={{ delay: 0.25, duration: 0.35, ease: [0.22, 1, 0.36, 1] }}
             style={{ position: 'relative', zIndex: 1 }}
           >
             <div style={{

@@ -13,6 +13,7 @@ interface OrderData {
 
 interface Props {
   orderData?: OrderData | null;
+  variant?: 'vertical' | 'horizontal';
 }
 
 const statusColor: Record<string, string> = {
@@ -31,7 +32,7 @@ const statusBg: Record<string, string> = {
   active: 'rgba(0,255,136,0.05)',
 };
 
-export default function DailyBriefPanel({ orderData }: Props) {
+export default function DailyBriefPanel({ orderData, variant = 'vertical' }: Props) {
   const [scanLine, setScanLine] = useState(0);
 
   const hasData = orderData != null;
@@ -74,6 +75,31 @@ export default function DailyBriefPanel({ orderData }: Props) {
         } catch { return '방금 조회'; }
       })()
     : '조회 전 — "오늘 브리핑 해줘"';
+
+  if (variant === 'horizontal') {
+    return (
+      <div className="compact-brief-strip">
+        <div className="brief-strip-label">
+          <span className="scc-panel-dot" style={{ background: '#22d3ee' }} />
+          COMMAND BRIEF
+        </div>
+        <div className="brief-strip-items">
+          {briefItems.map((item, i) => (
+            <div key={i} className="brief-strip-item">
+              <span className="item-label">{item.label}</span>
+              <span className="item-value" style={{ color: statusColor[item.status] }}>
+                {item.status === 'locked' && <span style={{ marginRight: 2 }}>🔒</span>}
+                {item.value}
+              </span>
+            </div>
+          ))}
+        </div>
+        <div className="brief-strip-sync">
+          SYNC: {lastSync}
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="scc-daily-brief">
