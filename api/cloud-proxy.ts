@@ -6223,7 +6223,7 @@ ${outputInstructions}
 
     // 9. Anti-Boring Filter + Risk Guard + Copy Judge
     const scoredCopies = parsed.copies.map((copy: any, idx: number) => {
-      const text = copy.generated_text || '';
+      const text = String(copy.generated_text || '');
       const score = judgeCopyServer(text, platform, productTruth, buyerDesires);
       const copyId = `CB-${Date.now()}-${idx}`;
       return {
