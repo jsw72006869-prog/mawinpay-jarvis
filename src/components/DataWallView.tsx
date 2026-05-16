@@ -358,7 +358,10 @@ const DataWallView: React.FC = () => {
         if (data.smartstore || data.outreach) {
           const ss = data.smartstore || {};
           const ou = data.outreach || {};
-          const hc = data.hotContent || {};
+          const hcRaw = data.hotContent;
+          // Hot Content collector가 실제 연결되지 않은 경우를 구분:
+          // API가 hotContent 필드 자체를 반환하지 않거나, 모든 값이 0/undefined이면 not_connected
+          const hcConnected = hcRaw && (hcRaw.youtube > 0 || hcRaw.threads > 0 || hcRaw.instagram > 0 || hcRaw.tiktok > 0 || hcRaw.naverBlog > 0);
           const mapped: DailyBriefData = {
             smartstore_new_orders: ss.newOrders,
             smartstore_ready_orders: ss.pendingShipping,
@@ -377,11 +380,12 @@ const DataWallView: React.FC = () => {
             outreach_followup_needed: ou.followupNeeded,
             outreach_followup_drafted: ou.followupDrafted,
             outreach_followup_sent: ou.followupSent,
-            hot_youtube_count: hc.youtube,
-            hot_threads_count: hc.threads,
-            hot_instagram_count: hc.instagram,
-            hot_tiktok_count: hc.tiktok,
-            hot_naver_blog_count: hc.naverBlog,
+            // Hot Content: 실제 수집 데이터가 있을 때만 숫자 표시, 없으면 undefined → not_connected
+            hot_youtube_count: hcConnected ? hcRaw.youtube : undefined,
+            hot_threads_count: hcConnected ? hcRaw.threads : undefined,
+            hot_instagram_count: hcConnected ? hcRaw.instagram : undefined,
+            hot_tiktok_count: hcConnected ? hcRaw.tiktok : undefined,
+            hot_naver_blog_count: hcConnected ? hcRaw.naverBlog : undefined,
             telegram_sent: data.telegramSent,
             telegram_error_code: data.telegramErrorCode,
             period_start_kst: data.periodStartKst,
@@ -641,7 +645,10 @@ const DataWallView: React.FC = () => {
                 let status: 'active' | 'idle' | 'missing' = 'idle';
                 let statusText = 'STANDBY';
                 if (node.id === 'smartstore' && (ssNewOrders !== null || smartstoreSnapshot)) { status = 'active'; statusText = 'ACTIVE'; }
-                if (node.id === 'outreach' && totalCandidates > 0) { status = 'active'; statusText = `${totalCandidates}명 수집`; }
+                if (node.id === 'outreach') {
+                  const outreachActive = totalCandidates > 0 || (briefData && (briefData.outreach_discovered ?? 0) > 0);
+                  if (outreachActive) { status = 'active'; statusText = `${totalCandidates > 0 ? totalCandidates : briefData?.outreach_discovered ?? 0}명 수집`; }
+                }
                 if (node.id === 'hotcontent') {
                   const anyHot = hotYoutube !== undefined || hotThreads !== undefined;
                   status = anyHot ? 'active' : 'missing';
