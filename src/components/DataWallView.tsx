@@ -60,6 +60,7 @@ interface DailyBriefData {
   period_start_kst?: string;
   period_end_kst?: string;
   date_kst?: string;
+  notes?: string;
 }
 
 /* ─── Real Intel Candidate Type ─── */
@@ -292,16 +293,624 @@ function readJson<T>(key: string): T | null {
   }
 }
 
-/* ─── Agent Workstation: DATAWALL-AGENT-B.1 ─── */
-const AGENT_NODES = [
-  { id: 'smartstore', label: 'Smartstore', icon: '🛒', desc: '주문/배송 모니터링' },
-  { id: 'outreach', label: 'Outreach', icon: '📡', desc: '후보 수집 · 이메일 준비' },
-  { id: 'hotcontent', label: 'Hot Content', icon: '🔥', desc: 'YouTube · Threads · Blog' },
-  { id: 'copybrain', label: 'Copy Brain', icon: '🧠', desc: '8엔진 카피 생성 · Judge · Voice' },
-  { id: 'telegram', label: 'Telegram', icon: '📨', desc: '브리핑 알림 발송' },
-  { id: 'sheets', label: 'Google Sheets', icon: '📊', desc: '데이터 저장 · CRM' },
-];
+/* ═══════════════════════════════════════════════════════════════
+   DATAWALL-NODE-CANVAS-A.1: Agent Graph Types & Builder
+   ═══════════════════════════════════════════════════════════════ */
 
+type AgentNodeStatus =
+  | 'done'
+  | 'active'
+  | 'standby'
+  | 'skipped'
+  | 'locked'
+  | 'not_connected'
+  | 'error';
+
+type AgentGraphNode = {
+  id: string;
+  label: string;
+  subtitle: string;
+  icon: string;
+  status: AgentNodeStatus;
+  metric?: string;
+  detail?: string;
+};
+
+type AgentGraphEdge = {
+  from: string;
+  to: string;
+  active: boolean;
+  completed: boolean;
+};
+
+type AgentSignal = {
+  id: string;
+  label: string;
+  value: string;
+  tone?: 'cyan' | 'green' | 'amber' | 'red' | 'muted';
+};
+
+/* ─── buildAgentGraph: 기존 실제 데이터 변수 매핑 (fake 금지) ─── */
+function buildAgentGraph(data: {
+  smartstoreConfirmNeeded: number | null;
+  ssNewOrders: number | null;
+  ssPendingShip: number | null;
+  totalCandidates: number;
+  publicEmails: number;
+  hotYoutube: number | undefined;
+  hotThreads: number | undefined;
+  hotInstagram: number | undefined;
+  hotTiktok: number | undefined;
+  hotNaverBlog: number | undefined;
+  copyBrainStatus: {
+    status: string;
+    generatedCopies: number;
+    recommendedCopies: number;
+    rewriteRequired: number;
+    riskWarnings: number;
+    dnaSource: string;
+    topHookTypes: string[];
+  };
+  telegramSent: boolean | undefined;
+  telegramError: string | undefined;
+  briefData: DailyBriefData | null;
+  briefLoading: boolean;
+}) {
+  const smartConfirmNeeded = Number(data.smartstoreConfirmNeeded ?? 0);
+  const ssNew = Number(data.ssNewOrders ?? 0);
+  const ssPending = Number(data.ssPendingShip ?? 0);
+  const totalCandidates = Number(data.totalCandidates ?? 0);
+  const publicEmails = Number(data.publicEmails ?? 0);
+  const hotContentTotal =
+    (data.hotYoutube ?? 0) +
+    (data.hotThreads ?? 0) +
+    (data.hotInstagram ?? 0) +
+    (data.hotTiktok ?? 0) +
+    (data.hotNaverBlog ?? 0);
+  const hotConnected = data.hotYoutube !== undefined || data.hotThreads !== undefined;
+  const generatedCopies = Number(data.copyBrainStatus?.generatedCopies ?? 0);
+  const recommendedCopies = Number(data.copyBrainStatus?.recommendedCopies ?? 0);
+  const dnaSource = String(data.copyBrainStatus?.dnaSource ?? '').toLowerCase();
+  const telegramConfigured = !data.telegramError?.includes('env_missing') && !data.telegramError?.includes('skipped');
+  const outreachSent = Number(data.briefData?.outreach_email_sent ?? 0);
+  const outreachPositive = Number(data.briefData?.outreach_positive_replies ?? 0);
+  const outreachAccepted = Number(data.briefData?.outreach_accepted ?? 0);
+
+  const nodes: AgentGraphNode[] = [
+    {
+      id: 'smartstore',
+      label: 'Smartstore',
+      subtitle: '주문/발주 트리거',
+      icon: '🛒',
+      status: data.briefLoading ? 'standby' : (ssNew > 0 || ssPending > 0 || smartConfirmNeeded > 0) ? 'active' : 'done',
+      metric: ssNew !== null && ssNew >= 0 ? `신규 ${ssNew} · 배송준비 ${ssPending}` : '조회 중...',
+      detail: smartConfirmNeeded > 0 ? `발주확인 ${smartConfirmNeeded}건 필요` : 'real-time observe',
+    },
+    {
+      id: 'outreach',
+      label: 'Outreach',
+      subtitle: '후보 수집 / 이메일 확인',
+      icon: '📡',
+      status: totalCandidates > 0 ? 'done' : 'standby',
+      metric: `${totalCandidates} 후보`,
+      detail: `${publicEmails} 공개 이메일`,
+    },
+    {
+      id: 'hot-content',
+      label: 'Hot Content',
+      subtitle: '바이럴 콘텐츠 수집',
+      icon: '🔥',
+      status: hotConnected ? (hotContentTotal > 0 ? 'done' : 'standby') : 'not_connected',
+      metric: hotConnected ? `${hotContentTotal} 콘텐츠` : 'not connected',
+      detail: hotConnected ? 'public source verified' : '수집기 미연결',
+    },
+    {
+      id: 'copy-brain',
+      label: 'Copy Brain',
+      subtitle: 'Viral DNA 분석 / 카피 생성',
+      icon: '🧠',
+      status: data.copyBrainStatus.status === 'sheets_scope_error' ? 'error'
+        : generatedCopies > 0 ? 'active'
+        : data.copyBrainStatus.status === 'no_generation_yet' ? 'standby'
+        : 'standby',
+      metric: generatedCopies > 0 ? `${generatedCopies} 생성` : '생성 전',
+      detail: generatedCopies > 0
+        ? `${recommendedCopies} 추천 · ${dnaSource === 'viral_content_swipe' ? 'DNA:Hot' : dnaSource === 'rules_only' ? 'DNA:Rules' : 'DNA:none'}`
+        : data.copyBrainStatus.status === 'sheets_scope_error' ? 'SHEETS_SCOPE_ERROR' : '대기 중',
+    },
+    {
+      id: 'draft',
+      label: 'Draft',
+      subtitle: '메일/카피 초안',
+      icon: '📝',
+      status: recommendedCopies > 0 ? 'done' : 'standby',
+      metric: recommendedCopies > 0 ? `${recommendedCopies} 추천` : '초안 없음',
+      detail: 'review required',
+    },
+    {
+      id: 'approval',
+      label: 'Approval Gate',
+      subtitle: '대표 승인 대기',
+      icon: '🔐',
+      status: 'locked',
+      metric: 'LOCKED',
+      detail: 'manual approval only',
+    },
+    {
+      id: 'send',
+      label: 'Send',
+      subtitle: 'Gmail / DM 발송',
+      icon: '📤',
+      status: 'locked',
+      metric: 'EXECUTE LOCKED',
+      detail: 'no auto-send',
+    },
+    {
+      id: 'reply',
+      label: 'Reply Tracker',
+      subtitle: '답장 / 수락 추적',
+      icon: '✅',
+      status: outreachAccepted > 0 ? 'done' : outreachPositive > 0 ? 'active' : 'standby',
+      metric: `${outreachPositive} 긍정 · ${outreachAccepted} 수락`,
+      detail: outreachSent > 0 ? `${outreachSent}건 발송됨` : 'waiting',
+    },
+  ];
+
+  // activeNodeId: 가장 최근에 실제로 작동 중인 노드 (fake 금지)
+  const activeNodeId =
+    generatedCopies > 0 ? 'copy-brain'
+    : hotContentTotal > 0 ? 'hot-content'
+    : totalCandidates > 0 ? 'outreach'
+    : (ssNew > 0 || ssPending > 0 || smartConfirmNeeded > 0) ? 'smartstore'
+    : 'smartstore';
+
+  const edges: AgentGraphEdge[] = [
+    { from: 'smartstore', to: 'outreach', active: activeNodeId === 'outreach', completed: totalCandidates > 0 },
+    { from: 'outreach', to: 'hot-content', active: activeNodeId === 'hot-content', completed: hotContentTotal > 0 },
+    { from: 'hot-content', to: 'copy-brain', active: activeNodeId === 'copy-brain', completed: generatedCopies > 0 },
+    { from: 'copy-brain', to: 'draft', active: false, completed: recommendedCopies > 0 },
+    { from: 'draft', to: 'approval', active: false, completed: false },
+    { from: 'approval', to: 'send', active: false, completed: false },
+    { from: 'send', to: 'reply', active: false, completed: false },
+  ];
+
+  const selectedNode = nodes.find((node) => node.id === activeNodeId) ?? nodes[0];
+
+  const recentSignals: AgentSignal[] = [];
+  if (ssNew > 0) recentSignals.push({ id: 'ss-new', label: '신규주문', value: `${ssNew}건`, tone: 'amber' });
+  if (ssPending > 0) recentSignals.push({ id: 'ss-pending', label: '배송준비', value: `${ssPending}건`, tone: 'amber' });
+  if (smartConfirmNeeded > 0) recentSignals.push({ id: 'ss-confirm', label: '발주확인 필요', value: `${smartConfirmNeeded}건`, tone: 'red' });
+  if (generatedCopies > 0) recentSignals.push({ id: 'copy-generated', label: 'Copy Brain 생성', value: `${generatedCopies}건`, tone: 'cyan' });
+  if (recommendedCopies > 0) recentSignals.push({ id: 'copy-recommended', label: '추천 카피', value: `${recommendedCopies}건`, tone: 'green' });
+  if (hotContentTotal > 0) recentSignals.push({ id: 'hot-content', label: 'Hot Content DNA', value: `${hotContentTotal}건`, tone: 'amber' });
+  if (publicEmails > 0) recentSignals.push({ id: 'public-email', label: '공개 이메일 확인', value: `${publicEmails}건`, tone: 'cyan' });
+  if (totalCandidates > 0) recentSignals.push({ id: 'candidates', label: '수집 후보', value: `${totalCandidates}명`, tone: 'muted' });
+  if (!telegramConfigured) recentSignals.push({ id: 'telegram-skipped', label: 'Telegram skipped', value: 'env missing', tone: 'muted' });
+  if (data.telegramSent) recentSignals.push({ id: 'telegram-sent', label: 'Telegram 브리핑', value: 'SENT', tone: 'green' });
+
+  return {
+    nodes,
+    edges,
+    activeNodeId,
+    selectedNode,
+    recentSignals,
+  };
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   DATAWALL-NODE-CANVAS-A.1: Sub-components
+   ═══════════════════════════════════════════════════════════════ */
+
+/* ─── AgentFlowNode ─── */
+function AgentFlowNode({
+  node,
+  active,
+  index,
+  onClick,
+}: {
+  node: AgentGraphNode;
+  active: boolean;
+  index: number;
+  onClick?: () => void;
+}) {
+  const statusLabel: Record<AgentNodeStatus, string> = {
+    done: 'DONE',
+    active: 'ACTIVE',
+    standby: 'STANDBY',
+    skipped: 'SKIPPED',
+    locked: 'LOCKED',
+    not_connected: 'NOT CONNECTED',
+    error: 'ERROR',
+  };
+  return (
+    <article
+      className={[
+        'agent-flow-node',
+        `is-${node.status}`,
+        active ? 'is-current' : '',
+      ].join(' ')}
+      style={{ '--delay': `${index * 80}ms` } as React.CSSProperties}
+      onClick={onClick}
+      role={onClick ? 'button' : undefined}
+      tabIndex={onClick ? 0 : undefined}
+    >
+      <div className="agent-node-topline">
+        <div className="agent-node-orb">{node.icon}</div>
+        <span className={`agent-node-status-badge is-${node.status}`}>{statusLabel[node.status]}</span>
+      </div>
+      <div className="agent-node-label">{node.label}</div>
+      <div className="agent-node-subtitle">{node.subtitle}</div>
+      <div className="agent-node-bottom">
+        <strong className="agent-node-metric">{node.metric}</strong>
+        <span className="agent-node-detail">{node.detail}</span>
+      </div>
+      {active && <div className="agent-node-current-badge">CURRENT</div>}
+    </article>
+  );
+}
+
+/* ─── AgentNodeCanvas ─── */
+function AgentNodeCanvas({
+  nodes,
+  edges,
+  activeNodeId,
+  onNodeClick,
+}: {
+  nodes: AgentGraphNode[];
+  edges: AgentGraphEdge[];
+  activeNodeId: string;
+  onNodeClick?: (nodeId: string) => void;
+}) {
+  const activeNode = nodes.find((n) => n.id === activeNodeId);
+  return (
+    <section className="agent-node-canvas datawall-enter datawall-delay-2">
+      <div className="agent-canvas-bg" />
+
+      {/* Current Mission Strip */}
+      <div className="agent-current-mission-strip">
+        <span className="agent-live-dot" />
+        <span className="mission-kicker">CURRENT MISSION</span>
+        <strong className="mission-label">{activeNode?.label ?? 'Agent'}</strong>
+        <span className="mission-subtitle">{activeNode?.subtitle ?? '대기 중'}</span>
+        <span className="mission-metric">{activeNode?.metric}</span>
+      </div>
+
+      {/* Flow Grid: 4 + 4 two-row layout */}
+      <div className="agent-flow-grid">
+        {nodes.map((node, index) => {
+          const edge = edges[index];
+          const isLast = index === nodes.length - 1;
+          return (
+            <div className="agent-flow-unit" key={node.id}>
+              <AgentFlowNode
+                node={node}
+                active={node.id === activeNodeId}
+                index={index}
+                onClick={onNodeClick ? () => onNodeClick(node.id) : undefined}
+              />
+              {!isLast && (
+                <div
+                  className={[
+                    'agent-flow-connector',
+                    edge?.active ? 'is-active' : '',
+                    edge?.completed ? 'is-completed' : '',
+                  ].join(' ')}
+                />
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
+/* ─── AgentActivityInspector ─── */
+function AgentActivityInspector({
+  selectedNode,
+  recentSignals,
+  briefData,
+  briefLoading,
+  briefError,
+  onRefresh,
+  ssNewOrders,
+  ssPendingShip,
+  ssConfirmNeeded,
+  totalCandidates,
+  tierCounts,
+  copyBrainStatus,
+  hotYoutube,
+  hotThreads,
+  hotInstagram,
+  hotTiktok,
+  hotNaverBlog,
+  periodStart,
+  periodEnd,
+}: {
+  selectedNode: AgentGraphNode;
+  recentSignals: AgentSignal[];
+  briefData: DailyBriefData | null;
+  briefLoading: boolean;
+  briefError: string | null;
+  onRefresh: () => void;
+  ssNewOrders: number | null;
+  ssPendingShip: number | null;
+  ssConfirmNeeded: number | null;
+  totalCandidates: number;
+  tierCounts: { 추천: number; 검토: number; 보류: number; 제외: number };
+  copyBrainStatus: {
+    status: string;
+    generatedCopies: number;
+    recommendedCopies: number;
+    rewriteRequired: number;
+    riskWarnings: number;
+    avgFinalScore: number;
+    dnaSource: string;
+    topHookTypes: string[];
+  };
+  hotYoutube: number | undefined;
+  hotThreads: number | undefined;
+  hotInstagram: number | undefined;
+  hotTiktok: number | undefined;
+  hotNaverBlog: number | undefined;
+  periodStart: string | undefined;
+  periodEnd: string | undefined;
+}) {
+  const statusLabel: Record<AgentNodeStatus, string> = {
+    done: 'DONE',
+    active: 'ACTIVE',
+    standby: 'STANDBY',
+    skipped: 'SKIPPED',
+    locked: 'LOCKED',
+    not_connected: 'NOT CONNECTED',
+    error: 'ERROR',
+  };
+
+  return (
+    <aside className="agent-activity-inspector datawall-enter datawall-delay-5">
+      {/* Selected Node */}
+      <section className="inspector-section inspector-current">
+        <div className="inspector-kicker">SELECTED NODE</div>
+        <div className="inspector-node-header">
+          <span className="inspector-node-orb">{selectedNode.icon}</span>
+          <div>
+            <h3 className="inspector-node-name">{selectedNode.label}</h3>
+            <p className="inspector-node-sub">{selectedNode.subtitle}</p>
+          </div>
+        </div>
+        <div className={`inspector-status-badge is-${selectedNode.status}`}>
+          {statusLabel[selectedNode.status as AgentNodeStatus] ?? selectedNode.status}
+        </div>
+        {selectedNode.metric && (
+          <div className="inspector-metric">{selectedNode.metric}</div>
+        )}
+        {selectedNode.detail && (
+          <div className="inspector-detail">{selectedNode.detail}</div>
+        )}
+      </section>
+
+      {/* Recent Signals */}
+      <section className="inspector-section inspector-signals">
+        <div className="inspector-kicker">
+          LIVE SIGNALS
+          <button className="inspector-refresh-btn" onClick={onRefresh} disabled={briefLoading} title="새로고침">
+            {briefLoading ? '⟳' : '↻'}
+          </button>
+        </div>
+        {briefLoading && <div className="inspector-loading">데이터 로딩 중...</div>}
+        {briefError && <div className="inspector-error">조회 실패: {briefError}</div>}
+        {recentSignals.length > 0 ? (
+          recentSignals.map((signal) => (
+            <div className={`signal-row is-${signal.tone ?? 'cyan'}`} key={signal.id}>
+              <span className="signal-dot" />
+              <span className="signal-label">{signal.label}</span>
+              <strong className="signal-value">{signal.value}</strong>
+            </div>
+          ))
+        ) : (
+          !briefLoading && <div className="empty-signal">아직 표시할 작업 신호가 없습니다.</div>
+        )}
+      </section>
+
+      {/* Smartstore KPI Compact */}
+      <section className="inspector-section inspector-kpi">
+        <div className="inspector-kicker">SMARTSTORE</div>
+        <div className="inspector-kpi-row">
+          <span className="inspector-kpi-item is-alert">신규 <strong>{ssNewOrders !== null ? ssNewOrders : '—'}</strong></span>
+          <span className="inspector-kpi-item is-warn">배송준비 <strong>{ssPendingShip !== null ? ssPendingShip : '—'}</strong></span>
+          {ssConfirmNeeded !== null && ssConfirmNeeded > 0 && (
+            <span className="inspector-kpi-item is-red">발주확인 <strong>{ssConfirmNeeded}건</strong></span>
+          )}
+        </div>
+      </section>
+
+      {/* Copy Brain Compact */}
+      <section className="inspector-section inspector-copy">
+        <div className="inspector-kicker">COPY BRAIN</div>
+        <div className="inspector-kpi-row">
+          <span className="inspector-kpi-item">생성 <strong>{copyBrainStatus.generatedCopies}</strong></span>
+          <span className="inspector-kpi-item is-green">추천 <strong>{copyBrainStatus.recommendedCopies}</strong></span>
+          <span className="inspector-kpi-item">DNA <strong>{copyBrainStatus.dnaSource === 'viral_content_swipe' ? 'Hot' : copyBrainStatus.dnaSource === 'rules_only' ? 'Rules' : 'none'}</strong></span>
+        </div>
+        {copyBrainStatus.topHookTypes.length > 0 && (
+          <div className="inspector-hook-types">
+            Top Hook: {copyBrainStatus.topHookTypes.slice(0, 2).join(' · ')}
+          </div>
+        )}
+      </section>
+
+      {/* Candidate Tier Compact */}
+      <section className="inspector-section inspector-tier">
+        <div className="inspector-kicker">후보 품질 ({totalCandidates}명)</div>
+        <div className="inspector-tier-row">
+          <span className="inspector-tier-item is-추천">추천 <strong>{tierCounts.추천}</strong></span>
+          <span className="inspector-tier-item is-검토">검토 <strong>{tierCounts.검토}</strong></span>
+          <span className="inspector-tier-item is-보류">보류 <strong>{tierCounts.보류}</strong></span>
+          <span className="inspector-tier-item is-제외">제외 <strong>{tierCounts.제외}</strong></span>
+        </div>
+      </section>
+
+      {/* Hot Content Compact */}
+      <section className="inspector-section inspector-hot">
+        <div className="inspector-kicker">HOT CONTENT</div>
+        <div className="inspector-kpi-row">
+          {hotYoutube !== undefined ? <span className="inspector-kpi-item">YT <strong>{hotYoutube}</strong></span> : <span className="inspector-kpi-item is-muted">YT <em>—</em></span>}
+          {hotThreads !== undefined ? <span className="inspector-kpi-item">TH <strong>{hotThreads}</strong></span> : <span className="inspector-kpi-item is-muted">TH <em>—</em></span>}
+          {hotInstagram !== undefined ? <span className="inspector-kpi-item">IG <strong>{hotInstagram}</strong></span> : null}
+          {hotTiktok !== undefined ? <span className="inspector-kpi-item">TK <strong>{hotTiktok}</strong></span> : null}
+          {hotNaverBlog !== undefined ? <span className="inspector-kpi-item">NB <strong>{hotNaverBlog}</strong></span> : null}
+        </div>
+        {hotYoutube === undefined && hotThreads === undefined && (
+          <div className="inspector-not-connected">collector not connected</div>
+        )}
+      </section>
+
+      {/* Brief Period */}
+      {(periodStart || periodEnd) && (
+        <section className="inspector-section inspector-period">
+          <div className="inspector-kicker">BRIEF PERIOD</div>
+          <div className="inspector-period-text">{periodStart} ~ {periodEnd}</div>
+        </section>
+      )}
+
+      {/* Next Action (disabled) */}
+      <section className="inspector-section inspector-next">
+        <div className="inspector-kicker">NEXT ACTION</div>
+        <button className="next-action-chip" disabled>추천 카피 검토</button>
+        <button className="next-action-chip" disabled>승인 전 실행 잠금</button>
+        <div className="inspector-lock-note">이메일 원문은 Google Sheets에서 확인</div>
+      </section>
+    </aside>
+  );
+}
+
+/* ─── Agent Module Dock (Left Panel) ─── */
+function AgentModuleDock({
+  nodes,
+  activeNodeId,
+  activeTab,
+  setActiveTab,
+  platformCounts,
+  briefData,
+  systemArmed,
+  now,
+  onRefresh,
+  briefLoading,
+}: {
+  nodes: AgentGraphNode[];
+  activeNodeId: string;
+  activeTab: PlatformTab;
+  setActiveTab: (tab: PlatformTab) => void;
+  platformCounts: Record<string, number>;
+  briefData: DailyBriefData | null;
+  systemArmed: boolean;
+  now: string;
+  onRefresh: () => void;
+  briefLoading: boolean;
+}) {
+  const statusColor: Record<AgentNodeStatus, string> = {
+    done: '#4ade80',
+    active: '#2affd2',
+    standby: '#4a6080',
+    skipped: '#f59e0b',
+    locked: '#f87171',
+    not_connected: '#6b7280',
+    error: '#ef4444',
+  };
+
+  return (
+    <aside className="datawall-agent-dock datawall-enter datawall-delay-1">
+      {/* System Status */}
+      <div className="dock-system-status">
+        <span className={`dock-armed-dot ${systemArmed ? 'is-armed' : ''}`} />
+        <span className="dock-system-label">{systemArmed ? 'SYSTEM ARMED' : 'SYSTEM ONLINE'}</span>
+        <span className="dock-time">{now.split(' ')[1] || now}</span>
+      </div>
+
+      {/* Agent Module List */}
+      <div className="dock-section-label">AGENT MODULES</div>
+      <div className="dock-module-list">
+        {nodes.map((node) => (
+          <div
+            key={node.id}
+            className={`dock-module-item ${node.id === activeNodeId ? 'is-active-node' : ''}`}
+          >
+            <span className="dock-module-orb">{node.icon}</span>
+            <div className="dock-module-body">
+              <span className="dock-module-name">{node.label}</span>
+              <span className="dock-module-metric">{node.metric}</span>
+            </div>
+            <span
+              className="dock-module-dot"
+              style={{ background: statusColor[node.status] ?? '#4a6080' }}
+            />
+          </div>
+        ))}
+      </div>
+
+      {/* Platform Filter Tabs */}
+      <div className="dock-section-label">PLATFORM FILTER</div>
+      <div className="dock-platform-tabs">
+        {PLATFORM_TABS.map(tab => (
+          <button
+            key={tab}
+            className={`dock-tab ${activeTab === tab ? 'is-active' : ''}`}
+            onClick={() => setActiveTab(tab)}
+          >
+            {tab}
+            {tab !== '전체' && platformCounts[tab] ? (
+              <span className="dock-tab-count">{platformCounts[tab]}</span>
+            ) : null}
+          </button>
+        ))}
+      </div>
+
+      {/* Brief Summary Compact */}
+      {briefData && (
+        <div className="dock-section-label">24H BRIEF</div>
+      )}
+      {briefData && (
+        <div className="dock-brief-compact">
+          {briefData.outreach_discovered !== undefined && (
+            <div className="dock-brief-row">
+              <span>수집 후보</span>
+              <strong>{briefData.outreach_discovered}</strong>
+            </div>
+          )}
+          {briefData.outreach_public_email_found !== undefined && (
+            <div className="dock-brief-row">
+              <span>공개 이메일</span>
+              <strong>{briefData.outreach_public_email_found}</strong>
+            </div>
+          )}
+          {briefData.outreach_email_sent !== undefined && (
+            <div className="dock-brief-row">
+              <span>발송</span>
+              <strong>{briefData.outreach_email_sent}</strong>
+            </div>
+          )}
+          {briefData.outreach_positive_replies !== undefined && (
+            <div className="dock-brief-row">
+              <span>긍정 답변</span>
+              <strong>{briefData.outreach_positive_replies}</strong>
+            </div>
+          )}
+          {briefData.outreach_accepted !== undefined && (
+            <div className="dock-brief-row">
+              <span>제안 수락</span>
+              <strong>{briefData.outreach_accepted}</strong>
+            </div>
+          )}
+          <div className="dock-brief-note">이메일 원문은 Google Sheets</div>
+        </div>
+      )}
+    </aside>
+  );
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   Main DataWallView Component
+   ═══════════════════════════════════════════════════════════════ */
 const DataWallView: React.FC = () => {
   const [payload, setPayload] = useState<WallPayload | null>(null);
   const [smartstoreSnapshot, setSmartstoreSnapshot] = useState<SmartstoreSnapshot | null>(null);
@@ -330,10 +939,9 @@ const DataWallView: React.FC = () => {
     riskWarnings: 0, boringFiltered: 0, avgFinalScore: 0, topHookTypes: [], topBuyerDesires: [],
     dnaSource: 'none', lastGeneratedAt: '',
   });
+  const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [candidatePage, setCandidatePage] = useState(0);
-  const [selectedCandidate, setSelectedCandidate] = useState<RealIntelCandidate | null>(null);
   const openingTimerRef = useRef<number | null>(null);
-  const CANDIDATES_PER_PAGE = 10;
 
   /* ─── Read real candidates from localStorage ─── */
   const refreshCandidates = useCallback(() => {
@@ -410,6 +1018,7 @@ const DataWallView: React.FC = () => {
             period_start_kst: data.periodStartKst,
             period_end_kst: data.periodEndKst,
             date_kst: data.dateKst,
+            notes: data.notes,
           };
           setBriefData(mapped);
         } else if (data.brief) {
@@ -518,9 +1127,6 @@ const DataWallView: React.FC = () => {
 
   const totalCandidates = realCandidates.length;
   const filteredCount = filteredCandidates.length;
-  const visibleStart = candidatePage * CANDIDATES_PER_PAGE;
-  const visibleCandidates = filteredCandidates.slice(visibleStart, visibleStart + CANDIDATES_PER_PAGE);
-  const totalPages = Math.ceil(filteredCount / CANDIDATES_PER_PAGE);
 
   const platformCounts: Record<string, number> = {};
   realCandidates.forEach(c => {
@@ -549,11 +1155,9 @@ const DataWallView: React.FC = () => {
   /* ─── Outreach KPI ─── */
   const outreachDiscovered = briefData?.outreach_discovered ?? totalCandidates;
   const outreachPublicEmail = briefData?.outreach_public_email_found ?? contactableCount;
-  const outreachDraft = briefData?.outreach_draft_ready ?? 0;
   const outreachSent = briefData?.outreach_email_sent ?? 0;
   const outreachPositive = briefData?.outreach_positive_replies ?? 0;
   const outreachAccepted = briefData?.outreach_accepted ?? 0;
-  const outreachFollowup = briefData?.outreach_followup_needed ?? 0;
 
   /* ─── Hot Content ─── */
   const hotYoutube = briefData?.hot_youtube_count;
@@ -572,440 +1176,143 @@ const DataWallView: React.FC = () => {
 
   const now = new Date().toLocaleString('ko-KR', { timeZone: 'Asia/Seoul', hour12: false });
 
+  /* ─── Build Agent Graph (기존 실제 변수 매핑) ─── */
+  const agentGraph = buildAgentGraph({
+    smartstoreConfirmNeeded: ssConfirmNeeded,
+    ssNewOrders,
+    ssPendingShip,
+    totalCandidates,
+    publicEmails: outreachPublicEmail,
+    hotYoutube,
+    hotThreads,
+    hotInstagram,
+    hotTiktok,
+    hotNaverBlog,
+    copyBrainStatus,
+    telegramSent,
+    telegramError,
+    briefData,
+    briefLoading,
+  });
+
+  // 선택된 노드 (클릭 또는 기본 activeNode)
+  const displayNodeId = selectedNodeId ?? agentGraph.activeNodeId;
+  const displayNode = agentGraph.nodes.find(n => n.id === displayNodeId) ?? agentGraph.selectedNode;
+
   return (
-    <div className={`aw-shell ${systemArmed ? 'is-armed' : ''} ${openingActive ? 'is-opening' : ''}`}>
+    <main className={`datawall-node-page ${systemArmed ? 'is-armed' : ''} ${openingActive ? 'is-opening' : ''}`}>
       {/* ─── Background ─── */}
-      <div className="aw-bg" aria-hidden="true">
-        <div className="aw-bg-grid" />
-        <div className="aw-bg-glow" />
-        <div className="aw-bg-vignette" />
+      <div className="datawall-bg" aria-hidden="true">
+        <div className="datawall-bg-grid" />
+        <div className="datawall-bg-glow" />
+        <div className="datawall-bg-vignette" />
       </div>
 
       {/* ═══ HEADER ═══ */}
-      <header className="aw-header">
-        <div className="aw-header-left">
-          <h1 className="aw-header-title">AGENT WORKSTATION</h1>
-          <span className="aw-header-sub">JARVIS 작업 관제실 · COPY-BRAIN-A.1C</span>
+      <header className="datawall-node-header datawall-enter datawall-delay-1">
+        <div className="datawall-header-left">
+          <h1 className="datawall-header-title">AGENT WORKSTATION</h1>
+          <span className="datawall-header-sub">JARVIS 워크플로우 캔버스 · DATAWALL-NODE-CANVAS-A.1</span>
         </div>
-        <div className="aw-header-center">
-          <div className="aw-platform-tabs">
-            {PLATFORM_TABS.map(tab => (
-              <button
-                key={tab}
-                className={`aw-tab ${activeTab === tab ? 'is-active' : ''}`}
-                onClick={() => { setActiveTab(tab); setCandidatePage(0); setSelectedCandidate(null); }}
-              >
-                {tab}
-                {tab !== '전체' && platformCounts[tab] ? <span className="aw-tab-count">{platformCounts[tab]}</span> : null}
-              </button>
+        <div className="datawall-header-center">
+          <div className="datawall-flow-breadcrumb">
+            {agentGraph.nodes.map((node, i) => (
+              <React.Fragment key={node.id}>
+                <button
+                  className={`datawall-breadcrumb-node is-${node.status} ${node.id === displayNodeId ? 'is-selected' : ''}`}
+                  onClick={() => setSelectedNodeId(node.id === displayNodeId ? null : node.id)}
+                  title={`${node.label}: ${node.metric}`}
+                >
+                  <span>{node.icon}</span>
+                  <span className="breadcrumb-label">{node.label}</span>
+                </button>
+                {i < agentGraph.nodes.length - 1 && (
+                  <span className={`datawall-breadcrumb-arrow ${agentGraph.edges[i]?.completed ? 'is-done' : agentGraph.edges[i]?.active ? 'is-active' : ''}`}>›</span>
+                )}
+              </React.Fragment>
             ))}
           </div>
         </div>
-        <div className="aw-header-right">
-          <span className={`aw-status-badge ${systemArmed ? 'is-linked' : ''}`}>{systemArmed ? 'LINKED' : 'ONLINE'}</span>
-          <span className="aw-header-time">{now}</span>
-          <button className="aw-refresh-btn" onClick={fetchBrief} disabled={briefLoading} title="브리핑 새로고침">
+        <div className="datawall-header-right">
+          <span className={`datawall-status-badge ${systemArmed ? 'is-linked' : ''}`}>{systemArmed ? 'LINKED' : 'ONLINE'}</span>
+          <span className="datawall-header-time">{now}</span>
+          <button className="datawall-refresh-btn" onClick={fetchBrief} disabled={briefLoading} title="브리핑 새로고침">
             {briefLoading ? '⟳' : '↻'}
           </button>
         </div>
       </header>
 
-      {/* ═══ MAIN GRID ═══ */}
-      <div className="aw-main-grid">
+      {/* ═══ MAIN LAYOUT ═══ */}
+      <section className="datawall-node-layout">
 
-        {/* ═══ LEFT: Agent Queue + KPI ═══ */}
-        <aside className="aw-col aw-col-left">
+        {/* LEFT: Agent Module Dock */}
+        <AgentModuleDock
+          nodes={agentGraph.nodes}
+          activeNodeId={agentGraph.activeNodeId}
+          activeTab={activeTab}
+          setActiveTab={(tab) => { setActiveTab(tab); setCandidatePage(0); }}
+          platformCounts={platformCounts}
+          briefData={briefData}
+          systemArmed={systemArmed}
+          now={now}
+          onRefresh={fetchBrief}
+          briefLoading={briefLoading}
+        />
 
-          {/* ─── Smartstore KPI ─── */}
-          <section className="aw-panel aw-kpi-panel">
-            <div className="aw-panel-label">🛒 스마트스토어 현황</div>
-            <div className="aw-kpi-grid">
-              <div className="aw-kpi-tile aw-kpi-alert">
-                <span className="aw-kpi-val">{ssNewOrders !== null ? ssNewOrders : '—'}</span>
-                <span className="aw-kpi-key">신규주문</span>
-              </div>
-              <div className="aw-kpi-tile aw-kpi-warn">
-                <span className="aw-kpi-val">{ssPendingShip !== null ? ssPendingShip : '—'}</span>
-                <span className="aw-kpi-key">배송준비</span>
-              </div>
-              <div className="aw-kpi-tile">
-                <span className="aw-kpi-val">{ssPreShip !== null ? ssPreShip : '—'}</span>
-                <span className="aw-kpi-key">배송전 합계</span>
-              </div>
-              <div className="aw-kpi-tile">
-                <span className="aw-kpi-val">{ssDelivering !== null ? ssDelivering : '—'}</span>
-                <span className="aw-kpi-key">배송중</span>
-              </div>
-              <div className="aw-kpi-tile">
-                <span className="aw-kpi-val">{ssDelivered !== null ? ssDelivered : '—'}</span>
-                <span className="aw-kpi-key">배송완료</span>
-              </div>
-              <div className="aw-kpi-tile">
-                <span className="aw-kpi-val">{ssConfirmed !== null ? ssConfirmed : '—'}</span>
-                <span className="aw-kpi-key">구매확정</span>
-              </div>
-            </div>
-            {ssConfirmNeeded !== null && (
-              <div className="aw-kpi-note">발주확인 필요: <strong>{ssConfirmNeeded}건</strong></div>
-            )}
-            {smartstoreSnapshot?.fetchedAt && (
-              <div className="aw-kpi-source">
-                출처: {smartstoreSnapshot.source || 'API'} · {new Date(smartstoreSnapshot.fetchedAt).toLocaleTimeString('ko-KR')}
-              </div>
-            )}
-          </section>
+        {/* CENTER: Agent Node Canvas */}
+        <AgentNodeCanvas
+          nodes={agentGraph.nodes}
+          edges={agentGraph.edges}
+          activeNodeId={agentGraph.activeNodeId}
+          onNodeClick={(nodeId) => setSelectedNodeId(nodeId === displayNodeId ? null : nodeId)}
+        />
 
-          {/* ─── Outreach KPI ─── */}
-          <section className="aw-panel aw-kpi-panel">
-            <div className="aw-panel-label">📡 아웃리치 현황</div>
-            <div className="aw-kpi-grid">
-              <div className="aw-kpi-tile">
-                <span className="aw-kpi-val">{outreachDiscovered}</span>
-                <span className="aw-kpi-key">수집 후보</span>
-              </div>
-              <div className="aw-kpi-tile aw-kpi-ok">
-                <span className="aw-kpi-val">{outreachPublicEmail}</span>
-                <span className="aw-kpi-key">공개 이메일</span>
-              </div>
-              <div className="aw-kpi-tile">
-                <span className="aw-kpi-val">{outreachDraft}</span>
-                <span className="aw-kpi-key">초안 완료</span>
-              </div>
-              <div className="aw-kpi-tile">
-                <span className="aw-kpi-val">{outreachSent}</span>
-                <span className="aw-kpi-key">발송</span>
-              </div>
-              <div className="aw-kpi-tile">
-                <span className="aw-kpi-val">{outreachPositive}</span>
-                <span className="aw-kpi-key">긍정 답변</span>
-              </div>
-              <div className="aw-kpi-tile">
-                <span className="aw-kpi-val">{outreachAccepted}</span>
-                <span className="aw-kpi-key">제안 수락</span>
-              </div>
-            </div>
-            {outreachFollowup > 0 && (
-              <div className="aw-kpi-note">팔로업 필요: <strong>{outreachFollowup}건</strong></div>
-            )}
-            <div className="aw-kpi-note aw-kpi-info">이메일 원문은 Google Sheets에서 확인</div>
-          </section>
+        {/* RIGHT: Live Activity Inspector */}
+        <AgentActivityInspector
+          selectedNode={displayNode}
+          recentSignals={agentGraph.recentSignals}
+          briefData={briefData}
+          briefLoading={briefLoading}
+          briefError={briefError}
+          onRefresh={fetchBrief}
+          ssNewOrders={ssNewOrders}
+          ssPendingShip={ssPendingShip}
+          ssConfirmNeeded={ssConfirmNeeded}
+          totalCandidates={totalCandidates}
+          tierCounts={tierCounts}
+          copyBrainStatus={copyBrainStatus}
+          hotYoutube={hotYoutube}
+          hotThreads={hotThreads}
+          hotInstagram={hotInstagram}
+          hotTiktok={hotTiktok}
+          hotNaverBlog={hotNaverBlog}
+          periodStart={periodStart}
+          periodEnd={periodEnd}
+        />
 
-          {/* ─── Agent Nodes ─── */}
-          <section className="aw-panel aw-agent-queue">
-            <div className="aw-panel-label">⚙️ Agent 작업 노드</div>
-            <div className="aw-agent-list">
-              {AGENT_NODES.map(node => {
-                let status: 'active' | 'idle' | 'missing' = 'idle';
-                let statusText = 'STANDBY';
-                if (node.id === 'smartstore' && (ssNewOrders !== null || smartstoreSnapshot)) { status = 'active'; statusText = 'ACTIVE'; }
-                if (node.id === 'outreach') {
-                  const outreachActive = totalCandidates > 0 || (briefData && (briefData.outreach_discovered ?? 0) > 0);
-                  if (outreachActive) { status = 'active'; statusText = `${totalCandidates > 0 ? totalCandidates : briefData?.outreach_discovered ?? 0}명 수집`; }
-                }
-                if (node.id === 'hotcontent') {
-                  const anyHot = hotYoutube !== undefined || hotThreads !== undefined;
-                  status = anyHot ? 'active' : 'missing';
-                  statusText = anyHot ? 'ACTIVE' : 'not_connected';
-                }
-                if (node.id === 'copybrain') {
-                  // COPY-BRAIN-A.1B: Copy Brain 실제 데이터 + DNA Source 기반 상태
-                  if (copyBrainStatus.status === 'active') {
-                    status = 'active';
-                    const dnaLabel = copyBrainStatus.dnaSource === 'viral_content_swipe' ? 'DNA:Hot' : copyBrainStatus.dnaSource === 'rules_only' ? 'DNA:Rules' : 'DNA:none';
-                    statusText = `${copyBrainStatus.generatedCopies}건 · ${copyBrainStatus.recommendedCopies}추천 · ${dnaLabel}`;
-                  } else if (copyBrainStatus.status === 'sheets_scope_error') {
-                    status = 'missing';
-                    statusText = 'SHEETS_SCOPE_ERROR';
-                  } else if (copyBrainStatus.status === 'no_generation_yet') {
-                    status = 'idle';
-                    statusText = 'NO_GENERATION_YET';
-                  } else {
-                    status = 'idle';
-                    statusText = 'LOADING...';
-                  }
-                }
-                if (node.id === 'telegram') {
-                  if (telegramError?.includes('env_missing') || telegramError?.includes('skipped')) { status = 'missing'; statusText = 'skipped_env_missing'; }
-                  else if (telegramSent) { status = 'active'; statusText = 'SENT'; }
-                  else { status = 'idle'; statusText = 'STANDBY'; }
-                }
-                if (node.id === 'sheets') {
-                  status = briefData ? 'active' : 'idle';
-                  statusText = briefData ? 'CONNECTED' : 'STANDBY';
-                }
-                return (
-                  <div key={node.id} className={`aw-agent-node aw-node-${status}`}>
-                    <span className="aw-node-icon">{node.icon}</span>
-                    <div className="aw-node-body">
-                      <span className="aw-node-label">{node.label}</span>
-                      <span className="aw-node-desc">{node.desc}</span>
-                    </div>
-                    <span className={`aw-node-status aw-ns-${status}`}>{statusText}</span>
-                  </div>
-                );
-              })}
-            </div>
-          </section>
+      </section>
 
-        </aside>
-
-        {/* ═══ CENTER: Workflow Map + Brief ═══ */}
-        <main className="aw-col aw-col-center">
-
-          {/* ─── Daily Brief Summary ─── */}
-          <section className="aw-panel aw-brief-panel">
-            <div className="aw-panel-label">
-              📋 최근 24시간 운영 브리핑
-              {periodStart && periodEnd && (
-                <span className="aw-brief-period"> · {periodStart} ~ {periodEnd}</span>
-              )}
-            </div>
-            {briefLoading && <div className="aw-brief-loading">브리핑 로딩 중...</div>}
-            {briefError && <div className="aw-brief-error">브리핑 조회 실패: {briefError}</div>}
-            {!briefLoading && !briefError && !briefData && (
-              <div className="aw-brief-empty">브리핑 데이터 없음 — "오늘 업무 브리핑 해줘" 명령으로 생성</div>
-            )}
-            {briefData && (
-              <div className="aw-brief-content">
-                <div className="aw-brief-section">
-                  <span className="aw-brief-section-title">스마트스토어</span>
-                  <div className="aw-brief-row-grid">
-                    <span>신규주문 <strong>{briefData.smartstore_new_orders ?? '—'}</strong></span>
-                    <span>배송준비 <strong>{briefData.smartstore_ready_orders ?? '—'}</strong></span>
-                    <span>배송중 <strong>{briefData.smartstore_delivering ?? '—'}</strong></span>
-                    <span>배송완료 <strong>{briefData.smartstore_delivered ?? '—'}</strong></span>
-                    <span>구매확정 <strong>{briefData.smartstore_purchase_decided ?? '—'}</strong></span>
-                    {briefData.smartstore_confirm_needed !== undefined && (
-                      <span>발주확인 필요 <strong>{briefData.smartstore_confirm_needed}</strong></span>
-                    )}
-                  </div>
-                </div>
-                <div className="aw-brief-section">
-                  <span className="aw-brief-section-title">아웃리치</span>
-                  <div className="aw-brief-row-grid">
-                    <span>신규 수집 <strong>{briefData.outreach_discovered ?? '—'}</strong></span>
-                    <span>공개 이메일 <strong>{briefData.outreach_public_email_found ?? '—'}</strong></span>
-                    <span>초안 완료 <strong>{briefData.outreach_draft_ready ?? '—'}</strong></span>
-                    <span>승인 대기 <strong>{briefData.outreach_approval_waiting ?? '—'}</strong></span>
-                    <span>이메일 발송 <strong>{briefData.outreach_email_sent ?? '—'}</strong></span>
-                    <span>긍정 답변 <strong>{briefData.outreach_positive_replies ?? '—'}</strong></span>
-                    <span>제안 수락 <strong>{briefData.outreach_accepted ?? '—'}</strong></span>
-                    <span>팔로업 필요 <strong>{briefData.outreach_followup_needed ?? '—'}</strong></span>
-                    <span>팔로업 발송 <strong>{briefData.outreach_followup_sent ?? '—'}</strong></span>
-                  </div>
-                </div>
-                <div className="aw-brief-section">
-                  <span className="aw-brief-section-title">Hot Content</span>
-                  <div className="aw-brief-row-grid">
-                    <span>YouTube <strong>{hotYoutube !== undefined ? hotYoutube : <em className="aw-not-connected">not_connected</em>}</strong></span>
-                    <span>Threads <strong>{hotThreads !== undefined ? hotThreads : <em className="aw-not-connected">not_connected</em>}</strong></span>
-                    <span>Instagram <strong>{hotInstagram !== undefined ? hotInstagram : <em className="aw-not-connected">not_connected</em>}</strong></span>
-                    <span>TikTok <strong>{hotTiktok !== undefined ? hotTiktok : <em className="aw-not-connected">not_connected</em>}</strong></span>
-                    <span>Naver Blog <strong>{hotNaverBlog !== undefined ? hotNaverBlog : <em className="aw-not-connected">not_connected</em>}</strong></span>
-                  </div>
-                  {(hotYoutube === undefined && hotThreads === undefined) && (
-                    <div className="aw-brief-note">Hot Content collector not connected yet</div>
-                  )}
-                  {briefData?.notes && briefData.notes.includes('hot_content_prod_') && (
-                    <div className="aw-brief-note" style={{color:'#4ade80'}}>운영 {briefData.notes.match(/hot_content_prod_(\d+)/)?.[1] ?? '?'}건 · 테스트 {briefData.notes.match(/test_(\d+)/)?.[1] ?? '?'}건 (테스트 제외 집계)</div>
-                  )}
-                  {briefData?.notes && briefData.notes.includes('hot_content_test_only_') && (
-                    <div className="aw-brief-note" style={{color:'#facc15'}}>운영 0건 · 테스트 {briefData.notes.match(/test_only_(\d+)/)?.[1] ?? '?'}건만 존재 (운영 데이터 수집 필요)</div>
-                  )}
-                </div>
-                <div className="aw-brief-section">
-                  <span className="aw-brief-section-title">🧠 Copy Brain</span>
-                  <div className="aw-brief-row-grid">
-                    <span>상태 <strong>{copyBrainStatus.status === 'active' ? 'ACTIVE' : copyBrainStatus.status === 'sheets_scope_error' ? 'SHEETS_ERROR' : copyBrainStatus.status === 'no_generation_yet' ? 'NO_GEN_YET' : 'LOADING'}</strong></span>
-                    <span>생성 카피 <strong>{copyBrainStatus.generatedCopies}</strong></span>
-                    <span>추천 카피 <strong>{copyBrainStatus.recommendedCopies}</strong></span>
-                    <span>재작성 필요 <strong>{copyBrainStatus.rewriteRequired}</strong></span>
-                    <span>리스크 경고 <strong>{copyBrainStatus.riskWarnings}</strong></span>
-                    <span>평균 점수 <strong>{copyBrainStatus.avgFinalScore}</strong></span>
-                    <span>DNA 소스 <strong>{copyBrainStatus.dnaSource === 'viral_content_swipe' ? 'Hot Content' : copyBrainStatus.dnaSource === 'rules_only' ? 'Rules Only' : 'none'}</strong></span>
-                    {copyBrainStatus.topHookTypes.length > 0 && <span>Top Hook <strong>{copyBrainStatus.topHookTypes.slice(0, 2).join(', ')}</strong></span>}
-                  </div>
-                  {copyBrainStatus.status === 'no_generation_yet' && (
-                    <div className="aw-brief-note">Copy Brain 아직 카피 생성 전</div>
-                  )}
-                  {copyBrainStatus.status === 'sheets_scope_error' && (
-                    <div className="aw-brief-note">copy_generation_log 조회 권한/범위 확인 필요</div>
-                  )}
-                </div>
-                <div className="aw-brief-section">
-                  <span className="aw-brief-section-title">Telegram</span>
-                  <div className="aw-brief-row-grid">
-                    <span>발송 여부 <strong>{telegramSent ? 'SENT' : 'skipped'}</strong></span>
-                    {telegramError && <span>사유 <strong className="aw-not-connected">{telegramError}</strong></span>}
-                  </div>
-                  {(telegramError?.includes('env_missing') || !telegramSent) && (
-                    <div className="aw-brief-note">Telegram env missing — notification skipped</div>
-                  )}
-                </div>
-                <div className="aw-brief-footer">
-                  <span>이메일 원문 · 고객 정보는 Google Sheets에서 확인하세요</span>
-                </div>
-              </div>
-            )}
-          </section>
-
-          {/* ─── Workflow Map ─── */}
-          <section className="aw-panel aw-workflow-panel">
-            <div className="aw-panel-label">🗺️ Workflow Map</div>
-            <div className="aw-workflow-map">
-              {[
-                { step: '수집', icon: '📡', val: outreachDiscovered, active: outreachDiscovered > 0 },
-                { step: 'Hot Content', icon: '🔥', val: (hotYoutube ?? 0) + (hotThreads ?? 0) + (hotInstagram ?? 0) + (hotTiktok ?? 0) + (hotNaverBlog ?? 0), active: hotYoutube !== undefined },
-                { step: '이메일 확인', icon: '✉️', val: outreachPublicEmail, active: outreachPublicEmail > 0 },
-                { step: 'Copy Brain', icon: '🧠', val: copyBrainStatus.generatedCopies, active: copyBrainStatus.status === 'active' },
-                { step: '발송', icon: '📤', val: outreachSent, active: outreachSent > 0 },
-                { step: '긍정 답변', icon: '✅', val: outreachPositive, active: outreachPositive > 0 },
-                { step: '수락', icon: '🤝', val: outreachAccepted, active: outreachAccepted > 0 },
-              ].map((s, i, arr) => (
-                <React.Fragment key={s.step}>
-                  <div className={`aw-wf-node ${s.active ? 'is-active' : ''}`}>
-                    <span className="aw-wf-icon">{s.icon}</span>
-                    <span className="aw-wf-val">{s.val}</span>
-                    <span className="aw-wf-step">{s.step}</span>
-                  </div>
-                  {i < arr.length - 1 && <div className={`aw-wf-arrow ${s.active ? 'is-active' : ''}`}>→</div>}
-                </React.Fragment>
-              ))}
-            </div>
-          </section>
-
-          {/* ─── Tier Summary ─── */}
-          <section className="aw-panel aw-tier-panel">
-            <div className="aw-panel-label">🏷️ 후보 품질 분류</div>
-            <div className="aw-tier-grid">
-              <div className="aw-tier-tile aw-tier-추천">
-                <span className="aw-tier-val">{tierCounts.추천}</span>
-                <span className="aw-tier-key">추천</span>
-              </div>
-              <div className="aw-tier-tile aw-tier-검토">
-                <span className="aw-tier-val">{tierCounts.검토}</span>
-                <span className="aw-tier-key">검토</span>
-              </div>
-              <div className="aw-tier-tile aw-tier-보류">
-                <span className="aw-tier-val">{tierCounts.보류}</span>
-                <span className="aw-tier-key">보류</span>
-              </div>
-              <div className="aw-tier-tile aw-tier-제외">
-                <span className="aw-tier-val">{tierCounts.제외}</span>
-                <span className="aw-tier-key">제외</span>
-              </div>
-            </div>
-          </section>
-
-        </main>
-
-        {/* ═══ RIGHT: Candidate Queue ═══ */}
-        <aside className="aw-col aw-col-right">
-          <section className="aw-panel aw-candidate-panel">
-            <div className="aw-panel-label">
-              👥 후보 큐
-              <span className="aw-candidate-count">
-                Showing {Math.min(visibleStart + CANDIDATES_PER_PAGE, filteredCount)} / {filteredCount}
-                {activeTab !== '전체' && ` (전체 ${totalCandidates}명)`}
-              </span>
-            </div>
-
-            {/* Selected Candidate Detail */}
-            {selectedCandidate && (
-              <div className="aw-candidate-detail">
-                <div className="aw-cd-header">
-                  <span className={`aw-cd-tier aw-tier-${selectedCandidate.recommendationTier}`}>{selectedCandidate.recommendationTier}</span>
-                  <button className="aw-cd-close" onClick={() => setSelectedCandidate(null)}>✕</button>
-                </div>
-                <div className="aw-cd-title">{selectedCandidate.channelName || selectedCandidate.title}</div>
-                <div className="aw-cd-platform">{selectedCandidate.platform || '—'} · {selectedCandidate.category || '—'}</div>
-                <div className="aw-cd-reason">{selectedCandidate.jarvisReason || '분석 대기'}</div>
-                <div className="aw-cd-scores">
-                  <span>카테고리 {selectedCandidate.categoryFitScore ?? '—'}</span>
-                  <span>안전도 {selectedCandidate.brandSafetyScore ?? '—'}</span>
-                  <span>연락 {selectedCandidate.contactScore ?? '—'}</span>
-                  <span>미디어 {selectedCandidate.mediaScore ?? '—'}</span>
-                  <span>종합 {selectedCandidate.finalScore ?? '—'}점</span>
-                </div>
-                <div className="aw-cd-contact">
-                  연락 가능:&nbsp;
-                  {selectedCandidate.contactStatus === 'contactable' ? (
-                    <span className="aw-cd-contactable">공개 이메일 확인됨 (Google Sheets 참조)</span>
-                  ) : selectedCandidate.contactStatus === 'review' ? (
-                    <span className="aw-cd-review">문의 링크 있음</span>
-                  ) : (
-                    <span className="aw-cd-none">확인 필요</span>
-                  )}
-                </div>
-                {selectedCandidate.videoUrl && (
-                  <a href={selectedCandidate.videoUrl} target="_blank" rel="noopener noreferrer" className="aw-cd-link">채널/영상 보기 →</a>
-                )}
-              </div>
-            )}
-
-            {/* Candidate List */}
-            <div className="aw-candidate-list">
-              {filteredCount === 0 ? (
-                <div className="aw-candidate-empty">
-                  <p>AWAITING INTEL</p>
-                  <p className="aw-candidate-empty-sub">1번 화면에서 후보 수집 실행 시 이곳에 표시됩니다.</p>
-                </div>
-              ) : (
-                visibleCandidates.map((card, idx) => {
-                  const isSelected = selectedCandidate?.contextId === card.contextId;
-                  return (
-                    <div
-                      key={card.contextId}
-                      className={`aw-candidate-card ${isSelected ? 'is-selected' : ''} aw-tier-border-${card.recommendationTier || '보류'}`}
-                      onClick={() => setSelectedCandidate(isSelected ? null : card)}
-                    >
-                      <div className="aw-cc-avatar">
-                        {card.channelAvatarUrl ? (
-                          <img src={card.channelAvatarUrl} alt="" className="aw-cc-avatar-img" referrerPolicy="no-referrer"
-                            onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
-                        ) : null}
-                        <span className="aw-cc-avatar-fallback">{(card.channelName || card.title || '?')[0]}</span>
-                      </div>
-                      <div className="aw-cc-body">
-                        <div className="aw-cc-title">{card.channelName || card.title}</div>
-                        <div className="aw-cc-meta">
-                          <span className={`aw-cc-tier aw-tier-${card.recommendationTier}`}>{card.recommendationTier || '—'}</span>
-                          <span className="aw-cc-platform">{card.platform || '—'}</span>
-                          {card.finalScore !== undefined && <span className="aw-cc-score">{card.finalScore}점</span>}
-                          <span className={`aw-cc-contact ${card.contactStatus === 'contactable' ? 'is-contactable' : ''}`}>
-                            {card.contactStatus === 'contactable' ? '문의 가능' : card.contactStatus === 'review' ? '검토 필요' : '대기'}
-                          </span>
-                        </div>
-                      </div>
-                      <span className="aw-cc-idx">{visibleStart + idx + 1}</span>
-                    </div>
-                  );
-                })
-              )}
-            </div>
-
-            {/* Pagination */}
-            {totalPages > 1 && (
-              <div className="aw-pagination">
-                <button className="aw-page-btn" onClick={() => setCandidatePage(p => Math.max(0, p - 1))} disabled={candidatePage === 0}>‹</button>
-                <span className="aw-page-info">{candidatePage + 1} / {totalPages}</span>
-                <button className="aw-page-btn" onClick={() => setCandidatePage(p => Math.min(totalPages - 1, p + 1))} disabled={candidatePage >= totalPages - 1}>›</button>
-              </div>
-            )}
-          </section>
-        </aside>
-
-      </div>
-
-      {/* ═══ FOOTER ═══ */}
-      <footer className="aw-footer">
-        <span>TOTAL: {totalCandidates}명</span>
-        <span>FILTERED: {filteredCount}명</span>
+      {/* ═══ EXECUTION LOCK STRIP ═══ */}
+      <footer className="datawall-execution-strip datawall-enter datawall-delay-5">
+        <span className="exec-lock-badge">🔐 EXECUTE LOCKED</span>
+        <span className="exec-sep">·</span>
+        <span>ACTIVE READONLY</span>
+        <span className="exec-sep">·</span>
+        <span>APPROVAL REQUIRED</span>
+        <span className="exec-sep">·</span>
+        <span>TOTAL {totalCandidates}명</span>
+        <span className="exec-sep">·</span>
         <span>추천 {tierCounts.추천} / 검토 {tierCounts.검토} / 보류 {tierCounts.보류} / 제외 {tierCounts.제외}</span>
-        <span>공개 이메일 확인: {contactableCount}명 (원문은 Google Sheets)</span>
-        <span>EXECUTE LOCKED · active_readonly</span>
+        <span className="exec-sep">·</span>
+        <span>공개 이메일 {contactableCount}명 (원문 Google Sheets)</span>
+        {smartstoreSnapshot?.fetchedAt && (
+          <>
+            <span className="exec-sep">·</span>
+            <span>SS 출처: {smartstoreSnapshot.source || 'API'} · {new Date(smartstoreSnapshot.fetchedAt).toLocaleTimeString('ko-KR')}</span>
+          </>
+        )}
       </footer>
-    </div>
+    </main>
   );
 };
 
