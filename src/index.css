@@ -9352,8 +9352,8 @@ html, body {
 /* ── Compact Metric Tile Grid (UI-ORCH-A.11) ── */
 .metric-tile-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
-  grid-auto-rows: minmax(128px, 154px);
+  grid-template-columns: repeat(3, 1fr);
+  grid-auto-rows: minmax(118px, 144px);
   align-content: start;
   gap: 10px;
   flex: 1;
