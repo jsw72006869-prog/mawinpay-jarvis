@@ -2427,7 +2427,7 @@ const SHEET_HEADERS: Record<string, string[]> = {
   // OUTREACH-COPY-AGENT-MASTER-A.1: viral_content_swipe 탭 (Hot Content 카피 학습 재료)
   viral_content_swipe: ['id','platform','source_product','source_keyword','content_url','creator_name','hook_text','thumbnail_text','post_summary','engagement_visible','comment_signal','hot_reason','copy_pattern','emotion_trigger','buyer_desire','usable_for','hot_score','copy_pattern_score','risk_score','created_at','notes'],
   // COPY-BRAIN-A.1: Copy Brain 저장 구조
-  copy_generation_log: ['copy_id','product','platform','output_type','source_keyword','generated_text','product_truth','buyer_desire','copy_dna','hook_type','score_hook','score_sensory','score_buyer_desire','score_product_truth','score_platform_fit','score_mawi_voice','score_originality','score_action','score_risk','boring_score','final_score','recommended','risk_flags','rewrite_required','dna_source','used_viral_content_count','created_at','notes'],
+  copy_generation_log: ['copy_id','product','platform','output_type','source_keyword','generated_text','product_truth','buyer_desire','copy_dna','hook_type','score_hook','score_sensory','score_buyer_desire','score_product_truth','score_platform_fit','score_mawi_voice','score_originality','score_action','score_risk','boring_score','final_score','recommended','risk_flags','rewrite_required','dna_source','used_viral_content_count','used_content_ids','copy_dna_summary','created_at','notes'],
   copy_feedback_log: ['feedback_id','copy_id','feedback','reason','edited_text','product','platform','created_at','notes'],
   mawin_style_rules: ['rule_id','category','rule_text','priority','active','created_at','notes'],
 };
@@ -5948,7 +5948,29 @@ async function handleCopyBrainGenerate(params: any) {
   // 2. Buyer Desires
   const buyerDesires = resolveBuyerDesires(product, platform);
 
-  // 3. Viral Content (Hot Content) 조회 — data.values 패턴 사용
+  // 3. Viral Content (Hot Content) 조회 — readViralContentSwipeRows 패턴
+  // Product alias 매핑 (peach↔복숭아, corn↔옥수수 등)
+  const PRODUCT_ALIASES: Record<string, string[]> = {
+    '복숭아': ['복숭아','peach','황도','백도','천도'],
+    '옥수수': ['옥수수','corn','찰옥수수','단옥수수','초당옥수수'],
+    '절임배추': ['절임배추','kimchi_cabbage','배추','김장배추'],
+    '고구마': ['고구마','sweet_potato'],
+    '사과': ['사과','apple'],
+  };
+  function productMatchesAlias(sourceProduct: string, targetProduct: string): boolean {
+    const sp = (sourceProduct || '').toLowerCase().trim();
+    const tp = (targetProduct || '').toLowerCase().trim();
+    if (!sp || !tp) return false;
+    if (sp.includes(tp) || tp.includes(sp)) return true;
+    // alias 그룹 매칭
+    for (const aliases of Object.values(PRODUCT_ALIASES)) {
+      const spMatch = aliases.some(a => sp.includes(a.toLowerCase()));
+      const tpMatch = aliases.some(a => tp.includes(a.toLowerCase()));
+      if (spMatch && tpMatch) return true;
+    }
+    return false;
+  }
+
   let viralContents: any[] = [];
   let usedContentIds: string[] = [];
   try {
@@ -5961,13 +5983,14 @@ async function handleCopyBrainGenerate(params: any) {
         headers.forEach((h: string, i: number) => { obj[h] = row[i] || ''; });
         return obj;
       });
-      // 필터: viralContentIds 지정 시 해당 rows, 아니면 product/sourceKeyword/platform 기준
+      // 필터: TEST_DELETE_ME 제외
       let filtered = rows.filter((r: any) => r.notes !== 'TEST_DELETE_ME');
       if (viralContentIds && viralContentIds.length > 0) {
+        // viralContentIds 직접 지정 시 해당 rows
         filtered = filtered.filter((r: any) => viralContentIds.includes(r.id));
       } else {
-        // product/sourceKeyword/platform 기준 최근 rows
-        if (product) filtered = filtered.filter((r: any) => !r.source_product || r.source_product.toLowerCase().includes(product.toLowerCase()));
+        // product alias 매칭 + sourceKeyword 기준
+        if (product) filtered = filtered.filter((r: any) => !r.source_product || productMatchesAlias(r.source_product, product));
         if (sourceKeyword) filtered = filtered.filter((r: any) => !r.source_keyword || r.source_keyword.includes(sourceKeyword));
       }
       viralContents = filtered.slice(-5); // 최근 5개
@@ -6239,7 +6262,7 @@ ${outputInstructions}
       String(c.score.mawi_voice_score), String(c.score.originality_score), String(c.score.action_score),
       String(c.score.risk_score), String(c.score.boring_score), String(c.score.final_score),
       String(c.score.recommended), (c.score.risk_flags || []).join(','),
-      String(c.score.rewrite_required), dnaSource, String(usedViralContentCount), now, '',
+      String(c.score.rewrite_required), dnaSource, String(usedViralContentCount), usedContentIds.join(','), copyDnaSummary, now, '',
     ]);
 
     try {
@@ -6340,6 +6363,10 @@ async function handleCopyBrainList(params: any) {
         avg_final_score: rows.length > 0 ? Math.round(rows.reduce((a: number, r: any) => a + (parseInt(r.final_score) || 0), 0) / rows.length) : 0,
         top_hook_types: [...new Set(rows.map((r: any) => r.hook_type).filter(Boolean))],
         top_buyer_desires: [...new Set(rows.map((r: any) => r.buyer_desire).filter(Boolean))],
+        dna_sources: {
+          viral_content_swipe: rows.filter((r: any) => r.dna_source === 'viral_content_swipe').length,
+          rules_only: rows.filter((r: any) => r.dna_source === 'rules_only' || !r.dna_source).length,
+        },
       },
     };
   } catch (e: any) {

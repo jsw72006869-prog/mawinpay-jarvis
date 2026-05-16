@@ -5,7 +5,7 @@
 export * from './copyBrainTypes';
 export { getProductTruth, productTruthToPrompt } from './productTruthEngine';
 export { detectBuyerDesires, buyerDesiresToPrompt, DESIRE_DB } from './buyerDesireEngine';
-export { extractCopyDNA, extractMultipleCopyDNA, copyDNAToPrompt } from './copyDnaExtractor';
+export { extractCopyDnaFromSwipe, extractCopyDnaBatch, buildCopyDnaSummary, copyDNAToPrompt } from './copyDnaExtractor';
 export { MAWI_VOICE_RULES, mawiVoiceToPrompt, detectBannedPhrases, scoreMawiVoice } from './mawiVoiceEngine';
 export { getPlatformFormula, platformFormulaToPrompt, scorePlatformFit, inferPlatformFromOutputType } from './platformFormulaEngine';
 export { detectBoringCopy, antiBoringWarning } from './antiBoringFilter';
