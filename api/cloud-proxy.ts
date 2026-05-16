@@ -2418,6 +2418,11 @@ const SHEET_HEADERS: Record<string, string[]> = {
   influencer_candidates: ['influencer_id','platform','channel_name','handle','profile_url','contact_email','contact_url','email_status','category_tags','source_keyword','source_product','followers_or_subscribers','avg_views','fit_score','fit_reason','outreach_status','last_contacted_at','reply_status','next_action','duplicate_hash','created_at','updated_at','notes'],
   influencer_candidates_v2: ['influencer_id','platform','channel_name','handle','profile_url','contact_email','contact_url','email_status','category_tags','source_keyword','source_product','followers_or_subscribers','avg_views','fit_score','fit_reason','outreach_status','last_contacted_at','reply_status','next_action','duplicate_hash','created_at','updated_at','notes','proposal_angle','proposal_subject','proposal_draft'],
   market_price_checks: ['checkId','createdAt','productName','rawMaterialCost','currentPrice','shippingCost','packagingCost','platformFeeRate','otherCosts','competitorPrices','competitorMinPrice','competitorAvgPrice','netSalesAmount','estimatedMargin','estimatedMarginRate','jarvisDecision','recommendedAction','sourceCommand'],
+  // DAILY-BRIEF-A.1: Daily Brief 4탭
+  daily_operations_brief: ['brief_id','date_kst','period_start_kst','period_end_kst','smartstore_new_orders','smartstore_ready_orders','smartstore_delivering','smartstore_delivered','smartstore_purchase_decided','smartstore_confirm_needed','outreach_discovered','outreach_public_email_found','outreach_contact_url_found','outreach_draft_ready','outreach_approval_waiting','outreach_email_sent','outreach_positive_replies','outreach_accepted','outreach_followup_needed','outreach_followup_drafted','outreach_followup_sent','hot_youtube_count','hot_threads_count','hot_instagram_count','hot_tiktok_count','hot_naver_blog_count','telegram_sent','telegram_sent_at','telegram_error_code','created_at','notes'],
+  outreach_agent_runs: ['run_id','date_kst','mission','product','source_keyword','target_count','status','started_at','completed_at','current_node','discovered_count','contact_found_count','draft_ready_count','approval_waiting_count','sent_count','reply_count','positive_reply_count','accepted_count','followup_needed_count','followup_sent_count','failed_count','notes'],
+  outreach_candidate_events: ['event_id','candidate_id','platform','profile_url','event_type','event_time','source','message_id','status_before','status_after','notes'],
+  telegram_notification_logs: ['notification_id','brief_id','channel','sent','sent_at','error_code','error_message','created_at','notes'],
 };
 
 async function ensureTab(tab: string): Promise<void> {
@@ -3018,10 +3023,10 @@ async function handleOutreachCollect(params: any) {
             subscriberOrVisitor: subs > 0 ? (subs >= 10000 ? `${(subs/10000).toFixed(1)}만` : `${subs.toLocaleString()}`) : '-',
             viewCount: views > 0 ? (views >= 100000000 ? `${(views/100000000).toFixed(1)}억` : views >= 10000 ? `${(views/10000).toFixed(0)}만` : views.toLocaleString()) : '-',
             publicContactStatus: channelData.publicContactStatus,
-            // OUTREACH-COPY.1: 마스킹 이메일은 publicEmailMasked에만 보관, contact_email에는 저장하지 않음
+            // OUTREACH-EMAIL-CAPTURE-FIX.1: 마스킹 이메일은 publicEmailMasked에만 보관, contact_email에는 저장하지 않음
             publicEmailMasked: contact.email ? maskEmail(contact.email) : '',
-            // 공개 이메일(***미포함)만 contact_email로 저장
-            contact_email: (contact.email && !contact.email.includes('***')) ? contact.email : '',
+            // OUTREACH-EMAIL-CAPTURE-FIX.1: 공개 이메일(***미포함, @포함)만 contact_email로 저장
+            contact_email: (contact.email && !contact.email.includes('***') && contact.email.includes('@')) ? contact.email : '',
             emailSource: hasEmail ? 'channel_description' : '',
             productFitScore: fit.score,
             productFitReason: fit.reason,
@@ -3224,13 +3229,48 @@ async function handleOutreachSaveCandidates(params: any) {
       // OUTREACH-COPY.1: 이메일 저장 정책 — 공개 이메일만 저장, 마스킹 이메일은 저장하지 않음
       const rawContactEmail = c.contact_email || '';
       const hasMasked = (c.publicEmailMasked || '').includes('***');
-      // 마스킹된 이메일(***포함)은 contact_email에 저장하지 않음 (email_status로만 표시)
-      const contactEmail = rawContactEmail && !rawContactEmail.includes('***') ? rawContactEmail : '';
       const contactUrl = c.contact_url || '';
-      // email_status 검증 (허용값만)
-      const allowedEmailStatus = ['public_email', 'contact_form', 'not_found', 'unknown'];
-      const rawEmailStatus = c.email_status || c.publicContactStatus || 'unknown';
-      const emailStatus = allowedEmailStatus.includes(rawEmailStatus) ? rawEmailStatus : 'unknown';
+      // OUTREACH-EMAIL-CAPTURE-FIX.1: 4-case 이메일 저장 정책 통일
+      // case 1: 공개 이메일 원문 확인됨 (***미포함, @포함)
+      // case 2: 마스킹/블러/일부 가림 이메일만 확인됨
+      // case 3: 문의 링크만 있음
+      // case 4: 연락 경로 없음
+      let contactEmail = '';
+      let emailStatus = 'no_contact';
+      let contactRoute = 'none';
+      let contactPriority = 'none';
+      const isValidPublicEmail = rawContactEmail && !rawContactEmail.includes('***') && rawContactEmail.includes('@');
+      if (isValidPublicEmail) {
+        // case 1: 공개 이메일 원문 확인됨
+        contactEmail = rawContactEmail;
+        emailStatus = 'public_email';
+        contactRoute = 'email';
+        contactPriority = 'public_email';
+      } else if (hasMasked || (rawContactEmail && rawContactEmail.includes('***'))) {
+        // case 2: 마스킹/블러/일부 가림 이메일만 확인됨
+        contactEmail = ''; // 마스킹 이메일은 저장하지 않음
+        emailStatus = 'masked_or_unverified';
+        contactRoute = 'needs_verification';
+        contactPriority = contactUrl ? 'contact_form' : 'none';
+      } else if (contactUrl) {
+        // case 3: 문의 링크만 있음
+        contactEmail = '';
+        emailStatus = 'no_public_email';
+        contactRoute = 'contact_form';
+        contactPriority = 'contact_form';
+      } else {
+        // case 4: 연락 경로 없음
+        contactEmail = '';
+        emailStatus = 'no_contact';
+        contactRoute = 'none';
+        contactPriority = 'none';
+      }
+      // 기존 rawEmailStatus가 명시적으로 설정된 경우 우선 (허용값 체크)
+      const allowedEmailStatus = ['public_email', 'masked_or_unverified', 'no_public_email', 'no_contact', 'contact_form', 'not_found', 'unknown'];
+      const rawEmailStatus = c.email_status || c.publicContactStatus || '';
+      if (rawEmailStatus && allowedEmailStatus.includes(rawEmailStatus)) {
+        emailStatus = rawEmailStatus;
+      }
       // outreach_status 검증
       const allowedOutreachStatus = ['not_sent', 'drafted', 'sent', 'replied', 'follow_up_needed', 'closed'];
       const rawOutreachStatus = c.outreach_status || c.outreachStatus || 'not_sent';
@@ -3260,10 +3300,12 @@ async function handleOutreachSaveCandidates(params: any) {
         outreachStatus,
         c.last_contacted_at || c.lastContactedAt || '',
         replyStatus,
-        // OUTREACH-COPY.1: next_action 실행 상태 문구 자동 생성
+        // OUTREACH-EMAIL-CAPTURE-FIX.1: next_action 4-case 분기
         c.next_action || (() => {
           if (emailStatus === 'public_email') return '이메일 초안 작성 후 발송 승인 요청';
-          if (emailStatus === 'contact_form') return '협업 문의 폼 URL 확인 후 초안 작성';
+          if (emailStatus === 'masked_or_unverified') return '공개 이메일 재확인 또는 문의 링크 확인 필요';
+          if (emailStatus === 'no_public_email' || emailStatus === 'contact_form') return '문의폼/DM 제안 문구 작성 대기';
+          if (emailStatus === 'no_contact') return '연락 가능 채널 추가 확인 필요';
           if (emailStatus === 'not_found') return '연락처 수동 확인 필요';
           return '연락처 확인 후 제안 방식 결정';
         })(),
@@ -4254,6 +4296,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         const result = await handleSmartstoreProcessOrder(params || rest);
         return res.status(200).json(result);
       }
+      // DAILY-BRIEF-A.1: 최근 24시간 운영 브리핑
+      if (resolvedTask === 'daily-brief-24h') {
+        const result = await handleDailyBrief24h(params || rest);
+        return res.status(200).json(result);
+      }
 
       return res.status(400).json({ error: `Unknown task: ${resolvedTask}` });
     }
@@ -4484,6 +4531,229 @@ async function createSettlementBuffer(qtyMap: Record<string, number>, supplyMap:
 
   const buffer = await wb.xlsx.writeBuffer();
   return { buffer, totalSupply, totalDelivery, totalSettlement, totalRevenue, totalProfit, unknownOptions };
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// DAILY-BRIEF-A.1: 최근 24시간 운영 브리핑 생성 + 저장 + Telegram 전송
+// ═══════════════════════════════════════════════════════════════════════════
+const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN || '';
+const TELEGRAM_DAILY_BRIEF_CHAT_ID = process.env.TELEGRAM_DAILY_BRIEF_CHAT_ID || process.env.TELEGRAM_ALLOWED_CHAT_ID || '';
+
+async function sendTelegramMessage(text: string): Promise<{sent: boolean; error?: string}> {
+  if (!TELEGRAM_BOT_TOKEN || !TELEGRAM_DAILY_BRIEF_CHAT_ID) {
+    return { sent: false, error: 'skipped_env_missing' };
+  }
+  try {
+    const url = `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`;
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        chat_id: TELEGRAM_DAILY_BRIEF_CHAT_ID,
+        text,
+        parse_mode: 'HTML',
+      }),
+    });
+    const data = await res.json();
+    if (data.ok) return { sent: true };
+    return { sent: false, error: data.description || 'telegram_api_error' };
+  } catch (e: any) {
+    return { sent: false, error: e.message };
+  }
+}
+
+async function handleDailyBrief24h(params: any) {
+  const { dryRun = false, sendTelegram = true } = params || {};
+  const now = new Date();
+  const kstNow = new Date(now.getTime() + 9 * 60 * 60 * 1000);
+  const kst24hAgo = new Date(kstNow.getTime() - 24 * 60 * 60 * 1000);
+  const dateKst = kstNow.toISOString().slice(0, 10);
+  const periodStartKst = kst24hAgo.toISOString();
+  const periodEndKst = kstNow.toISOString();
+  const briefId = generateRecordId('brief');
+
+  // -- 1. 스마트스토어 데이터 수집 --
+  let ssData: any = { newOrders: 0, pendingShipping: 0, shipping: 0, delivered: 0, purchaseConfirmed: 0, confirmNeeded: 0 };
+  try {
+    const rawCounts = await getSmartstoreStatusCounts(30);
+    if (rawCounts) {
+      ssData = {
+        newOrders: rawCounts.newOrders?.length || 0,
+        pendingShipping: rawCounts.pendingShipping?.length || 0,
+        shipping: rawCounts.shipping ?? 0,
+        delivered: rawCounts.delivered ?? 0,
+        purchaseConfirmed: rawCounts.purchaseConfirmed ?? 0,
+        confirmNeeded: rawCounts.payed?.length || 0,
+      };
+    }
+  } catch (e) {}
+
+  // -- 2. 아웃리치 데이터 수집 --
+  let outreachData: any = {
+    discovered: 0, publicEmailFound: 0, contactUrlFound: 0,
+    draftReady: 0, approvalWaiting: 0, emailSent: 0,
+    positiveReplies: 0, accepted: 0,
+    followupNeeded: 0, followupDrafted: 0, followupSent: 0,
+  };
+  try {
+    const outreachRes = await handleOutreachList({ limit: 500 });
+    if (outreachRes.success && outreachRes.candidates) {
+      const list = outreachRes.candidates;
+      outreachData = {
+        discovered: list.length,
+        publicEmailFound: list.filter((c: any) => c.email_status === 'public_email').length,
+        contactUrlFound: list.filter((c: any) => c.email_status === 'contact_form' || c.email_status === 'no_public_email').length,
+        draftReady: list.filter((c: any) => c.outreach_status === 'drafted').length,
+        approvalWaiting: list.filter((c: any) => c.outreach_status === 'drafted' && c.reply_status === 'none').length,
+        emailSent: list.filter((c: any) => c.outreach_status === 'sent').length,
+        positiveReplies: list.filter((c: any) => c.reply_status === 'positive').length,
+        accepted: list.filter((c: any) => c.outreach_status === 'closed' && c.reply_status === 'positive').length,
+        followupNeeded: list.filter((c: any) => c.outreach_status === 'follow_up_needed').length,
+        followupDrafted: 0,
+        followupSent: 0,
+      };
+    }
+  } catch (e) {}
+
+  // -- 3. Hot Content (미연동 -> 0 + notes) --
+  const hotContent = { youtube: 0, threads: 0, instagram: 0, tiktok: 0, naverBlog: 0 };
+  const hotContentNotes = 'hot_content_not_connected';
+
+  // -- 4. 브리핑 레코드 구성 --
+  const briefRow = [
+    briefId, dateKst, periodStartKst, periodEndKst,
+    String(ssData.newOrders), String(ssData.pendingShipping),
+    String(ssData.shipping), String(ssData.delivered),
+    String(ssData.purchaseConfirmed), String(ssData.confirmNeeded),
+    String(outreachData.discovered), String(outreachData.publicEmailFound),
+    String(outreachData.contactUrlFound), String(outreachData.draftReady),
+    String(outreachData.approvalWaiting), String(outreachData.emailSent),
+    String(outreachData.positiveReplies), String(outreachData.accepted),
+    String(outreachData.followupNeeded), String(outreachData.followupDrafted),
+    String(outreachData.followupSent),
+    String(hotContent.youtube), String(hotContent.threads),
+    String(hotContent.instagram), String(hotContent.tiktok),
+    String(hotContent.naverBlog),
+    '', '', '',
+    now.toISOString(),
+    hotContentNotes,
+  ];
+
+  if (dryRun) {
+    return {
+      success: true, dryRun: true, briefId, dateKst,
+      periodStartKst, periodEndKst,
+      smartstore: ssData, outreach: outreachData, hotContent,
+      hotContentNotes, telegramConfigured: !!(TELEGRAM_BOT_TOKEN && TELEGRAM_DAILY_BRIEF_CHAT_ID),
+    };
+  }
+
+  // -- 5. Google Sheets 저장 --
+  try {
+    await ensureHeaders('daily_operations_brief');
+    await sheetsAppend('daily_operations_brief', [briefRow]);
+  } catch (e: any) {
+    return { success: false, error: `daily_operations_brief 저장 실패: ${e.message}` };
+  }
+
+  // -- 6. Telegram 전송 --
+  let telegramResult: any = { sent: false, error: 'telegram_disabled' };
+  if (sendTelegram) {
+    const tgLines = [
+      '<b>JARVIS Daily Operations Brief</b>',
+      `<b>날짜:</b> ${dateKst}`,
+      '',
+      '<b>[스마트스토어]</b>',
+      `- 신규주문: ${ssData.newOrders}건`,
+      `- 배송준비: ${ssData.pendingShipping}건`,
+      `- 배송중: ${ssData.shipping}건`,
+      `- 배송완료: ${ssData.delivered}건`,
+      `- 구매확정: ${ssData.purchaseConfirmed}건`,
+      '',
+      '<b>[아웃리치]</b>',
+      `- 후보: ${outreachData.discovered}명`,
+      `- 공개이메일: ${outreachData.publicEmailFound}명`,
+      `- 발송완료: ${outreachData.emailSent}건`,
+      `- 긍정답변: ${outreachData.positiveReplies}건`,
+      '',
+      '<i>상세 내역은 Google Sheets 또는 자비스 화면에서 확인하세요.</i>',
+    ];
+    telegramResult = await sendTelegramMessage(tgLines.join('\n'));
+    // Telegram 로그 저장
+    try {
+      await ensureHeaders('telegram_notification_logs');
+      await sheetsAppend('telegram_notification_logs', [[
+        generateRecordId('tg'),
+        briefId,
+        'daily_brief',
+        telegramResult.sent ? 'true' : 'false',
+        telegramResult.sent ? now.toISOString() : '',
+        telegramResult.error || '',
+        telegramResult.error || '',
+        now.toISOString(),
+        '',
+      ]]);
+    } catch (e) {}
+    // daily_operations_brief의 telegram 컬럼 업데이트
+    try {
+      const token = await getGoogleSheetsToken();
+      const existing = await sheetsRead('daily_operations_brief');
+      const rows = existing.values || [];
+      const headers = rows[0] || [];
+      const tgSentIdx = headers.indexOf('telegram_sent');
+      const tgSentAtIdx = headers.indexOf('telegram_sent_at');
+      const tgErrIdx = headers.indexOf('telegram_error_code');
+      const lastRowNum = rows.length;
+      if (tgSentIdx >= 0) {
+        const colLetter = String.fromCharCode(65 + tgSentIdx);
+        const range = encodeURIComponent(`daily_operations_brief!${colLetter}${lastRowNum}`);
+        const url = `https://sheets.googleapis.com/v4/spreadsheets/${WORKSPACE_SHEET_ID}/values/${range}?valueInputOption=RAW`;
+        await fetch(url, {
+          method: 'PUT',
+          headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ values: [[telegramResult.sent ? 'true' : 'false']] }),
+        });
+      }
+      if (tgSentAtIdx >= 0 && telegramResult.sent) {
+        const colLetter = String.fromCharCode(65 + tgSentAtIdx);
+        const range = encodeURIComponent(`daily_operations_brief!${colLetter}${lastRowNum}`);
+        const url = `https://sheets.googleapis.com/v4/spreadsheets/${WORKSPACE_SHEET_ID}/values/${range}?valueInputOption=RAW`;
+        await fetch(url, {
+          method: 'PUT',
+          headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ values: [[now.toISOString()]] }),
+        });
+      }
+      if (tgErrIdx >= 0 && telegramResult.error) {
+        const colLetter = String.fromCharCode(65 + tgErrIdx);
+        const range = encodeURIComponent(`daily_operations_brief!${colLetter}${lastRowNum}`);
+        const url = `https://sheets.googleapis.com/v4/spreadsheets/${WORKSPACE_SHEET_ID}/values/${range}?valueInputOption=RAW`;
+        await fetch(url, {
+          method: 'PUT',
+          headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ values: [[telegramResult.error]] }),
+        });
+      }
+    } catch (e) {}
+  }
+
+  return {
+    success: true,
+    briefId,
+    dateKst,
+    periodStartKst,
+    periodEndKst,
+    smartstore: ssData,
+    outreach: outreachData,
+    hotContent,
+    hotContentNotes,
+    telegram: {
+      configured: !!(TELEGRAM_BOT_TOKEN && TELEGRAM_DAILY_BRIEF_CHAT_ID),
+      sent: telegramResult.sent,
+      error: telegramResult.error || null,
+    },
+    savedToSheets: true,
+  };
 }
 
 async function handleSmartstoreProcessOrder(params: any) {

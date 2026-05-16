@@ -47,7 +47,7 @@ export type JarvisActionType =
   | 'smartstore_confirm' | 'smartstore_sheet' | 'smartstore_settlement'
   | 'smartstore_purchase_email' | 'smartstore_report'
   | 'manus_task' | 'manus_status' | 'morning_briefing' | 'analyze_influencers_smart'
-  | 'kamis_price' | 'unknown';
+  | 'kamis_price' | 'daily_brief_24h' | 'unknown';
 
 export type JarvisAction = {
   type: JarvisActionType;
@@ -229,6 +229,20 @@ const OPENAI_TOOLS: any[] = [
         type: 'object',
         properties: {
           response: { type: 'string', description: '종합 보고 내용' },
+        },
+        required: ['response'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'daily_brief_24h',
+      description: '최근 24시간 운영 브리핑. "아우트리치 현황", "24시간 보고", "운영 브리핑" 등.',
+      parameters: {
+        type: 'object',
+        properties: {
+          response: { type: 'string', description: 'JARVIS 응답 (한국어)' },
         },
         required: ['response'],
       },
@@ -859,6 +873,14 @@ function buildActionFromFunction(fnName: string, args: any, userMessage?: string
         followUp,
       };
 
+    case 'daily_brief_24h':
+      return {
+        type: 'daily_brief_24h' as JarvisActionType,
+        response: String(args.response || '최근 24시간 운영 브리핑을 준비하겠습니다, 선생님.'),
+        workingMessage: '최근 24시간 운영 브리핑 생성 중...',
+        followUp,
+      };
+
     case 'analyze_influencers_smart':
       return {
         type: 'analyze_influencers_smart',
@@ -1130,6 +1152,14 @@ export function parseCommand(text: string): JarvisAction {
     };
   }
 
+  // [B-0] DAILY-BRIEF-A.1: 24시간 보고 / 아우트리치 현황
+  if (/24시간.?보고|아우트리치.?현황/.test(lower)) {
+    return {
+      type: 'daily_brief_24h' as JarvisActionType,
+      workingMessage: '최근 24시간 운영 브리핑 생성 중...',
+      response: '선생님, 최근 24시간 운영 브리핑을 준비하겠습니다.',
+    };
+  }
   // [B] 모닝 브리핑
   if (/브리핑|모닝.?보고/.test(lower)) {
     return {
