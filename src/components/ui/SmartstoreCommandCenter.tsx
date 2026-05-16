@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import DailyBriefPanel from './DailyBriefPanel';
 import OrderFlowRadar from './OrderFlowRadar';
@@ -7,19 +7,24 @@ import MissionStatusStrip from './MissionStatusStrip';
 import ActionCard, { type ActionContext, type WorkflowStep, type ApprovalPreviewData } from '../ActionCard';
 import type { Message, STTStatus } from '../ConversationPanel';
 
-/* ── UI-ORCH-A.9: Smartstore Order Focus Layout ──
+/* ── UI-ORCH-A.11 + MOTION-ORCH-A.1 ──
    
    구조:
    scc-stage (fixed inset:0, grid place-items:center, z:40)
      └─ scc-dim (backdrop, z:39)
-     └─ scc-workspace (motion panel, opacity/scale only, z:auto)
-           ├─ workspace-header (Mission Status Strip + title)
+     └─ scc-workspace order-focus-layout (motion panel, opacity/scale only, z:auto)
+           ├─ workspace-header (Mission Status Strip)
            ├─ compact-brief-strip (Horizontal Daily Brief)
-           ├─ order-focus-layout (Grid: main | sidecar)
-           │     ├─ .order-focus-main (주문현황 결과 카드 — 최대화)
-           │     └─ .order-focus-side (Next Actions + Approval Queue)
-           ├─ order-flow-strip (Horizontal Order Flow)
-           └─ .mission-log (Dialogue Log — 하단 full-width)
+           ├─ order-focus-main (주문현황 compact metric tiles — 최대화)
+           ├─ order-focus-side (Next Actions + Approval Queue)
+           ├─ order-focus-flow (Horizontal Order Flow)
+           └─ order-focus-log (Dialogue Log — 하단 full-width)
+
+   Motion 원칙:
+   - 최초 등장 시 7단계 staged entrance (0.7~0.95s 내 완성)
+   - 데이터 갱신 시 전체 재등장 금지 (hasEnteredRef로 제어)
+   - 숫자 갱신 시 micro highlight만 허용
+   - exit: 150~220ms fade out
 */
 
 interface OrderData {
@@ -44,8 +49,80 @@ interface Props {
   onApprovalDismiss?: () => void;
 }
 
-// ── 주문현황 결과 카드 (order-focus-main 슬롯) ──
-function OrderResultCard({ messages }: { messages: Message[] }) {
+// ── Premium cubic-bezier easings ──
+const EASE_OUT_EXPO = [0.16, 1, 0.3, 1] as const;
+const EASE_OUT_QUART = [0.25, 1, 0.5, 1] as const;
+
+// ── Staged entrance variants ──
+const workspaceVariants = {
+  hidden: { opacity: 0, scale: 0.985, y: 8 },
+  visible: {
+    opacity: 1, scale: 1, y: 0,
+    transition: { duration: 0.32, ease: EASE_OUT_EXPO },
+  },
+  exit: {
+    opacity: 0, scale: 0.99,
+    transition: { duration: 0.18, ease: [0.4, 0, 1, 1] },
+  },
+};
+
+const dimVariants = {
+  hidden: { opacity: 0 },
+  visible: { opacity: 1, transition: { duration: 0.18 } },
+  exit: { opacity: 0, transition: { duration: 0.18 } },
+};
+
+// Stage 3: 중앙 주문현황 main board
+const mainVariants = {
+  hidden: { opacity: 0, y: 12 },
+  visible: {
+    opacity: 1, y: 0,
+    transition: { delay: 0.18, duration: 0.38, ease: EASE_OUT_EXPO },
+  },
+};
+
+// Stage 4: metric card stagger container
+const metricGridVariants = {
+  hidden: {},
+  visible: {
+    transition: { staggerChildren: 0.05, delayChildren: 0.28 },
+  },
+};
+
+const metricCardVariants = {
+  hidden: { opacity: 0, y: 10 },
+  visible: {
+    opacity: 1, y: 0,
+    transition: { duration: 0.22, ease: EASE_OUT_QUART },
+  },
+};
+
+// Stage 5: 우측 side panel (오른쪽에서 미세하게 들어옴)
+const sideVariants = {
+  hidden: { opacity: 0, x: 14 },
+  visible: {
+    opacity: 1, x: 0,
+    transition: { delay: 0.32, duration: 0.32, ease: EASE_OUT_EXPO },
+  },
+};
+
+// Stage 6: 하단 flow + log (은은하게 마지막 등장)
+const bottomVariants = {
+  hidden: { opacity: 0, y: 8 },
+  visible: {
+    opacity: 1, y: 0,
+    transition: { delay: 0.44, duration: 0.3, ease: EASE_OUT_QUART },
+  },
+};
+
+// ── 주문현황 결과 카드 (compact metric tile) ──
+function OrderResultCard({
+  messages,
+  isFirstRender,
+}: {
+  messages: Message[];
+  isFirstRender: boolean;
+}) {
   const pkgMsg = [...messages].reverse().find(
     m => m.role === 'jarvis' && m.text.includes('[PKG]')
   );
@@ -72,19 +149,20 @@ function OrderResultCard({ messages }: { messages: Message[] }) {
 
   const lines = pkgMsg.text.replace('[PKG]', '').trim().split('\n').filter(l => l.trim());
   let title = lines[0]?.replace(/\*\*/g, '') || '주문 현황';
-  if (title.includes('실시간 주문/발주 현황')) {
+  if (title.includes('주문') || title.includes('발주') || title.includes('현황')) {
     title = '실시간 주문/발주 현황';
   }
   const dataLines = lines.slice(1).filter(l => l.includes(':') || l.includes('건') || l.includes('원'));
   const fetchTime = lines.find(l => l.includes('기준') || l.includes('조회')) || '';
 
   return (
-    <div style={{ height: '100%', display: 'flex', flexDirection: 'column', gap: 14 }}>
+    <div style={{ height: '100%', display: 'flex', flexDirection: 'column', gap: 12 }}>
       {/* 카드 헤더 */}
       <div style={{
         fontFamily: 'Orbitron, monospace', fontSize: '0.62rem', color: '#00F5FF',
         letterSpacing: '0.2em', display: 'flex', alignItems: 'center', gap: 8,
-        paddingBottom: 12, borderBottom: '1px solid rgba(0,245,255,0.12)',
+        paddingBottom: 10, borderBottom: '1px solid rgba(0,245,255,0.12)',
+        flexShrink: 0,
       }}>
         <span style={{ fontSize: '1.1rem', filter: 'drop-shadow(0 0 6px rgba(0,245,255,0.6))' }}>◈</span>
         {title}
@@ -94,15 +172,13 @@ function OrderResultCard({ messages }: { messages: Message[] }) {
         </span>
       </div>
 
-      {/* 주문 수치 그리드 */}
-      <div style={{
-        display: 'grid',
-        gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))',
-        gap: 14, flex: 1,
-        minHeight: 0,
-        overflowY: 'auto',
-        paddingRight: 4,
-      }}>
+      {/* ── Compact Metric Tile Grid ── */}
+      <motion.div
+        className="metric-tile-grid"
+        variants={isFirstRender ? metricGridVariants : undefined}
+        initial={isFirstRender ? 'hidden' : false}
+        animate={isFirstRender ? 'visible' : undefined}
+      >
         {dataLines.map((line, i) => {
           const parts = line.replace(/[-•]/g, '').trim().split(/[:：]/);
           const label = parts[0]?.replace(/\*\*/g, '').trim() || '';
@@ -115,46 +191,42 @@ function OrderResultCard({ messages }: { messages: Message[] }) {
 
           return (
             <motion.div
-              key={i}
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.1 + i * 0.07, duration: 0.35, ease: [0.22, 1, 0.36, 1] }}
+              key={`tile-${label}`}
+              className="metric-tile"
+              variants={isFirstRender ? metricCardVariants : undefined}
+              initial={isFirstRender ? 'hidden' : false}
+              animate={isFirstRender ? 'visible' : undefined}
               style={{
                 background: isNew
-                  ? 'linear-gradient(135deg, rgba(0,245,255,0.08), rgba(0,245,255,0.02))'
+                  ? 'linear-gradient(135deg, rgba(0,245,255,0.09), rgba(0,245,255,0.03))'
                   : isPending
-                  ? 'linear-gradient(135deg, rgba(167,139,250,0.08), rgba(167,139,250,0.02))'
+                  ? 'linear-gradient(135deg, rgba(167,139,250,0.09), rgba(167,139,250,0.03))'
                   : 'rgba(0,245,255,0.03)',
-                border: `1px solid ${isNew ? 'rgba(0,245,255,0.22)' : isPending ? 'rgba(167,139,250,0.22)' : 'rgba(0,245,255,0.09)'}`,
-                borderRadius: 14, padding: '16px 14px', textAlign: 'center',
-                boxShadow: isNew || isPending ? `0 0 20px ${accentColor}14` : 'none',
+                border: `1px solid ${isNew ? 'rgba(0,245,255,0.24)' : isPending ? 'rgba(167,139,250,0.24)' : 'rgba(0,245,255,0.09)'}`,
+                borderRadius: 12,
+                boxShadow: isNew || isPending ? `0 0 18px ${accentColor}12` : 'none',
               }}
             >
-              <div style={{
-                fontSize: '0.6rem', color: 'rgba(140,170,200,0.65)',
-                marginBottom: 10, letterSpacing: '0.08em', fontFamily: 'monospace',
-              }}>
-                {label}
-              </div>
-              <div style={{
-                fontSize: isHighlight ? '1.6rem' : '1.1rem',
-                fontWeight: 700,
-                color: isZero ? 'rgba(100,130,160,0.45)' : accentColor,
-                fontFamily: isHighlight ? 'Orbitron, monospace' : 'Inter, sans-serif',
-                textShadow: isHighlight && !isZero ? `0 0 16px ${accentColor}60` : 'none',
-                lineHeight: 1.1,
-              }}>
+              <div className="metric-tile-label">{label}</div>
+              <div
+                className="metric-tile-value"
+                style={{
+                  color: isZero ? 'rgba(100,130,160,0.45)' : accentColor,
+                  textShadow: isHighlight && !isZero ? `0 0 14px ${accentColor}55` : 'none',
+                }}
+              >
                 {value}
               </div>
             </motion.div>
           );
         })}
-      </div>
+      </motion.div>
 
       {fetchTime && (
         <div style={{
-          fontSize: '0.5rem', color: 'rgba(148,163,184,0.35)',
+          fontSize: '0.5rem', color: 'rgba(148,163,184,0.3)',
           textAlign: 'right', fontFamily: 'monospace', letterSpacing: '0.05em',
+          flexShrink: 0, marginTop: 'auto',
         }}>
           {fetchTime}
         </div>
@@ -187,11 +259,8 @@ function DialogueLog({ messages, isTyping }: { messages: Message[]; isTyping?: b
           : msg.text.replace('[LIST]', '').replace('[PKG]', '').trim().slice(0, 90) + (msg.text.length > 90 ? '…' : '');
 
         return (
-          <motion.div
+          <div
             key={msg.id}
-            initial={{ opacity: 0, y: 5 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: i * 0.04, duration: 0.25 }}
             style={{ display: 'flex', gap: 8, alignItems: 'flex-start' }}
           >
             <span style={{
@@ -208,7 +277,7 @@ function DialogueLog({ messages, isTyping }: { messages: Message[]; isTyping?: b
             }}>
               {displayText}
             </span>
-          </motion.div>
+          </div>
         );
       })}
       {isTyping && (
@@ -243,37 +312,51 @@ export default function SmartstoreCommandCenter({
   onActionDismiss,
   onApprovalDismiss,
 }: Props) {
+  // ── 최초 등장 1회만 staged entrance 실행 ──
+  const hasEnteredRef = useRef(false);
+  const isFirstRender = !hasEnteredRef.current;
+
+  useEffect(() => {
+    if (visible && !hasEnteredRef.current) {
+      hasEnteredRef.current = true;
+    }
+    if (!visible) {
+      // workspace가 닫히면 다음 열림 시 다시 entrance 실행
+      hasEnteredRef.current = false;
+    }
+  }, [visible]);
+
   if (!visible) return null;
 
   const hasActionContext = !!actionContext && actionContext.type === 'smartstore';
 
   return (
     <>
-      {/* ── scc-dim: 배경 어둡게 (z:39) ── */}
+      {/* ── Stage 1: scc-dim (배경 opacity 위주, 120~180ms) ── */}
       <motion.div
         className="scc-dim"
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        exit={{ opacity: 0 }}
-        transition={{ duration: 0.35 }}
+        variants={dimVariants}
+        initial="hidden"
+        animate="visible"
+        exit="exit"
       />
 
-      {/* ── scc-stage: 위치 담당 (fixed inset:0, grid center, z:40) ── */}
+      {/* ── scc-stage: 위치 담당 ── */}
       <div className="scc-stage">
-        {/* ── scc-workspace: 애니메이션 담당 (opacity/scale only) ── */}
+        {/* ── Stage 2: workspace shell (scale 0.985→1, y 8→0, 220~320ms) ── */}
         <motion.div
           className="scc-workspace order-focus-layout"
-          initial={{ opacity: 0, scale: 0.96 }}
-          animate={{ opacity: 1, scale: 1 }}
-          exit={{ opacity: 0, scale: 0.97 }}
-          transition={{ duration: 0.4, ease: [0.22, 1, 0.36, 1] }}
+          variants={workspaceVariants}
+          initial="hidden"
+          animate="visible"
+          exit="exit"
         >
           {/* 배경 그리드 오버레이 */}
           <div style={{
             position: 'absolute', inset: 0,
             backgroundImage: `
-              linear-gradient(rgba(34,211,238,0.025) 1px, transparent 1px),
-              linear-gradient(90deg, rgba(34,211,238,0.025) 1px, transparent 1px)
+              linear-gradient(rgba(34,211,238,0.022) 1px, transparent 1px),
+              linear-gradient(90deg, rgba(34,211,238,0.022) 1px, transparent 1px)
             `,
             backgroundSize: '40px 40px',
             pointerEvents: 'none', zIndex: 0, borderRadius: 24,
@@ -319,23 +402,23 @@ export default function SmartstoreCommandCenter({
             <DailyBriefPanel orderData={orderData} variant="horizontal" />
           </div>
 
-          {/* ── main: 주문현황 결과 카드 (Focus) ── */}
+          {/* ── Stage 3+4: main 주문현황 compact metric tiles ── */}
           <motion.div
             className="order-focus-main"
-            initial={{ opacity: 0, y: 14 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.15, duration: 0.4, ease: [0.22, 1, 0.36, 1] }}
+            variants={isFirstRender ? mainVariants : undefined}
+            initial={isFirstRender ? 'hidden' : false}
+            animate={isFirstRender ? 'visible' : undefined}
             style={{ position: 'relative', zIndex: 1 }}
           >
-            <OrderResultCard messages={messages} />
+            <OrderResultCard messages={messages} isFirstRender={isFirstRender} />
           </motion.div>
 
-          {/* ── side: Next Actions + Approval Queue ── */}
+          {/* ── Stage 5: side (오른쪽에서 12~14px 미세하게 들어옴) ── */}
           <motion.div
             className="order-focus-side"
-            initial={{ opacity: 0, x: 10 }}
-            animate={{ opacity: 1, x: 0 }}
-            transition={{ delay: 0.2, duration: 0.35, ease: [0.22, 1, 0.36, 1] }}
+            variants={isFirstRender ? sideVariants : undefined}
+            initial={isFirstRender ? 'hidden' : false}
+            animate={isFirstRender ? 'visible' : undefined}
             style={{ position: 'relative', zIndex: 1 }}
           >
             <div className="sidecar-actions">
@@ -368,17 +451,22 @@ export default function SmartstoreCommandCenter({
             </div>
           </motion.div>
 
-          {/* ── flow: Horizontal Order Flow Radar ── */}
-          <div className="order-focus-flow" style={{ position: 'relative', zIndex: 1 }}>
+          {/* ── Stage 6: flow + log (마지막에 은은하게) ── */}
+          <motion.div
+            className="order-focus-flow"
+            variants={isFirstRender ? bottomVariants : undefined}
+            initial={isFirstRender ? 'hidden' : false}
+            animate={isFirstRender ? 'visible' : undefined}
+            style={{ position: 'relative', zIndex: 1 }}
+          >
             <OrderFlowRadar variant="horizontal" />
-          </div>
+          </motion.div>
 
-          {/* ── log: Dialogue / Workflow Log ── */}
           <motion.div
             className="order-focus-log"
-            initial={{ opacity: 0, y: 8 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.25, duration: 0.35, ease: [0.22, 1, 0.36, 1] }}
+            variants={isFirstRender ? { ...bottomVariants, visible: { ...bottomVariants.visible, transition: { delay: 0.5, duration: 0.28, ease: EASE_OUT_QUART } } } : undefined}
+            initial={isFirstRender ? 'hidden' : false}
+            animate={isFirstRender ? 'visible' : undefined}
             style={{ position: 'relative', zIndex: 1 }}
           >
             <div style={{
