@@ -353,12 +353,51 @@ const DataWallView: React.FC = () => {
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
-      if (data.success && data.brief) {
-        setBriefData(data.brief);
-      } else if (data.data) {
-        setBriefData(data.data);
+      if (data.success) {
+        // API 응답이 {smartstore:{...}, outreach:{...}} 구조인 경우 flat으로 변환
+        if (data.smartstore || data.outreach) {
+          const ss = data.smartstore || {};
+          const ou = data.outreach || {};
+          const hc = data.hotContent || {};
+          const mapped: DailyBriefData = {
+            smartstore_new_orders: ss.newOrders,
+            smartstore_ready_orders: ss.pendingShipping,
+            smartstore_delivering: ss.shipping,
+            smartstore_delivered: ss.delivered,
+            smartstore_purchase_decided: ss.purchaseConfirmed,
+            smartstore_confirm_needed: ss.confirmNeeded,
+            outreach_discovered: ou.discovered,
+            outreach_public_email_found: ou.publicEmailFound,
+            outreach_contact_url_found: ou.contactUrlFound,
+            outreach_draft_ready: ou.draftReady,
+            outreach_approval_waiting: ou.approvalWaiting,
+            outreach_email_sent: ou.emailSent,
+            outreach_positive_replies: ou.positiveReplies,
+            outreach_accepted: ou.accepted,
+            outreach_followup_needed: ou.followupNeeded,
+            outreach_followup_drafted: ou.followupDrafted,
+            outreach_followup_sent: ou.followupSent,
+            hot_youtube_count: hc.youtube,
+            hot_threads_count: hc.threads,
+            hot_instagram_count: hc.instagram,
+            hot_tiktok_count: hc.tiktok,
+            hot_naver_blog_count: hc.naverBlog,
+            telegram_sent: data.telegramSent,
+            telegram_error_code: data.telegramErrorCode,
+            period_start_kst: data.periodStartKst,
+            period_end_kst: data.periodEndKst,
+            date_kst: data.dateKst,
+          };
+          setBriefData(mapped);
+        } else if (data.brief) {
+          setBriefData(data.brief);
+        } else if (data.data) {
+          setBriefData(data.data);
+        } else {
+          setBriefError('brief 데이터 없음');
+        }
       } else {
-        setBriefError(data.error || 'brief 데이터 없음');
+        setBriefError(data.error || 'API 오류');
       }
     } catch (e: any) {
       setBriefError(e.message || 'API 호출 실패');
