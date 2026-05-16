@@ -9387,6 +9387,7 @@ html, body {
   width: 100%;
   flex-shrink: 0;
   align-content: flex-start;
+  max-height: 240px;
 }
 .metric-tile {
   display: flex;
