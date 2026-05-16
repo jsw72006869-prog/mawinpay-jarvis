@@ -5458,23 +5458,29 @@ async function handleHotContentSave(params: any) {
 
 // ═══ handleHotContentList: viral_content_swipe 탭 조회 ═══
 async function handleHotContentList(params: any) {
-  const { platform, limit = 50 } = params || {};
+  const { platform, limit = 50, includeTest = false } = params || {};
+  // COPY-BRAIN-A.1C: TEST row 분리 헬퍼
+  function isTestViralContentRow(row: any): boolean {
+    return String(row.notes || '').includes('TEST_');
+  }
   try {
     const data = await sheetsRead('viral_content_swipe');
-    if (!data.values || data.values.length <= 1) return { success: true, items: [], total: 0 };
+    if (!data.values || data.values.length <= 1) return { success: true, items: [], total: 0, test_count: 0, prod_count: 0 };
     const headers = data.values[0];
     let records = data.values.slice(1).map((row: string[]) => {
       const obj: any = {};
       headers.forEach((h: string, i: number) => { obj[h] = row[i] || ''; });
       return obj;
     });
-    // TEST row 제외
-    records = records.filter((r: any) => r.notes !== 'TEST_DELETE_ME');
-    if (platform) records = records.filter((r: any) => (r.platform || '').toLowerCase().includes(platform.toLowerCase()));
-    records = records.slice(-limit);
-    return { success: true, items: records, total: records.length };
+    const testRows = records.filter((r: any) => isTestViralContentRow(r));
+    const prodRows = records.filter((r: any) => !isTestViralContentRow(r));
+    // includeTest=false(default): 운영 row만 반환
+    let filtered = includeTest ? records : prodRows;
+    if (platform) filtered = filtered.filter((r: any) => (r.platform || '').toLowerCase().includes(platform.toLowerCase()));
+    filtered = filtered.slice(-limit);
+    return { success: true, items: filtered, total: filtered.length, prod_count: prodRows.length, test_count: testRows.length };
   } catch (e: any) {
-    return { success: true, items: [], total: 0, note: 'viral_content_swipe 탭 없음 또는 읽기 실패' };
+    return { success: true, items: [], total: 0, prod_count: 0, test_count: 0, note: 'viral_content_swipe 탭 없음 또는 읽기 실패' };
   }
 }
 
@@ -5983,8 +5989,9 @@ async function handleCopyBrainGenerate(params: any) {
         headers.forEach((h: string, i: number) => { obj[h] = row[i] || ''; });
         return obj;
       });
-      // 필터: TEST_DELETE_ME 제외
-      let filtered = rows.filter((r: any) => r.notes !== 'TEST_DELETE_ME');
+      // COPY-BRAIN-A.1C: TEST row 분리 정송 - TEST_ 포함 notes 제외 (includeTest 지정 시 제외 안 함)
+      const _includeTest = params?.includeTest === true;
+      let filtered = rows.filter((r: any) => _includeTest || !String(r.notes || '').includes('TEST_'));
       if (viralContentIds && viralContentIds.length > 0) {
         // viralContentIds 직접 지정 시 해당 rows
         filtered = filtered.filter((r: any) => viralContentIds.includes(r.id));
