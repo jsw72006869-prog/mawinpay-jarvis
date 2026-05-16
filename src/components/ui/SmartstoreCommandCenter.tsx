@@ -184,7 +184,7 @@ function OrderResultCard({
         variants={metricGridVariants}
         initial="hidden"
         animate={animateState}
-        style={{ display: 'flex', flexWrap: 'wrap', gap: 6, width: '100%', flexShrink: 0 }}
+        style={{ display: 'flex', flexWrap: 'wrap', gap: 6, width: '100%', flexShrink: 0, alignContent: 'flex-start', alignSelf: 'flex-start' }}
       >
         {dataLines.map((line, i) => {
           const parts = line.replace(/[-•]/g, '').trim().split(/[:：]/);
