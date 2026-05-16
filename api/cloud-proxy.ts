@@ -2424,6 +2424,8 @@ const SHEET_HEADERS: Record<string, string[]> = {
   outreach_agent_runs: ['run_id','date_kst','mission','product','source_keyword','target_count','status','started_at','completed_at','current_node','discovered_count','contact_found_count','draft_ready_count','approval_waiting_count','sent_count','reply_count','positive_reply_count','accepted_count','followup_needed_count','followup_sent_count','failed_count','notes'],
   outreach_candidate_events: ['event_id','candidate_id','platform','profile_url','event_type','event_time','source','message_id','status_before','status_after','notes'],
   telegram_notification_logs: ['notification_id','brief_id','channel','sent','sent_at','error_code','error_message','created_at','notes'],
+  // OUTREACH-COPY-AGENT-MASTER-A.1: viral_content_swipe 탭 (Hot Content 카피 학습 재료)
+  viral_content_swipe: ['id','platform','source_product','source_keyword','content_url','creator_name','hook_text','thumbnail_text','post_summary','engagement_visible','comment_signal','hot_reason','copy_pattern','emotion_trigger','buyer_desire','usable_for','hot_score','copy_pattern_score','risk_score','created_at','notes'],
 };
 
 async function ensureTab(tab: string): Promise<void> {
@@ -4303,6 +4305,28 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         return res.status(200).json(result);
       }
 
+      // ── OUTREACH-COPY-AGENT-MASTER-A.1: Multi-platform Collection + Copy Intelligence ──
+      if (resolvedTask === 'collect-multi-platform') {
+        const result = await handleCollectMultiPlatform(params || rest);
+        return res.status(200).json(result);
+      }
+      if (resolvedTask === 'hot-content-save') {
+        const result = await handleHotContentSave(params || rest);
+        return res.status(200).json(result);
+      }
+      if (resolvedTask === 'hot-content-list') {
+        const result = await handleHotContentList(params || rest);
+        return res.status(200).json(result);
+      }
+      if (resolvedTask === 'copy-intelligence') {
+        const result = await handleCopyIntelligence(params || rest);
+        return res.status(200).json(result);
+      }
+      if (resolvedTask === 'collector-status') {
+        const result = await handleCollectorStatus();
+        return res.status(200).json(result);
+      }
+
       return res.status(400).json({ error: `Unknown task: ${resolvedTask}` });
     }
 
@@ -4615,9 +4639,32 @@ async function handleDailyBrief24h(params: any) {
     }
   } catch (e) {}
 
-  // -- 3. Hot Content (미연동 -> 0 + notes) --
+  // -- 3. Hot Content: viral_content_swipe 탭에서 실제 수집 데이터 count --
   const hotContent = { youtube: 0, threads: 0, instagram: 0, tiktok: 0, naverBlog: 0 };
-  const hotContentNotes = 'hot_content_not_connected';
+  let hotContentNotes = 'hot_content_not_connected';
+  try {
+    const vcsData = await sheetsRead('viral_content_swipe');
+    if (vcsData.values && vcsData.values.length > 1) {
+      const vcsHeaders = vcsData.values[0];
+      const platformIdx = vcsHeaders.indexOf('platform');
+      const notesIdx = vcsHeaders.indexOf('notes');
+      for (let i = 1; i < vcsData.values.length; i++) {
+        const row = vcsData.values[i];
+        const p = (row[platformIdx] || '').toLowerCase();
+        const n = row[notesIdx] || '';
+        if (n === 'TEST_DELETE_ME') continue; // 테스트 row 제외
+        if (p.includes('youtube')) hotContent.youtube++;
+        else if (p.includes('thread')) hotContent.threads++;
+        else if (p.includes('instagram')) hotContent.instagram++;
+        else if (p.includes('tiktok')) hotContent.tiktok++;
+        else if (p.includes('naver') || p.includes('blog')) hotContent.naverBlog++;
+      }
+      const totalHot = hotContent.youtube + hotContent.threads + hotContent.instagram + hotContent.tiktok + hotContent.naverBlog;
+      if (totalHot > 0) hotContentNotes = `hot_content_connected_total_${totalHot}`;
+    }
+  } catch (e) {
+    // viral_content_swipe 탭이 없으면 not_connected 유지
+  }
 
   // -- 4. 브리핑 레코드 구성 --
   const briefRow = [
@@ -4991,4 +5038,593 @@ async function handleSmartstoreProcessOrder(params: any) {
   }
 
   return { success: false, error: `Unknown action: ${action}. 지원: check_templates, create_test_order, create_test_settlement, full_process, create_order` };
+}
+
+
+// ═══════════════════════════════════════════════════════════════════
+// OUTREACH-COPY-AGENT-MASTER-A.1
+// Multi-platform Collection + Copy Intelligence Foundation
+// ═══════════════════════════════════════════════════════════════════
+
+// ── 공통 타입 ──
+interface CollectorResult {
+  platform: string;
+  source_product: string;
+  source_keyword: string;
+  creator_name: string;
+  handle: string;
+  profile_url: string;
+  content_url: string;
+  content_summary: string;
+  hook_text: string;
+  thumbnail_text: string;
+  engagement_visible: string;
+  comment_signal: string;
+  hot_reason: string;
+  contact_email: string;
+  contact_url: string;
+  contact_route: string;
+  contact_priority: number;
+  email_status: string;
+  fit_score: number;
+  fit_reason: string;
+  hot_score: number;
+  next_action: string;
+  notes: string;
+}
+
+// ── contact_priority 분류 ──
+function classifyContactPriority(email: string, contactUrl: string, contactRoute: string): number {
+  if (email && email.includes('@') && !email.includes('***')) return 1; // public_email
+  if (contactUrl && contactUrl.length > 5) return 2; // contact_form
+  if (contactRoute === 'instagram_dm_manual') return 3;
+  if (contactRoute === 'tiktok_dm_manual') return 4;
+  if (contactRoute === 'threads_profile_manual') return 5;
+  return 6; // none
+}
+
+// ── fit_score 기초 계산 ──
+function calculateFitScore(item: Partial<CollectorResult>): number {
+  let score = 0;
+  const engagement = item.engagement_visible || '';
+  // 조회수/좋아요 기반
+  const viewMatch = engagement.match(/(\d[\d,.]*)\s*(조회|views|회)/i);
+  if (viewMatch) {
+    const views = parseInt(viewMatch[1].replace(/[,.]/g, ''), 10);
+    if (views > 100000) score += 30;
+    else if (views > 10000) score += 20;
+    else if (views > 1000) score += 10;
+  }
+  // 이메일 있으면 가산
+  if (item.contact_email && item.contact_email.includes('@')) score += 20;
+  // 콘텐츠 관련성
+  if (item.hot_reason) score += 10;
+  if (item.hook_text) score += 10;
+  // 카테고리 적합성
+  const summary = (item.content_summary || '').toLowerCase();
+  const foodKws = ['먹방','리뷰','공구','공동구매','과일','농산물','제철','복숭아','옥수수','사과','감','딸기'];
+  if (foodKws.some(k => summary.includes(k))) score += 20;
+  return Math.min(score, 100);
+}
+
+// ── hot_score 기초 계산 ──
+function calculateHotScore(item: Partial<CollectorResult>): number {
+  let score = 0;
+  const engagement = item.engagement_visible || '';
+  const viewMatch = engagement.match(/(\d[\d,.]*)\s*(조회|views|회)/i);
+  if (viewMatch) {
+    const views = parseInt(viewMatch[1].replace(/[,.]/g, ''), 10);
+    if (views > 500000) score += 40;
+    else if (views > 100000) score += 30;
+    else if (views > 10000) score += 20;
+    else if (views > 1000) score += 10;
+  }
+  const commentMatch = engagement.match(/(\d[\d,.]*)\s*(댓글|comments)/i);
+  if (commentMatch) {
+    const comments = parseInt(commentMatch[1].replace(/[,.]/g, ''), 10);
+    if (comments > 100) score += 20;
+    else if (comments > 10) score += 10;
+  }
+  if (item.comment_signal) score += 10;
+  if (item.hook_text && item.hook_text.length > 5) score += 10;
+  if (item.hot_reason) score += 10;
+  return Math.min(score, 100);
+}
+
+// ── copy_pattern_score 기초 계산 ──
+function calculateCopyPatternScore(item: Partial<CollectorResult>): number {
+  let score = 0;
+  if (item.hook_text && item.hook_text.length > 10) score += 30;
+  if (item.thumbnail_text && item.thumbnail_text.length > 5) score += 20;
+  if (item.content_summary && item.content_summary.length > 20) score += 20;
+  if (item.comment_signal) score += 15;
+  if (item.hot_reason) score += 15;
+  return Math.min(score, 100);
+}
+
+// ═══ YouTube Collector Adapter ═══
+async function collectYouTubeCandidates(keyword: string, product: string, maxResults: number = 5): Promise<{ candidates: CollectorResult[]; hotContent: CollectorResult[]; status: string; error?: string }> {
+  if (!YOUTUBE_API_KEY) return { candidates: [], hotContent: [], status: 'not_connected', error: 'YOUTUBE_API_KEY missing' };
+  const candidates: CollectorResult[] = [];
+  const hotContent: CollectorResult[] = [];
+  try {
+    const searchUrl = `https://www.googleapis.com/youtube/v3/search?part=snippet&type=video&q=${encodeURIComponent(keyword)}&order=viewCount&maxResults=${maxResults}&regionCode=KR&hl=ko&key=${YOUTUBE_API_KEY}`;
+    const searchRes = await fetch(searchUrl);
+    if (!searchRes.ok) {
+      const errData = await searchRes.json() as any;
+      if (errData.error?.errors?.[0]?.reason === 'quotaExceeded') return { candidates: [], hotContent: [], status: 'quota_exceeded', error: 'YouTube API quota exceeded' };
+      return { candidates: [], hotContent: [], status: 'error', error: errData.error?.message || 'YouTube search failed' };
+    }
+    const searchData = await searchRes.json() as any;
+    if (!searchData.items?.length) return { candidates: [], hotContent: [], status: 'done', error: 'No results' };
+
+    // 채널 상세 정보 가져오기
+    const channelIds = [...new Set(searchData.items.map((i: any) => i.snippet?.channelId).filter(Boolean))];
+    const videoIds = searchData.items.map((i: any) => i.id?.videoId).filter(Boolean);
+    let channelMap: Record<string, any> = {};
+    let videoMap: Record<string, any> = {};
+
+    if (channelIds.length > 0) {
+      const chUrl = `https://www.googleapis.com/youtube/v3/channels?part=snippet,statistics&id=${channelIds.join(',')}&key=${YOUTUBE_API_KEY}`;
+      const chRes = await fetch(chUrl);
+      if (chRes.ok) {
+        const chData = await chRes.json() as any;
+        for (const ch of (chData.items || [])) channelMap[ch.id] = ch;
+      }
+    }
+    if (videoIds.length > 0) {
+      const vUrl = `https://www.googleapis.com/youtube/v3/videos?part=statistics,snippet&id=${videoIds.join(',')}&key=${YOUTUBE_API_KEY}`;
+      const vRes = await fetch(vUrl);
+      if (vRes.ok) {
+        const vData = await vRes.json() as any;
+        for (const v of (vData.items || [])) videoMap[v.id] = v;
+      }
+    }
+
+    for (const item of searchData.items) {
+      const videoId = item.id?.videoId;
+      const channelId = item.snippet?.channelId;
+      const ch = channelMap[channelId] || {};
+      const vid = videoMap[videoId] || {};
+      const stats = vid.statistics || {};
+      const chStats = ch.statistics || {};
+      const chSnippet = ch.snippet || {};
+      const desc = chSnippet.description || '';
+      // 공개 이메일 추출
+      const emailMatch = desc.match(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi);
+      const publicEmail = emailMatch ? emailMatch[0] : '';
+      const contactRoute = publicEmail ? 'public_email' : 'none';
+      const emailStatus = publicEmail ? 'public_email' : 'no_public_email';
+      const engagementStr = `조회 ${Number(stats.viewCount || 0).toLocaleString()}회, 좋아요 ${Number(stats.likeCount || 0).toLocaleString()}, 댓글 ${Number(stats.commentCount || 0).toLocaleString()}`;
+
+      const base: CollectorResult = {
+        platform: 'YouTube',
+        source_product: product,
+        source_keyword: keyword,
+        creator_name: item.snippet?.channelTitle || '',
+        handle: channelId || '',
+        profile_url: channelId ? `https://www.youtube.com/channel/${channelId}` : '',
+        content_url: videoId ? `https://www.youtube.com/watch?v=${videoId}` : '',
+        content_summary: (item.snippet?.title || '').substring(0, 200),
+        hook_text: (item.snippet?.title || '').substring(0, 100),
+        thumbnail_text: '',
+        engagement_visible: engagementStr,
+        comment_signal: Number(stats.commentCount || 0) > 50 ? '댓글 활발' : '',
+        hot_reason: Number(stats.viewCount || 0) > 10000 ? '높은 조회수' : '',
+        contact_email: publicEmail,
+        contact_url: '',
+        contact_route: contactRoute,
+        contact_priority: classifyContactPriority(publicEmail, '', contactRoute),
+        email_status: emailStatus,
+        fit_score: 0,
+        fit_reason: '',
+        hot_score: 0,
+        next_action: publicEmail ? 'draft_proposal' : 'manual_contact_check',
+        notes: '',
+      };
+      base.fit_score = calculateFitScore(base);
+      base.fit_reason = base.fit_score >= 50 ? '높은 적합도' : base.fit_score >= 30 ? '보통 적합도' : '낮은 적합도';
+      base.hot_score = calculateHotScore(base);
+
+      candidates.push(base);
+      // 조회수 10000 이상이면 Hot Content에도 추가
+      if (Number(stats.viewCount || 0) > 10000) {
+        hotContent.push({ ...base });
+      }
+    }
+    return { candidates, hotContent, status: 'done' };
+  } catch (e: any) {
+    return { candidates: [], hotContent: [], status: 'error', error: e.message };
+  }
+}
+
+// ═══ Naver Blog Collector Adapter ═══
+async function collectNaverBlogCandidates(keyword: string, product: string, maxResults: number = 5): Promise<{ candidates: CollectorResult[]; hotContent: CollectorResult[]; status: string; error?: string }> {
+  const NAVER_CLIENT_ID = process.env.NAVER_CLIENT_ID || '';
+  const NAVER_CLIENT_SECRET = process.env.NAVER_CLIENT_SECRET || '';
+  if (!NAVER_CLIENT_ID) return { candidates: [], hotContent: [], status: 'not_connected', error: 'NAVER_CLIENT_ID missing' };
+  const candidates: CollectorResult[] = [];
+  const hotContent: CollectorResult[] = [];
+  try {
+    const searchUrl = `https://openapi.naver.com/v1/search/blog.json?query=${encodeURIComponent(keyword)}&display=${maxResults}&sort=sim`;
+    const searchRes = await fetch(searchUrl, {
+      headers: { 'X-Naver-Client-Id': NAVER_CLIENT_ID, 'X-Naver-Client-Secret': NAVER_CLIENT_SECRET },
+    });
+    if (!searchRes.ok) return { candidates: [], hotContent: [], status: 'error', error: 'Naver Blog search failed' };
+    const searchData = await searchRes.json() as any;
+    if (!searchData.items?.length) return { candidates: [], hotContent: [], status: 'done', error: 'No results' };
+
+    for (const item of searchData.items) {
+      const title = (item.title || '').replace(/<[^>]*>/g, '');
+      const desc = (item.description || '').replace(/<[^>]*>/g, '');
+      const bloggerName = item.bloggername || '';
+      const bloggerLink = item.bloggerlink || '';
+      const link = item.link || '';
+
+      const base: CollectorResult = {
+        platform: 'Naver Blog',
+        source_product: product,
+        source_keyword: keyword,
+        creator_name: bloggerName,
+        handle: bloggerLink,
+        profile_url: bloggerLink,
+        content_url: link,
+        content_summary: title.substring(0, 200),
+        hook_text: title.substring(0, 100),
+        thumbnail_text: '',
+        engagement_visible: '',
+        comment_signal: '',
+        hot_reason: desc.includes('공구') || desc.includes('공동구매') ? '공구/공동구매 언급' : '',
+        contact_email: '',
+        contact_url: bloggerLink || '',
+        contact_route: bloggerLink ? 'contact_form' : 'none',
+        contact_priority: classifyContactPriority('', bloggerLink, ''),
+        email_status: 'no_public_email',
+        fit_score: 0,
+        fit_reason: '',
+        hot_score: 0,
+        next_action: 'manual_contact_check',
+        notes: '',
+      };
+      base.fit_score = calculateFitScore(base);
+      base.fit_reason = base.fit_score >= 50 ? '높은 적합도' : base.fit_score >= 30 ? '보통 적합도' : '낮은 적합도';
+      base.hot_score = calculateHotScore(base);
+
+      candidates.push(base);
+      if (base.hot_reason) hotContent.push({ ...base });
+    }
+    return { candidates, hotContent, status: 'done' };
+  } catch (e: any) {
+    return { candidates: [], hotContent: [], status: 'error', error: e.message };
+  }
+}
+
+// ═══ Threads Collector Adapter (공개 검색 기반) ═══
+async function collectThreadsHotPosts(keyword: string, product: string): Promise<{ candidates: CollectorResult[]; hotContent: CollectorResult[]; status: string; error?: string }> {
+  // Threads는 공식 검색 API가 없음 → not_connected 정직 표시
+  // 향후 Browser Operator 기반 공개 검색으로 확장 가능
+  return { candidates: [], hotContent: [], status: 'not_connected', error: 'Threads 공식 검색 API 없음 — Browser Operator 기반 수집 필요' };
+}
+
+// ═══ Instagram Collector Adapter ═══
+async function collectInstagramProfiles(keyword: string, product: string): Promise<{ candidates: CollectorResult[]; hotContent: CollectorResult[]; status: string; error?: string }> {
+  // Instagram은 로그인 없이 검색 API 접근 불가 → not_connected 정직 표시
+  return { candidates: [], hotContent: [], status: 'not_connected', error: 'Instagram 로그인 없이 검색 불가 — 수동 확인 필요' };
+}
+
+// ═══ TikTok Collector Adapter ═══
+async function collectTikTokProfiles(keyword: string, product: string): Promise<{ candidates: CollectorResult[]; hotContent: CollectorResult[]; status: string; error?: string }> {
+  // TikTok은 로그인 없이 검색 API 접근 불가 → not_connected 정직 표시
+  return { candidates: [], hotContent: [], status: 'not_connected', error: 'TikTok 로그인 없이 검색 불가 — 수동 확인 필요' };
+}
+
+// ═══ handleCollectMultiPlatform: 통합 수집 엔드포인트 ═══
+async function handleCollectMultiPlatform(params: any) {
+  const { keyword, product, platforms = ['youtube', 'naver_blog', 'threads', 'instagram', 'tiktok'], maxResults = 3, dryRun = true } = params;
+  if (!keyword) return { success: false, error: 'keyword required' };
+
+  const productName = product || keyword;
+  const results: Record<string, { candidates: CollectorResult[]; hotContent: CollectorResult[]; status: string; error?: string }> = {};
+
+  for (const p of platforms) {
+    switch (p.toLowerCase().replace(/[\s_-]/g, '')) {
+      case 'youtube':
+        results.youtube = await collectYouTubeCandidates(keyword, productName, maxResults);
+        break;
+      case 'naverblog':
+        results.naver_blog = await collectNaverBlogCandidates(keyword, productName, maxResults);
+        break;
+      case 'threads':
+        results.threads = await collectThreadsHotPosts(keyword, productName);
+        break;
+      case 'instagram':
+        results.instagram = await collectInstagramProfiles(keyword, productName);
+        break;
+      case 'tiktok':
+        results.tiktok = await collectTikTokProfiles(keyword, productName);
+        break;
+    }
+  }
+
+  // 통합 집계
+  const allCandidates: CollectorResult[] = [];
+  const allHotContent: CollectorResult[] = [];
+  const platformStatus: Record<string, string> = {};
+
+  for (const [p, r] of Object.entries(results)) {
+    allCandidates.push(...r.candidates);
+    allHotContent.push(...r.hotContent);
+    platformStatus[p] = r.status;
+  }
+
+  return {
+    success: true,
+    dryRun,
+    keyword,
+    product: productName,
+    platformStatus,
+    candidates: allCandidates.map(c => ({
+      ...c,
+      // 보안: contact_email은 존재 여부만 표시, 원문은 Google Sheets에만 저장
+      contact_email_exists: !!(c.contact_email && c.contact_email.includes('@')),
+      contact_email: undefined, // 응답에서 이메일 원문 제거
+    })),
+    hotContent: allHotContent.map(c => ({
+      platform: c.platform,
+      content_url: c.content_url,
+      creator_name: c.creator_name,
+      hook_text: c.hook_text,
+      engagement_visible: c.engagement_visible,
+      hot_score: c.hot_score,
+      hot_reason: c.hot_reason,
+    })),
+    summary: {
+      totalCandidates: allCandidates.length,
+      totalHotContent: allHotContent.length,
+      publicEmailFound: allCandidates.filter(c => c.email_status === 'public_email').length,
+      contactUrlFound: allCandidates.filter(c => c.contact_priority === 2).length,
+    },
+  };
+}
+
+// ═══ handleHotContentSave: viral_content_swipe 탭에 저장 ═══
+async function handleHotContentSave(params: any) {
+  const { items, dryRun = true } = params;
+  if (!items || !Array.isArray(items) || items.length === 0) return { success: false, error: 'items array required' };
+
+  const now = new Date().toISOString();
+  const rows: string[][] = [];
+
+  for (const item of items) {
+    const id = generateRecordId('hc');
+    rows.push([
+      id,
+      item.platform || '',
+      item.source_product || '',
+      item.source_keyword || '',
+      item.content_url || '',
+      item.creator_name || '',
+      item.hook_text || '',
+      item.thumbnail_text || '',
+      item.post_summary || item.content_summary || '',
+      item.engagement_visible || '',
+      item.comment_signal || '',
+      item.hot_reason || '',
+      item.copy_pattern || '',
+      item.emotion_trigger || '',
+      item.buyer_desire || '',
+      item.usable_for || '',
+      String(item.hot_score || calculateHotScore(item)),
+      String(item.copy_pattern_score || calculateCopyPatternScore(item)),
+      String(item.risk_score || 0),
+      now,
+      item.notes || (dryRun ? 'TEST_DELETE_ME' : ''),
+    ]);
+  }
+
+  if (dryRun) {
+    return { success: true, dryRun: true, rowCount: rows.length, preview: rows.slice(0, 2) };
+  }
+
+  try {
+    await ensureHeaders('viral_content_swipe');
+    await sheetsAppend('viral_content_swipe', rows);
+    return { success: true, savedCount: rows.length };
+  } catch (e: any) {
+    return { success: false, error: `viral_content_swipe 저장 실패: ${e.message}` };
+  }
+}
+
+// ═══ handleHotContentList: viral_content_swipe 탭 조회 ═══
+async function handleHotContentList(params: any) {
+  const { platform, limit = 50 } = params || {};
+  try {
+    const data = await sheetsRead('viral_content_swipe');
+    if (!data.values || data.values.length <= 1) return { success: true, items: [], total: 0 };
+    const headers = data.values[0];
+    let records = data.values.slice(1).map((row: string[]) => {
+      const obj: any = {};
+      headers.forEach((h: string, i: number) => { obj[h] = row[i] || ''; });
+      return obj;
+    });
+    // TEST row 제외
+    records = records.filter((r: any) => r.notes !== 'TEST_DELETE_ME');
+    if (platform) records = records.filter((r: any) => (r.platform || '').toLowerCase().includes(platform.toLowerCase()));
+    records = records.slice(-limit);
+    return { success: true, items: records, total: records.length };
+  } catch (e: any) {
+    return { success: true, items: [], total: 0, note: 'viral_content_swipe 탭 없음 또는 읽기 실패' };
+  }
+}
+
+// ═══ handleCopyIntelligence: GPT 기반 카피 생성 ═══
+async function handleCopyIntelligence(params: any) {
+  const { product, hotContentSamples = [], candidateSamples = [], outputTypes = ['headline', 'thumbnail', 'reels_script', 'threads_post', 'proposal_email'], dryRun = true } = params;
+  if (!product) return { success: false, error: 'product required' };
+
+  const OPENAI_KEY = process.env.OPENAI_API_KEY || '';
+  if (!OPENAI_KEY) return { success: false, error: 'OPENAI_API_KEY not configured' };
+
+  // 참고 데이터 구성
+  const hotContentRef = hotContentSamples.slice(0, 5).map((h: any) =>
+    `- [${h.platform}] ${h.hook_text || h.content_summary || ''} (${h.engagement_visible || ''}) ${h.hot_reason || ''}`
+  ).join('\n');
+
+  const candidateRef = candidateSamples.slice(0, 3).map((c: any) =>
+    `- [${c.platform}] ${c.creator_name} — ${c.content_summary || ''}`
+  ).join('\n');
+
+  const systemPrompt = `당신은 농산물/식품 바이럴 마케팅 전문 카피라이터입니다.
+아래 규칙을 반드시 지키세요:
+- 친근하고 말하듯 툭 던지는 문장
+- 강한 첫 문장, 계절감, 식감, 수확 타이밍, 스토리
+- 댓글/DM 유도, 여운 있는 마무리
+- 과장 광고, 허위 효능, 매출 보장, 성공 보장 표현 금지
+- 원본 콘텐츠 장문 복사/표절 금지
+- 실제 바이럴에 쓸 수 있는 수준으로 작성`;
+
+  const userPrompt = `상품: ${product}
+
+참고할 반응 좋은 콘텐츠:
+${hotContentRef || '(아직 수집된 Hot Content 없음)'}
+
+참고할 후보 정보:
+${candidateRef || '(아직 수집된 후보 없음)'}
+
+아래 형식으로 각각 2개씩 생성해주세요:
+${outputTypes.includes('headline') ? '1. 헤드카피 (후킹 문구) — 15자 이내, 강렬한 첫인상' : ''}
+${outputTypes.includes('thumbnail') ? '2. 썸네일 문구 — 10자 이내, 클릭 유도' : ''}
+${outputTypes.includes('reels_script') ? '3. 릴스/쇼츠 스크립트 — 15초 분량, 후킹→본문→CTA' : ''}
+${outputTypes.includes('threads_post') ? '4. 스레드 글 — 3~5문장, 공감+궁금증 유발' : ''}
+${outputTypes.includes('proposal_email') ? '5. 공동구매 제안 메일 초안 — 제목 + 본문 (상대방 채널명은 [채널명]으로 표기)' : ''}
+
+JSON 형식으로 응답해주세요:
+{
+  "headlines": ["...", "..."],
+  "thumbnails": ["...", "..."],
+  "reels_scripts": ["...", "..."],
+  "threads_posts": ["...", "..."],
+  "proposal_emails": [{"subject": "...", "body": "..."}, {"subject": "...", "body": "..."}]
+}`;
+
+  if (dryRun) {
+    return {
+      success: true, dryRun: true, product,
+      prompt_preview: userPrompt.substring(0, 500) + '...',
+      outputTypes,
+      hotContentRefCount: hotContentSamples.length,
+      candidateRefCount: candidateSamples.length,
+    };
+  }
+
+  try {
+    const gptRes = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${OPENAI_KEY}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model: 'gpt-4.1-mini',
+        messages: [
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: userPrompt },
+        ],
+        temperature: 0.8,
+        max_tokens: 2000,
+      }),
+    });
+    if (!gptRes.ok) {
+      const errData = await gptRes.json() as any;
+      return { success: false, error: `GPT API error: ${errData.error?.message || 'unknown'}` };
+    }
+    const gptData = await gptRes.json() as any;
+    const content = gptData.choices?.[0]?.message?.content || '';
+
+    // JSON 파싱 시도
+    let parsed: any = null;
+    try {
+      const jsonMatch = content.match(/\{[\s\S]*\}/);
+      if (jsonMatch) parsed = JSON.parse(jsonMatch[0]);
+    } catch (e) {
+      parsed = { raw: content };
+    }
+
+    return {
+      success: true,
+      product,
+      copyIntelligence: parsed || { raw: content },
+      outputTypes,
+      hotContentRefCount: hotContentSamples.length,
+      candidateRefCount: candidateSamples.length,
+      riskWarnings: [],
+    };
+  } catch (e: any) {
+    return { success: false, error: `Copy Intelligence 생성 실패: ${e.message}` };
+  }
+}
+
+// ═══ handleCollectorStatus: 수집기 상태 조회 ═══
+async function handleCollectorStatus() {
+  const status: Record<string, { status: string; configured: boolean; note: string }> = {
+    youtube: {
+      status: YOUTUBE_API_KEY ? 'ready' : 'not_connected',
+      configured: !!YOUTUBE_API_KEY,
+      note: YOUTUBE_API_KEY ? 'YouTube Data API v3 configured' : 'YOUTUBE_API_KEY missing',
+    },
+    naver_blog: {
+      status: process.env.NAVER_CLIENT_ID ? 'ready' : 'not_connected',
+      configured: !!process.env.NAVER_CLIENT_ID,
+      note: process.env.NAVER_CLIENT_ID ? 'Naver Search API configured' : 'NAVER_CLIENT_ID missing',
+    },
+    threads: {
+      status: 'not_connected',
+      configured: false,
+      note: 'Threads 공식 검색 API 없음 — Browser Operator 기반 수집 필요',
+    },
+    instagram: {
+      status: 'not_connected',
+      configured: false,
+      note: 'Instagram 로그인 없이 검색 불가',
+    },
+    tiktok: {
+      status: 'not_connected',
+      configured: false,
+      note: 'TikTok 로그인 없이 검색 불가',
+    },
+    copy_intel: {
+      status: process.env.OPENAI_API_KEY ? 'ready' : 'not_connected',
+      configured: !!process.env.OPENAI_API_KEY,
+      note: process.env.OPENAI_API_KEY ? 'GPT Copy Intelligence ready' : 'OPENAI_API_KEY missing',
+    },
+    google_sheets: {
+      status: WORKSPACE_SHEET_ID ? 'connected' : 'not_connected',
+      configured: !!WORKSPACE_SHEET_ID,
+      note: WORKSPACE_SHEET_ID ? 'Google Sheets connected' : 'WORKSPACE_SHEET_ID missing',
+    },
+  };
+
+  // viral_content_swipe 탭 데이터 count
+  let hotContentTotal = 0;
+  try {
+    const data = await sheetsRead('viral_content_swipe');
+    if (data.values && data.values.length > 1) {
+      hotContentTotal = data.values.length - 1; // 헤더 제외
+    }
+  } catch (e) {}
+
+  // influencer_candidates_v2 count
+  let candidateTotal = 0;
+  try {
+    const data = await sheetsRead('influencer_candidates_v2');
+    if (data.values && data.values.length > 1) {
+      candidateTotal = data.values.length - 1;
+    }
+  } catch (e) {}
+
+  return {
+    success: true,
+    collectors: status,
+    kpi: {
+      totalCandidates: candidateTotal,
+      hotContentCount: hotContentTotal,
+    },
+  };
 }

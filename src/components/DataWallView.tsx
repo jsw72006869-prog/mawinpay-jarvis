@@ -297,6 +297,7 @@ const AGENT_NODES = [
   { id: 'smartstore', label: 'Smartstore', icon: '🛒', desc: '주문/배송 모니터링' },
   { id: 'outreach', label: 'Outreach', icon: '📡', desc: '후보 수집 · 이메일 준비' },
   { id: 'hotcontent', label: 'Hot Content', icon: '🔥', desc: 'YouTube · Threads · Blog' },
+  { id: 'copyintel', label: 'Copy Intel', icon: '✍️', desc: 'GPT 카피 생성 · 바이럴 학습' },
   { id: 'telegram', label: 'Telegram', icon: '📨', desc: '브리핑 알림 발송' },
   { id: 'sheets', label: 'Google Sheets', icon: '📊', desc: '데이터 저장 · CRM' },
 ];
@@ -532,7 +533,7 @@ const DataWallView: React.FC = () => {
       <header className="aw-header">
         <div className="aw-header-left">
           <h1 className="aw-header-title">AGENT WORKSTATION</h1>
-          <span className="aw-header-sub">JARVIS 작업 관제실 · DATAWALL-AGENT-B.1</span>
+          <span className="aw-header-sub">JARVIS 작업 관제실 · OUTREACH-COPY-AGENT-MASTER-A.1</span>
         </div>
         <div className="aw-header-center">
           <div className="aw-platform-tabs">
@@ -654,6 +655,11 @@ const DataWallView: React.FC = () => {
                   status = anyHot ? 'active' : 'missing';
                   statusText = anyHot ? 'ACTIVE' : 'not_connected';
                 }
+                if (node.id === 'copyintel') {
+                  // Copy Intelligence: briefData가 있으면 ready, 아니면 standby
+                  status = briefData ? 'idle' : 'idle';
+                  statusText = 'READY';
+                }
                 if (node.id === 'telegram') {
                   if (telegramError?.includes('env_missing') || telegramError?.includes('skipped')) { status = 'missing'; statusText = 'skipped_env_missing'; }
                   else if (telegramSent) { status = 'active'; statusText = 'SENT'; }
@@ -760,8 +766,9 @@ const DataWallView: React.FC = () => {
             <div className="aw-workflow-map">
               {[
                 { step: '수집', icon: '📡', val: outreachDiscovered, active: outreachDiscovered > 0 },
+                { step: 'Hot Content', icon: '🔥', val: (hotYoutube ?? 0) + (hotThreads ?? 0) + (hotInstagram ?? 0) + (hotTiktok ?? 0) + (hotNaverBlog ?? 0), active: hotYoutube !== undefined },
                 { step: '이메일 확인', icon: '✉️', val: outreachPublicEmail, active: outreachPublicEmail > 0 },
-                { step: '초안 생성', icon: '✍️', val: outreachDraft, active: outreachDraft > 0 },
+                { step: 'Copy Intel', icon: '✍️', val: outreachDraft, active: outreachDraft > 0 },
                 { step: '발송', icon: '📤', val: outreachSent, active: outreachSent > 0 },
                 { step: '긍정 답변', icon: '✅', val: outreachPositive, active: outreachPositive > 0 },
                 { step: '수락', icon: '🤝', val: outreachAccepted, active: outreachAccepted > 0 },
