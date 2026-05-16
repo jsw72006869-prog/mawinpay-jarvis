@@ -1,4 +1,5 @@
-import React, { useEffect, useState, useRef } from 'react';
+import React, { useEffect, useState, useRef, useCallback } from 'react';
+
 const WALL_CHANNEL = 'jarvis-dual-command-wall';
 const WALL_STORAGE_KEY = 'jarvis.dualWall.latest';
 const DUAL_OPENING_STORAGE_KEY = 'jarvis.dualWall.opening';
@@ -28,6 +29,37 @@ interface SmartstoreSnapshot {
   source: string;
   fetchedAt: number;
   savedAt: number;
+}
+
+/* ─── Daily Brief Type ─── */
+interface DailyBriefData {
+  smartstore_new_orders?: number;
+  smartstore_ready_orders?: number;
+  smartstore_delivering?: number;
+  smartstore_delivered?: number;
+  smartstore_purchase_decided?: number;
+  smartstore_confirm_needed?: number;
+  outreach_discovered?: number;
+  outreach_public_email_found?: number;
+  outreach_contact_url_found?: number;
+  outreach_draft_ready?: number;
+  outreach_approval_waiting?: number;
+  outreach_email_sent?: number;
+  outreach_positive_replies?: number;
+  outreach_accepted?: number;
+  outreach_followup_needed?: number;
+  outreach_followup_drafted?: number;
+  outreach_followup_sent?: number;
+  hot_youtube_count?: number;
+  hot_threads_count?: number;
+  hot_instagram_count?: number;
+  hot_tiktok_count?: number;
+  hot_naver_blog_count?: number;
+  telegram_sent?: boolean;
+  telegram_error_code?: string;
+  period_start_kst?: string;
+  period_end_kst?: string;
+  date_kst?: string;
 }
 
 /* ─── Real Intel Candidate Type ─── */
@@ -68,9 +100,7 @@ type RealIntelCandidate = {
 
 /* ─── OUTREACH-Q.5: Candidate Quality Evaluation ─── */
 const BOOST_CATEGORIES = ['먹방','요리','캠핑','살림','주부','가족','건강식','다이어트','여행','지역','농장체험','리뷰','라이프스타일','농산물','식품','공동구매','제철','수확'];
-// 직접 연결 카테고리 (S/A급 가능)
 const DIRECT_FIT_CATEGORIES = ['먹방','요리','살림','주부','가족','건강식','다이어트','농장체험','농산물','식품','공동구매','제철','수확'];
-// 간접 연결 카테고리 (B급 → 검토 강제)
 const INDIRECT_FIT_CATEGORIES = ['캠핑','여행','지역','리뷰','라이프스타일'];
 const PENALTY_CATEGORIES = ['뷰티','패션','연예','가십','게임','금융','정치','성인','자극'];
 const STRONG_EXCLUDE = ['성인','선정성','혐오','폭력','정치 선동','사기','불법','도박','주류','니코틴'];
@@ -78,6 +108,14 @@ const STRONG_EXCLUDE = ['성인','선정성','혐오','폭력','정치 선동','
 /* ─── Email Masking ─── */
 const maskEmail = (text: string): string =>
   text ? text.replace(/[A-Z0-9._%+\-]+@[A-Z0-9.\-]+\.[A-Z]{2,}/gi, '문의 가능') : text;
+
+/* ─── Email Partial Masking (preview용: ma***@domain.com) ─── */
+const maskEmailPartial = (email: string): string => {
+  if (!email) return '';
+  const match = email.match(/^([A-Z0-9._%+\-]{1,3})[A-Z0-9._%+\-]*@([A-Z0-9.\-]+\.[A-Z]{2,})$/i);
+  if (match) return `${match[1]}***@${match[2]}`;
+  return '***@***.***';
+};
 
 function evaluateCandidate(c: RealIntelCandidate): RealIntelCandidate {
   const catLower = (c.category || '').toLowerCase();
@@ -87,116 +125,72 @@ function evaluateCandidate(c: RealIntelCandidate): RealIntelCandidate {
   const riskFlags: string[] = [];
   const positiveSignals: string[] = [];
 
-  /* A. Category Fit Score (0-100) */
-  let categoryFitScore = 40; // base (Q5.1: 더 엄격한 기본값)
+  let categoryFitScore = 40;
   const boostHits = BOOST_CATEGORIES.filter(k => combined.includes(k));
   const penaltyHits = PENALTY_CATEGORIES.filter(k => combined.includes(k));
   const directHits = DIRECT_FIT_CATEGORIES.filter(k => combined.includes(k));
   const indirectHits = INDIRECT_FIT_CATEGORIES.filter(k => combined.includes(k));
-  // 직접 연결 카테고리는 더 강하게 부스트
   categoryFitScore += directHits.length * 15;
-  // 간접 연결 카테고리는 약하게 부스트 + 리스크 플래그
   categoryFitScore += indirectHits.length * 5;
-  if (indirectHits.length > 0 && directHits.length === 0) {
-    riskFlags.push('카테고리 간접 연결');
-  }
+  if (indirectHits.length > 0 && directHits.length === 0) riskFlags.push('카테고리 간접 연결');
   categoryFitScore -= penaltyHits.length * 15;
   if (directHits.length > 0) positiveSignals.push(`카테고리 적합: ${directHits.join(', ')}`);
   else if (indirectHits.length > 0) positiveSignals.push(`간접 연결: ${indirectHits.join(', ')}`);
   if (penaltyHits.length > 0 && boostHits.length === 0) riskFlags.push(`카테고리 부적합: ${penaltyHits.join(', ')}`);
-  // Incorporate existing fitScore
-  if (c.fitScore !== undefined) {
-    categoryFitScore = Math.round(categoryFitScore * 0.4 + c.fitScore * 0.6);
-  }
+  if (c.fitScore !== undefined) categoryFitScore = Math.round(categoryFitScore * 0.4 + c.fitScore * 0.6);
   categoryFitScore = Math.max(0, Math.min(100, categoryFitScore));
 
-  /* B. Brand Safety Score (0-100) */
-  let brandSafetyScore = 75; // Q5.1: 기본값 낮춤 (더 엄격)
+  let brandSafetyScore = 75;
   const strongExcludeHits = STRONG_EXCLUDE.filter(k => combined.includes(k));
-  if (strongExcludeHits.length > 0) {
-    brandSafetyScore = 10;
-    riskFlags.push(`브랜드 충돌: ${strongExcludeHits.join(', ')}`);
-  }
+  if (strongExcludeHits.length > 0) { brandSafetyScore = 10; riskFlags.push(`브랜드 충돌: ${strongExcludeHits.join(', ')}`); }
   if (combined.includes('자극')) { brandSafetyScore -= 25; riskFlags.push('자극적 썸네일'); }
   if (combined.includes('논란')) { brandSafetyScore -= 25; riskFlags.push('이슈/논란 가능성'); }
   if (combined.includes('노출')) { brandSafetyScore -= 20; riskFlags.push('과도한 노출'); }
   if (combined.includes('선정')) { brandSafetyScore -= 30; riskFlags.push('선정적 콘텐츠'); }
-  // 뷰티/패션 단독이면 식품 브랜드 부적합 플래그
-  if ((combined.includes('뷰티') || combined.includes('패션')) && directHits.length === 0) {
-    brandSafetyScore -= 10; riskFlags.push('식품 브랜드 부적합');
-  }
+  if ((combined.includes('뷰티') || combined.includes('패션')) && directHits.length === 0) { brandSafetyScore -= 10; riskFlags.push('식품 브랜드 부적합'); }
   if (directHits.length > 0) brandSafetyScore += 5;
   brandSafetyScore = Math.max(0, Math.min(100, brandSafetyScore));
 
-  /* C. Contact Score (0-100) */
-  let contactScore = 25; // Q5.1: 기본값 낮춤
+  let contactScore = 25;
   if (c.contactStatus === 'contactable') { contactScore = 90; positiveSignals.push('공개 문의 채널 확인'); }
   else if (c.contactStatus === 'review') { contactScore = 55; positiveSignals.push('문의 채널 있음'); }
   else if (c.contactStatus === 'none') { contactScore = 10; riskFlags.push('연락 불명확'); }
-  if (combined.includes('공동구매') || combined.includes('협찬') || combined.includes('광고')) {
-    contactScore += 10; positiveSignals.push('협업 이력 흔적');
-  }
+  if (combined.includes('공동구매') || combined.includes('협찬') || combined.includes('광고')) { contactScore += 10; positiveSignals.push('협업 이력 흔적'); }
   contactScore = Math.max(0, Math.min(100, contactScore));
 
-  /* D. Media Score (0-100) */
-  let mediaScore = 25; // Q5.1: 기본값 낮춤
-  if (c.thumbnailUrl) { mediaScore += 20; }
+  let mediaScore = 25;
+  if (c.thumbnailUrl) mediaScore += 20;
   if (c.channelAvatarUrl) { mediaScore += 15; positiveSignals.push('프로필 이미지 있음'); }
   if (c.videoId || c.videoUrl) { mediaScore += 15; positiveSignals.push('대표 영상 있음'); }
-  if (c.subscriberText) { mediaScore += 10; }
-  if (c.viewsText) { mediaScore += 10; }
+  if (c.subscriberText) mediaScore += 10;
+  if (c.viewsText) mediaScore += 10;
   if (!c.thumbnailUrl && !c.channelAvatarUrl) riskFlags.push('이미지 없음');
   if (!c.videoId && !c.videoUrl) riskFlags.push('대표 영상 없음');
   mediaScore = Math.max(0, Math.min(100, mediaScore));
 
-  /* Final Score */
-  const finalScore = Math.round(
-    categoryFitScore * 0.35 +
-    brandSafetyScore * 0.30 +
-    contactScore * 0.20 +
-    mediaScore * 0.15
-  );
+  const finalScore = Math.round(categoryFitScore * 0.35 + brandSafetyScore * 0.30 + contactScore * 0.20 + mediaScore * 0.15);
 
-  /* Q5.1: Recommendation Tier - 엄격한 기준 */
   let recommendationTier: RecommendationTier;
   const hasStrongRisk = riskFlags.some(f => ['브랜드 충돌','자극적 썸네일','선정적 콘텐츠','이슈/논란 가능성','과도한 노출'].includes(f));
   const isIndirectOnly = indirectHits.length > 0 && directHits.length === 0;
   const isBrandUnsafe = brandSafetyScore < 45;
 
   if (brandSafetyScore < 45 || strongExcludeHits.length > 0) {
-    // 제외: 브랜드 안전도 < 45 또는 강한 제외 플래그
     recommendationTier = '제외';
-  } else if (
-    finalScore >= 82 &&
-    brandSafetyScore >= 75 &&
-    categoryFitScore >= 70 &&
-    contactScore >= 60 &&
-    !hasStrongRisk &&
-    !isIndirectOnly // 간접 연결만 있으면 추천 금지
-  ) {
-    // 추천: S/A급 - 모든 조건 충족
+  } else if (finalScore >= 82 && brandSafetyScore >= 75 && categoryFitScore >= 70 && contactScore >= 60 && !hasStrongRisk && !isIndirectOnly) {
     recommendationTier = '추천';
-  } else if (
-    finalScore >= 62 &&
-    brandSafetyScore >= 60 &&
-    !isBrandUnsafe
-  ) {
-    // 검토: B급 - 간접 연결, 애매한 카테고리 포함
+  } else if (finalScore >= 62 && brandSafetyScore >= 60 && !isBrandUnsafe) {
     recommendationTier = '검토';
   } else {
-    // 보류: C급 이하
     recommendationTier = '보류';
   }
 
-  /* Q5.1: Jarvis Reason - 보정된 문구 + 이메일 마스킹 */
   let jarvisReason = '';
   if (recommendationTier === '추천') {
     jarvisReason = `농산물 공동구매와 콘텐츠 맥락이 명확하고${c.contactStatus === 'contactable' ? ', 공개 문의 채널이 있어' : ''} 우선 제안 후보로 적합합니다.`;
   } else if (recommendationTier === '검토') {
     const mainRisk = riskFlags.find(f => !['이미지 없음','대표 영상 없음'].includes(f));
-    jarvisReason = mainRisk
-      ? `콘텐츠 맥락은 일부 맞지만, ${mainRisk} 등으로 브랜드 톤과 실제 공동구매 전환 가능성은 추가 확인이 필요합니다.`
-      : '콘텐츠 맥락은 일부 맞지만, 브랜드 톤과 실제 공동구매 전환 가능성은 추가 확인이 필요합니다.';
+    jarvisReason = mainRisk ? `콘텐츠 맥락은 일부 맞지만, ${mainRisk} 등으로 추가 확인이 필요합니다.` : '콘텐츠 맥락은 일부 맞지만, 브랜드 톤과 전환 가능성은 추가 확인이 필요합니다.';
   } else if (recommendationTier === '보류') {
     jarvisReason = '현재 데이터만으로는 농산물/식품 공동구매 적합도가 낮아 우선순위를 낮춥니다.';
   } else {
@@ -204,13 +198,9 @@ function evaluateCandidate(c: RealIntelCandidate): RealIntelCandidate {
     jarvisReason = `${mainRisk} 사유로 이번 캠페인에서는 제외합니다.`;
   }
 
-  // Q5.1: 이메일 원문 마스킹 적용
-  const maskedTitle = maskEmail(c.title);
-  const maskedJarvisReason = maskEmail(jarvisReason);
-
   return {
     ...c,
-    title: maskedTitle,
+    title: maskEmail(c.title),
     recommendationTier,
     finalScore,
     categoryFitScore,
@@ -219,7 +209,7 @@ function evaluateCandidate(c: RealIntelCandidate): RealIntelCandidate {
     mediaScore,
     riskFlags,
     positiveSignals,
-    jarvisReason: maskedJarvisReason,
+    jarvisReason: maskEmail(jarvisReason),
   };
 }
 
@@ -230,139 +220,43 @@ type PlatformTab = typeof PLATFORM_TABS[number];
 /* ─── Normalize Function ─── */
 function normalizeIntelCandidate(item: any, index: number): RealIntelCandidate {
   const title =
-    item.title ||
-    item.videoTitle ||
-    item.recentContentTitle ||
-    item.recentVideoTitle ||
-    item.channelTitle ||
-    item.channelName ||
-    item.name ||
-    item.topVideoTitle ||
-    `후보 ${index + 1}`;
-
-  const channelName =
-    item.channelName ||
-    item.channelTitle ||
-    item.creatorName ||
-    item.name ||
-    item.author ||
-    undefined;
-
-  const platformRaw = (item.platform || item.source || '').toLowerCase();
-  let candidateType: RealIntelCandidate['type'] = 'unknown';
-  let platform = 'YouTube';
-  if (platformRaw.includes('youtube')) { candidateType = 'youtube_channel'; platform = 'YouTube'; }
-  else if (platformRaw.includes('blog') || platformRaw.includes('naver')) { candidateType = 'blog'; platform = 'Naver'; }
-  else if (platformRaw.includes('instagram')) { candidateType = 'influencer'; platform = 'Instagram'; }
-  else if (platformRaw.includes('tiktok') || platformRaw.includes('thread')) { candidateType = 'influencer'; platform = 'Threads'; }
-
-  const hasEmail = !!(item.email || item.contactEmail || item.publicEmailMasked);
-  const hasForm = item.publicContactStatus === 'form_available';
-  let contactStatus: RealIntelCandidate['contactStatus'] = 'unknown';
-  if (hasEmail || item.publicContactStatus === 'email_public') contactStatus = 'contactable';
-  else if (hasForm) contactStatus = 'review';
-  else if (item.publicContactStatus === 'none') contactStatus = 'none';
-
-  const subscriberCount =
-    item.subscriberCount ||
-    item.subscribers ||
-    item.followerCount ||
-    item.followers ||
-    item.channel?.subscriberCount ||
-    undefined;
-
-  const subscriberText =
-    item.subscriberOrVisitor ||
-    (subscriberCount ? `${subscriberCount.toLocaleString()}명` : undefined) ||
-    undefined;
-
-  const viewCount =
-    item.viewCount ||
-    item.views ||
-    item.avgViews ||
-    item.averageViews ||
-    item.video?.viewCount ||
-    item.statistics?.viewCount ||
-    undefined;
-
-  const viewsText =
-    item.viewCountFormatted ||
-    (viewCount ? (typeof viewCount === 'number' ? `${viewCount.toLocaleString()}회` : viewCount) : undefined) ||
-    undefined;
-
-  const likeCount =
-    item.likeCount ||
-    item.likes ||
-    item.video?.likeCount ||
-    item.statistics?.likeCount ||
-    undefined;
-
-  const likesText = likeCount ? `${likeCount.toLocaleString()}개` : undefined;
-
-  // Extract videoId from various sources
+    item.title || item.videoTitle || item.recentContentTitle || item.recentVideoTitle ||
+    item.channelTitle || item.channelName || item.name || item.topVideoTitle || `후보 ${index + 1}`;
+  const channelName = item.channelName || item.channelTitle || item.name || item.handle || undefined;
+  const candidateType: RealIntelCandidate['type'] =
+    item.type === 'youtube_channel' ? 'youtube_channel' :
+    item.type === 'youtube_video' ? 'youtube_video' :
+    item.type === 'blog' ? 'blog' :
+    item.type === 'influencer' ? 'influencer' :
+    (item.platform?.toLowerCase().includes('youtube') ? 'youtube_channel' :
+    item.platform?.toLowerCase().includes('blog') ? 'blog' : 'unknown');
+  const platform =
+    item.platform ||
+    (item.type === 'youtube_channel' || item.type === 'youtube_video' ? 'YouTube' :
+    item.type === 'blog' ? 'Naver' : undefined);
+  const contactStatus: RealIntelCandidate['contactStatus'] =
+    item.contactStatus === 'contactable' ? 'contactable' :
+    item.contactStatus === 'review' ? 'review' :
+    item.contactStatus === 'none' ? 'none' :
+    (item.publicContact || item.contactEmail || item.email || item.publicEmail ? 'contactable' :
+    item.contactUrl ? 'review' : 'unknown');
+  const subscriberCount = item.subscriberCount || item.subscribers || item.followerCount || item.followers;
+  const subscriberText = subscriberCount ? `${Number(subscriberCount).toLocaleString()}명` : (item.subscriberText || item.subscriberOrVisitor || undefined);
+  const viewCount = item.viewCount || item.views || item.avgViews || item.averageViews;
+  const viewsText = viewCount ? `${Number(viewCount).toLocaleString()}회` : (item.viewsText || undefined);
+  const likeCount = item.likeCount || item.likes;
+  const likesText = likeCount ? `${Number(likeCount).toLocaleString()}개` : undefined;
   let videoId: string | undefined = item.videoId || item.representativeVideoId || undefined;
-  if (!videoId && item.topVideoUrl) {
-    const match = item.topVideoUrl.match(/(?:v=|youtu\.be\/)([a-zA-Z0-9_-]{11})/);
-    if (match) videoId = match[1];
-  }
-  if (!videoId && item.videoUrl) {
-    const match = item.videoUrl.match(/(?:v=|youtu\.be\/)([a-zA-Z0-9_-]{11})/);
-    if (match) videoId = match[1];
-  }
-  if (!videoId && item.url) {
-    const match = item.url.match(/(?:v=|youtu\.be\/)([a-zA-Z0-9_-]{11})/);
-    if (match) videoId = match[1];
-  }
-  if (!videoId && item.recentContentUrl) {
-    const match = item.recentContentUrl.match(/(?:v=|youtu\.be\/)([a-zA-Z0-9_-]{11})/);
-    if (match) videoId = match[1];
-  }
-
-  // Enhanced Image Mapping
-  // Note: profileUrl in outreach candidates is a channel URL (https://www.youtube.com/channel/...)
-  // not an image URL, so we filter it out from image sources
+  if (!videoId && item.topVideoUrl) { const m = item.topVideoUrl.match(/(?:v=|youtu\.be\/)([a-zA-Z0-9_-]{11})/); if (m) videoId = m[1]; }
+  if (!videoId && item.videoUrl) { const m = item.videoUrl.match(/(?:v=|youtu\.be\/)([a-zA-Z0-9_-]{11})/); if (m) videoId = m[1]; }
+  if (!videoId && item.url) { const m = item.url.match(/(?:v=|youtu\.be\/)([a-zA-Z0-9_-]{11})/); if (m) videoId = m[1]; }
   const isImageUrl = (url: string | undefined): boolean => {
     if (!url) return false;
     return url.startsWith('http') && (url.includes('ggpht') || url.includes('googleusercontent') || url.includes('ytimg') || url.includes('.jpg') || url.includes('.png') || url.includes('.webp') || url.includes('instagram') || url.includes('fbcdn') || url.includes('pstatic'));
   };
-  const profileImage =
-    item.profileImageUrl ||
-    item.profileImage ||
-    item.avatarUrl ||
-    item.avatar ||
-    item.channelAvatarUrl ||
-    item.channelAvatar ||
-    item.channelThumbnailUrl ||
-    item.channelThumbnail ||
-    (isImageUrl(item.profileUrl) ? item.profileUrl : undefined) ||
-    item.channel?.thumbnailUrl ||
-    item.channel?.avatarUrl ||
-    item.snippet?.thumbnails?.default?.url ||
-    item.snippet?.thumbnails?.medium?.url ||
-    item.thumbnails?.default?.url ||
-    item.thumbnails?.medium?.url ||
-    undefined;
-
+  const profileImage = item.profileImageUrl || item.profileImage || item.avatarUrl || item.avatar || item.channelAvatarUrl || item.channelAvatar || item.channelThumbnailUrl || item.channelThumbnail || (isImageUrl(item.profileUrl) ? item.profileUrl : undefined) || item.channel?.thumbnailUrl || item.snippet?.thumbnails?.default?.url || undefined;
   const youtubeThumbnailFromId = videoId ? `https://img.youtube.com/vi/${videoId}/hqdefault.jpg` : undefined;
-
-  const thumbnailUrl =
-    item.thumbnailUrl ||
-    item.thumbnail ||
-    item.imageUrl ||
-    item.videoThumbnailUrl ||
-    item.videoThumbnail ||
-    item.video?.thumbnailUrl ||
-    item.video?.thumbnail ||
-    item.snippet?.thumbnails?.maxres?.url ||
-    item.snippet?.thumbnails?.high?.url ||
-    item.snippet?.thumbnails?.medium?.url ||
-    item.thumbnails?.maxres?.url ||
-    item.thumbnails?.high?.url ||
-    item.thumbnails?.medium?.url ||
-    youtubeThumbnailFromId ||
-    profileImage ||
-    undefined;
-
+  const thumbnailUrl = item.thumbnailUrl || item.thumbnail || item.imageUrl || item.videoThumbnailUrl || item.snippet?.thumbnails?.high?.url || item.snippet?.thumbnails?.medium?.url || youtubeThumbnailFromId || profileImage || undefined;
   return {
     contextId: String(item.candidateId || item.channelId || item.id || `candidate-${index + 1}`),
     type: candidateType,
@@ -378,8 +272,8 @@ function normalizeIntelCandidate(item: any, index: number): RealIntelCandidate {
     viewsText,
     likesText,
     contactStatus,
-    fitScore: typeof item.productFitScore === 'number' ? item.productFitScore : (typeof item.fitScore === 'number' ? item.fitScore : (typeof item.score === 'number' ? item.score : (typeof item.matchScore === 'number' ? item.matchScore : undefined))),
-    reason: item.productFitReason || item.reason || item.fitReason || item.suggestedOfferAngle || undefined,
+    fitScore: typeof item.productFitScore === 'number' ? item.productFitScore : (typeof item.fitScore === 'number' ? item.fitScore : (typeof item.score === 'number' ? item.score : undefined)),
+    reason: item.productFitReason || item.reason || item.fitReason || undefined,
     keywords: Array.isArray(item.keywords) ? item.keywords : (item.keyword ? [item.keyword] : []),
     lastUpdated: item.collectedAt || item.lastUpdated || item.updatedAt || undefined,
     videoId,
@@ -398,54 +292,80 @@ function readJson<T>(key: string): T | null {
   }
 }
 
-/* ═══════════════════════════════════════════════════════════
-   DataWallView Component — UI-Q.1 Cinematic Intel Wall
-   ═══════════════════════════════════════════════════════════ */
+/* ─── Agent Workstation: DATAWALL-AGENT-B.1 ─── */
+const AGENT_NODES = [
+  { id: 'smartstore', label: 'Smartstore', icon: '🛒', desc: '주문/배송 모니터링' },
+  { id: 'outreach', label: 'Outreach', icon: '📡', desc: '후보 수집 · 이메일 준비' },
+  { id: 'hotcontent', label: 'Hot Content', icon: '🔥', desc: 'YouTube · Threads · Blog' },
+  { id: 'telegram', label: 'Telegram', icon: '📨', desc: '브리핑 알림 발송' },
+  { id: 'sheets', label: 'Google Sheets', icon: '📊', desc: '데이터 저장 · CRM' },
+];
+
 const DataWallView: React.FC = () => {
   const [payload, setPayload] = useState<WallPayload | null>(null);
   const [smartstoreSnapshot, setSmartstoreSnapshot] = useState<SmartstoreSnapshot | null>(null);
   const [openingActive, setOpeningActive] = useState(false);
   const [systemArmed, setSystemArmed] = useState(false);
   const [realCandidates, setRealCandidates] = useState<RealIntelCandidate[]>([]);
-  const [heroIndex, setHeroIndex] = useState(0);
   const [activeTab, setActiveTab] = useState<PlatformTab>('전체');
+  const [briefData, setBriefData] = useState<DailyBriefData | null>(null);
+  const [briefLoading, setBriefLoading] = useState(false);
+  const [briefError, setBriefError] = useState<string | null>(null);
+  const [candidatePage, setCandidatePage] = useState(0);
+  const [selectedCandidate, setSelectedCandidate] = useState<RealIntelCandidate | null>(null);
   const openingTimerRef = useRef<number | null>(null);
+  const CANDIDATES_PER_PAGE = 10;
 
   /* ─── Read real candidates from localStorage ─── */
-  const refreshCandidates = () => {
+  const refreshCandidates = useCallback(() => {
     const outreachRaw = readJson<any[]>(OUTREACH_STORAGE_KEY) || [];
     const collectedRaw = readJson<any[]>(INFLUENCER_STORAGE_KEY) || [];
     const combined = [...outreachRaw];
     const existingIds = new Set(outreachRaw.map(item => String(item.candidateId || item.channelId || item.id)));
     collectedRaw.forEach(item => {
       const id = String(item.candidateId || item.channelId || item.id || item.name);
-      if (!existingIds.has(id)) {
-        combined.push(item);
-        existingIds.add(id);
-      }
+      if (!existingIds.has(id)) { combined.push(item); existingIds.add(id); }
     });
     if (combined.length > 0) {
       const normalized = combined.map((item, idx) => normalizeIntelCandidate(item, idx));
-      // OUTREACH-Q.5: Apply quality evaluation
       const evaluated = normalized.map(c => evaluateCandidate(c));
-      // OUTREACH-Q.5: Sort by recommendationTier → finalScore → contactScore → mediaScore → fitScore
       const tierOrder: Record<string, number> = { '추천': 0, '검토': 1, '보류': 2, '제외': 3 };
       evaluated.sort((a, b) => {
         const tierDiff = (tierOrder[a.recommendationTier || '보류'] ?? 2) - (tierOrder[b.recommendationTier || '보류'] ?? 2);
         if (tierDiff !== 0) return tierDiff;
-        const scoreDiff = (b.finalScore || 0) - (a.finalScore || 0);
-        if (scoreDiff !== 0) return scoreDiff;
-        const contactDiff = (b.contactScore || 0) - (a.contactScore || 0);
-        if (contactDiff !== 0) return contactDiff;
-        const mediaDiff = (b.mediaScore || 0) - (a.mediaScore || 0);
-        if (mediaDiff !== 0) return mediaDiff;
-        return (b.fitScore || 0) - (a.fitScore || 0);
+        return (b.finalScore || 0) - (a.finalScore || 0);
       });
       setRealCandidates(evaluated);
     } else {
       setRealCandidates([]);
     }
-  };
+  }, []);
+
+  /* ─── Fetch Daily Brief from API ─── */
+  const fetchBrief = useCallback(async () => {
+    setBriefLoading(true);
+    setBriefError(null);
+    try {
+      const res = await fetch('/api/cloud-proxy', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ taskType: 'daily-brief-24h', dryRun: true, sendTelegram: false }),
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
+      if (data.success && data.brief) {
+        setBriefData(data.brief);
+      } else if (data.data) {
+        setBriefData(data.data);
+      } else {
+        setBriefError(data.error || 'brief 데이터 없음');
+      }
+    } catch (e: any) {
+      setBriefError(e.message || 'API 호출 실패');
+    } finally {
+      setBriefLoading(false);
+    }
+  }, []);
 
   useEffect(() => {
     const refreshFromStorage = () => {
@@ -454,9 +374,7 @@ const DataWallView: React.FC = () => {
       const s = readJson<SmartstoreSnapshot>(SMARTSTORE_SNAPSHOT_KEY);
       if (s) setSmartstoreSnapshot(s);
       const openingPayload = readJson<any>(DUAL_OPENING_STORAGE_KEY);
-      if (openingPayload?.type === 'dual-armed') {
-        setSystemArmed(true);
-      }
+      if (openingPayload?.type === 'dual-armed') setSystemArmed(true);
       if (openingPayload?.type === 'dual-opening') {
         setSystemArmed(true);
         setOpeningActive(true);
@@ -466,6 +384,7 @@ const DataWallView: React.FC = () => {
       refreshCandidates();
     };
     refreshFromStorage();
+    fetchBrief();
     let channel: BroadcastChannel | null = null;
     if ('BroadcastChannel' in window) {
       channel = new BroadcastChannel(WALL_CHANNEL);
@@ -487,474 +406,465 @@ const DataWallView: React.FC = () => {
       };
     }
     const interval = setInterval(refreshFromStorage, 3000);
+    const briefInterval = setInterval(fetchBrief, 5 * 60 * 1000); // 5분마다 갱신
     return () => {
       if (channel) channel.close();
       clearInterval(interval);
+      clearInterval(briefInterval);
       if (openingTimerRef.current) window.clearTimeout(openingTimerRef.current);
     };
-  }, []);
+  }, [refreshCandidates, fetchBrief]);
 
   /* ─── Derived data ─── */
-  // Platform filter
   const filteredCandidates = activeTab === '전체'
     ? realCandidates
     : realCandidates.filter(c => c.platform === activeTab);
 
-  const hasRealData = filteredCandidates.length > 0;
-  // OUTREACH-Q.5: Hero/Top5/Filmstrip exclude '제외' candidates
-  const heroEligible = filteredCandidates.filter(c => c.recommendationTier !== '제외');
-  const safeHeroIndex = heroEligible.length > 0 ? Math.min(heroIndex, heroEligible.length - 1) : -1;
-  const heroCandidate = safeHeroIndex >= 0 ? heroEligible[safeHeroIndex] : null;
-  const queueCandidates = hasRealData
-    ? filteredCandidates.filter(c => c !== heroCandidate).slice(0, 8)
-    : [];
-  // OUTREACH-Q.5: Top5/Filmstrip only 추천/검토
-  const top5Candidates = filteredCandidates.filter(c => c.recommendationTier === '추천' || c.recommendationTier === '검토').slice(0, 5);
-  const allExcludedOrHeld = heroEligible.length === 0 && hasRealData;
+  const totalCandidates = realCandidates.length;
+  const filteredCount = filteredCandidates.length;
+  const visibleStart = candidatePage * CANDIDATES_PER_PAGE;
+  const visibleCandidates = filteredCandidates.slice(visibleStart, visibleStart + CANDIDATES_PER_PAGE);
+  const totalPages = Math.ceil(filteredCount / CANDIDATES_PER_PAGE);
 
-  /* ─── Category distribution for radar ─── */
-  const categoryMap: Record<string, number> = {};
-  realCandidates.forEach(c => {
-    const cat = c.category || '미분류';
-    categoryMap[cat] = (categoryMap[cat] || 0) + 1;
-  });
-  const topCategories = Object.entries(categoryMap).sort((a, b) => b[1] - a[1]).slice(0, 5);
-
-  /* ─── Platform distribution ─── */
   const platformCounts: Record<string, number> = {};
   realCandidates.forEach(c => {
     const p = c.platform || 'YouTube';
     platformCounts[p] = (platformCounts[p] || 0) + 1;
   });
 
+  const tierCounts = {
+    추천: realCandidates.filter(c => c.recommendationTier === '추천').length,
+    검토: realCandidates.filter(c => c.recommendationTier === '검토').length,
+    보류: realCandidates.filter(c => c.recommendationTier === '보류').length,
+    제외: realCandidates.filter(c => c.recommendationTier === '제외').length,
+  };
+
+  const contactableCount = realCandidates.filter(c => c.contactStatus === 'contactable').length;
+
+  /* ─── Smartstore KPI ─── */
+  const ssNewOrders = briefData?.smartstore_new_orders ?? smartstoreSnapshot?.newOrders ?? null;
+  const ssPendingShip = briefData?.smartstore_ready_orders ?? smartstoreSnapshot?.pendingShipping ?? null;
+  const ssPreShip = smartstoreSnapshot?.preShipTotal ?? (ssNewOrders !== null && ssPendingShip !== null ? ssNewOrders + ssPendingShip : null);
+  const ssDelivering = briefData?.smartstore_delivering ?? smartstoreSnapshot?.shipping ?? null;
+  const ssDelivered = briefData?.smartstore_delivered ?? smartstoreSnapshot?.delivered ?? null;
+  const ssConfirmed = briefData?.smartstore_purchase_decided ?? smartstoreSnapshot?.purchaseConfirmed ?? null;
+  const ssConfirmNeeded = briefData?.smartstore_confirm_needed ?? null;
+
+  /* ─── Outreach KPI ─── */
+  const outreachDiscovered = briefData?.outreach_discovered ?? totalCandidates;
+  const outreachPublicEmail = briefData?.outreach_public_email_found ?? contactableCount;
+  const outreachDraft = briefData?.outreach_draft_ready ?? 0;
+  const outreachSent = briefData?.outreach_email_sent ?? 0;
+  const outreachPositive = briefData?.outreach_positive_replies ?? 0;
+  const outreachAccepted = briefData?.outreach_accepted ?? 0;
+  const outreachFollowup = briefData?.outreach_followup_needed ?? 0;
+
+  /* ─── Hot Content ─── */
+  const hotYoutube = briefData?.hot_youtube_count;
+  const hotThreads = briefData?.hot_threads_count;
+  const hotInstagram = briefData?.hot_instagram_count;
+  const hotTiktok = briefData?.hot_tiktok_count;
+  const hotNaverBlog = briefData?.hot_naver_blog_count;
+
+  /* ─── Telegram ─── */
+  const telegramSent = briefData?.telegram_sent;
+  const telegramError = briefData?.telegram_error_code;
+
+  /* ─── Brief Period ─── */
+  const periodStart = briefData?.period_start_kst;
+  const periodEnd = briefData?.period_end_kst;
+
+  const now = new Date().toLocaleString('ko-KR', { timeZone: 'Asia/Seoul', hour12: false });
+
   return (
-    <div className={`data-wall-shell dw-cinematic-unity ${systemArmed ? 'is-system-armed' : ''} ${openingActive ? 'is-cinematic-opening' : ''}`}>
-      {/* ─── Cinematic Ambient Layer ─── */}
-      <div className="dw-cinematic-ambient-layer" aria-hidden="true">
-        <div className="dw-ambient-grid" />
-        <div className="dw-ambient-glow" />
-        <div className="dw-ambient-sweep" />
-        <div className="dw-ambient-noise" />
-        <div className="dw-ambient-scanline" />
-      </div>
-      {/* ─── Background Layer ─── */}
-      <div className="data-wall-bg" aria-hidden="true">
-        <div className="bg-grid" />
-        <div className="bg-vignette" />
+    <div className={`aw-shell ${systemArmed ? 'is-armed' : ''} ${openingActive ? 'is-opening' : ''}`}>
+      {/* ─── Background ─── */}
+      <div className="aw-bg" aria-hidden="true">
+        <div className="aw-bg-grid" />
+        <div className="aw-bg-glow" />
+        <div className="aw-bg-vignette" />
       </div>
 
-      {/* ═══ A. Header Bar ═══ */}
-      <header className="data-wall-header dw-q1-header">
-        <div className="dw-header-left">
-          <h1 className="dw-header-title">OUTREACH INTEL WALL</h1>
-          <span className="dw-header-subtitle">STRATEGIC HOLOGRAM STAGE</span>
+      {/* ═══ HEADER ═══ */}
+      <header className="aw-header">
+        <div className="aw-header-left">
+          <h1 className="aw-header-title">AGENT WORKSTATION</h1>
+          <span className="aw-header-sub">JARVIS 작업 관제실 · DATAWALL-AGENT-B.1</span>
         </div>
-        <div className="dw-header-center">
-          {/* Platform Tabs */}
-          <div className="dw-platform-tabs">
+        <div className="aw-header-center">
+          <div className="aw-platform-tabs">
             {PLATFORM_TABS.map(tab => (
               <button
                 key={tab}
-                className={`dw-platform-tab ${activeTab === tab ? 'is-active' : ''}`}
-                onClick={() => { setActiveTab(tab); setHeroIndex(0); }}
+                className={`aw-tab ${activeTab === tab ? 'is-active' : ''}`}
+                onClick={() => { setActiveTab(tab); setCandidatePage(0); setSelectedCandidate(null); }}
               >
                 {tab}
-                {tab !== '전체' && platformCounts[tab] ? <span className="dw-tab-count">{platformCounts[tab]}</span> : null}
+                {tab !== '전체' && platformCounts[tab] ? <span className="aw-tab-count">{platformCounts[tab]}</span> : null}
               </button>
             ))}
           </div>
         </div>
-        <div className="dw-header-right">
-          <span className={`dw-header-status ${systemArmed ? 'is-linked' : ''}`}>{systemArmed ? 'LINKED' : 'ONLINE'}</span>
-          <span className="dw-header-sub">{systemArmed ? 'DUAL SCREEN ACTIVE' : 'SYSTEM AWAKENING'}</span>
-          <span className="dw-header-intel-count">INTEL: {realCandidates.length}</span>
+        <div className="aw-header-right">
+          <span className={`aw-status-badge ${systemArmed ? 'is-linked' : ''}`}>{systemArmed ? 'LINKED' : 'ONLINE'}</span>
+          <span className="aw-header-time">{now}</span>
+          <button className="aw-refresh-btn" onClick={fetchBrief} disabled={briefLoading} title="브리핑 새로고침">
+            {briefLoading ? '⟳' : '↻'}
+          </button>
         </div>
       </header>
 
-      {/* ═══ Main 5-Zone Grid ═══ */}
-      <div className="data-wall-main-grid dw-q1-grid">
+      {/* ═══ MAIN GRID ═══ */}
+      <div className="aw-main-grid">
 
-        {/* ═══ E. Left Radar / Status Panel ═══ */}
-        <aside className="dw-col dw-col-left">
-          <div className="dw-panel dw-morning-brief">
-            <div className="dw-panel-label">MORNING BRIEF</div>
-            <div className="dw-brief-grid">
-              <div className="dw-brief-item">
-                <span className="dw-brief-val">{smartstoreSnapshot?.preShipTotal || 0}</span>
-                <span className="dw-brief-key">PRE-SHIP</span>
+        {/* ═══ LEFT: Agent Queue + KPI ═══ */}
+        <aside className="aw-col aw-col-left">
+
+          {/* ─── Smartstore KPI ─── */}
+          <section className="aw-panel aw-kpi-panel">
+            <div className="aw-panel-label">🛒 스마트스토어 현황</div>
+            <div className="aw-kpi-grid">
+              <div className="aw-kpi-tile aw-kpi-alert">
+                <span className="aw-kpi-val">{ssNewOrders !== null ? ssNewOrders : '—'}</span>
+                <span className="aw-kpi-key">신규주문</span>
               </div>
-              <div className="dw-brief-item">
-                <span className="dw-brief-val">{payload?.outreachCount || realCandidates.length}</span>
-                <span className="dw-brief-key">OUTREACH</span>
+              <div className="aw-kpi-tile aw-kpi-warn">
+                <span className="aw-kpi-val">{ssPendingShip !== null ? ssPendingShip : '—'}</span>
+                <span className="aw-kpi-key">배송준비</span>
               </div>
-              <div className="dw-brief-item">
-                <span className="dw-brief-val">{payload?.workspaceCount || 0}</span>
-                <span className="dw-brief-key">WORKSPACE</span>
+              <div className="aw-kpi-tile">
+                <span className="aw-kpi-val">{ssPreShip !== null ? ssPreShip : '—'}</span>
+                <span className="aw-kpi-key">배송전 합계</span>
+              </div>
+              <div className="aw-kpi-tile">
+                <span className="aw-kpi-val">{ssDelivering !== null ? ssDelivering : '—'}</span>
+                <span className="aw-kpi-key">배송중</span>
+              </div>
+              <div className="aw-kpi-tile">
+                <span className="aw-kpi-val">{ssDelivered !== null ? ssDelivered : '—'}</span>
+                <span className="aw-kpi-key">배송완료</span>
+              </div>
+              <div className="aw-kpi-tile">
+                <span className="aw-kpi-val">{ssConfirmed !== null ? ssConfirmed : '—'}</span>
+                <span className="aw-kpi-key">구매확정</span>
               </div>
             </div>
-          </div>
-          <div className="dw-panel dw-category-radar">
-            <div className="dw-panel-label">CATEGORY RADAR</div>
-            <div className="dw-radar-container">
-              <div className="dw-radar-rings">
-                <div className="dw-radar-ring" />
-                <div className="dw-radar-ring" />
-                <div className="dw-radar-ring" />
-                <div className="dw-radar-sweep" />
+            {ssConfirmNeeded !== null && (
+              <div className="aw-kpi-note">발주확인 필요: <strong>{ssConfirmNeeded}건</strong></div>
+            )}
+            {smartstoreSnapshot?.fetchedAt && (
+              <div className="aw-kpi-source">
+                출처: {smartstoreSnapshot.source || 'API'} · {new Date(smartstoreSnapshot.fetchedAt).toLocaleTimeString('ko-KR')}
               </div>
-              {topCategories.length > 0 ? (
-                topCategories.map(([cat, count], idx) => {
-                  const angle = (idx * 72) + 18;
-                  const dist = 40 + Math.min(count * 8, 40);
-                  return (
-                    <div key={cat} className="dw-radar-point" style={{ '--angle': `${angle}deg`, '--dist': `${dist}%` } as React.CSSProperties}>
-                      <span className="dw-radar-label">{cat} <span className="dw-radar-count">{count}</span></span>
+            )}
+          </section>
+
+          {/* ─── Outreach KPI ─── */}
+          <section className="aw-panel aw-kpi-panel">
+            <div className="aw-panel-label">📡 아웃리치 현황</div>
+            <div className="aw-kpi-grid">
+              <div className="aw-kpi-tile">
+                <span className="aw-kpi-val">{outreachDiscovered}</span>
+                <span className="aw-kpi-key">수집 후보</span>
+              </div>
+              <div className="aw-kpi-tile aw-kpi-ok">
+                <span className="aw-kpi-val">{outreachPublicEmail}</span>
+                <span className="aw-kpi-key">공개 이메일</span>
+              </div>
+              <div className="aw-kpi-tile">
+                <span className="aw-kpi-val">{outreachDraft}</span>
+                <span className="aw-kpi-key">초안 완료</span>
+              </div>
+              <div className="aw-kpi-tile">
+                <span className="aw-kpi-val">{outreachSent}</span>
+                <span className="aw-kpi-key">발송</span>
+              </div>
+              <div className="aw-kpi-tile">
+                <span className="aw-kpi-val">{outreachPositive}</span>
+                <span className="aw-kpi-key">긍정 답변</span>
+              </div>
+              <div className="aw-kpi-tile">
+                <span className="aw-kpi-val">{outreachAccepted}</span>
+                <span className="aw-kpi-key">제안 수락</span>
+              </div>
+            </div>
+            {outreachFollowup > 0 && (
+              <div className="aw-kpi-note">팔로업 필요: <strong>{outreachFollowup}건</strong></div>
+            )}
+            <div className="aw-kpi-note aw-kpi-info">이메일 원문은 Google Sheets에서 확인</div>
+          </section>
+
+          {/* ─── Agent Nodes ─── */}
+          <section className="aw-panel aw-agent-queue">
+            <div className="aw-panel-label">⚙️ Agent 작업 노드</div>
+            <div className="aw-agent-list">
+              {AGENT_NODES.map(node => {
+                let status: 'active' | 'idle' | 'missing' = 'idle';
+                let statusText = 'STANDBY';
+                if (node.id === 'smartstore' && (ssNewOrders !== null || smartstoreSnapshot)) { status = 'active'; statusText = 'ACTIVE'; }
+                if (node.id === 'outreach' && totalCandidates > 0) { status = 'active'; statusText = `${totalCandidates}명 수집`; }
+                if (node.id === 'hotcontent') {
+                  const anyHot = hotYoutube !== undefined || hotThreads !== undefined;
+                  status = anyHot ? 'active' : 'missing';
+                  statusText = anyHot ? 'ACTIVE' : 'not_connected';
+                }
+                if (node.id === 'telegram') {
+                  if (telegramError?.includes('env_missing') || telegramError?.includes('skipped')) { status = 'missing'; statusText = 'skipped_env_missing'; }
+                  else if (telegramSent) { status = 'active'; statusText = 'SENT'; }
+                  else { status = 'idle'; statusText = 'STANDBY'; }
+                }
+                if (node.id === 'sheets') {
+                  status = briefData ? 'active' : 'idle';
+                  statusText = briefData ? 'CONNECTED' : 'STANDBY';
+                }
+                return (
+                  <div key={node.id} className={`aw-agent-node aw-node-${status}`}>
+                    <span className="aw-node-icon">{node.icon}</span>
+                    <div className="aw-node-body">
+                      <span className="aw-node-label">{node.label}</span>
+                      <span className="aw-node-desc">{node.desc}</span>
                     </div>
-                  );
-                })
-              ) : (
-                ['대기중', '수집 준비', '분석 대기'].map((label, idx) => (
-                  <div key={label} className="dw-radar-point dw-radar-standby" style={{ '--angle': `${idx * 120 + 30}deg`, '--dist': '50%' } as React.CSSProperties}>
-                    <span className="dw-radar-label">{label}</span>
+                    <span className={`aw-node-status aw-ns-${status}`}>{statusText}</span>
                   </div>
-                ))
-              )}
+                );
+              })}
             </div>
-          </div>
-          {/* Platform Source Summary */}
-          <div className="dw-panel dw-source-summary">
-            <div className="dw-panel-label">SOURCE</div>
-            <div className="dw-source-list">
-              {Object.entries(platformCounts).length > 0 ? (
-                Object.entries(platformCounts).map(([p, count]) => (
-                  <div key={p} className="dw-source-row">
-                    <span className={`dw-source-badge dw-src-${p.toLowerCase()}`}>{p}</span>
-                    <span className="dw-source-count">{count}</span>
-                  </div>
-                ))
-              ) : (
-                <div className="dw-source-row dw-source-standby">
-                  <span className="dw-source-badge">STANDBY</span>
-                </div>
-              )}
-            </div>
-          </div>
+          </section>
+
         </aside>
 
-        {/* ═══ B. Center Hero Intel Panel ═══ */}
-        <main className="dw-col dw-col-center">
-          <section className="dw-hero-stage">
-            {/* Unity Core & Rings */}
-            <div className="dw-unity-core-wrap">
-              <div className="dw-unity-core" />
-              <div className="dw-unity-ring ring-a" />
-              <div className="dw-unity-ring ring-b" />
-              <div className="dw-unity-ring ring-c" />
-            </div>
+        {/* ═══ CENTER: Workflow Map + Brief ═══ */}
+        <main className="aw-col aw-col-center">
 
-            {heroCandidate ? (
-              /* ─── Real Hero Intel Card ─── */
-              <div className={`dw-hero-intel-card ${openingActive ? 'is-docking' : ''} dw-q1-hero`}>
-                {/* Hero Media Area */}
-                  <div className="dw-hero-media">
-                  <div className="dw-hero-thumb-wrap">
-                    {heroCandidate.thumbnailUrl ? (
-                      <img 
-                        src={heroCandidate.thumbnailUrl} 
-                        alt="" 
-                        className="dw-hero-thumb-img" 
-                        referrerPolicy="no-referrer"
-                        onError={(e) => { 
-                          const target = e.target as HTMLImageElement;
-                          target.style.display = 'none';
-                          target.parentElement?.classList.add('is-image-failed');
-                        }} 
-                      />
-                    ) : (
-                      <div className="dw-hero-thumb-fallback">
-                        <div className="dw-fallback-visual">
-                          <span className="dw-fallback-letter">{(heroCandidate.channelName || heroCandidate.title || '?')[0]}</span>
-                          <span className="dw-fallback-label">미디어 정보 확인 중</span>
-                          <span className="dw-fallback-sub">대표 영상 또는 프로필 이미지를 불러올 수 없습니다.</span>
-                        </div>
-                      </div>
-                    )}
-                    <div className="dw-hero-thumb-overlay" />
-                    <div className="dw-hero-scanline" />
-                    {/* Play Button */}
-                    {heroCandidate.videoUrl && (
-                      <a href={heroCandidate.videoUrl} target="_blank" rel="noopener noreferrer" className="dw-hero-play-btn">
-                        <div className="dw-play-icon" />
-                      </a>
-                    )}
-                    {/* Platform Badge */}
-                    <span className={`dw-platform-badge dw-plat-${(heroCandidate.platform || 'youtube').toLowerCase()}`}>
-                      {heroCandidate.platform || 'YouTube'}
-                    </span>
-                    <span className="dw-hero-thumb-caption">현장 신호 // {heroCandidate.platform?.toUpperCase() || '인텔'}</span>
-                  </div>
-                </div>
-                {/* Hero Body */}
-                <div className="dw-hero-body">
-                  <div className="dw-hero-header-row">
-                    <div className="dw-hero-avatar">
-                      {heroCandidate.channelAvatarUrl ? (
-                        <img 
-                          src={heroCandidate.channelAvatarUrl} 
-                          alt={heroCandidate.channelName} 
-                          className="dw-hero-avatar-img" 
-                          referrerPolicy="no-referrer"
-                          loading="lazy"
-                          onError={(e) => { 
-                            const target = e.target as HTMLImageElement;
-                            target.style.display = 'none';
-                            target.parentElement?.classList.add('is-image-failed');
-                          }} 
-                        />
-                      ) : null}
-                      <span className="dw-channel-orb">{(heroCandidate.channelName || '?')[0]}</span>
-                    </div>
-                    <div className="dw-hero-channel-info">
-                      <span className="dw-hero-channel-name">{heroCandidate.channelName || '채널명 미확인'}</span>
-                      <span className="dw-hero-channel-meta">{heroCandidate.category} // {heroCandidate.type.replace('_', ' ').toUpperCase()}</span>
-                    </div>
-                    <div className="dw-hero-fit-badge">
-                      <span className="dw-fit-label">적합도</span>
-                      <span className="dw-fit-value">{heroCandidate.fitScore ?? '??'}</span>
-                    </div>
-                    {/* OUTREACH-Q.5: Recommendation Tier Badge */}
-                    {heroCandidate.recommendationTier && (
-                      <span className={`dw-tier-badge dw-tier-${heroCandidate.recommendationTier}`}>
-                        {heroCandidate.recommendationTier}
-                      </span>
-                    )}
-                  </div>
-                  <h2 className="dw-hero-title">{maskEmail(heroCandidate.title)}</h2>
-                  {/* OUTREACH-Q.5: Jarvis Quality Analysis */}
-                  <div className="dw-hero-analysis">
-                    <span className="dw-analysis-label">자비스 품질 판단</span>
-                    <p className="dw-analysis-text">{heroCandidate.jarvisReason || maskEmail(heroCandidate.reason || '') || '전략적 가치 분석 중...'}</p>
-                  </div>
-                  {/* OUTREACH-Q.5: 4-Axis Score Bar */}
-                  <div className="dw-q5-score-bar">
-                    <div className="dw-q5-axis">
-                      <span className="dw-q5-axis-label">카테고리</span>
-                      <div className="dw-q5-bar-track"><div className="dw-q5-bar-fill" style={{ width: `${heroCandidate.categoryFitScore || 0}%` }} /></div>
-                      <span className="dw-q5-axis-val">{heroCandidate.categoryFitScore || 0}</span>
-                    </div>
-                    <div className="dw-q5-axis">
-                      <span className="dw-q5-axis-label">안전도</span>
-                      <div className="dw-q5-bar-track"><div className="dw-q5-bar-fill dw-q5-safety" style={{ width: `${heroCandidate.brandSafetyScore || 0}%` }} /></div>
-                      <span className="dw-q5-axis-val">{heroCandidate.brandSafetyScore || 0}</span>
-                    </div>
-                    <div className="dw-q5-axis">
-                      <span className="dw-q5-axis-label">연락</span>
-                      <div className="dw-q5-bar-track"><div className="dw-q5-bar-fill dw-q5-contact" style={{ width: `${heroCandidate.contactScore || 0}%` }} /></div>
-                      <span className="dw-q5-axis-val">{heroCandidate.contactScore || 0}</span>
-                    </div>
-                    <div className="dw-q5-axis">
-                      <span className="dw-q5-axis-label">미디어</span>
-                      <div className="dw-q5-bar-track"><div className="dw-q5-bar-fill dw-q5-media" style={{ width: `${heroCandidate.mediaScore || 0}%` }} /></div>
-                      <span className="dw-q5-axis-val">{heroCandidate.mediaScore || 0}</span>
-                    </div>
-                  </div>
-                  {/* OUTREACH-Q.5: Risk Flags & Positive Signals */}
-                  {(heroCandidate.riskFlags?.length || heroCandidate.positiveSignals?.length) ? (
-                    <div className="dw-q5-signals">
-                      {heroCandidate.positiveSignals?.slice(0, 3).map((s, i) => (
-                        <span key={`p${i}`} className="dw-q5-signal dw-q5-positive">{s}</span>
-                      ))}
-                      {heroCandidate.riskFlags?.slice(0, 2).map((f, i) => (
-                        <span key={`r${i}`} className="dw-q5-signal dw-q5-risk">{f}</span>
-                      ))}
-                    </div>
-                  ) : null}
-                  {/* Metrics Strip */}
-                  <div className="dw-metrics-strip">
-                    <div className="dw-metric">
-                      <span className="dw-metric-key">구독자</span>
-                      <span className="dw-metric-val">{heroCandidate.subscriberText || '확인 필요'}</span>
-                    </div>
-                    <div className="dw-metric">
-                      <span className="dw-metric-key">평균 조회수</span>
-                      <span className="dw-metric-val">{heroCandidate.viewsText || '확인 필요'}</span>
-                    </div>
-                    {heroCandidate.likesText && (
-                      <div className="dw-metric">
-                        <span className="dw-metric-key">좋아요</span>
-                        <span className="dw-metric-val">{heroCandidate.likesText}</span>
-                      </div>
-                    )}
-                    <div className="dw-metric">
-                      <span className="dw-metric-key">연락 가능</span>
-                      <span className={`dw-metric-val ${heroCandidate.contactStatus === 'contactable' ? 'dw-val-active' : ''}`}>
-                        {heroCandidate.contactStatus === 'contactable' ? '문의 가능' : heroCandidate.contactStatus === 'review' ? '검토 필요' : '대기 중'}
-                      </span>
-                    </div>
-                    {heroCandidate.videoUrl && (
-                      <a href={heroCandidate.videoUrl} target="_blank" rel="noopener noreferrer" className="dw-metric dw-metric-link">
-                        <span className="dw-metric-key">링크</span>
-                        <span className="dw-metric-val dw-val-active">이동</span>
-                      </a>
+          {/* ─── Daily Brief Summary ─── */}
+          <section className="aw-panel aw-brief-panel">
+            <div className="aw-panel-label">
+              📋 최근 24시간 운영 브리핑
+              {periodStart && periodEnd && (
+                <span className="aw-brief-period"> · {periodStart} ~ {periodEnd}</span>
+              )}
+            </div>
+            {briefLoading && <div className="aw-brief-loading">브리핑 로딩 중...</div>}
+            {briefError && <div className="aw-brief-error">브리핑 조회 실패: {briefError}</div>}
+            {!briefLoading && !briefError && !briefData && (
+              <div className="aw-brief-empty">브리핑 데이터 없음 — "오늘 업무 브리핑 해줘" 명령으로 생성</div>
+            )}
+            {briefData && (
+              <div className="aw-brief-content">
+                <div className="aw-brief-section">
+                  <span className="aw-brief-section-title">스마트스토어</span>
+                  <div className="aw-brief-row-grid">
+                    <span>신규주문 <strong>{briefData.smartstore_new_orders ?? '—'}</strong></span>
+                    <span>배송준비 <strong>{briefData.smartstore_ready_orders ?? '—'}</strong></span>
+                    <span>배송중 <strong>{briefData.smartstore_delivering ?? '—'}</strong></span>
+                    <span>배송완료 <strong>{briefData.smartstore_delivered ?? '—'}</strong></span>
+                    <span>구매확정 <strong>{briefData.smartstore_purchase_decided ?? '—'}</strong></span>
+                    {briefData.smartstore_confirm_needed !== undefined && (
+                      <span>발주확인 필요 <strong>{briefData.smartstore_confirm_needed}</strong></span>
                     )}
                   </div>
                 </div>
-              </div>
-            ) : (
-              /* ─── Empty State: Hero ─── */
-              <div className="dw-hero-intel-card dw-q1-hero dw-empty-hero">
-                <div className="dw-hero-media">
-                  <div className="dw-hero-thumb-wrap">
-                    <div className="dw-hero-thumb-fallback" />
-                    <div className="dw-hero-scanline" />
-                    <span className="dw-hero-thumb-caption">AWAITING INTEL</span>
+                <div className="aw-brief-section">
+                  <span className="aw-brief-section-title">아웃리치</span>
+                  <div className="aw-brief-row-grid">
+                    <span>신규 수집 <strong>{briefData.outreach_discovered ?? '—'}</strong></span>
+                    <span>공개 이메일 <strong>{briefData.outreach_public_email_found ?? '—'}</strong></span>
+                    <span>초안 완료 <strong>{briefData.outreach_draft_ready ?? '—'}</strong></span>
+                    <span>승인 대기 <strong>{briefData.outreach_approval_waiting ?? '—'}</strong></span>
+                    <span>이메일 발송 <strong>{briefData.outreach_email_sent ?? '—'}</strong></span>
+                    <span>긍정 답변 <strong>{briefData.outreach_positive_replies ?? '—'}</strong></span>
+                    <span>제안 수락 <strong>{briefData.outreach_accepted ?? '—'}</strong></span>
+                    <span>팔로업 필요 <strong>{briefData.outreach_followup_needed ?? '—'}</strong></span>
+                    <span>팔로업 발송 <strong>{briefData.outreach_followup_sent ?? '—'}</strong></span>
                   </div>
                 </div>
-                <div className="dw-hero-body">
-                  <h2 className="dw-hero-title">INTEL STANDBY</h2>
-                  <div className="dw-hero-analysis">
-                    <span className="dw-analysis-label">STATUS</span>
-                    <p className="dw-analysis-text">OUTREACH 후보를 수집하면 이곳에 실제 채널/영상 후보가 표시됩니다.</p>
+                <div className="aw-brief-section">
+                  <span className="aw-brief-section-title">Hot Content</span>
+                  <div className="aw-brief-row-grid">
+                    <span>YouTube <strong>{hotYoutube !== undefined ? hotYoutube : <em className="aw-not-connected">not_connected</em>}</strong></span>
+                    <span>Threads <strong>{hotThreads !== undefined ? hotThreads : <em className="aw-not-connected">not_connected</em>}</strong></span>
+                    <span>Instagram <strong>{hotInstagram !== undefined ? hotInstagram : <em className="aw-not-connected">not_connected</em>}</strong></span>
+                    <span>TikTok <strong>{hotTiktok !== undefined ? hotTiktok : <em className="aw-not-connected">not_connected</em>}</strong></span>
+                    <span>Naver Blog <strong>{hotNaverBlog !== undefined ? hotNaverBlog : <em className="aw-not-connected">not_connected</em>}</strong></span>
                   </div>
-                  <div className="dw-empty-modules">
-                    <span className="dw-empty-modules-label">READY MODULES</span>
-                    <div className="dw-empty-module-grid">
-                      <span className="dw-module-chip">Candidate Feed</span>
-                      <span className="dw-module-chip">Contact Check</span>
-                      <span className="dw-module-chip">Category Radar</span>
-                      <span className="dw-module-chip">Hero Selection</span>
-                      <span className="dw-module-chip">YouTube Visual Preview</span>
-                    </div>
+                  {(hotYoutube === undefined && hotThreads === undefined) && (
+                    <div className="aw-brief-note">Hot Content collector not connected yet</div>
+                  )}
+                </div>
+                <div className="aw-brief-section">
+                  <span className="aw-brief-section-title">Telegram</span>
+                  <div className="aw-brief-row-grid">
+                    <span>발송 여부 <strong>{telegramSent ? 'SENT' : 'skipped'}</strong></span>
+                    {telegramError && <span>사유 <strong className="aw-not-connected">{telegramError}</strong></span>}
                   </div>
+                  {(telegramError?.includes('env_missing') || !telegramSent) && (
+                    <div className="aw-brief-note">Telegram env missing — notification skipped</div>
+                  )}
+                </div>
+                <div className="aw-brief-footer">
+                  <span>이메일 원문 · 고객 정보는 Google Sheets에서 확인하세요</span>
                 </div>
               </div>
             )}
           </section>
 
-          {/* ═══ D. Bottom Filmstrip / Top 5 ═══ */}
-          <section className="dw-filmstrip-section">
-            <div className="dw-panel-label">TOP 5 INTEL TARGETS</div>
-            <div className="dw-filmstrip">
-              {hasRealData ? (
-                top5Candidates.map((card, idx) => (
-                  <div
-                    key={card.contextId}
-                    className={`dw-filmstrip-card ${heroCandidate && card.contextId === heroCandidate.contextId ? 'is-selected' : ''}`}
-                    onClick={() => {
-                      const realIdx = heroEligible.indexOf(card);
-                      if (realIdx >= 0) setHeroIndex(realIdx);
-                    }}
-                  >
-                    <div className="dw-film-thumb">
-                      {card.thumbnailUrl || card.channelAvatarUrl ? (
-                        <img 
-                          src={card.thumbnailUrl || card.channelAvatarUrl} 
-                          alt="" 
-                          className="dw-film-img" 
-                          referrerPolicy="no-referrer"
-                          onError={(e) => { 
-                            const target = e.target as HTMLImageElement;
-                            target.style.display = 'none';
-                            target.parentElement?.classList.add('is-image-failed');
-                          }} 
-                        />
-                      ) : null}
-                      <span className="dw-channel-orb dw-film-orb">{(card.channelName || card.title || '?')[0]}</span>
-                      <span className={`dw-film-platform dw-plat-${(card.platform || 'youtube').toLowerCase()}`}>{card.platform?.charAt(0) || 'Y'}</span>
-                    </div>
-                    <div className="dw-film-info">
-                      <span className="dw-film-name">{card.channelName || card.title}</span>
-                      <span className="dw-film-score">
-                        {card.recommendationTier && <span className={`dw-tier-dot dw-tier-${card.recommendationTier}`} />}
-                        {card.finalScore !== undefined ? `${card.finalScore}점` : ''}
-                      </span>
-                    </div>
+          {/* ─── Workflow Map ─── */}
+          <section className="aw-panel aw-workflow-panel">
+            <div className="aw-panel-label">🗺️ Workflow Map</div>
+            <div className="aw-workflow-map">
+              {[
+                { step: '수집', icon: '📡', val: outreachDiscovered, active: outreachDiscovered > 0 },
+                { step: '이메일 확인', icon: '✉️', val: outreachPublicEmail, active: outreachPublicEmail > 0 },
+                { step: '초안 생성', icon: '✍️', val: outreachDraft, active: outreachDraft > 0 },
+                { step: '발송', icon: '📤', val: outreachSent, active: outreachSent > 0 },
+                { step: '긍정 답변', icon: '✅', val: outreachPositive, active: outreachPositive > 0 },
+                { step: '수락', icon: '🤝', val: outreachAccepted, active: outreachAccepted > 0 },
+              ].map((s, i, arr) => (
+                <React.Fragment key={s.step}>
+                  <div className={`aw-wf-node ${s.active ? 'is-active' : ''}`}>
+                    <span className="aw-wf-icon">{s.icon}</span>
+                    <span className="aw-wf-val">{s.val}</span>
+                    <span className="aw-wf-step">{s.step}</span>
                   </div>
-                ))
-              ) : (
-                Array.from({ length: 5 }).map((_, idx) => (
-                  <div key={idx} className="dw-filmstrip-card dw-standby-frame">
-                    <div className="dw-film-thumb">
-                      <div className="dw-film-empty-frame" />
-                    </div>
-                  </div>
-                ))
-              )}
+                  {i < arr.length - 1 && <div className={`aw-wf-arrow ${s.active ? 'is-active' : ''}`}>→</div>}
+                </React.Fragment>
+              ))}
             </div>
           </section>
+
+          {/* ─── Tier Summary ─── */}
+          <section className="aw-panel aw-tier-panel">
+            <div className="aw-panel-label">🏷️ 후보 품질 분류</div>
+            <div className="aw-tier-grid">
+              <div className="aw-tier-tile aw-tier-추천">
+                <span className="aw-tier-val">{tierCounts.추천}</span>
+                <span className="aw-tier-key">추천</span>
+              </div>
+              <div className="aw-tier-tile aw-tier-검토">
+                <span className="aw-tier-val">{tierCounts.검토}</span>
+                <span className="aw-tier-key">검토</span>
+              </div>
+              <div className="aw-tier-tile aw-tier-보류">
+                <span className="aw-tier-val">{tierCounts.보류}</span>
+                <span className="aw-tier-key">보류</span>
+              </div>
+              <div className="aw-tier-tile aw-tier-제외">
+                <span className="aw-tier-val">{tierCounts.제외}</span>
+                <span className="aw-tier-key">제외</span>
+              </div>
+            </div>
+          </section>
+
         </main>
 
-        {/* ═══ C. Right Intel Queue ═══ */}
-        <aside className="dw-col dw-col-right">
-          <div className="dw-panel dw-intel-queue-panel">
-            <div className="dw-panel-label">INTEL QUEUE {hasRealData && <span className="dw-queue-count">{queueCandidates.length}</span>}</div>
-            <div className="dw-intel-cards">
-              {hasRealData ? (
-                queueCandidates.map((card, idx) => {
-                  const isSelected = heroCandidate && card.contextId === heroCandidate.contextId;
+        {/* ═══ RIGHT: Candidate Queue ═══ */}
+        <aside className="aw-col aw-col-right">
+          <section className="aw-panel aw-candidate-panel">
+            <div className="aw-panel-label">
+              👥 후보 큐
+              <span className="aw-candidate-count">
+                Showing {Math.min(visibleStart + CANDIDATES_PER_PAGE, filteredCount)} / {filteredCount}
+                {activeTab !== '전체' && ` (전체 ${totalCandidates}명)`}
+              </span>
+            </div>
+
+            {/* Selected Candidate Detail */}
+            {selectedCandidate && (
+              <div className="aw-candidate-detail">
+                <div className="aw-cd-header">
+                  <span className={`aw-cd-tier aw-tier-${selectedCandidate.recommendationTier}`}>{selectedCandidate.recommendationTier}</span>
+                  <button className="aw-cd-close" onClick={() => setSelectedCandidate(null)}>✕</button>
+                </div>
+                <div className="aw-cd-title">{selectedCandidate.channelName || selectedCandidate.title}</div>
+                <div className="aw-cd-platform">{selectedCandidate.platform || '—'} · {selectedCandidate.category || '—'}</div>
+                <div className="aw-cd-reason">{selectedCandidate.jarvisReason || '분석 대기'}</div>
+                <div className="aw-cd-scores">
+                  <span>카테고리 {selectedCandidate.categoryFitScore ?? '—'}</span>
+                  <span>안전도 {selectedCandidate.brandSafetyScore ?? '—'}</span>
+                  <span>연락 {selectedCandidate.contactScore ?? '—'}</span>
+                  <span>미디어 {selectedCandidate.mediaScore ?? '—'}</span>
+                  <span>종합 {selectedCandidate.finalScore ?? '—'}점</span>
+                </div>
+                <div className="aw-cd-contact">
+                  연락 가능:&nbsp;
+                  {selectedCandidate.contactStatus === 'contactable' ? (
+                    <span className="aw-cd-contactable">공개 이메일 확인됨 (Google Sheets 참조)</span>
+                  ) : selectedCandidate.contactStatus === 'review' ? (
+                    <span className="aw-cd-review">문의 링크 있음</span>
+                  ) : (
+                    <span className="aw-cd-none">확인 필요</span>
+                  )}
+                </div>
+                {selectedCandidate.videoUrl && (
+                  <a href={selectedCandidate.videoUrl} target="_blank" rel="noopener noreferrer" className="aw-cd-link">채널/영상 보기 →</a>
+                )}
+              </div>
+            )}
+
+            {/* Candidate List */}
+            <div className="aw-candidate-list">
+              {filteredCount === 0 ? (
+                <div className="aw-candidate-empty">
+                  <p>AWAITING INTEL</p>
+                  <p className="aw-candidate-empty-sub">1번 화면에서 후보 수집 실행 시 이곳에 표시됩니다.</p>
+                </div>
+              ) : (
+                visibleCandidates.map((card, idx) => {
+                  const isSelected = selectedCandidate?.contextId === card.contextId;
                   return (
                     <div
                       key={card.contextId}
-                      className={`dw-intel-card ${openingActive ? 'is-docking' : ''} ${idx < 4 ? 'is-top5' : ''} ${isSelected ? 'is-selected' : ''}`}
-                      style={{ '--i': idx } as React.CSSProperties}
-                      onClick={() => {
-                        const realIdx = heroEligible.indexOf(card);
-                        if (realIdx >= 0) setHeroIndex(realIdx);
-                      }}
+                      className={`aw-candidate-card ${isSelected ? 'is-selected' : ''} aw-tier-border-${card.recommendationTier || '보류'}`}
+                      onClick={() => setSelectedCandidate(isSelected ? null : card)}
                     >
-                        <div className="dw-intel-thumb">
+                      <div className="aw-cc-avatar">
                         {card.channelAvatarUrl ? (
-                          <img 
-                            src={card.channelAvatarUrl} 
-                            alt="" 
-                            className="dw-intel-avatar-img" 
-                            referrerPolicy="no-referrer"
-                            onError={(e) => { 
-                              const target = e.target as HTMLImageElement;
-                              target.style.display = 'none';
-                              target.parentElement?.classList.add('is-image-failed');
-                            }} 
-                          />
+                          <img src={card.channelAvatarUrl} alt="" className="aw-cc-avatar-img" referrerPolicy="no-referrer"
+                            onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
                         ) : null}
-                        <span className="dw-channel-orb">{(card.channelName || card.title || '?')[0]}</span>
+                        <span className="aw-cc-avatar-fallback">{(card.channelName || card.title || '?')[0]}</span>
                       </div>
-                      <div className="dw-intel-body">
-                        <div className="dw-intel-title">{maskEmail(card.channelName || card.title)}</div>
-                        <div className="dw-intel-reason">{card.jarvisReason || maskEmail(card.reason || '') || '판단 대기'}</div>
-                        <div className="dw-intel-footer">
-                          {/* OUTREACH-Q.5: Tier Badge */}
-                          {card.recommendationTier && (
-                            <span className={`dw-intel-badge dw-tier-badge dw-tier-${card.recommendationTier}`}>{card.recommendationTier}</span>
-                          )}
-                          <span className={`dw-intel-badge dw-plat-${(card.platform || 'youtube').toLowerCase()}`}>{card.platform || 'YT'}</span>
-                          {card.finalScore !== undefined && <span className="dw-intel-badge dw-badge-score">{card.finalScore}점</span>}
-                          <span className={`dw-intel-badge ${card.contactStatus === 'contactable' ? 'dw-badge-contact' : 'dw-badge-pending'}`}>
-                            {card.contactStatus === 'contactable' ? '문의 가능' : card.contactStatus === 'review' ? '검토 필요' : '대기 중'}
+                      <div className="aw-cc-body">
+                        <div className="aw-cc-title">{card.channelName || card.title}</div>
+                        <div className="aw-cc-meta">
+                          <span className={`aw-cc-tier aw-tier-${card.recommendationTier}`}>{card.recommendationTier || '—'}</span>
+                          <span className="aw-cc-platform">{card.platform || '—'}</span>
+                          {card.finalScore !== undefined && <span className="aw-cc-score">{card.finalScore}점</span>}
+                          <span className={`aw-cc-contact ${card.contactStatus === 'contactable' ? 'is-contactable' : ''}`}>
+                            {card.contactStatus === 'contactable' ? '문의 가능' : card.contactStatus === 'review' ? '검토 필요' : '대기'}
                           </span>
                         </div>
                       </div>
+                      <span className="aw-cc-idx">{visibleStart + idx + 1}</span>
                     </div>
                   );
                 })
-              ) : (
-                <div className="dw-empty-queue">
-                  <p className="dw-empty-queue-title">AWAITING INTEL</p>
-                  <p className="dw-empty-queue-sub">1번 화면에서 후보 수집 실행 시 이곳에 우선순위 후보가 정렬됩니다.</p>
-                </div>
               )}
             </div>
-          </div>
+
+            {/* Pagination */}
+            {totalPages > 1 && (
+              <div className="aw-pagination">
+                <button className="aw-page-btn" onClick={() => setCandidatePage(p => Math.max(0, p - 1))} disabled={candidatePage === 0}>‹</button>
+                <span className="aw-page-info">{candidatePage + 1} / {totalPages}</span>
+                <button className="aw-page-btn" onClick={() => setCandidatePage(p => Math.min(totalPages - 1, p + 1))} disabled={candidatePage >= totalPages - 1}>›</button>
+              </div>
+            )}
+          </section>
         </aside>
+
       </div>
 
-      {/* ─── Live Feed Strip ─── */}
-      <footer className="dw-live-feed">
-        <span className="dw-feed-line">SYSTEM ONLINE</span>
-        <span className="dw-feed-line">QUALITY ENGINE ACTIVE</span>
-        <span className="dw-feed-line">추천 {realCandidates.filter(c => c.recommendationTier === '추천').length} / 검토 {realCandidates.filter(c => c.recommendationTier === '검토').length} / 보류 {realCandidates.filter(c => c.recommendationTier === '보류').length} / 제외 {realCandidates.filter(c => c.recommendationTier === '제외').length}</span>
-        <span className="dw-feed-line">INTEL: {realCandidates.length} CANDIDATES</span>
+      {/* ═══ FOOTER ═══ */}
+      <footer className="aw-footer">
+        <span>TOTAL: {totalCandidates}명</span>
+        <span>FILTERED: {filteredCount}명</span>
+        <span>추천 {tierCounts.추천} / 검토 {tierCounts.검토} / 보류 {tierCounts.보류} / 제외 {tierCounts.제외}</span>
+        <span>공개 이메일 확인: {contactableCount}명 (원문은 Google Sheets)</span>
+        <span>EXECUTE LOCKED · active_readonly</span>
       </footer>
     </div>
   );
 };
+
 export default DataWallView;
