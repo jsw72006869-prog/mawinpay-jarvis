@@ -1167,7 +1167,7 @@ async function handleDailyBriefing() {
   };
 
   // 2. KAMIS 데이터 (배추 기본)
-  const kamisResult = await handleKamisMini({ item: '배추' });
+  const kamisResult: any = await handleKamisMini({ item: '배추' });
 
   // 3. Outreach 데이터 (최근 수집 후보 요약)
   let outreachSummary = { total: 0, contactable: 0, highFit: 0, drafts: 0 };
@@ -4449,9 +4449,8 @@ async function createOrderExcelBuffer(orders: OrderItem[], productType: 'bam' | 
       });
     }
   }
-  return await wb.xlsx.writeBuffer();
+    return await wb.xlsx.writeBuffer() as any;
 }
-
 async function createSettlementBuffer(qtyMap: Record<string, number>, supplyMap: Record<string, number>, saleMap: Record<string, number>, productType: 'bam' | 'oksu', today: string) {
   const ExcelJS = (await import('exceljs')).default;
   const wb = new ExcelJS.Workbook();
@@ -4866,7 +4865,7 @@ async function handleSmartstoreProcessOrder(params: any) {
     const isDryRun = dryRun !== false;
 
     const ExcelJS = (await import('exceljs')).default;
-    const fileBuffer = Buffer.from(fileBase64, 'base64');
+    const fileBuffer = Buffer.from(fileBase64, 'base64') as any;
     const wb = new ExcelJS.Workbook();
     try {
       await wb.xlsx.load(fileBuffer);
