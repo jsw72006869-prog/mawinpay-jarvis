@@ -10539,3 +10539,254 @@ html, body {
 }
 
 /* ── end DATAWALL-NODE-CANVAS-A.1 ── */
+
+
+/* ── DATAWALL-NODE-MOTION-A.1: Micro-Activity Layer ── */
+
+/* Agent Node Orb - 상태별 스타일 */
+.agent-node-orb {
+  position: relative;
+  overflow: visible;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.agent-node-icon {
+  position: relative;
+  z-index: 1;
+}
+
+/* Orb Current - Active 상태 글로우 */
+.agent-node-orb.orb-current {
+  box-shadow:
+    0 0 18px rgba(42, 255, 210, 0.28),
+    0 0 42px rgba(42, 255, 210, 0.12);
+}
+
+/* Orb Done - 약한 breathing glow */
+.agent-node-orb.orb-done {
+  box-shadow:
+    0 0 12px rgba(42, 255, 210, 0.15),
+    0 0 24px rgba(42, 255, 210, 0.06);
+  animation: agentOrbBreath 3.2s ease-in-out infinite;
+}
+
+/* Orb Standby - 거의 정적 */
+.agent-node-orb.orb-standby {
+  box-shadow: 0 0 8px rgba(42, 255, 210, 0.08);
+}
+
+/* Orb Locked - 묵직한 톤 */
+.agent-node-orb.orb-locked {
+  box-shadow: 0 0 8px rgba(100, 100, 120, 0.2);
+  opacity: 0.7;
+}
+
+/* Orb Skipped - 약한 amber */
+.agent-node-orb.orb-skipped {
+  box-shadow: 0 0 8px rgba(217, 119, 6, 0.15);
+  opacity: 0.65;
+}
+
+/* Orb Not Connected - muted */
+.agent-node-orb.orb-not_connected {
+  box-shadow: none;
+  opacity: 0.55;
+}
+
+/* Orb Error - 작은 warning blink */
+.agent-node-orb.orb-error {
+  box-shadow: 0 0 10px rgba(239, 68, 68, 0.2);
+  animation: agentOrbWarning 2.4s ease-in-out infinite;
+}
+
+/* Satellite - Active 노드의 회전하는 작은 dot */
+.agent-orb-satellite {
+  position: absolute;
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  background: #2affd2;
+  box-shadow: 0 0 12px rgba(42, 255, 210, 0.9);
+  top: -3px;
+  left: 50%;
+  transform-origin: 0 24px;
+  animation: agentOrbOrbit 3.2s linear infinite;
+}
+
+/* Processing Dots - Active 노드 우상단 */
+.agent-node-processing {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  display: flex;
+  gap: 4px;
+  z-index: 2;
+}
+
+.agent-node-processing span {
+  width: 4px;
+  height: 4px;
+  border-radius: 999px;
+  background: rgba(42, 255, 210, 0.9);
+  animation: agentDotWork 1.2s ease-in-out infinite;
+}
+
+.agent-node-processing span:nth-child(2) {
+  animation-delay: 0.16s;
+}
+
+.agent-node-processing span:nth-child(3) {
+  animation-delay: 0.32s;
+}
+
+/* Micro Rail - Active 노드 하단 */
+.agent-node-micro-rail {
+  position: absolute;
+  left: 16px;
+  right: 16px;
+  bottom: 10px;
+  height: 2px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: rgba(100, 220, 255, 0.1);
+  z-index: 1;
+}
+
+.agent-node-micro-rail::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  width: 40%;
+  background: linear-gradient(90deg, transparent, rgba(42, 255, 210, 0.85), transparent);
+  animation: agentMicroRail 2.4s ease-in-out infinite;
+}
+
+/* Connector Flow - 상태별 스타일 */
+.agent-flow-connector {
+  position: relative;
+}
+
+.agent-flow-connector.is-active {
+  opacity: 0.9;
+}
+
+.agent-flow-connector.is-active::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  width: 30%;
+  height: 100%;
+  background: linear-gradient(90deg, transparent, rgba(42, 255, 210, 0.8), transparent);
+  animation: datawallFlowSweep 2.1s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+}
+
+.agent-flow-connector.is-completed {
+  opacity: 0.5;
+}
+
+/* Signal Row - Activity Inspector live signal */
+.signal-row .signal-dot {
+  animation: signalDotPulse 2.2s ease-in-out infinite;
+}
+
+.signal-row.is-amber .signal-dot {
+  animation: none;
+  opacity: 0.7;
+}
+
+/* ─── Animations ─── */
+
+@keyframes agentOrbOrbit {
+  from {
+    transform: rotate(0deg) translateX(22px) rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg) translateX(22px) rotate(-360deg);
+  }
+}
+
+@keyframes agentOrbBreath {
+  0%, 100% {
+    opacity: 0.6;
+    box-shadow:
+      0 0 12px rgba(42, 255, 210, 0.1),
+      0 0 24px rgba(42, 255, 210, 0.04);
+  }
+  50% {
+    opacity: 1;
+    box-shadow:
+      0 0 18px rgba(42, 255, 210, 0.25),
+      0 0 36px rgba(42, 255, 210, 0.1);
+  }
+}
+
+@keyframes agentOrbWarning {
+  0%, 100% {
+    opacity: 0.7;
+    box-shadow: 0 0 10px rgba(239, 68, 68, 0.2);
+  }
+  50% {
+    opacity: 1;
+    box-shadow: 0 0 16px rgba(239, 68, 68, 0.4);
+  }
+}
+
+@keyframes agentDotWork {
+  0%, 100% {
+    opacity: 0.28;
+    transform: translateY(0);
+  }
+  50% {
+    opacity: 1;
+    transform: translateY(-2px);
+  }
+}
+
+@keyframes agentMicroRail {
+  0% {
+    transform: translateX(-120%);
+    opacity: 0;
+  }
+  20% {
+    opacity: 1;
+  }
+  100% {
+    transform: translateX(260%);
+    opacity: 0;
+  }
+}
+
+@keyframes signalDotPulse {
+  0%, 100% {
+    opacity: 0.42;
+    transform: scale(0.92);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.18);
+  }
+}
+
+/* ─── Motion Reduction ─── */
+@media (prefers-reduced-motion: reduce) {
+  .agent-orb-satellite,
+  .agent-node-processing span,
+  .agent-node-micro-rail::after,
+  .agent-node-orb.orb-done,
+  .agent-node-orb.orb-error,
+  .agent-flow-connector.is-active::after,
+  .signal-row .signal-dot {
+    animation: none !important;
+  }
+}
+
+/* ─── Not Connected / Locked Motion Restrictions ─── */
+.agent-flow-node.is-not_connected .agent-orb-satellite,
+.agent-flow-node.is-not_connected .agent-node-processing,
+.agent-flow-node.is-locked .agent-orb-satellite {
+  display: none;
+}
+
+/* ── end DATAWALL-NODE-MOTION-A.1 ── */

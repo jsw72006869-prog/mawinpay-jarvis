@@ -535,7 +535,14 @@ function AgentFlowNode({
       tabIndex={onClick ? 0 : undefined}
     >
       <div className="agent-node-topline">
-        <div className="agent-node-orb">{node.icon}</div>
+        <div className={[
+          'agent-node-orb',
+          `orb-${node.status}`,
+          active ? 'orb-current' : '',
+        ].join(' ')}>
+          <span className="agent-node-icon">{node.icon}</span>
+          {active && <span className="agent-orb-satellite" />}
+        </div>
         <span className={`agent-node-status-badge is-${node.status}`}>{statusLabel[node.status]}</span>
       </div>
       <div className="agent-node-label">{node.label}</div>
@@ -544,6 +551,14 @@ function AgentFlowNode({
         <strong className="agent-node-metric">{node.metric}</strong>
         <span className="agent-node-detail">{node.detail}</span>
       </div>
+      {active && (
+        <div className="agent-node-processing" aria-hidden="true">
+          <span />
+          <span />
+          <span />
+        </div>
+      )}
+      {active && <div className="agent-node-micro-rail" />}
       {active && <div className="agent-node-current-badge">CURRENT</div>}
     </article>
   );
