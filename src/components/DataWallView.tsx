@@ -312,7 +312,7 @@ const DataWallView: React.FC = () => {
   const [briefData, setBriefData] = useState<DailyBriefData | null>(null);
   const [briefLoading, setBriefLoading] = useState(false);
   const [briefError, setBriefError] = useState<string | null>(null);
-  // COPY-BRAIN-A.1A: Copy Brain 실제 데이터 기반 상태
+  // COPY-BRAIN-A.1B: Copy Brain 실제 데이터 + DNA Source 기반 상태
   const [copyBrainStatus, setCopyBrainStatus] = useState<{
     status: 'active' | 'no_generation_yet' | 'sheets_scope_error' | 'loading';
     generatedCopies: number;
@@ -428,7 +428,7 @@ const DataWallView: React.FC = () => {
       setBriefLoading(false);
     }
 
-    // COPY-BRAIN-A.1A: Copy Brain 상태 조회
+    // COPY-BRAIN-A.1B: Copy Brain 상태 조회
     try {
       const cbRes = await fetch('/api/cloud-proxy', {
         method: 'POST',
@@ -585,7 +585,7 @@ const DataWallView: React.FC = () => {
       <header className="aw-header">
         <div className="aw-header-left">
           <h1 className="aw-header-title">AGENT WORKSTATION</h1>
-          <span className="aw-header-sub">JARVIS 작업 관제실 · COPY-BRAIN-A.1A</span>
+          <span className="aw-header-sub">JARVIS 작업 관제실 · COPY-BRAIN-A.1B</span>
         </div>
         <div className="aw-header-center">
           <div className="aw-platform-tabs">
@@ -708,10 +708,11 @@ const DataWallView: React.FC = () => {
                   statusText = anyHot ? 'ACTIVE' : 'not_connected';
                 }
                 if (node.id === 'copybrain') {
-                  // COPY-BRAIN-A.1A: Copy Brain 실제 데이터 기반 상태
+                  // COPY-BRAIN-A.1B: Copy Brain 실제 데이터 + DNA Source 기반 상태
                   if (copyBrainStatus.status === 'active') {
                     status = 'active';
-                    statusText = `${copyBrainStatus.generatedCopies}건 생성 · ${copyBrainStatus.recommendedCopies}건 추천`;
+                    const dnaLabel = copyBrainStatus.dnaSource === 'viral_content_swipe' ? 'DNA:Hot' : copyBrainStatus.dnaSource === 'rules_only' ? 'DNA:Rules' : 'DNA:none';
+                    statusText = `${copyBrainStatus.generatedCopies}건 · ${copyBrainStatus.recommendedCopies}추천 · ${dnaLabel}`;
                   } else if (copyBrainStatus.status === 'sheets_scope_error') {
                     status = 'missing';
                     statusText = 'SHEETS_SCOPE_ERROR';
