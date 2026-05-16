@@ -9381,13 +9381,12 @@ html, body {
 
 /* ── Compact Metric Tile Grid (UI-ORCH-A.11) ── */
 .metric-tile-grid {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  grid-auto-rows: 72px;
-  align-content: start;
+  display: flex;
+  flex-wrap: wrap;
   gap: 6px;
   width: 100%;
   flex-shrink: 0;
+  align-content: flex-start;
 }
 .metric-tile {
   display: flex;
@@ -9399,8 +9398,10 @@ html, body {
   text-align: center;
   border-radius: 10px;
   height: 72px;
+  width: calc(33.333% - 4px);
   box-sizing: border-box;
   overflow: hidden;
+  flex-shrink: 0;
 }
 .metric-tile-label {
   font-size: 0.54rem;
