@@ -312,6 +312,24 @@ const DataWallView: React.FC = () => {
   const [briefData, setBriefData] = useState<DailyBriefData | null>(null);
   const [briefLoading, setBriefLoading] = useState(false);
   const [briefError, setBriefError] = useState<string | null>(null);
+  // COPY-BRAIN-A.1A: Copy Brain 실제 데이터 기반 상태
+  const [copyBrainStatus, setCopyBrainStatus] = useState<{
+    status: 'active' | 'no_generation_yet' | 'sheets_scope_error' | 'loading';
+    generatedCopies: number;
+    recommendedCopies: number;
+    rewriteRequired: number;
+    riskWarnings: number;
+    boringFiltered: number;
+    avgFinalScore: number;
+    topHookTypes: string[];
+    topBuyerDesires: string[];
+    dnaSource: string;
+    lastGeneratedAt: string;
+  }>({
+    status: 'loading', generatedCopies: 0, recommendedCopies: 0, rewriteRequired: 0,
+    riskWarnings: 0, boringFiltered: 0, avgFinalScore: 0, topHookTypes: [], topBuyerDesires: [],
+    dnaSource: 'none', lastGeneratedAt: '',
+  });
   const [candidatePage, setCandidatePage] = useState(0);
   const [selectedCandidate, setSelectedCandidate] = useState<RealIntelCandidate | null>(null);
   const openingTimerRef = useRef<number | null>(null);
@@ -409,6 +427,40 @@ const DataWallView: React.FC = () => {
     } finally {
       setBriefLoading(false);
     }
+
+    // COPY-BRAIN-A.1A: Copy Brain 상태 조회
+    try {
+      const cbRes = await fetch('/api/cloud-proxy', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ taskType: 'copy_brain_list', limit: 50 }),
+      });
+      if (cbRes.ok) {
+        const cbData = await cbRes.json();
+        if (cbData.success && cbData.items) {
+          const items = cbData.items || [];
+          const summary = cbData.summary || {};
+          const lastItem = items.length > 0 ? items[0] : null; // 최신순 정렬되어 있음
+          setCopyBrainStatus({
+            status: items.length > 0 ? 'active' : 'no_generation_yet',
+            generatedCopies: cbData.total || 0,
+            recommendedCopies: summary.recommended || 0,
+            rewriteRequired: summary.rewrite_required || 0,
+            riskWarnings: summary.risk_warnings || 0,
+            boringFiltered: summary.boring_filtered || 0,
+            avgFinalScore: summary.avg_final_score || 0,
+            topHookTypes: summary.top_hook_types || [],
+            topBuyerDesires: summary.top_buyer_desires || [],
+            dnaSource: lastItem?.dna_source || 'none',
+            lastGeneratedAt: lastItem?.created_at || '',
+          });
+        } else if (cbData.errorCode) {
+          setCopyBrainStatus(prev => ({ ...prev, status: 'sheets_scope_error' }));
+        } else {
+          setCopyBrainStatus(prev => ({ ...prev, status: 'no_generation_yet' }));
+        }
+      }
+    } catch { setCopyBrainStatus(prev => ({ ...prev, status: 'no_generation_yet' })); }
   }, []);
 
   useEffect(() => {
@@ -533,7 +585,7 @@ const DataWallView: React.FC = () => {
       <header className="aw-header">
         <div className="aw-header-left">
           <h1 className="aw-header-title">AGENT WORKSTATION</h1>
-          <span className="aw-header-sub">JARVIS 작업 관제실 · COPY-BRAIN-A.1</span>
+          <span className="aw-header-sub">JARVIS 작업 관제실 · COPY-BRAIN-A.1A</span>
         </div>
         <div className="aw-header-center">
           <div className="aw-platform-tabs">
@@ -656,9 +708,20 @@ const DataWallView: React.FC = () => {
                   statusText = anyHot ? 'ACTIVE' : 'not_connected';
                 }
                 if (node.id === 'copybrain') {
-                  // COPY-BRAIN-A.1: Copy Brain 8엔진 상태
-                  status = briefData ? 'active' : 'idle';
-                  statusText = briefData ? '8 ENGINES ACTIVE' : 'STANDBY';
+                  // COPY-BRAIN-A.1A: Copy Brain 실제 데이터 기반 상태
+                  if (copyBrainStatus.status === 'active') {
+                    status = 'active';
+                    statusText = `${copyBrainStatus.generatedCopies}건 생성 · ${copyBrainStatus.recommendedCopies}건 추천`;
+                  } else if (copyBrainStatus.status === 'sheets_scope_error') {
+                    status = 'missing';
+                    statusText = 'SHEETS_SCOPE_ERROR';
+                  } else if (copyBrainStatus.status === 'no_generation_yet') {
+                    status = 'idle';
+                    statusText = 'NO_GENERATION_YET';
+                  } else {
+                    status = 'idle';
+                    statusText = 'LOADING...';
+                  }
                 }
                 if (node.id === 'telegram') {
                   if (telegramError?.includes('env_missing') || telegramError?.includes('skipped')) { status = 'missing'; statusText = 'skipped_env_missing'; }
@@ -744,6 +807,25 @@ const DataWallView: React.FC = () => {
                   )}
                 </div>
                 <div className="aw-brief-section">
+                  <span className="aw-brief-section-title">🧠 Copy Brain</span>
+                  <div className="aw-brief-row-grid">
+                    <span>상태 <strong>{copyBrainStatus.status === 'active' ? 'ACTIVE' : copyBrainStatus.status === 'sheets_scope_error' ? 'SHEETS_ERROR' : copyBrainStatus.status === 'no_generation_yet' ? 'NO_GEN_YET' : 'LOADING'}</strong></span>
+                    <span>생성 카피 <strong>{copyBrainStatus.generatedCopies}</strong></span>
+                    <span>추천 카피 <strong>{copyBrainStatus.recommendedCopies}</strong></span>
+                    <span>재작성 필요 <strong>{copyBrainStatus.rewriteRequired}</strong></span>
+                    <span>리스크 경고 <strong>{copyBrainStatus.riskWarnings}</strong></span>
+                    <span>평균 점수 <strong>{copyBrainStatus.avgFinalScore}</strong></span>
+                    <span>DNA 소스 <strong>{copyBrainStatus.dnaSource === 'viral_content_swipe' ? 'Hot Content' : copyBrainStatus.dnaSource === 'rules_only' ? 'Rules Only' : 'none'}</strong></span>
+                    {copyBrainStatus.topHookTypes.length > 0 && <span>Top Hook <strong>{copyBrainStatus.topHookTypes.slice(0, 2).join(', ')}</strong></span>}
+                  </div>
+                  {copyBrainStatus.status === 'no_generation_yet' && (
+                    <div className="aw-brief-note">Copy Brain 아직 카피 생성 전</div>
+                  )}
+                  {copyBrainStatus.status === 'sheets_scope_error' && (
+                    <div className="aw-brief-note">copy_generation_log 조회 권한/범위 확인 필요</div>
+                  )}
+                </div>
+                <div className="aw-brief-section">
                   <span className="aw-brief-section-title">Telegram</span>
                   <div className="aw-brief-row-grid">
                     <span>발송 여부 <strong>{telegramSent ? 'SENT' : 'skipped'}</strong></span>
@@ -768,7 +850,7 @@ const DataWallView: React.FC = () => {
                 { step: '수집', icon: '📡', val: outreachDiscovered, active: outreachDiscovered > 0 },
                 { step: 'Hot Content', icon: '🔥', val: (hotYoutube ?? 0) + (hotThreads ?? 0) + (hotInstagram ?? 0) + (hotTiktok ?? 0) + (hotNaverBlog ?? 0), active: hotYoutube !== undefined },
                 { step: '이메일 확인', icon: '✉️', val: outreachPublicEmail, active: outreachPublicEmail > 0 },
-                { step: 'Copy Brain', icon: '🧠', val: outreachDraft, active: outreachDraft > 0 },
+                { step: 'Copy Brain', icon: '🧠', val: copyBrainStatus.generatedCopies, active: copyBrainStatus.status === 'active' },
                 { step: '발송', icon: '📤', val: outreachSent, active: outreachSent > 0 },
                 { step: '긍정 답변', icon: '✅', val: outreachPositive, active: outreachPositive > 0 },
                 { step: '수락', icon: '🤝', val: outreachAccepted, active: outreachAccepted > 0 },

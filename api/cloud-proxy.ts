@@ -2427,7 +2427,7 @@ const SHEET_HEADERS: Record<string, string[]> = {
   // OUTREACH-COPY-AGENT-MASTER-A.1: viral_content_swipe 탭 (Hot Content 카피 학습 재료)
   viral_content_swipe: ['id','platform','source_product','source_keyword','content_url','creator_name','hook_text','thumbnail_text','post_summary','engagement_visible','comment_signal','hot_reason','copy_pattern','emotion_trigger','buyer_desire','usable_for','hot_score','copy_pattern_score','risk_score','created_at','notes'],
   // COPY-BRAIN-A.1: Copy Brain 저장 구조
-  copy_generation_log: ['copy_id','product','platform','output_type','source_keyword','generated_text','product_truth','buyer_desire','copy_dna','hook_type','score_hook','score_sensory','score_buyer_desire','score_product_truth','score_platform_fit','score_mawi_voice','score_originality','score_action','score_risk','boring_score','final_score','recommended','risk_flags','rewrite_required','created_at','notes'],
+  copy_generation_log: ['copy_id','product','platform','output_type','source_keyword','generated_text','product_truth','buyer_desire','copy_dna','hook_type','score_hook','score_sensory','score_buyer_desire','score_product_truth','score_platform_fit','score_mawi_voice','score_originality','score_action','score_risk','boring_score','final_score','recommended','risk_flags','rewrite_required','dna_source','used_viral_content_count','created_at','notes'],
   copy_feedback_log: ['feedback_id','copy_id','feedback','reason','edited_text','product','platform','created_at','notes'],
   mawin_style_rules: ['rule_id','category','rule_text','priority','active','created_at','notes'],
 };
@@ -5948,36 +5948,119 @@ async function handleCopyBrainGenerate(params: any) {
   // 2. Buyer Desires
   const buyerDesires = resolveBuyerDesires(product, platform);
 
-  // 3. Viral Content (Hot Content) 조회
+  // 3. Viral Content (Hot Content) 조회 — data.values 패턴 사용
   let viralContents: any[] = [];
+  let usedContentIds: string[] = [];
   try {
     const data = await sheetsRead('viral_content_swipe');
-    if (data && data.length > 1) {
-      const headers = data[0];
-      const rows = data.slice(1).map((row: any[]) => {
+    const values = data?.values || [];
+    if (values.length > 1) {
+      const headers = values[0];
+      const rows = values.slice(1).map((row: any[]) => {
         const obj: any = {};
         headers.forEach((h: string, i: number) => { obj[h] = row[i] || ''; });
         return obj;
       });
-      // 필터: product 매칭 또는 전체
-      viralContents = rows
-        .filter((r: any) => !viralContentIds || viralContentIds.includes(r.id))
-        .filter((r: any) => r.notes !== 'TEST_DELETE_ME')
-        .slice(0, 5);
+      // 필터: viralContentIds 지정 시 해당 rows, 아니면 product/sourceKeyword/platform 기준
+      let filtered = rows.filter((r: any) => r.notes !== 'TEST_DELETE_ME');
+      if (viralContentIds && viralContentIds.length > 0) {
+        filtered = filtered.filter((r: any) => viralContentIds.includes(r.id));
+      } else {
+        // product/sourceKeyword/platform 기준 최근 rows
+        if (product) filtered = filtered.filter((r: any) => !r.source_product || r.source_product.toLowerCase().includes(product.toLowerCase()));
+        if (sourceKeyword) filtered = filtered.filter((r: any) => !r.source_keyword || r.source_keyword.includes(sourceKeyword));
+      }
+      viralContents = filtered.slice(-5); // 최근 5개
+      usedContentIds = viralContents.map((v: any) => v.id).filter(Boolean);
     }
   } catch (e) { /* viral_content_swipe 없으면 빈 배열 */ }
 
-  // 4. Copy DNA 추출 (구조만)
-  const copyDNARef = viralContents.map((v: any) => {
+  // 4. Copy DNA 추출 — 실제 Copy DNA Extractor 사용
+  const dnaSource = viralContents.length > 0 ? 'viral_content_swipe' : 'rules_only';
+  const usedViralContentCount = viralContents.length;
+
+  // Copy DNA Extractor: extractCopyDnaFromSwipe 로직 인라인 (Vercel serverless에서 src/lib import 불가)
+  const extractedDNAs = viralContents.map((v: any) => {
     const hookText = v.hook_text || '';
+    const thumbnailText = v.thumbnail_text || '';
+    const postSummary = v.post_summary || '';
+    const combinedText = `${hookText} ${thumbnailText} ${postSummary}`;
+
+    // Hook type 감지
     let hookType = 'sensory_hook';
-    if (/vs|대|파\s/.test(hookText)) hookType = 'conflict_hook';
-    else if (/사실|고백|솔직히/.test(hookText)) hookType = 'confession_hook';
-    else if (/여름|겨울|제철|시즌/.test(hookText)) hookType = 'seasonal_hook';
-    else if (/어릴|추억|할머니/.test(hookText)) hookType = 'memory_hook';
-    else if (/직송|농장|산지/.test(hookText)) hookType = 'local_trust_hook';
-    return `[${v.platform}] hook_type=${hookType}, pattern="${hookText.substring(0, 30)}..."`;
-  }).join('\n') || '(아직 수집된 Hot Content 없음)';
+    if (/vs|대|파\s|팀\s|논쟁|대결/i.test(combinedText)) hookType = 'conflict_hook';
+    else if (/사실|고백|솔직히|비밀|몰랐/.test(combinedText)) hookType = 'confession_hook';
+    else if (/여름|겨울|봄|가을|제철|이맘때|올해|시즌|수확/.test(combinedText)) hookType = 'seasonal_hook';
+    else if (/달콤|아삭|쫀득|바삭|촉촉|향|과즙|터지|물씬|식감|맛/.test(combinedText)) hookType = 'sensory_hook';
+    else if (/사실은|반대로|오히려|의외로/.test(combinedText)) hookType = 'contrarian_hook';
+    else if (/산지|직송|농장|직접|해남|영주|청송/.test(combinedText)) hookType = 'local_trust_hook';
+    else if (/어릴\s*때|추억|그때|할머니|시골/.test(combinedText)) hookType = 'memory_hook';
+    else if (/한정|마감|지금|마지막|놓치/.test(combinedText)) hookType = 'limited_timing_hook';
+    else if (/나는|우리는|진짜|찐|팬/.test(combinedText)) hookType = 'identity_hook';
+
+    // Buyer desire
+    let desire = v.buyer_desire || 'sensory_imagination';
+    if (!v.buyer_desire) {
+      const lower = combinedText.toLowerCase();
+      if (/추억|어릴|할머니|시골/.test(lower)) desire = 'nostalgia';
+      else if (/여름|겨울|제철|시즌|수확/.test(lower)) desire = 'seasonal_craving';
+      else if (/아이|엄마|가족/.test(lower)) desire = 'family_care';
+      else if (/선물|보내|감사/.test(lower)) desire = 'gift';
+      else if (/한정|마감|지금|마지막/.test(lower)) desire = 'scarcity_timing';
+      else if (/달콤|아삭|쫀득|향|과즙/.test(lower)) desire = 'sensory_imagination';
+      else if (/직송|농장|산지/.test(lower)) desire = 'trust';
+    }
+
+    // Sensory anchor
+    const sensoryWords = combinedText.match(/달콤|아삭|쫀득|바삭|촉촉|향|과즙|터지|물씬|식감/g) || [];
+    const sensoryAnchor = sensoryWords.length > 0 ? sensoryWords.join(', ') : 'none';
+
+    // Comment trigger
+    const commentSignal = v.comment_signal || '';
+    let commentTrigger = 'passive';
+    if (/투표|vs|대|파\s/.test(commentSignal)) commentTrigger = 'vote_trigger';
+    else if (/질문|어떻게|뭐|추천/.test(commentSignal)) commentTrigger = 'question_trigger';
+    else if (/공감|나도|맞아/.test(commentSignal)) commentTrigger = 'empathy_trigger';
+
+    // First line pattern
+    const firstLine = hookText.split(/[.!?\n]/)[0]?.trim() || '';
+    const firstLinePattern = firstLine.length <= 15 ? '짧은 임팩트형' : firstLine.length <= 30 ? '중간 서술형' : '장문 스토리형';
+
+    // Ending style
+    const endingStyle = /DM|댓글|알려|공유/.test(combinedText) ? 'cta_ending' : '여운형';
+
+    return {
+      source_content_id: v.id || '',
+      hook_type: hookType,
+      first_line_pattern: firstLinePattern,
+      buyer_desire: desire,
+      sensory_anchor: sensoryAnchor,
+      comment_trigger: commentTrigger,
+      ending_style: endingStyle,
+      platform_pattern: v.platform || 'unknown',
+    };
+  });
+
+  // Copy DNA를 프롬프트용 텍스트로 변환
+  let copyDNAPromptText = '[Copy DNA] 아직 분석된 바이럴 콘텐츠 없음';
+  if (extractedDNAs.length > 0) {
+    const hookTypes = [...new Set(extractedDNAs.map(d => d.hook_type))];
+    const desires = [...new Set(extractedDNAs.map(d => d.buyer_desire))];
+    const sensoryAnchors = [...new Set(extractedDNAs.flatMap(d => d.sensory_anchor.split(', ')).filter(s => s !== 'none'))];
+    const commentTriggers = [...new Set(extractedDNAs.map(d => d.comment_trigger))];
+    const firstLinePatterns = [...new Set(extractedDNAs.map(d => d.first_line_pattern))];
+    const endingStyles = [...new Set(extractedDNAs.map(d => d.ending_style))];
+    copyDNAPromptText = `[Copy DNA 분석 결과 — viral_content_swipe 기반]
+분석 콘텐츠 수: ${extractedDNAs.length}개
+반응 좋은 후킹 유형: ${hookTypes.join(', ')}
+주요 구매 욕망: ${desires.join(', ')}
+감각 앵커: ${sensoryAnchors.join(', ') || 'none'}
+댓글 트리거: ${commentTriggers.join(', ')}
+첫 줄 패턴: ${firstLinePatterns.join(', ')}
+엔딩 스타일: ${endingStyles.join(', ')}
+
+이 DNA를 참고하되 원문을 복사하지 마세요. 구조와 패턴만 활용하세요.`;
+  }
 
   // 5. Platform Formula
   const platformFormula = PLATFORM_FORMULAS[platform] || PLATFORM_FORMULAS.threads;
@@ -6034,7 +6117,7 @@ ${MAWI_VOICE_PROMPT}
 [Buyer Desire: ${buyerDesires.map((d: string) => `${d}(${DESIRE_LABELS[d] || d})`).join(', ')}]
 
 [Copy DNA 참고]
-${copyDNARef}
+${copyDNAPromptText}
 
 [플랫폼 공식: ${platform}]
 ${platformFormula}
@@ -6062,10 +6145,14 @@ ${outputInstructions}
   if (dryRun) {
     return {
       success: true, dryRun: true, product, platform, outputTypes, sourceKeyword, count,
+      dna_source: dnaSource,
+      used_viral_content_count: usedViralContentCount,
+      used_content_ids: usedContentIds,
+      no_hot_content_available: viralContents.length === 0,
       engines: {
         productTruth: { product: productTruth.product, core_truth_count: productTruth.core_truth.length, sensory_points: productTruth.sensory_points },
         buyerDesires: buyerDesires.map((d: string) => ({ type: d, label: DESIRE_LABELS[d] || d })),
-        copyDNA: { viralContentCount: viralContents.length, ref: copyDNARef.substring(0, 200) },
+        copyDNA: { viralContentCount: usedViralContentCount, dnaSource, extractedDNACount: extractedDNAs.length, sampleHookTypes: [...new Set(extractedDNAs.map(d => d.hook_type))].slice(0, 3) },
         platformFormula: platformFormula.substring(0, 200),
         mawiVoice: 'active',
         antiBoringFilter: 'active',
@@ -6139,17 +6226,20 @@ ${outputInstructions}
     const hookTypes = [...new Set(scoredCopies.map((c: any) => c.hook_type))];
     const desires = [...new Set(scoredCopies.map((c: any) => c.buyer_desire))];
 
-    // 11. copy_generation_log 저장
+    // 11. copy_generation_log 저장 — dna_source, used_viral_content_count 포함
     const now = new Date().toISOString();
+    const copyDnaSummary = extractedDNAs.length > 0
+      ? `hook_types:${[...new Set(extractedDNAs.map(d => d.hook_type))].join(',')};desires:${[...new Set(extractedDNAs.map(d => d.buyer_desire))].join(',')}`
+      : 'none';
     const logRows = scoredCopies.map((c: any) => [
       c.copy_id, c.product, c.platform, c.output_type, c.source_keyword,
-      c.generated_text, c.product_truth_used, c.buyer_desire, c.hook_type, c.hook_type,
+      c.generated_text, c.product_truth_used, c.buyer_desire, copyDnaSummary, c.hook_type,
       String(c.score.hook_score), String(c.score.sensory_score), String(c.score.buyer_desire_score),
       String(c.score.product_truth_score), String(c.score.platform_fit_score),
       String(c.score.mawi_voice_score), String(c.score.originality_score), String(c.score.action_score),
       String(c.score.risk_score), String(c.score.boring_score), String(c.score.final_score),
       String(c.score.recommended), (c.score.risk_flags || []).join(','),
-      String(c.score.rewrite_required), now, '',
+      String(c.score.rewrite_required), dnaSource, String(usedViralContentCount), now, '',
     ]);
 
     try {
@@ -6162,6 +6252,10 @@ ${outputInstructions}
 
     return {
       success: true, dryRun: false, product, platform,
+      dna_source: dnaSource,
+      used_viral_content_count: usedViralContentCount,
+      used_content_ids: usedContentIds,
+      no_hot_content_available: viralContents.length === 0,
       copies: scoredCopies,
       summary: {
         total: scoredCopies.length,
@@ -6210,14 +6304,16 @@ async function handleCopyBrainFeedbackSave(params: any) {
 
 // ═══ handleCopyBrainList: 생성 로그 조회 ═══
 async function handleCopyBrainList(params: any) {
-  const { product, platform, limit = 20 } = params;
+  const { product, platform, limit = 20, recommendedOnly = false } = params;
 
   try {
+    await ensureHeaders('copy_generation_log');
     const data = await sheetsRead('copy_generation_log');
-    if (!data || data.length <= 1) return { success: true, items: [], total: 0 };
+    const values = data?.values || [];
+    if (!values || values.length <= 1) return { success: true, items: [], total: 0, source: 'google_sheets', sheet: 'copy_generation_log' };
 
-    const headers = data[0];
-    let rows = data.slice(1).map((row: any[]) => {
+    const headers = values[0];
+    let rows = values.slice(1).map((row: any[]) => {
       const obj: any = {};
       headers.forEach((h: string, i: number) => { obj[h] = row[i] || ''; });
       return obj;
@@ -6225,6 +6321,7 @@ async function handleCopyBrainList(params: any) {
 
     if (product) rows = rows.filter((r: any) => r.product === product);
     if (platform) rows = rows.filter((r: any) => r.platform === platform);
+    if (recommendedOnly) rows = rows.filter((r: any) => r.recommended === 'true');
 
     // 최신순, limit 적용
     rows = rows.reverse().slice(0, limit);
@@ -6233,13 +6330,26 @@ async function handleCopyBrainList(params: any) {
       success: true,
       items: rows,
       total: rows.length,
+      source: 'google_sheets',
+      sheet: 'copy_generation_log',
       summary: {
         recommended: rows.filter((r: any) => r.recommended === 'true').length,
         rewrite_required: rows.filter((r: any) => r.rewrite_required === 'true').length,
+        risk_warnings: rows.filter((r: any) => parseInt(r.score_risk) >= 40).length,
+        boring_filtered: rows.filter((r: any) => parseInt(r.boring_score) >= 30).length,
         avg_final_score: rows.length > 0 ? Math.round(rows.reduce((a: number, r: any) => a + (parseInt(r.final_score) || 0), 0) / rows.length) : 0,
+        top_hook_types: [...new Set(rows.map((r: any) => r.hook_type).filter(Boolean))],
+        top_buyer_desires: [...new Set(rows.map((r: any) => r.buyer_desire).filter(Boolean))],
       },
     };
   } catch (e: any) {
-    return { success: true, items: [], total: 0, note: 'copy_generation_log 읽기 실패' };
+    const msg = e.message || '';
+    if (msg.includes('403') || msg.includes('permission')) {
+      return { success: false, errorCode: 'SHEETS_PERMISSION_ERROR', errorMessage: 'copy_generation_log 조회 권한 확인 필요' };
+    }
+    if (msg.includes('404') || msg.includes('Unable to parse range')) {
+      return { success: false, errorCode: 'SHEETS_SCOPE_ERROR', errorMessage: 'copy_generation_log 탭 또는 범위 확인 필요' };
+    }
+    return { success: false, errorCode: 'SHEETS_READ_ERROR', errorMessage: `copy_generation_log 읽기 실패: ${msg.substring(0, 100)}` };
   }
 }

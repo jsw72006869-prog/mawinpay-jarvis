@@ -136,12 +136,25 @@ export interface CopyBrainInput {
 }
 
 export interface ViralContentRef {
+  id?: string;
   platform: string;
   hook_text: string;
   engagement_visible: string;
   hot_reason: string;
   copy_pattern?: string;
   emotion_trigger?: string;
+  source_product?: string;
+  source_keyword?: string;
+  content_url?: string;
+  creator_name?: string;
+  thumbnail_text?: string;
+  post_summary?: string;
+  comment_signal?: string;
+  buyer_desire?: string;
+  usable_for?: string;
+  hot_score?: number;
+  copy_pattern_score?: number;
+  risk_score?: number;
 }
 
 export interface MawiVoiceRules {
