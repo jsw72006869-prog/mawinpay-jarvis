@@ -8,3 +8,4 @@ dist/
 # OAuth credentials (보안)
 credentials/
 dist/
+archive_backup/
