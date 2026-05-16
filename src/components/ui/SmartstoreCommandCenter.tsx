@@ -155,8 +155,14 @@ function OrderResultCard({
   const dataLines = lines.slice(1).filter(l => l.includes(':') || l.includes('건') || l.includes('원'));
   const fetchTime = lines.find(l => l.includes('기준') || l.includes('조회')) || '';
 
+  // GPT 분석 텍스트 추출 (PKG 메시지 이전의 마지막 jarvis 메시지)
+  const analysisMsg = [...messages].reverse().find(
+    m => m.role === 'jarvis' && !m.text.includes('[PKG]') && !m.text.includes('[LIST]') && m.text.length > 20
+  );
+  const analysisText = analysisMsg?.text?.replace(/\[.*?\]/g, '').trim() || '';
+
   return (
-    <div style={{ height: '100%', display: 'flex', flexDirection: 'column', gap: 12 }}>
+    <div style={{ height: '100%', display: 'flex', flexDirection: 'column', gap: 10 }}>
       {/* 카드 헤더 */}
       <div style={{
         fontFamily: 'Orbitron, monospace', fontSize: '0.62rem', color: '#00F5FF',
@@ -222,11 +228,18 @@ function OrderResultCard({
         })}
       </motion.div>
 
+      {/* ── GPT 분석 텍스트 영역 ── */}
+      {analysisText && (
+        <div className="order-analysis-area">
+          <div className="order-analysis-title">◈ JARVIS ANALYSIS</div>
+          <div className="order-analysis-text">{analysisText}</div>
+        </div>
+      )}
       {fetchTime && (
         <div style={{
           fontSize: '0.5rem', color: 'rgba(148,163,184,0.3)',
           textAlign: 'right', fontFamily: 'monospace', letterSpacing: '0.05em',
-          flexShrink: 0, marginTop: 'auto',
+          flexShrink: 0,
         }}>
           {fetchTime}
         </div>
