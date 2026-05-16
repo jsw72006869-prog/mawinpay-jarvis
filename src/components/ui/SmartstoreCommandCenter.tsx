@@ -162,7 +162,7 @@ function OrderResultCard({
   const analysisText = analysisMsg?.text?.replace(/\[.*?\]/g, '').trim() || '';
 
   return (
-    <div style={{ height: '100%', display: 'flex', flexDirection: 'column', gap: 10 }}>
+    <div style={{ height: 'auto', display: 'flex', flexDirection: 'column', gap: 10 }}>
       {/* 카드 헤더 */}
       <div style={{
         fontFamily: 'Orbitron, monospace', fontSize: '0.62rem', color: '#00F5FF',
@@ -184,6 +184,7 @@ function OrderResultCard({
         variants={metricGridVariants}
         initial="hidden"
         animate={animateState}
+        style={{ display: 'flex', flexWrap: 'wrap', gap: 6, width: '100%', flexShrink: 0 }}
       >
         {dataLines.map((line, i) => {
           const parts = line.replace(/[-•]/g, '').trim().split(/[:：]/);
@@ -203,6 +204,15 @@ function OrderResultCard({
               initial="hidden"
               animate={animateState}
               style={{
+                width: 'calc(33.333% - 4px)',
+                height: 72,
+                minHeight: 72,
+                maxHeight: 72,
+                display: 'flex',
+                flexDirection: 'column',
+                justifyContent: 'center',
+                padding: '0 14px',
+                overflow: 'hidden',
                 background: isNew
                   ? 'linear-gradient(135deg, rgba(0,245,255,0.09), rgba(0,245,255,0.03))'
                   : isPending
