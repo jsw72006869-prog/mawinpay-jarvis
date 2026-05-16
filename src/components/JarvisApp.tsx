@@ -393,6 +393,8 @@ function inferJarvisSceneFromCommand(input: string): JarvisScene {
 export default function JarvisApp() {
   const [state, setState] = useState<JarvisState>('idle');
   const [activeScene, setActiveScene] = useState<JarvisScene>('standby');
+  // UI-ORCH-A.10: Mission Workspace lifecycle lock — 명시적 닫기만 허용
+  const [missionWorkspaceOpen, setMissionWorkspaceOpen] = useState(false);
   const [messages, setMessages] = useState<Message[]>([]);
   const [isListening, setIsListening] = useState(false);
   const [micLevel, setMicLevel] = useState(0);
@@ -4448,8 +4450,14 @@ G. Review Objection: 작다/비싸다/무르다/배송 손상/맛 기대와 다�
       }, 5000);
 
       await new Promise(r => setTimeout(r, 400));
-      setState('listening');
-      setIsListening(true);
+      // UI-ORCH-A.10: Mission Workspace가 열려 있으면 STT 재시작 방지 (음성 재인식으로 인한 자동 닫힘 방지)
+      if (missionWorkspaceOpen) {
+        setState('idle');
+        setIsListening(false);
+      } else {
+        setState('listening');
+        setIsListening(true);
+      }
       return;
     }
 
@@ -4848,29 +4856,40 @@ G. Review Objection: 작다/비싸다/무르다/배송 손상/맛 기대와 다�
     return text.replace(/[\s\p{P}]/gu, '').trim();
   };
 
-  // ── UI-ORCH-A.4: Mission Workspace 전체 닫기 ──
+  // ── UI-ORCH-A.10: Mission Workspace 전체 닫기 (lifecycle lock) ──
   const closeMissionWorkspace = () => {
-    // 1. workspace scene 닫기
+    // 1. lifecycle lock 해제
+    setMissionWorkspaceOpen(false);
+    
+    // 2. workspace scene 닫기
     setActiveScene('home');
     
-    // 2. transient UI state 정리 (고아 패널 방지)
+    // 3. transient UI state 정리 (고아 패널 완전 방지)
     setActionContext(null);
     setWorkflowSteps([]);
     setApprovalPreview(null);
     setPredictedActions([]);
+    setActionStatusMessage('');
     
-    // 3. Result Deck 및 관련 오버레이 강제 종료
+    // 4. Result Deck 및 관련 오버레이 강제 종료
     setResultDeckVisible(false);
     setCopyFocusMode(false);
     setResultDeckIsCopyR(false);
+    setResultDeckResearchInsight('');
+    setResultDeckExcludedEngines([]);
     
-    // 4. messages 비우기 (workspace 세션 종료)
+    // 5. messages 비우기 (workspace 세션 종료)
     setMessages([]);
     
-    // 5. 기타 UI 상태 초기화
+    // 6. 기타 UI 상태 초기화
     setConversationExpanded(false);
     setResultDeckContent('');
     setResultDeckItems([]);
+    
+    // 7. STT/마이크 상태 초기화 (재인식 방지)
+    setIsListening(false);
+    setState('idle');
+    setMicLevel(0);
   };
 
   const isLikelySttHallucination = (text: string): boolean => {
@@ -4950,7 +4969,16 @@ G. Review Objection: 작다/비싸다/무르다/배송 손상/맛 기대와 다�
     // UI Scene 추론 및 설정 (STT guard 통과 후, SCREEN-A.1)
     {
       const voiceScene = inferJarvisSceneFromCommand(transcript);
-      setActiveScene(voiceScene);
+      // UI-ORCH-A.10: Mission Workspace 열린 상태에서는 scene 변경 차단
+      const voiceIsMission = voiceScene === 'smartstore_brief' || voiceScene === 'keyword_radar';
+      if (missionWorkspaceOpen && !voiceIsMission) {
+        // workspace 열린 상태에서 비-mission scene으로 변경 시도 → 무시
+      } else if (voiceIsMission) {
+        setMissionWorkspaceOpen(true);
+        setActiveScene(voiceScene);
+      } else {
+        setActiveScene(voiceScene);
+      }
       if (voiceScene !== 'home' && voiceScene !== 'standby') {
         setScenePanelVisible(true);
         setTimeout(() => setScenePanelVisible(false), 4000);
@@ -5042,9 +5070,23 @@ G. Review Objection: 작다/비싸다/무르다/배송 손상/맛 기대와 다�
 
     // UI Scene 추론 및 설정 (SCREEN-A.1)
     const nextScene = inferJarvisSceneFromCommand(text);
-    setActiveScene(nextScene);
+    // UI-ORCH-A.10: Mission Workspace가 열려 있는 동안 scene 변경 차단
+    // (workspace 내부 명령은 scene을 유지해야 함)
+    const isMissionScene = nextScene === 'smartstore_brief' || nextScene === 'keyword_radar';
+    const wasWorkspaceOpen = missionWorkspaceOpen;
+    if (isMissionScene) {
+      setMissionWorkspaceOpen(true);
+      setActiveScene(nextScene);
+    } else if (wasWorkspaceOpen) {
+      // workspace 열린 상태에서 다른 scene 명령 → workspace 유지, scene 변경 안 함
+      // (workspace 내부에서 후속 명령 처리)
+    } else {
+      setActiveScene(nextScene);
+    }
     // smartstore_brief 활성화 시 캐시 데이터 즉시 반영
-    if (nextScene === 'smartstore_brief' && ssCountsCacheRef.current?.data) {
+    if ((isMissionScene || wasWorkspaceOpen) && nextScene === 'smartstore_brief' && ssCountsCacheRef.current?.data) {
+      setSccOrderData(ssCountsCacheRef.current.data);
+    } else if (nextScene === 'smartstore_brief' && ssCountsCacheRef.current?.data) {
       setSccOrderData(ssCountsCacheRef.current.data);
     }
     // Scene Panel: home/standby가 아닌 새 scene이면 패널 표시, ResultDeck visible 시 숨김
@@ -5971,16 +6013,16 @@ G. Review Objection: 작다/비싸다/무르다/배송 손상/맛 기대와 다�
           return !prev;
         });
       }
-      // UI-ORCH-A.4: ESC로 Mission Workspace 닫기
+      // UI-ORCH-A.10: ESC로 Mission Workspace 닫기 (lifecycle lock 기반)
       if (e.key === 'Escape' && !textInputMode) {
-        if (activeScene === 'smartstore_brief' || activeScene === 'keyword_radar') {
+        if (missionWorkspaceOpen) {
           closeMissionWorkspace();
         }
       }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [textInputMode, activeScene]);
+  }, [textInputMode, missionWorkspaceOpen]);
 
   // ── 자동 idle 전환: listening 상태에서 60초 무입력 시 마이크 자동 ggoff ──
   const lastInputTimeRef = useRef<number>(Date.now());
@@ -6631,7 +6673,7 @@ G. Review Objection: 작다/비싸다/무르다/배송 손상/맛 기대와 다�
 
       {/* ── 대화 패널 (Phase Prod-B) ── */}
       <AnimatePresence>
-        {messages.length > 0 && activeScene !== 'smartstore_brief' && activeScene !== 'keyword_radar' && (
+        {messages.length > 0 && !missionWorkspaceOpen && activeScene !== 'smartstore_brief' && activeScene !== 'keyword_radar' && (
           <ConversationPanel
             messages={messages}
             isTyping={isTyping}
@@ -6649,7 +6691,7 @@ G. Review Objection: 작다/비싸다/무르다/배송 손상/맛 기대와 다�
 
       {/* ── UI-O: Result Deck (Creative Director 결과 패널) ── */}
       <ResultDeck
-        visible={resultDeckVisible && activeScene !== 'smartstore_brief'}
+        visible={resultDeckVisible && !missionWorkspaceOpen && activeScene !== 'smartstore_brief'}
         content={resultDeckContent}
         contentType={resultDeckType}
         product={resultDeckProduct}
@@ -6685,14 +6727,14 @@ G. Review Objection: 작다/비싸다/무르다/배송 손상/맛 기대와 다�
       {/* ── SCREEN-A.1: Scene Preview Panel ── */}
       <JarvisScenePanel
         scene={activeScene}
-        visible={scenePanelVisible && !resultDeckVisible}
+        visible={scenePanelVisible && !missionWorkspaceOpen && !resultDeckVisible}
         onQuickCommand={(cmd) => handleTextSubmit(cmd)}
       />
 
       {/* ── ACTION-A.1: Predictive Action Panel (좌측 하단) ── */}
       <PredictiveActionPanel
         actions={predictedActions}
-        visible={predictedActions.length > 0 && activeScene !== 'approval_gate' && activeScene !== 'smartstore_brief' && activeScene !== 'keyword_radar' && !copyFocusMode}
+        visible={predictedActions.length > 0 && !missionWorkspaceOpen && activeScene !== 'approval_gate' && activeScene !== 'smartstore_brief' && activeScene !== 'keyword_radar' && !copyFocusMode}
         statusMessage={actionStatusMessage}
         onActionClick={(action) => {
           console.log('[ACTION-A.1] Action clicked:', action.id, action.type, action.status);
@@ -6735,7 +6777,7 @@ G. Review Objection: 작다/비싸다/무르다/배송 손상/맛 기대와 다�
 
       {/* ── UI-ORCH-A.1: Smartstore Mission Workspace (통합 레이아웃) ── */}
       <SmartstoreCommandCenter
-        visible={activeScene === 'smartstore_brief' && !resultDeckVisible && !copyFocusMode}
+        visible={missionWorkspaceOpen && activeScene === 'smartstore_brief' && !copyFocusMode}
         onClose={closeMissionWorkspace}
         orderData={sccOrderData}
         messages={messages}
@@ -6788,7 +6830,7 @@ G. Review Objection: 작다/비싸다/무르다/배송 손상/맛 기대와 다�
         pointerEvents: actionContext ? 'auto' : 'none',
       }}>
         <AnimatePresence>
-          {actionContext && activeScene !== 'smartstore_brief' && (
+          {actionContext && !missionWorkspaceOpen && activeScene !== 'smartstore_brief' && (
             <ActionCard
               context={actionContext}
               workflowSteps={workflowSteps}
