@@ -2426,6 +2426,10 @@ const SHEET_HEADERS: Record<string, string[]> = {
   telegram_notification_logs: ['notification_id','brief_id','channel','sent','sent_at','error_code','error_message','created_at','notes'],
   // OUTREACH-COPY-AGENT-MASTER-A.1: viral_content_swipe 탭 (Hot Content 카피 학습 재료)
   viral_content_swipe: ['id','platform','source_product','source_keyword','content_url','creator_name','hook_text','thumbnail_text','post_summary','engagement_visible','comment_signal','hot_reason','copy_pattern','emotion_trigger','buyer_desire','usable_for','hot_score','copy_pattern_score','risk_score','created_at','notes'],
+  // COPY-BRAIN-A.1: Copy Brain 저장 구조
+  copy_generation_log: ['copy_id','product','platform','output_type','source_keyword','generated_text','product_truth','buyer_desire','copy_dna','hook_type','score_hook','score_sensory','score_buyer_desire','score_product_truth','score_platform_fit','score_mawi_voice','score_originality','score_action','score_risk','boring_score','final_score','recommended','risk_flags','rewrite_required','created_at','notes'],
+  copy_feedback_log: ['feedback_id','copy_id','feedback','reason','edited_text','product','platform','created_at','notes'],
+  mawin_style_rules: ['rule_id','category','rule_text','priority','active','created_at','notes'],
 };
 
 async function ensureTab(tab: string): Promise<void> {
@@ -4326,6 +4330,23 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         const result = await handleCollectorStatus();
         return res.status(200).json(result);
       }
+      // COPY-BRAIN-A.1: Copy Brain tasks
+      if (resolvedTask === 'copy_brain_generate') {
+        const result = await handleCopyBrainGenerate(params || rest);
+        return res.status(200).json(result);
+      }
+      if (resolvedTask === 'copy_brain_score') {
+        const result = await handleCopyBrainScore(params || rest);
+        return res.status(200).json(result);
+      }
+      if (resolvedTask === 'copy_brain_feedback_save') {
+        const result = await handleCopyBrainFeedbackSave(params || rest);
+        return res.status(200).json(result);
+      }
+      if (resolvedTask === 'copy_brain_list') {
+        const result = await handleCopyBrainList(params || rest);
+        return res.status(200).json(result);
+      }
 
       return res.status(400).json({ error: `Unknown task: ${resolvedTask}` });
     }
@@ -5627,4 +5648,598 @@ async function handleCollectorStatus() {
       hotContentCount: hotContentTotal,
     },
   };
+}
+
+
+// ═══════════════════════════════════════════════════════════════════════
+// COPY-BRAIN-A.1: Mawin Agricultural Copy Brain Core
+// ═══════════════════════════════════════════════════════════════════════
+
+// --- Copy Brain Engine Imports (inline for Vercel serverless) ---
+// Product Truth Engine
+const PRODUCT_TRUTH_DB: Record<string, any> = {
+  '복숭아': {
+    product: '복숭아',
+    core_truth: ['여름에는 맛보다 향으로 먼저 기억된다.','딱복/물복 취향 대립이 강하다.','수확 시즌이 짧아 타이밍이 중요하다.','선물용으로 외관(크기, 색)이 중요하다.','냉장고 열 때 퍼지는 향이 구매 만족도를 결정한다.'],
+    sensory_points: ['향','과즙','당도','식감','냉장고 열었을 때 향','한 입 베어물 때 터지는 즙'],
+    seasonal_timing: '7~9월 수확, 6월 말부터 예약 시작, 8월 피크',
+    buyer_contexts: ['가족 간식','선물','캠핑','여름 디저트','아이 간식','부모님 선물','제사/명절'],
+    trust_signals: ['산지 직송','당일 수확','농장 사진','선별 과정','무농약/저농약'],
+    avoid_claims: ['최고 당도','세상에서 제일 맛있는','효능/건강 주장','100% 만족 보장'],
+    content_angles: ['딱복파 vs 물복파 논쟁','냉장고 열 때 향기 장면','한 입 베어물 때 과즙 터지는 장면','아이가 복숭아 먹는 모습','산지에서 바로 따는 장면','복숭아 고르는 법'],
+  },
+  '옥수수': {
+    product: '옥수수',
+    core_truth: ['쫀득함은 한 번 먹으면 계속 생각난다.','여름 간식으로 기억과 연결된다.','산지 직송 신뢰가 중요하다.','찰옥수수 vs 단옥수수 취향이 갈린다.','삶아서 바로 먹는 그 순간이 핵심이다.'],
+    sensory_points: ['쫀득함','단맛','옥수수 향','뜨거운 김','알갱이 식감','버터 올렸을 때'],
+    seasonal_timing: '6~8월 수확, 7월 피크, 초여름부터 예약',
+    buyer_contexts: ['캠핑 간식','아이 간식','여름 간식','다이어트 대용','야식','가족 나들이'],
+    trust_signals: ['산지 직송','당일 수확 당일 발송','농장 직거래','품종 명시'],
+    avoid_claims: ['최고 당도','다이어트 효과','건강 효능'],
+    content_angles: ['캠핑에서 옥수수 굽는 장면','삶은 옥수수에 버터 올리는 장면','아이가 옥수수 들고 먹는 모습','산지에서 바로 따는 장면','찰옥수수 vs 단옥수수 논쟁'],
+  },
+  '절임배추': {
+    product: '절임배추',
+    core_truth: ['김장은 실패하면 안 되는 집안일이다.','가격보다 원물 신뢰가 중요하다.','예약 수요와 시즌 타이밍이 중요하다.','절임 상태(짠맛, 숨죽임)가 김장 성패를 좌우한다.','엄마/시어머니 세대의 기준이 높다.'],
+    sensory_points: ['아삭함','적당한 짠맛','배추 숨죽임 상태','잎 두께','줄기 단맛'],
+    seasonal_timing: '11~12월 김장 시즌, 10월부터 예약, 11월 중순 피크',
+    buyer_contexts: ['김장','가족 행사','시어머니 선물','1인 가구 소량 김장','공동구매'],
+    trust_signals: ['해남/고랭지 산지','절임 공정 사진','배추 원물 사진','절임 후 무게','후기 사진'],
+    avoid_claims: ['최고 품질','무조건 맛있는','실패 없는'],
+    content_angles: ['김장 준비 과정 브이로그','절임배추 받아서 확인하는 장면','김장 전날 밤 준비하는 모습','엄마와 함께 김장하는 장면','1인 가구 소량 김장 도전기'],
+  },
+};
+
+function resolveProductTruth(product: string): any {
+  const aliases: Record<string, string> = {
+    peach: '복숭아', '복숭아': '복숭아', '황도': '복숭아', '백도': '복숭아',
+    corn: '옥수수', '옥수수': '옥수수', '찰옥수수': '옥수수', '단옥수수': '옥수수',
+    kimchi_cabbage: '절임배추', '절임배추': '절임배추', '배추': '절임배추', '김장배추': '절임배추',
+  };
+  const key = aliases[product.toLowerCase()] || aliases[product] || product;
+  return PRODUCT_TRUTH_DB[key] || {
+    product, core_truth: [`${product}의 핵심 가치를 파악하여 진정성 있는 카피를 생성합니다.`],
+    sensory_points: ['맛','향','식감','외관'], seasonal_timing: '시즌 확인 필요',
+    buyer_contexts: ['일상 소비','선물','가족 식사'], trust_signals: ['산지 직송','신선도'],
+    avoid_claims: ['최고','보장','효능'], content_angles: [`${product} 실제 사용/소비 장면`],
+  };
+}
+
+// Buyer Desire Engine
+const DESIRE_LABELS: Record<string, string> = {
+  nostalgia: '추억/향수', seasonal_craving: '계절 갈망', family_care: '가족 돌봄',
+  gift: '선물', scarcity_timing: '희소성/타이밍', sensory_imagination: '감각 상상',
+  trust: '신뢰', convenience: '편리함', identity: '정체성/소속감', community_participation: '참여/소통',
+};
+
+const PRODUCT_PLATFORM_DESIRES: Record<string, Record<string, string[]>> = {
+  '복숭아': { threads: ['seasonal_craving','sensory_imagination','identity','community_participation'], instagram: ['sensory_imagination','gift','family_care','seasonal_craving'], youtube_shorts: ['sensory_imagination','seasonal_craving','nostalgia'], naver_blog: ['trust','family_care','seasonal_craving','sensory_imagination'], outreach_email: ['seasonal_craving','trust','community_participation'] },
+  '옥수수': { threads: ['nostalgia','seasonal_craving','sensory_imagination','community_participation'], instagram: ['sensory_imagination','family_care','convenience'], youtube_shorts: ['sensory_imagination','nostalgia','seasonal_craving'], naver_blog: ['trust','convenience','family_care'], outreach_email: ['seasonal_craving','trust','sensory_imagination'] },
+  '절임배추': { threads: ['trust','family_care','scarcity_timing','community_participation'], instagram: ['family_care','trust','convenience'], youtube_shorts: ['trust','family_care','nostalgia'], naver_blog: ['trust','family_care','convenience','scarcity_timing'], outreach_email: ['scarcity_timing','trust','family_care'] },
+};
+
+function resolveBuyerDesires(product: string, platform: string): string[] {
+  const aliases: Record<string, string> = { peach: '복숭아', '복숭아': '복숭아', corn: '옥수수', '옥수수': '옥수수', kimchi_cabbage: '절임배추', '절임배추': '절임배추' };
+  const key = aliases[product.toLowerCase()] || aliases[product] || product;
+  return PRODUCT_PLATFORM_DESIRES[key]?.[platform] || ['sensory_imagination','trust','seasonal_craving'];
+}
+
+// Mawi Voice Rules
+const MAWI_BANNED_PHRASES = ['지금 만나보세요','특별한 가격','놓치지 마세요','최고의 품질','역대급','대박 할인','품질 보장','건강에 좋습니다','효능 있습니다','합리적인 가격','고객님께 추천드립니다','지금 바로 구매하세요','많은 관심 부탁드립니다','신선하고 맛있는','특별한 기회','서두르세요','파격 세일','최저가 보장','만족 보장'];
+
+const MAWI_VOICE_PROMPT = `[Mawi Voice 스타일 규칙]
+반드시 지킬 것:
+- 첫 줄은 짧게 — 7자 이내 권장, 길어도 15자
+- 말하듯 시작 — "있잖아", "솔직히", "근데" 같은 구어체
+- 설명보다 장면 먼저 — "복숭아 향이 냉장고에서 퍼진다" > "복숭아는 향이 좋습니다"
+- 상품보다 감정 먼저
+- 계절감, 산지/현장감, 먹는 장면
+- 댓글 달고 싶게 — 질문, 투표, 취향 대립
+- 마지막 여운
+- 줄바꿈 리듬
+
+절대 금지:
+- 광고문 금지, AI스러운 정리체 금지, 흔한 문장 금지
+- 과장 금지, 허위 효능 금지, 스팸 느낌 금지
+
+금지 표현: ${MAWI_BANNED_PHRASES.map(p => `"${p}"`).join(', ')}
+
+목표 스타일 예시:
+"딱복파랑 물복파는\\n진짜 쉽게 화해 안 한다.\\n\\n근데 향 좋은 복숭아 앞에서는\\n둘 다 조용해진다."
+
+"냉장고 열었는데\\n복숭아 향이 확 올라온 적 있어?\\n\\n그 순간이 여름이다."`;
+
+// Platform Formula
+const PLATFORM_FORMULAS: Record<string, string> = {
+  threads: '구조: 1~2문장 첫 줄 → 줄바꿈 리듬 → 감각/장면 → 댓글 유도 → 여운. 톤: 친근한 대화체. 길이: 3~5문장. 직접 판매 최소화.',
+  instagram: '구조: 감각 장면 → 짧은 캡션 2~3문장 → 해시태그 3~5개. 톤: 감각적, 시각적. 해시태그 남발 금지.',
+  youtube_shorts: '구조: [0~3초] 후킹 → [3~10초] 장면/스토리 → [10~15초] 행동 유도. 자막 기준 3~5문장. 자막/썸네일 분리.',
+  tiktok: '구조: 빠른 후킹 → 리듬감 → 장면 중심. 광고 냄새 최소화.',
+  naver_blog: '구조: 검색형 제목 → 구매 전 고민 공감 → 신뢰 근거 → 후기형. 키워드 스터핑 금지.',
+  outreach_email: '구조: 제목(상대 채널 맥락) → 인사(상대 콘텐츠 언급) → 제안(왜 맞는지) → 부담 없는 답장 유도. 스팸 느낌 금지.',
+};
+
+// Anti-Boring Filter
+const BORING_PATTERNS: { pattern: RegExp; reason: string; weight: number }[] = [
+  { pattern: /제철\s*.{1,5}를?\s*지금\s*만나보세요/, reason: '제철 OOO를 지금 만나보세요', weight: 20 },
+  { pattern: /특별한\s*가격으로\s*준비했습니다/, reason: '특별한 가격으로 준비했습니다', weight: 20 },
+  { pattern: /신선하고\s*맛있는\s*.{1,10}/, reason: '신선하고 맛있는 OOO', weight: 15 },
+  { pattern: /많은\s*관심\s*부탁드립니다/, reason: '많은 관심 부탁드립니다', weight: 20 },
+  { pattern: /최고의\s*품질/, reason: '최고의 품질', weight: 20 },
+  { pattern: /합리적인\s*가격/, reason: '합리적인 가격', weight: 15 },
+  { pattern: /고객님께\s*추천드립니다/, reason: '고객님께 추천드립니다', weight: 20 },
+  { pattern: /지금\s*바로\s*구매하세요/, reason: '지금 바로 구매하세요', weight: 20 },
+  { pattern: /지금\s*만나보세요/, reason: '지금 만나보세요', weight: 18 },
+  { pattern: /놓치지\s*마세요/, reason: '놓치지 마세요', weight: 15 },
+  { pattern: /역대급/, reason: '역대급', weight: 15 },
+  { pattern: /대박\s*할인/, reason: '대박 할인', weight: 15 },
+  { pattern: /품질\s*보장/, reason: '품질 보장', weight: 15 },
+  { pattern: /건강에\s*좋습니다/, reason: '건강에 좋습니다', weight: 20 },
+  { pattern: /효능\s*있습니다/, reason: '효능 있습니다', weight: 20 },
+  { pattern: /첫째.*둘째.*셋째/, reason: 'AI식 나열 구조', weight: 15 },
+  { pattern: /결론적으로|요약하면|정리하면/, reason: 'AI식 정리체', weight: 12 },
+  { pattern: /프리미엄\s*품질/, reason: '프리미엄 품질', weight: 12 },
+  { pattern: /지금\s*주문하세요/, reason: '지금 주문하세요', weight: 15 },
+];
+
+function calcBoringScore(text: string): { boring_score: number; reasons: string[] } {
+  let total = 0;
+  const reasons: string[] = [];
+  for (const { pattern, reason, weight } of BORING_PATTERNS) {
+    if (pattern.test(text)) { total += weight; reasons.push(reason); }
+  }
+  // 구조적 지루함
+  const sensoryWords = text.match(/달콤|아삭|쫀득|바삭|촉촉|향|과즙|터지|물씬|식감|뜨거운|차가운|시원한|쫄깃|고소한/g);
+  if (!sensoryWords || sensoryWords.length === 0) { total += 10; reasons.push('감각 표현 없음'); }
+  if (!/있잖아|솔직히|근데|사실|그래서|아\s|어\b|진짜|되게|완전/.test(text)) { total += 8; reasons.push('구어체 없음'); }
+  const lineBreaks = (text.match(/\n/g) || []).length;
+  if (text.length > 50 && lineBreaks < 2) { total += 8; reasons.push('줄바꿈 부족'); }
+  return { boring_score: Math.min(100, total), reasons };
+}
+
+// Risk Guard
+function calcRiskScore(text: string): { risk_score: number; risk_flags: string[] } {
+  let total = 0;
+  const flags: string[] = [];
+  if (/효능|치료|예방|면역\s*강화|항산화|항암/.test(text)) { total += 25; flags.push('health_claim'); }
+  if (/다이어트\s*효과|살\s*빠지|체중\s*감량/.test(text)) { total += 25; flags.push('health_claim'); }
+  if (/건강에\s*좋/.test(text)) { total += 20; flags.push('health_claim'); }
+  if (/최고|역대급|세상에서.*제일/.test(text)) { total += 20; flags.push('exaggeration'); }
+  if (/100%\s*(만족|보장|천연)/.test(text)) { total += 20; flags.push('exaggeration'); }
+  if (/대박\s*할인|파격\s*세일|최저가/.test(text)) { total += 15; flags.push('price_spam'); }
+  if (/품절\s*임박|마지막\s*\d+개/.test(text)) { total += 20; flags.push('fake_scarcity'); }
+  if (/매출\s*보장|성공\s*보장|수익\s*보장/.test(text)) { total += 25; flags.push('revenue_guarantee'); }
+  if (text.length > 500) { total += 10; flags.push('possible_plagiarism'); }
+  return { risk_score: Math.min(100, total), risk_flags: [...new Set(flags)] };
+}
+
+// Copy Judge
+function judgeCopyServer(text: string, platform: string, productTruth: any, buyerDesires: string[]): any {
+  // Hook score
+  let hookScore = 50;
+  const firstLine = text.split('\n')[0]?.trim() || '';
+  if (firstLine.length <= 7) hookScore += 20;
+  else if (firstLine.length <= 15) hookScore += 15;
+  else if (firstLine.length > 30) hookScore -= 10;
+  if (/\?/.test(firstLine)) hookScore += 5;
+  if (/있잖아|솔직히|근데|사실/.test(firstLine)) hookScore += 5;
+  hookScore = Math.max(0, Math.min(100, hookScore));
+
+  // Sensory score
+  let sensoryScore = 40;
+  const sensoryWords = text.match(/달콤|아삭|쫀득|바삭|촉촉|향|과즙|터지|물씬|식감|뜨거운|차가운|시원한|쫄깃|고소한/g) || [];
+  if (sensoryWords.length >= 3) sensoryScore += 30;
+  else if (sensoryWords.length >= 1) sensoryScore += 15;
+  else sensoryScore -= 10;
+  if (/열었|베어물|올려|삶|구워|갈랐|터지|흐르|퍼지/.test(text)) sensoryScore += 15;
+  sensoryScore = Math.max(0, Math.min(100, sensoryScore));
+
+  // Buyer desire score
+  let buyerDesireScore = 50;
+  const desireKeywords: Record<string, string[]> = {
+    nostalgia: ['추억','어릴','할머니','시골','옛날'],
+    seasonal_craving: ['여름','겨울','제철','시즌','수확'],
+    family_care: ['아이','엄마','가족','부모'],
+    gift: ['선물','보내','감사','명절'],
+    scarcity_timing: ['한정','마감','지금','마지막'],
+    sensory_imagination: ['달콤','아삭','쫀득','향','과즙','바삭'],
+    trust: ['직송','농장','산지','무농약'],
+    convenience: ['간편','바로','손질','배송'],
+    identity: ['파','팀','취향','나는'],
+    community_participation: ['댓글','투표','공유','DM','알려'],
+  };
+  let matched = 0;
+  for (const d of buyerDesires) {
+    const kws = desireKeywords[d] || [];
+    if (kws.some(kw => text.includes(kw))) matched++;
+  }
+  if (matched >= 2) buyerDesireScore += 25;
+  else if (matched >= 1) buyerDesireScore += 10;
+  else buyerDesireScore -= 10;
+  buyerDesireScore = Math.max(0, Math.min(100, buyerDesireScore));
+
+  // Product truth score
+  let productTruthScore = 50;
+  const sensoryMatched = (productTruth.sensory_points || []).filter((sp: string) => text.includes(sp));
+  if (sensoryMatched.length >= 2) productTruthScore += 20;
+  else if (sensoryMatched.length >= 1) productTruthScore += 10;
+  const avoidViolated = (productTruth.avoid_claims || []).filter((ac: string) => text.includes(ac));
+  if (avoidViolated.length > 0) productTruthScore -= 20;
+  productTruthScore = Math.max(0, Math.min(100, productTruthScore));
+
+  // Platform fit score
+  let platformFitScore = 60;
+  const lines = text.split('\n').filter((l: string) => l.trim());
+  if (platform === 'threads' && lines.length >= 3 && lines.length <= 8) platformFitScore += 15;
+  if (/구매하세요|주문하세요|할인|특가/.test(text)) platformFitScore -= 15;
+  if (/\?|댓글|알려|어떻게|DM/.test(text)) platformFitScore += 10;
+  platformFitScore = Math.max(0, Math.min(100, platformFitScore));
+
+  // Mawi voice score
+  let mawiVoiceScore = 70;
+  const bannedFound = MAWI_BANNED_PHRASES.filter(p => text.toLowerCase().includes(p.toLowerCase()));
+  mawiVoiceScore -= bannedFound.length * 15;
+  if (firstLine.length <= 7) mawiVoiceScore += 10;
+  else if (firstLine.length > 30) mawiVoiceScore -= 10;
+  if (lines.length >= 3) mawiVoiceScore += 5;
+  if (sensoryWords.length >= 2) mawiVoiceScore += 10;
+  else if (sensoryWords.length === 0) mawiVoiceScore -= 5;
+  if (/있잖아|솔직히|근데|사실|그래서/.test(text)) mawiVoiceScore += 5;
+  if (/첫째|둘째|셋째|결론적으로|요약하면/.test(text)) mawiVoiceScore -= 15;
+  if (/구매하세요|주문하세요|클릭하세요/.test(text)) mawiVoiceScore -= 10;
+  mawiVoiceScore = Math.max(0, Math.min(100, mawiVoiceScore));
+
+  // Originality score
+  let originalityScore = 60;
+  const boringResult = calcBoringScore(text);
+  if (boringResult.reasons.filter(r => BORING_PATTERNS.some(bp => bp.reason === r)).length === 0) originalityScore += 20;
+  else originalityScore -= boringResult.reasons.length * 3;
+  if (lines.length >= 3) originalityScore += 10;
+  originalityScore = Math.max(0, Math.min(100, originalityScore));
+
+  // Action score
+  let actionScore = 50;
+  if (/\?/.test(text)) actionScore += 10;
+  if (/댓글|DM|알려|어떻게|추천/.test(text)) actionScore += 15;
+  if (/vs|대|파\b|팀/.test(text)) actionScore += 10;
+  actionScore = Math.max(0, Math.min(100, actionScore));
+
+  const { risk_score, risk_flags } = calcRiskScore(text);
+  const { boring_score } = boringResult;
+
+  const finalScore = Math.max(0, Math.min(100, Math.round(
+    hookScore * 0.15 + sensoryScore * 0.12 + buyerDesireScore * 0.12 +
+    productTruthScore * 0.12 + platformFitScore * 0.10 + mawiVoiceScore * 0.15 +
+    originalityScore * 0.10 + actionScore * 0.08 +
+    risk_score * -0.08 + boring_score * -0.08
+  )));
+
+  const recommended = finalScore >= 60 && risk_score < 40 && boring_score < 30;
+  const rewriteRequired = !recommended || boring_score >= 30 || risk_score >= 40;
+  let rewriteReason = '';
+  if (boring_score >= 30) rewriteReason = 'generic_ad_copy';
+  else if (risk_score >= 40) rewriteReason = 'risk_violation';
+  else if (finalScore < 60) rewriteReason = 'low_quality';
+
+  return {
+    hook_score: hookScore, sensory_score: sensoryScore, buyer_desire_score: buyerDesireScore,
+    product_truth_score: productTruthScore, platform_fit_score: platformFitScore,
+    mawi_voice_score: mawiVoiceScore, originality_score: originalityScore, action_score: actionScore,
+    risk_score, boring_score, final_score: finalScore, recommended, rewrite_required: rewriteRequired,
+    risk_flags, rewrite_reason: rewriteReason,
+  };
+}
+
+// ═══ handleCopyBrainGenerate ═══
+async function handleCopyBrainGenerate(params: any) {
+  const {
+    product, platform = 'threads',
+    outputTypes = ['headline_copy','threads_post','thumbnail_copy','shorts_script_15s','outreach_email_draft'],
+    sourceKeyword = '', count = 3, dryRun = true, viralContentIds,
+  } = params;
+  if (!product) return { success: false, error: 'product required' };
+
+  const OPENAI_KEY = process.env.OPENAI_API_KEY || '';
+  if (!OPENAI_KEY && !dryRun) return { success: false, error: 'OPENAI_API_KEY not configured' };
+
+  // 1. Product Truth
+  const productTruth = resolveProductTruth(product);
+
+  // 2. Buyer Desires
+  const buyerDesires = resolveBuyerDesires(product, platform);
+
+  // 3. Viral Content (Hot Content) 조회
+  let viralContents: any[] = [];
+  try {
+    const data = await sheetsRead('viral_content_swipe');
+    if (data && data.length > 1) {
+      const headers = data[0];
+      const rows = data.slice(1).map((row: any[]) => {
+        const obj: any = {};
+        headers.forEach((h: string, i: number) => { obj[h] = row[i] || ''; });
+        return obj;
+      });
+      // 필터: product 매칭 또는 전체
+      viralContents = rows
+        .filter((r: any) => !viralContentIds || viralContentIds.includes(r.id))
+        .filter((r: any) => r.notes !== 'TEST_DELETE_ME')
+        .slice(0, 5);
+    }
+  } catch (e) { /* viral_content_swipe 없으면 빈 배열 */ }
+
+  // 4. Copy DNA 추출 (구조만)
+  const copyDNARef = viralContents.map((v: any) => {
+    const hookText = v.hook_text || '';
+    let hookType = 'sensory_hook';
+    if (/vs|대|파\s/.test(hookText)) hookType = 'conflict_hook';
+    else if (/사실|고백|솔직히/.test(hookText)) hookType = 'confession_hook';
+    else if (/여름|겨울|제철|시즌/.test(hookText)) hookType = 'seasonal_hook';
+    else if (/어릴|추억|할머니/.test(hookText)) hookType = 'memory_hook';
+    else if (/직송|농장|산지/.test(hookText)) hookType = 'local_trust_hook';
+    return `[${v.platform}] hook_type=${hookType}, pattern="${hookText.substring(0, 30)}..."`;
+  }).join('\n') || '(아직 수집된 Hot Content 없음)';
+
+  // 5. Platform Formula
+  const platformFormula = PLATFORM_FORMULAS[platform] || PLATFORM_FORMULAS.threads;
+
+  // 6. Output type instructions
+  const OUTPUT_INSTRUCTIONS: Record<string, string> = {
+    headline_copy: '헤드카피: 15자 이내, 강렬한 첫인상, 멈추게 만드는 한 줄',
+    thumbnail_copy: '썸네일 문구: 10자 이내, 클릭 유도, 시각적으로 강렬한 텍스트',
+    threads_post: '스레드 글: 3~5문장, 줄바꿈 리듬, 공감+궁금증, 댓글 유도, 여운',
+    shorts_script_15s: '릴스/쇼츠 스크립트 15초: [0~3초] 후킹 → [3~10초] 장면 → [10~15초] 행동 유도',
+    outreach_email_draft: '공동구매 제안 메일: 제목+본문, 상대 채널 맥락, 부담 없는 답장 유도. [채널명] 표기.',
+    instagram_caption: '인스타 캡션: 2~3문장, 감각 장면, 해시태그 3~5개',
+    tiktok_script: '틱톡 스크립트: 빠른 후킹, 리듬감, 장면 중심',
+    naver_blog_intro: '블로그 도입부: 검색형 제목 + 도입 3~5문장, 구매 전 고민 공감',
+  };
+
+  const outputInstructions = outputTypes.map((t: string, i: number) => `${i + 1}. ${OUTPUT_INSTRUCTIONS[t] || t}`).join('\n');
+
+  // 7. Compile prompt
+  const systemPrompt = `당신은 "Mawin Agricultural Copy Brain"입니다.
+농산물/식품 바이럴 마케팅 전문 카피 엔진으로, 아래 데이터와 규칙을 기반으로 카피를 생성합니다.
+
+${MAWI_VOICE_PROMPT}
+
+[Copy Risk Guard]
+절대 금지: 허위 효능, 과장 표현, 가격 스팸, 허위 재고, 매출/성공 보장, 원본 장문 복사
+
+[Anti-Boring Filter]
+아래 패턴이 감지되면 FAIL: "제철 OOO를 지금 만나보세요", "특별한 가격으로 준비했습니다", "신선하고 맛있는", "최고의 품질", "역대급", "지금 바로 구매하세요" 등
+
+중요 원칙:
+1. Product Truth, Buyer Desire, Copy DNA 데이터 기반으로 생성
+2. 금지 표현 포함 시 즉시 FAIL
+3. 각 카피에 hook_type, buyer_desire, angle 명시
+4. 원본 장문 복사 금지`;
+
+  const viralRef = viralContents.length > 0
+    ? viralContents.slice(0, 5).map((v: any) => `- [${v.platform}] "${v.hook_text}" / ${v.engagement_visible} / ${v.hot_reason}`).join('\n')
+    : '(아직 수집된 Hot Content 없음)';
+
+  const userPrompt = `상품: ${product}
+플랫폼: ${platform}
+키워드: ${sourceKeyword}
+생성 수: 각 타입별 ${count}개
+
+[Product Truth: ${productTruth.product}]
+핵심 진실: ${productTruth.core_truth.join(' / ')}
+감각 포인트: ${productTruth.sensory_points.join(', ')}
+시즌: ${productTruth.seasonal_timing}
+구매 맥락: ${productTruth.buyer_contexts.join(', ')}
+신뢰 시그널: ${productTruth.trust_signals.join(', ')}
+금지 주장: ${productTruth.avoid_claims.join(', ')}
+
+[Buyer Desire: ${buyerDesires.map((d: string) => `${d}(${DESIRE_LABELS[d] || d})`).join(', ')}]
+
+[Copy DNA 참고]
+${copyDNARef}
+
+[플랫폼 공식: ${platform}]
+${platformFormula}
+
+[참고 Hot Content (구조만 참고, 원문 복사 금지)]
+${viralRef}
+
+[생성 요청]
+${outputInstructions}
+
+[응답 형식 — 반드시 JSON]
+{
+  "copies": [
+    {
+      "output_type": "headline_copy",
+      "generated_text": "...",
+      "angle": "어떤 앵글로 접근했는지",
+      "hook_type": "conflict_hook|confession_hook|seasonal_hook|sensory_hook|contrarian_hook|local_trust_hook|memory_hook|limited_timing_hook|identity_hook",
+      "buyer_desire": "nostalgia|seasonal_craving|family_care|gift|scarcity_timing|sensory_imagination|trust|convenience|identity|community_participation",
+      "product_truth_used": "어떤 상품 진실을 활용했는지"
+    }
+  ]
+}`;
+
+  if (dryRun) {
+    return {
+      success: true, dryRun: true, product, platform, outputTypes, sourceKeyword, count,
+      engines: {
+        productTruth: { product: productTruth.product, core_truth_count: productTruth.core_truth.length, sensory_points: productTruth.sensory_points },
+        buyerDesires: buyerDesires.map((d: string) => ({ type: d, label: DESIRE_LABELS[d] || d })),
+        copyDNA: { viralContentCount: viralContents.length, ref: copyDNARef.substring(0, 200) },
+        platformFormula: platformFormula.substring(0, 200),
+        mawiVoice: 'active',
+        antiBoringFilter: 'active',
+        riskGuard: 'active',
+        copyJudge: 'active',
+      },
+      prompt_preview: { system_length: systemPrompt.length, user_length: userPrompt.length, user_preview: userPrompt.substring(0, 300) + '...' },
+    };
+  }
+
+  // 8. GPT API 호출
+  try {
+    const gptRes = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${OPENAI_KEY}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model: 'gpt-4.1-mini',
+        messages: [
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: userPrompt },
+        ],
+        temperature: 0.85,
+        max_tokens: 4000,
+      }),
+    });
+    if (!gptRes.ok) {
+      const errData = await gptRes.json() as any;
+      return { success: false, error: `GPT API error: ${errData.error?.message || 'unknown'}`, fake_copy_generated: false };
+    }
+    const gptData = await gptRes.json() as any;
+    const content = gptData.choices?.[0]?.message?.content || '';
+
+    // JSON 파싱
+    let parsed: any = null;
+    try {
+      const jsonMatch = content.match(/\{[\s\S]*\}/);
+      if (jsonMatch) parsed = JSON.parse(jsonMatch[0]);
+    } catch (e) {
+      return { success: false, error: 'GPT 응답 JSON 파싱 실패', raw_preview: content.substring(0, 200), fake_copy_generated: false };
+    }
+
+    if (!parsed || !parsed.copies || !Array.isArray(parsed.copies)) {
+      return { success: false, error: 'GPT 응답에 copies 배열 없음', fake_copy_generated: false };
+    }
+
+    // 9. Anti-Boring Filter + Risk Guard + Copy Judge
+    const scoredCopies = parsed.copies.map((copy: any, idx: number) => {
+      const text = copy.generated_text || '';
+      const score = judgeCopyServer(text, platform, productTruth, buyerDesires);
+      const copyId = `CB-${Date.now()}-${idx}`;
+      return {
+        copy_id: copyId,
+        product,
+        platform,
+        output_type: copy.output_type || outputTypes[idx % outputTypes.length],
+        source_keyword: sourceKeyword,
+        generated_text: text,
+        angle: copy.angle || '',
+        hook_type: copy.hook_type || 'sensory_hook',
+        buyer_desire: copy.buyer_desire || 'sensory_imagination',
+        product_truth_used: copy.product_truth_used || '',
+        score,
+      };
+    });
+
+    // 10. Summary
+    const recommended = scoredCopies.filter((c: any) => c.score.recommended);
+    const rewriteRequired = scoredCopies.filter((c: any) => c.score.rewrite_required);
+    const riskWarnings = scoredCopies.filter((c: any) => c.score.risk_score >= 40);
+    const boringFiltered = scoredCopies.filter((c: any) => c.score.boring_score >= 30);
+    const hookTypes = [...new Set(scoredCopies.map((c: any) => c.hook_type))];
+    const desires = [...new Set(scoredCopies.map((c: any) => c.buyer_desire))];
+
+    // 11. copy_generation_log 저장
+    const now = new Date().toISOString();
+    const logRows = scoredCopies.map((c: any) => [
+      c.copy_id, c.product, c.platform, c.output_type, c.source_keyword,
+      c.generated_text, c.product_truth_used, c.buyer_desire, c.hook_type, c.hook_type,
+      String(c.score.hook_score), String(c.score.sensory_score), String(c.score.buyer_desire_score),
+      String(c.score.product_truth_score), String(c.score.platform_fit_score),
+      String(c.score.mawi_voice_score), String(c.score.originality_score), String(c.score.action_score),
+      String(c.score.risk_score), String(c.score.boring_score), String(c.score.final_score),
+      String(c.score.recommended), (c.score.risk_flags || []).join(','),
+      String(c.score.rewrite_required), now, '',
+    ]);
+
+    try {
+      await ensureHeaders('copy_generation_log');
+      await sheetsAppend('copy_generation_log', logRows);
+    } catch (e: any) {
+      // 저장 실패해도 생성 결과는 반환
+      console.error('[copy_brain] copy_generation_log 저장 실패:', e.message);
+    }
+
+    return {
+      success: true, dryRun: false, product, platform,
+      copies: scoredCopies,
+      summary: {
+        total: scoredCopies.length,
+        recommended: recommended.length,
+        rewrite_required: rewriteRequired.length,
+        risk_warnings: riskWarnings.length,
+        boring_filtered: boringFiltered.length,
+        top_hook_types: hookTypes,
+        top_buyer_desires: desires,
+      },
+    };
+  } catch (e: any) {
+    return { success: false, error: `Copy Brain 생성 실패: ${e.message}`, fake_copy_generated: false };
+  }
+}
+
+// ═══ handleCopyBrainScore: 기존 카피 점수 재계산 ═══
+async function handleCopyBrainScore(params: any) {
+  const { text, product, platform = 'threads' } = params;
+  if (!text) return { success: false, error: 'text required' };
+
+  const productTruth = resolveProductTruth(product || '기타');
+  const buyerDesires = resolveBuyerDesires(product || '기타', platform);
+  const score = judgeCopyServer(text, platform, productTruth, buyerDesires);
+
+  return { success: true, text: text.substring(0, 100) + '...', product, platform, score };
+}
+
+// ═══ handleCopyBrainFeedbackSave: 피드백 저장 ═══
+async function handleCopyBrainFeedbackSave(params: any) {
+  const { copy_id, feedback, reason, edited_text, product, platform } = params;
+  if (!copy_id || !feedback) return { success: false, error: 'copy_id and feedback required' };
+
+  const feedbackId = `FB-${Date.now()}`;
+  const now = new Date().toISOString();
+  const row = [feedbackId, copy_id, feedback, reason || '', edited_text || '', product || '', platform || '', now, ''];
+
+  try {
+    await ensureHeaders('copy_feedback_log');
+    await sheetsAppend('copy_feedback_log', [row]);
+    return { success: true, feedback_id: feedbackId, copy_id, saved: true };
+  } catch (e: any) {
+    return { success: false, error: `피드백 저장 실패: ${e.message}` };
+  }
+}
+
+// ═══ handleCopyBrainList: 생성 로그 조회 ═══
+async function handleCopyBrainList(params: any) {
+  const { product, platform, limit = 20 } = params;
+
+  try {
+    const data = await sheetsRead('copy_generation_log');
+    if (!data || data.length <= 1) return { success: true, items: [], total: 0 };
+
+    const headers = data[0];
+    let rows = data.slice(1).map((row: any[]) => {
+      const obj: any = {};
+      headers.forEach((h: string, i: number) => { obj[h] = row[i] || ''; });
+      return obj;
+    });
+
+    if (product) rows = rows.filter((r: any) => r.product === product);
+    if (platform) rows = rows.filter((r: any) => r.platform === platform);
+
+    // 최신순, limit 적용
+    rows = rows.reverse().slice(0, limit);
+
+    return {
+      success: true,
+      items: rows,
+      total: rows.length,
+      summary: {
+        recommended: rows.filter((r: any) => r.recommended === 'true').length,
+        rewrite_required: rows.filter((r: any) => r.rewrite_required === 'true').length,
+        avg_final_score: rows.length > 0 ? Math.round(rows.reduce((a: number, r: any) => a + (parseInt(r.final_score) || 0), 0) / rows.length) : 0,
+      },
+    };
+  } catch (e: any) {
+    return { success: true, items: [], total: 0, note: 'copy_generation_log 읽기 실패' };
+  }
 }
