@@ -7631,7 +7631,7 @@ html, body {
   z-index: 40;
   display: grid;
   place-items: center;
-  padding: clamp(8px, 1.5vw, 24px);
+  padding: clamp(4px, 1vw, 16px);
   box-sizing: border-box;
   pointer-events: none;
   /* transform 사용 금지 — Framer Motion x/y 사용 금지 */
@@ -7651,9 +7651,9 @@ html, body {
 .scc-workspace {
   pointer-events: auto;
   position: relative;
-  width: min(1360px, calc(100vw - 32px));
-  height: min(900px, calc(100vh - 64px));
-  max-height: calc(100vh - 64px);
+  width: min(1500px, calc(100vw - 32px));
+  height: min(820px, calc(100vh - 80px));
+  max-height: calc(100vh - 80px);
   display: flex;
   flex-direction: column;
   gap: 0;
@@ -7697,27 +7697,28 @@ html, body {
 /* ── UI-LAYOUT-ORCH-A.1: mission-layout grid ── */
 .mission-layout {
   display: grid;
-  grid-template-columns: 0.8fr 1.8fr 1.1fr;
-  gap: 14px;
+  grid-template-columns: minmax(230px, 0.85fr) minmax(520px, 1.9fr) minmax(280px, 1fr);
+  grid-template-rows: minmax(0, 1fr);
+  gap: 16px;
   flex: 1;
   min-height: 0;
   overflow: hidden;
 }
 
 .mission-layout.layout-focus-result {
-  grid-template-columns: 0.7fr 2fr 0.9fr;
+  grid-template-columns: minmax(230px, 0.8fr) minmax(580px, 2.1fr) minmax(280px, 0.9fr);
 }
 
 .mission-layout.layout-with-sidecar {
-  grid-template-columns: 0.8fr 1.6fr 1fr;
+  grid-template-columns: minmax(230px, 0.85fr) minmax(520px, 1.9fr) minmax(280px, 1fr);
 }
 
 /* mission-left: Brief + Order Flow */
 .mission-left {
   grid-column: 1;
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
+  display: grid;
+  grid-template-rows: auto minmax(132px, auto) 1fr;
+  gap: 12px;
   overflow: hidden;
   min-height: 0;
 }
@@ -7739,9 +7740,9 @@ html, body {
 /* mission-sidecar: Next Actions + Approval Queue */
 .mission-sidecar {
   grid-column: 3;
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
+  display: grid;
+  grid-template-rows: minmax(180px, 0.9fr) minmax(210px, 1fr);
+  gap: 12px;
   overflow: hidden;
   min-height: 0;
 }
@@ -7767,32 +7768,39 @@ html, body {
   background: rgba(4,8,18,0.7);
   border: 1px solid rgba(0,245,255,0.08);
   border-radius: 12px;
-  padding: 10px 14px;
-  max-height: 110px;
+  padding: 8px 14px;
+  height: 88px;
+  max-height: 96px;
   overflow: hidden;
   flex-shrink: 0;
-  margin-top: 10px;
+  margin-top: 12px;
 }
 
-/* ── 600px 이하 반응형: 세로 stack ── */
-@media (max-width: 600px) {
+/* ── 820px 이하 반응형: 세로 stack ── */
+@media (max-width: 820px) {
   .mission-layout,
   .mission-layout.layout-focus-result,
   .mission-layout.layout-with-sidecar {
     grid-template-columns: 1fr;
-    overflow: visible;
+    grid-template-rows: auto auto auto;
+    overflow-y: auto;
     flex: none;
+    gap: 20px;
   }
   .mission-left,
   .mission-main,
   .mission-sidecar {
     grid-column: 1;
+    grid-template-rows: auto;
+    height: auto;
+    min-height: auto;
   }
   .mission-main {
-    min-height: 280px;
+    min-height: 320px;
   }
   .mission-log {
-    max-height: 140px;
+    height: auto;
+    max-height: 160px;
   }
 }
 

@@ -612,9 +612,11 @@ export default function SparkleParticles({ state, audioLevel, speakingLevel, cla
         height: '100vh',
         pointerEvents: 'none',
         zIndex: 0,
-        // 타이핑 모드 중 파티클 숨김 (폭발 버그 완전 방지)
+        // 타이핑 모드 중 파티클 즉시 숨김 (visibility:hidden → transition 없이 즉시 적용)
+        // opacity transition을 사용하면 Ctrl+K 순간 폭발이 0.3초간 보임
+        visibility: textInputMode ? 'hidden' : 'visible',
         opacity: textInputMode ? 0 : 1,
-        transition: 'opacity 0.3s ease',
+        transition: textInputMode ? 'none' : 'opacity 0.5s ease',
       }}
     />
   );

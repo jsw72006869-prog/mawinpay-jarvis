@@ -551,7 +551,7 @@ export default function ActionCard({ context, onActionSelect, onDismiss, workflo
                 flexDirection: 'column',
                 alignItems: 'flex-start',
                 gap: 4,
-                padding: '10px 12px',
+                padding: '8px 10px',
                 background: action.disabled ? THEME.disabledBg : THEME.btnBg,
                 border: `1px solid ${action.disabled ? THEME.disabledBorder : THEME.btnBorder}`,
                 borderRadius: 10,
@@ -559,17 +559,22 @@ export default function ActionCard({ context, onActionSelect, onDismiss, workflo
                 opacity: action.disabled ? 0.5 : 1,
                 textAlign: 'left',
                 transition: 'background 0.2s',
+                minHeight: '52px',
               }}
             >
               <div style={{ display: 'flex', alignItems: 'center', gap: 6, width: '100%' }}>
-                <span style={{ fontSize: '0.9rem' }}>{action.icon}</span>
+                <span style={{ fontSize: '0.8rem' }}>{action.icon}</span>
                 <span style={{
-                  fontSize: '0.65rem',
+                  fontSize: '0.62rem',
                   color: action.disabled ? THEME.textDim : THEME.text,
                   fontWeight: 500,
                   flex: 1,
                   wordBreak: 'break-word',
-                  lineHeight: 1.3,
+                  lineHeight: 1.2,
+                  display: '-webkit-box',
+                  WebkitLineClamp: 2,
+                  WebkitBoxOrient: 'vertical',
+                  overflow: 'hidden',
                 }}>
                   {action.label}
                 </span>
