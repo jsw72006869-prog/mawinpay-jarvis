@@ -617,6 +617,7 @@ export default function JarvisApp() {
   const [creativeStudioLoading, setCreativeStudioLoading] = useState(false);
   const [creativeStudioTrends, setCreativeStudioTrends] = useState(0);
   const [creativeStudioRefs, setCreativeStudioRefs] = useState(0);
+  const [creativeStudioMetadata, setCreativeStudioMetadata] = useState<any>(null);
   // ── Outreach Result Workspace (인플루언서 상세 모달) ──
   const [outreachWorkspaceVisible, setOutreachWorkspaceVisible] = useState(false);
   // ── SCREEN-A.1: Scene Panel visibility ──
@@ -3391,6 +3392,7 @@ export default function JarvisApp() {
               setCreativeStudioCopies(trendData.copies);
               setCreativeStudioTrends(trendData.trendPatternsUsed || 0);
               setCreativeStudioRefs(trendData.videosReferenced || 0);
+              setCreativeStudioMetadata(trendData.metadata || null);
               setCreativeStudioLoading(false);
               // 2번 화면(Data Wall)에 동기화
               try {
@@ -3488,6 +3490,7 @@ export default function JarvisApp() {
                 setCreativeStudioTrends(trendData.trendPatternsUsed || 0);
                 setCreativeStudioRefs(trendData.videosReferenced || 0);
                 setCreativeStudioLoading(false);
+                setCreativeStudioMetadata(trendData.metadata || null);
                 // 2번 화면(Data Wall)에 동기화
                 try {
                   localStorage.setItem('jarvis.creativeStudio.latest', JSON.stringify({
@@ -7166,6 +7169,7 @@ G. Review Objection: 작다/비싸다/무르다/배송 손상/맛 기대와 다�
         product={creativeStudioProduct}
         contentType={creativeStudioType}
         copies={creativeStudioCopies}
+        metadata={creativeStudioMetadata}
         loading={creativeStudioLoading}
         trendPatternsUsed={creativeStudioTrends}
         videosReferenced={creativeStudioRefs}
@@ -7192,6 +7196,7 @@ G. Review Objection: 작다/비싸다/무르다/배송 손상/맛 기대와 다�
               setCreativeStudioCopies(data.copies);
               setCreativeStudioTrends(data.trendPatternsUsed || 0);
               setCreativeStudioRefs(data.videosReferenced || 0);
+              setCreativeStudioMetadata(data.metadata || null);
               // 2번 화면(Data Wall)에 동기화
               try {
                 localStorage.setItem('jarvis.creativeStudio.latest', JSON.stringify({

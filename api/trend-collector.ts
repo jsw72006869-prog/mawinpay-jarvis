@@ -350,7 +350,145 @@ ${videoSummaries}
   }
 }
 
-// ═══ 강화된 카피 생성 (트렌드 라이브러리 활용) ═══
+
+// ═══ COPY-S.1: Human Desire Copy Engine — 강화된 카피 생성 ═══
+
+// ── 인간 욕구 데이터 ──
+const HUMAN_DESIRE_MAP: Record<string, string[]> = {
+  '복숭아': ['not_miss_season', 'feed_family', 'gift_praise', 'avoid_regret'],
+  '옥수수': ['feed_family', 'not_miss_season', 'buy_from_trusted_person', 'avoid_regret'],
+  '절임배추': ['avoid_regret', 'feed_family', 'buy_from_trusted_person', 'choose_good_quality'],
+  '고구마': ['feed_family', 'choose_good_quality', 'not_miss_season', 'save_money'],
+  '사과': ['gift_praise', 'choose_good_quality', 'not_miss_season', 'feed_family'],
+  '밤': ['not_miss_season', 'feed_family', 'gift_praise', 'choose_good_quality'],
+};
+const DESIRE_LABEL: Record<string, string> = {
+  save_money: '싸게 사고 싶은 욕구', choose_good_quality: '좋은 걸 고르고 싶은 욕구',
+  feed_family: '가족에게 먹이고 싶은 욕구', avoid_regret: '실패/후회 피하고 싶은 욕구',
+  buy_before_others: '남들보다 먼저 사고 싶은 욕구', not_miss_season: '제철을 놓치고 싶지 않은 욕구',
+  gift_praise: '선물로 칭찬받고 싶은 욕구', buy_from_trusted_person: '믿을 수 있는 사람에게 사고 싶은 욕구',
+};
+
+// ── 고객 불안 데이터 ──
+const ANXIETY_MAP: Record<string, string[]> = {
+  '복숭아': ['bad_taste', 'damaged_delivery', 'different_from_photo'],
+  '옥수수': ['bad_taste', 'ugly_or_small', 'family_rejects'],
+  '절임배추': ['bad_taste', 'damaged_delivery', 'overpriced'],
+  '고구마': ['ugly_or_small', 'bad_taste', 'overpriced'],
+  '사과': ['damaged_delivery', 'bad_taste', 'bad_gift_feedback'],
+  '밤': ['ugly_or_small', 'bad_taste', 'overpriced'],
+};
+const ANXIETY_LABEL: Record<string, string> = {
+  bad_taste: '맛없으면 어떡하지', damaged_delivery: '배송 중 상하면 어떡하지',
+  ugly_or_small: '작거나 못생기면 어떡하지', overpriced: '가격이 비싼 건 아닐까',
+  different_from_photo: '사진이랑 다르면 어떡하지', family_rejects: '가족이 안 먹으면 어떡하지',
+  bad_gift_feedback: '선물했는데 별로면 어떡하지',
+};
+const ANXIETY_RESOLVE: Record<string, string> = {
+  bad_taste: '감각 묘사로 간접 해소. "달다"가 아니라 "한 입 베면 즙이 턱을 타고 흐른다"',
+  damaged_delivery: '포장 신뢰로 해소. "에어캡 3중 + 아이스팩 + 당일 발송"',
+  ugly_or_small: '선별 과정 언급으로 해소. "하나하나 손으로 골랐다"',
+  overpriced: '가치 비교로 해소. 직접 "싸다" 하지 말고 경험 가치를 느끼게',
+  different_from_photo: '있는 그대로의 사진/영상으로 해소. 보정 없는 실제 모습',
+  family_rejects: '아이/어르신 반응 스토리로 해소',
+  bad_gift_feedback: '받는 사람 반응 장면으로 해소. "엄마가 전화해서 뭐냐고 물어봤다"',
+};
+
+// ── 구매 트리거 데이터 ──
+const TRIGGER_MAP: Record<string, string[]> = {
+  '복숭아': ['seasonal_peak', 'direct_from_farm', 'harvested_today', 'sold_out_risk'],
+  '옥수수': ['seasonal_peak', 'direct_from_farm', 'camping', 'kids_snack'],
+  '절임배추': ['kimjang', 'seasonal_peak', 'limited_quantity', 'group_buy_deadline'],
+  '고구마': ['seasonal_peak', 'direct_from_farm', 'kids_snack', 'camping'],
+  '사과': ['seasonal_peak', 'holiday', 'direct_from_farm', 'limited_quantity'],
+  '밤': ['seasonal_peak', 'holiday', 'direct_from_farm', 'camping'],
+};
+const TRIGGER_LABEL: Record<string, string> = {
+  seasonal_peak: '제철 피크', limited_quantity: '한정 수량', direct_from_farm: '산지 직송',
+  harvested_today: '오늘 수확', repurchase: '재구매', sold_out_risk: '품절 위험',
+  holiday: '명절', kimjang: '김장철', camping: '캠핑', kids_snack: '아이 간식',
+  group_buy_deadline: '공구 마감',
+};
+
+// ── 농산물 감각 데이터 ──
+const SENSORY_DB: Record<string, { texture: string[]; aroma: string[]; scene: string[]; timing: string[]; emotionalImages: string[] }> = {
+  '복숭아': {
+    texture: ['말랑함', '아삭함', '과즙', '달큰함', '탱글한 과육', '이 사이로 터지는 즙'],
+    aroma: ['복숭아 향', '냉장고 문 열 때 퍼지는 향', '코끝에 먼저 닿는 달콤함'],
+    scene: ['밥상 위 디저트', '아이 간식', '선물 박스', '여름 냉장고', '캠핑 과일'],
+    timing: ['제철 초입', '수확 직후', '한여름 2주'],
+    emotionalImages: ['향으로 먼저 들키는 과일', '여름이 냉장고에 들어온 느낌', '한 입 베면 여름이 입 안에 터지는 순간'],
+  },
+  '옥수수': {
+    texture: ['쫀득함', '탱글함', '알알이 씹히는 식감', '찰기', '톡톡 터지는 알갱이'],
+    aroma: ['옥수수 찐 냄새', '찜기에서 올라오는 김', '고소한 단내'],
+    scene: ['아이 간식', '캠핑', '가족 간식', '비 오는 날 간식'],
+    timing: ['여름 제철', '수확 직후', '장마 끝나고'],
+    emotionalImages: ['집 안 공기가 여름이 되는 냄새', '찜기 뚜껑 열 때 퍼지는 김', '아이가 양손에 하나씩 들고 먹는 모습'],
+  },
+  '절임배추': {
+    texture: ['아삭함', '속이 찬 느낌', '절임 정도가 딱 맞는 식감'],
+    aroma: ['김장 양념 냄새', '겨울 밥상 냄새'],
+    scene: ['김장날', '가족 겨울 준비', '엄마 집 김장'],
+    timing: ['김장철', '11월 초', '겨울 전'],
+    emotionalImages: ['실패하면 안 되는 겨울 준비', '올해도 무사히 김장 끝냈다는 안도감'],
+  },
+  '고구마': {
+    texture: ['꿀처럼 흐르는 속', '촉촉함', '포슬포슬', '쫀득함'],
+    aroma: ['군고구마 냄새', '오븐에서 나는 달콤한 향'],
+    scene: ['겨울 간식', '다이어트 식단', '캠핑 화로'],
+    timing: ['가을~겨울', '수확 후 숙성'],
+    emotionalImages: ['반으로 갈랐을 때 속이 노란 순간', '호호 불며 먹는 겨울 간식'],
+  },
+  '사과': {
+    texture: ['아삭함', '과즙', '단단한 과육', '씹을 때 소리'],
+    aroma: ['사과 향', '깎을 때 퍼지는 향'],
+    scene: ['명절 선물', '아침 과일', '가을 소풍'],
+    timing: ['가을 제철', '추석 전'],
+    emotionalImages: ['아삭 소리가 들리는 한 입', '선물 박스 열었을 때 빨간 사과'],
+  },
+};
+
+// ── 플랫폼별 골든타임 ──
+const GOLDEN_TIMES: Record<string, { times: string[]; reason: string }> = {
+  threads: { times: ['07:00~08:30', '21:30~23:00'], reason: '출근 전 + 잠자기 전 스크롤' },
+  youtube_shorts: { times: ['12:00~13:00', '18:00~19:30'], reason: '점심 + 퇴근 후 (배고플 때)' },
+  youtube_thumbnail: { times: ['12:00~13:00', '18:00~19:30'], reason: '점심 + 퇴근 후' },
+  instagram_reels: { times: ['12:00~13:00', '19:00~21:00'], reason: '점심 + 저녁 이후' },
+  naver_blog: { times: ['09:00~11:00 (화~목)'], reason: '검색 트래픽 피크' },
+  headcopy: { times: ['07:00~08:30', '21:30~23:00'], reason: '스레드/릴스 기준' },
+  full_package: { times: ['07:00~08:30', '21:30~23:00'], reason: '멀티 플랫폼 기준' },
+};
+
+// ── 플랫폼별 카피 규칙 ──
+const PLATFORM_RULES_DB: Record<string, string> = {
+  headcopy: `[플랫폼: 헤드카피]
+15자 이내, 스크롤을 멈추게 하는 강렬한 한 줄.
+톤: 친구에게 툭 던지듯. 광고 냄새 제로.
+DO: 짧고 강렬, 감각어 필수, 궁금증/취향대립/계절감
+DON'T: 설명형 금지, "~입니다" 금지, 가격 언급 금지`,
+  threads_post: `[플랫폼: 스레드]
+3~5문장, 줄바꿈 리듬, 공감+궁금증, 댓글 유도.
+톤: 친구한테 말하듯 툭 던지는 톤. 광고 냄새 제로.
+DO: 첫 줄 10자 이내 툭, 댓글 갈릴 만한 취향/상황, 줄바꿈 리듬, 여운
+DON'T: 링크 삽입 금지, 가격 언급 금지, 해시태그 3개 이내, 긴 설명 금지`,
+  reels_script: `[플랫폼: 릴스/쇼츠]
+15초 구조: [0~3초] 후킹 → [3~10초] 장면 → [10~15초] CTA
+톤: 빠르고 감각적. 장면 중심.
+DO: 0~3초 후킹이 생명, 자막 리듬, 먹는 소리/향/자르는 장면
+DON'T: 긴 설명 금지, "안녕하세요" 시작 금지, 광고 느낌 금지`,
+  youtube_thumbnail: `[플랫폼: 유튜브 썸네일]
+6~12자 핵심 문구 1줄. 클릭 유도.
+DO: 궁금증, 숫자 활용, 시각적으로 강렬한 단어
+DON'T: 15자 초과 금지, 설명형 금지, 가격 노출 금지`,
+  instagram_copy: `[플랫폼: 인스타그램]
+2~3문장, 감각 장면 중심, 해시태그 3~5개.
+DO: 감각적 한 문장 시작, 저장하고 싶은 정보성
+DON'T: 텍스트 과다 금지, 직접 판매 문구 금지`,
+  full_package: `[플랫폼: 마케팅 패키지]
+헤드카피 + 썸네일 + 릴스 스크립트 + 스레드 + CTA 각각 다른 문법으로.`,
+};
+
 async function generateEnhancedCopy(params: {
   product: string;
   contentType: string;
@@ -360,17 +498,47 @@ async function generateEnhancedCopy(params: {
   userStyle?: string;
 }): Promise<any> {
   const { product, contentType, count, trendPatterns, topVideos, userStyle } = params;
-  
-  // 트렌드 패턴을 프롬프트에 주입
-  const patternContext = trendPatterns.slice(0, 5).map((p, i) => 
+
+  // ── 1. 상품 매칭 ──
+  const pLower = product.toLowerCase();
+  const productKey = Object.keys(HUMAN_DESIRE_MAP).find(k => pLower.includes(k.toLowerCase()) || k.toLowerCase().includes(pLower)) || product;
+
+  // ── 2. 인간 욕구 ──
+  const desires = HUMAN_DESIRE_MAP[productKey] || ['choose_good_quality', 'avoid_regret', 'feed_family', 'not_miss_season'];
+  const desirePrompt = desires.map(d => `- ${d}: ${DESIRE_LABEL[d] || d}`).join('\n');
+
+  // ── 3. 고객 불안 ──
+  const anxieties = ANXIETY_MAP[productKey] || ['bad_taste', 'different_from_photo', 'overpriced'];
+  const anxietyPrompt = anxieties.map(a => `- ${a}: ${ANXIETY_LABEL[a] || a}\n  해소 방향: ${ANXIETY_RESOLVE[a] || '자연스럽게 해소'}`).join('\n');
+
+  // ── 4. 구매 트리거 ──
+  const triggers = TRIGGER_MAP[productKey] || ['seasonal_peak', 'direct_from_farm', 'repurchase'];
+  const triggerPrompt = triggers.map(t => `- ${t}: ${TRIGGER_LABEL[t] || t}`).join('\n');
+
+  // ── 5. 감각 데이터 ──
+  const sensory = SENSORY_DB[productKey] || { texture: ['신선함'], aroma: ['자연의 향'], scene: ['가족 식탁'], timing: ['제철'], emotionalImages: ['자연에서 온 먹거리'] };
+  const sensoryPrompt = `[농산물 감각 데이터: ${product}]
+식감: ${sensory.texture.join(', ')}
+향: ${sensory.aroma.join(', ')}
+장면: ${sensory.scene.join(', ')}
+타이밍: ${sensory.timing.join(', ')}
+감정 이미지: ${sensory.emotionalImages.join(' / ')}`;
+
+  // ── 6. 플랫폼 규칙 ──
+  const platformRule = PLATFORM_RULES_DB[contentType] || PLATFORM_RULES_DB.headcopy;
+
+  // ── 7. 골든타임 ──
+  const goldenTime = GOLDEN_TIMES[contentType] || GOLDEN_TIMES.headcopy;
+
+  // ── 8. 트렌드 패턴 ──
+  const patternContext = trendPatterns.slice(0, 5).map((p, i) =>
     `패턴${i + 1}: [${p.hookType}] "${p.hookText}" — 감정: ${p.emotionTrigger}, 바이럴요인: ${p.viralFactor}, 감각어: ${p.sensoryKeywords.join('/')}, 점수: ${p.score}`
   ).join('\n');
-
   const videoContext = topVideos.slice(0, 3).map((v, i) =>
     `레퍼런스${i + 1}: "${v.title}" (${v.viewCountFormatted}회) — ${v.channelName}`
   ).join('\n');
 
-  // 콘텐츠 타입별 지시
+  // ── 9. 콘텐츠 타입별 지시 ──
   const typeInstructions: Record<string, string> = {
     headcopy: `후킹 문구 ${count}개를 생성하세요. 각각 15자 이내, 스크롤을 멈추게 하는 강렬한 한 줄.`,
     threads_post: `스레드 글 ${count}개를 생성하세요. 각각 3~5문장, 줄바꿈 리듬, 공감+궁금증 유발, 댓글 유도.`,
@@ -379,13 +547,11 @@ async function generateEnhancedCopy(params: {
     instagram_copy: `인스타그램 캡션 ${count}개를 생성하세요. 각각 2~3문장, 감각 장면 중심, 해시태그 3~5개.`,
     full_package: `마케팅 패키지 ${count}개를 생성하세요. 각각: 헤드카피 + 썸네일 문구 + 릴스 스크립트(15초) + 스레드 글 + CTA.`,
   };
-
   const instruction = typeInstructions[contentType] || typeInstructions.headcopy;
 
-  // 스타일 학습 데이터 로드 (localStorage에서 저장된 피드백)
+  // ── 10. 스타일 학습 데이터 로드 ──
   let styleMemory = '';
   try {
-    // Sheets에서 스타일 학습 데이터 로드
     if (WORKSPACE_SHEET_ID && GOOGLE_SHEETS_CREDENTIALS) {
       const token = await getGoogleSheetsToken();
       const range = encodeURIComponent('StyleMemory!A:D');
@@ -393,79 +559,88 @@ async function generateEnhancedCopy(params: {
       const smRes: any = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
       if (smRes.ok) {
         const smData = await smRes.json();
-        const smRows = (smData.values || []).slice(-20); // 최근 20건
+        const smRows = (smData.values || []).slice(-20);
         const approved = smRows.filter((r: string[]) => r[2] === 'approved').map((r: string[]) => r[1]).slice(-5);
         const rejected = smRows.filter((r: string[]) => r[2] === 'rejected').map((r: string[]) => r[1]).slice(-5);
         if (approved.length > 0 || rejected.length > 0) {
           styleMemory = `\n[mawinpay 스타일 학습 결과]
-대표님이 선택한 카피 예시: ${approved.join(' | ')}
-대표님이 거절한 카피 예시: ${rejected.join(' | ')}
-→ 선택된 카피의 톤, 길이, 감각어 밀도를 더 반영하고, 거절된 카피의 패턴은 피하세요.`;
+대표님이 선택한 카피: ${approved.join(' | ')}
+대표님이 거절한 카피: ${rejected.join(' | ')}
+→ 선택된 카피의 톤, 길이, 감각어 밀도를 더 반영하고, 거절된 카피 패턴은 피하세요.`;
         }
       }
     }
-  } catch {} // 스타일 메모리 실패해도 카피 생성은 계속
+  } catch {}
 
-  const systemPrompt = `당신은 "농산물 바이럴 카피 마스터"입니다.
-대한민국 농산물/식품 분야에서 가장 반응이 좋은 카피를 쓰는 전문가입니다.
-당신의 카피는 실제로 스레드/릴스/카카오톡에서 바이럴이 되어 수백 개의 댓글과 DM을 유도합니다.
+  // ── 11. A/B 테스트 설계 ──
+  const abVariables = [
+    { groupA: '감각형 후킹 (식감/향 강조)', groupB: '감정형 후킹 (추억/불안 강조)', testVariable: '후킹 유형' },
+    { groupA: '짧은 카피 (3줄 이내)', groupB: '긴 카피 (5줄 이상)', testVariable: '카피 길이' },
+    { groupA: '질문형 엔딩', groupB: '여운형 엔딩', testVariable: '엔딩 스타일' },
+    { groupA: '제철 타이밍 강조', groupB: '품질/신뢰 강조', testVariable: '핵심 메시지' },
+  ];
+  const abTest = abVariables[Math.floor(Math.random() * abVariables.length)];
+
+  // ═══ System Prompt ═══
+  const systemPrompt = `당신은 "Mawin Agricultural Human Desire Copy Engine"입니다.
+농산물/식품 바이럴 마케팅 전문 카피 엔진으로, 인간의 욕구와 불안을 깊이 이해하고 이를 카피에 반영합니다.
 
 [핵심 원칙 — 절대 어기지 마세요]
-1. 광고 냄새가 나면 실패입니다. 친구에게 카톡으로 말하듯, 자연스럽게.
-2. 첫 문장 1.5초 안에 스크롤을 멈추게 해야 합니다. 첫 문장이 전부입니다.
-3. 감각(맛, 향, 식감, 온도, 소리)을 글로 느끼게 해야 합니다. 독자가 침을 삼키게.
-4. 계절감, 수확 타이밍, 한정성을 자연스럽게 녹여내세요.
-5. 댓글/DM/저장을 유도하는 여운을 남기세요. 끝을 다 말하지 마세요.
-6. 과장 광고, 허위 효능, 매출 보장 표현은 절대 금지합니다.
+1. 상품명만 보고 카피 쓰기 금지 — 반드시 인간 욕구 + 고객 불안 + 구매 트리거 + 감각 데이터를 기반으로 생성
+2. 일반 광고문 자동 FAIL — "신선한 OOO를 만나보세요", "특별한 가격", "최고의 품질" 등 감지 시 즉시 재작성
+3. 플랫폼별 문법 엄수 — 스레드≠블로그≠썸네일, 각각 완전히 다른 문법으로 작성
+4. 광고 냄새가 나면 실패. 친구에게 카톡으로 말하듯, 자연스럽게.
+5. 첫 문장 1.5초 안에 스크롤을 멈추게 해야 합니다.
+6. 감각(맛, 향, 식감, 온도, 소리)을 글로 느끼게 해야 합니다.
 7. 각 카피는 완전히 다른 각도/톤/구조로 쓰세요. 비슷한 카피 반복 금지.
-8. 실제 사람이 쓰는 구어체, 말줄임표, 감탄사를 자연스럽게 사용하세요.
 
-[후킹 유형별 마스터 템플릿]
-- sensory_hook: 감각을 자극하는 문장으로 시작. "한 입 베는 순간, 즙이 턱 아래로 흐르는..."
-- conflict_hook: 예상을 깨는 반전/갈등. "농부들이 절대 안 팔려고 하는 복숭아가 있다"
-- confession_hook: 솔직한 고백/인정. "사실 나도 이거 먹기 전에는 복숭아 다 똑같은 줄 알았다"
-- seasonal_hook: 계절/시기 긴박감. "지금 이 2주가 지나면 내년까지 못 먹는다"
-- contrarian_hook: 통념 부수기. "마트에서 복숭아 사는 사람들이 모르는 것"
-- local_trust_hook: 산지/농부 신뢰. "우리 아버지가 40년 키운 나무에서"
-- memory_hook: 추억/감성 자극. "어릴 때 할머니 댓 뒤에서 따먹던 그 맛"
-- limited_timing_hook: 한정/긴박. "오늘 수확한 거 내일까지만 받을 수 있음"
-- identity_hook: 정체성/자부심. "이거 아는 사람만 사는 복숭아"
-- question_hook: 질문으로 호기심. "복숭아 달기가 왜 해마다 다른지 아세요?"
-- surprise_hook: 놀라운 사실. "이 복숭아 당도 24도인데 신맛이 나요"
+[후킹 유형 마스터]
+- sensory_hook: 감각 자극. "한 입 베는 순간, 즙이 턱 아래로 흐르는..."
+- conflict_hook: 반전/갈등. "농부들이 절대 안 팔려고 하는 복숭아가 있다"
+- confession_hook: 솔직한 고백. "사실 나도 이거 먹기 전에는 다 똑같은 줄 알았다"
+- seasonal_hook: 계절 긴박감. "지금 이 2주가 지나면 내년까지 못 먹는다"
+- contrarian_hook: 통념 부수기. "마트에서 사는 사람들이 모르는 것"
+- local_trust_hook: 산지 신뢰. "우리 아버지가 40년 키운 나무에서"
+- memory_hook: 추억 자극. "어릴 때 할머니 댁 뒤에서 따먹던 그 맛"
+- limited_timing_hook: 한정 긴박. "오늘 수확한 거 내일까지만"
+- identity_hook: 정체성. "이거 아는 사람만 사는 복숭아"
+- question_hook: 질문 호기심. "왜 해마다 맛이 다른지 아세요?"
+- surprise_hook: 놀라운 사실. "당도 24도인데 신맛이 나요"
 
 [문장 리듬 법칙]
-- 짧은 문장 → 긴 문장 → 짧은 문장 (호흡 리듬)
-- 줄바꿈을 적극 활용 (스레드/릴스는 줄바꿈이 생명)
-- 말줄임표(...)로 여운 남기기
-- 감탄사는 아끼지 마세요 ("진짜", "실화", "레전드")
+짧은 문장 → 긴 문장 → 짧은 문장 (호흡 리듬)
+줄바꿈 적극 활용, 말줄임표(...)로 여운
 
 [감각어 마스터 클래스]
-- 맛: 달콤/새콤/짭조름/청량/농밀/상큼함/꽀덕함
-- 식감: 아삭/터짐/즙이 톡/물컹/사각/쪰덕/쏠득
-- 향: 달콤한 향/은은한 향/풀내음/꽃향/수박 향
-- 온도: 차가운/시원한/따뜻한/뜨거운/얼음장 같은
-- 소리: 아삭/톡/쏠득/시원하게/바삭
+맛: 달콤/새콤/짭조름/청량/농밀/상큼함/꽀덕함
+식감: 아삭/터짐/즙이 톡/물컹/사각/쫀득/쏠득
+향: 달콤한 향/은은한 향/풀내음/꽃향
+온도: 차가운/시원한/따뜻한/얼음장 같은
+소리: 아삭/톡/쏠득/바삭
 
 [mawinpay 스타일]
-- 친근하고 말하듯 툹 던지는 문장. 광고 같으면 실패.
-- 강한 첫 문장으로 시작. 첫 줄이 전부.
+- 친근하고 말하듯 툭 던지는 문장. 광고 같으면 실패.
+- 강한 첫 문장. 첫 줄이 전부.
 - 계절감과 식감을 살린 생생한 묘사
 - 스토리텔링 (수확 현장, 농부 이야기, 산지 풍경)
 - 댓글/DM 유도하는 마무리 ("나만 그런가?", "이거 아는 사람?")
 - 여운 있는 끝맺음 (다 말하지 않기)
-${userStyle ? `- 추가 스타일 요청: ${userStyle}` : ''}
+${userStyle ? `- 추가 스타일: ${userStyle}` : ''}
 ${styleMemory}
 
-[금지 표현 — 이거 쓰면 실격]
-- "최저가 보장", "효능 보장", "매출 보장", "성공 보장"
-- "지금 안 사면 후회", "한정 수량 마감 임박" (과도한 공포)
-- 가짜 리뷰처럼 꾸며 쓰기
-- 근거 없는 건강 효능 주장
-- "대박 할인", "무료 배송" 등 가격 중심 표현
-- "많은 분들이", "화제의" 등 모호한 사회적 증거
+[Anti-Boring Filter — 이거 쓰면 즉시 FAIL]
+"제철 OOO를 지금 만나보세요" → FAIL
+"특별한 가격으로 준비했습니다" → FAIL
+"신선하고 맛있는" → FAIL
+"최고의 품질" → FAIL / "역대급" → FAIL
+"지금 바로 구매하세요" → FAIL
+"많은 분들이 찾는" → FAIL
+"대박 할인" → FAIL
+
+[Copy Risk Guard]
+절대 금지: 허위 효능, 과장 표현, 가격 스팸, 허위 재고, 매출/성공 보장
 
 [품질 자가 검증]
-각 카피를 쓰고 나서 스스로 점검하세요:
 ✔ 첫 문장만 읽어도 스크롤을 멈추는가?
 ✔ 실제 사람이 카톡으로 보낼 법한 문장인가?
 ✔ 감각어가 2개 이상 들어갔는가?
@@ -473,8 +648,24 @@ ${styleMemory}
 ✔ 금지 표현을 쓰지 않았는가?
 통과 못하면 다시 쓰세요.`;
 
+  // ═══ User Prompt ═══
   const userPrompt = `[상품] ${product}
 [콘텐츠 타입] ${contentType}
+
+[인간 욕구 — 이 카피가 건드려야 할 욕구]
+${desirePrompt}
+→ 상위 2개 욕구를 핵심으로, 나머지는 보조로 활용하세요.
+
+[고객 불안 — 이 카피가 해소해야 할 불안]
+${anxietyPrompt}
+→ 불안을 직접 겁주지 말고, 이해하고 해소하는 방향으로 녹이세요.
+
+[구매 트리거]
+${triggerPrompt}
+
+${sensoryPrompt}
+
+${platformRule}
 
 [현재 트렌드 패턴 — 실제 반응 좋은 콘텐츠에서 추출]
 ${patternContext || '(수집된 패턴 없음 — 기본 농산물 바이럴 공식 적용)'}
@@ -482,8 +673,21 @@ ${patternContext || '(수집된 패턴 없음 — 기본 농산물 바이럴 공
 [레퍼런스 영상 — 구조만 참고, 원문 복사 금지]
 ${videoContext || '(레퍼런스 없음)'}
 
+[A/B 테스트 설계]
+테스트 변수: ${abTest.testVariable}
+Group A: ${abTest.groupA} / Group B: ${abTest.groupB}
+→ 생성되는 카피 중 절반은 A 스타일, 절반은 B 스타일로 만드세요.
+
 [생성 요청]
 ${instruction}
+
+[댓글 예측]
+각 카피에 대해 예상되는 댓글 3개를 생성하세요.
+댓글이 많이 달릴수록 좋은 카피입니다.
+
+[최적 발행 시간]
+이 플랫폼의 골든타임: ${goldenTime.times.join(', ')} (${goldenTime.reason})
+각 카피에 최적 발행 시간을 추천하세요.
 
 [응답 형식 — 반드시 JSON]
 {
@@ -494,14 +698,24 @@ ${instruction}
       "body": "전체 본문",
       "hookType": "사용한 후킹 유형",
       "emotionTrigger": "자극한 감정",
-      "referenceNote": "이 카피는 어떤 트렌드/레퍼런스를 참고했는지 1줄 설명",
+      "desires_used": ["건드린 인간 욕구"],
+      "anxiety_resolved": "해소한 고객 불안",
+      "trigger_used": "활용한 구매 트리거",
+      "sensory_words": ["사용한 감각 단어"],
+      "why_this_works": "이 카피가 왜 터질 수 있는지 한 줄",
+      "predicted_comments": ["예상 댓글 1", "예상 댓글 2", "예상 댓글 3"],
+      "comment_engagement_score": 85,
+      "best_posting_time": "21:30",
+      "best_posting_reason": "잠자기 전 스크롤 시간대",
+      "ab_group": "A 또는 B",
+      "referenceNote": "어떤 트렌드를 참고했는지",
       "tags": ["#태그1", "#태그2"],
       "viralScore": 85,
       "sensoryLevel": "high|medium|low",
       "platformVersions": {
-        "threads": "스레드 버전 (있으면)",
-        "reels": "릴스 버전 (있으면)",
-        "kakao": "카카오톡 버전 (있으면)"
+        "threads": "스레드 버전",
+        "reels": "릴스 버전",
+        "kakao": "카카오톡 버전"
       }
     }
   ]
@@ -520,19 +734,29 @@ ${instruction}
           { role: 'system', content: systemPrompt },
           { role: 'user', content: userPrompt },
         ],
-        max_tokens: 4000,
-        temperature: 0.85,
+        max_tokens: 6000,
+        temperature: 0.88,
       }),
     });
-
     if (!res.ok) return { success: false, error: `GPT API error: ${res.status}` };
     const data = await res.json();
     const content = data.choices?.[0]?.message?.content || '';
     const jsonMatch = content.match(/\{[\s\S]*\}/);
     if (!jsonMatch) return { success: false, error: 'JSON parse failed', raw: content };
-    
     const parsed = JSON.parse(jsonMatch[0]);
-    return { success: true, copies: parsed.copies || [], raw: content };
+    return {
+      success: true,
+      copies: parsed.copies || [],
+      metadata: {
+        desires: desires.map(d => ({ type: d, label: DESIRE_LABEL[d] || d })),
+        anxieties: anxieties.map(a => ({ type: a, label: ANXIETY_LABEL[a] || a })),
+        triggers: triggers.map(t => ({ type: t, label: TRIGGER_LABEL[t] || t })),
+        sensoryProfile: productKey,
+        goldenTime,
+        abTest,
+      },
+      raw: content,
+    };
   } catch (e: any) {
     return { success: false, error: e.message };
   }
@@ -615,6 +839,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         product: product || '농산물',
         contentType: contentType || 'headcopy',
         copies: copyResult.copies || [],
+        metadata: copyResult.metadata || null,
         trendPatternsUsed: allPatterns.length,
         videosReferenced: allVideos.length,
         error: copyResult.error,
