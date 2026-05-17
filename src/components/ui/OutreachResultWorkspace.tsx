@@ -228,7 +228,7 @@ interface OutreachResultWorkspaceProps {
   candidates: InfluencerCandidate[];
   loading?: boolean;
   onClose: () => void;
-  onSave: (candidates: InfluencerCandidate[]) => void;
+  onSave?: (candidates: InfluencerCandidate[]) => void;
   onJarvisContextEvent?: (event: { intent: string; payload?: unknown }) => void;
   sheetsUrl?: string;
 }

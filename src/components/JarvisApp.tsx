@@ -45,6 +45,8 @@ import ReactiveSignalLayer from './ui/ReactiveSignalLayer';
 import SystemPulseOverlay from './ui/SystemPulseOverlay';
 import SmartstoreCommandCenter from './ui/SmartstoreCommandCenter';
 import KeywordRadarPanel from './ui/KeywordRadarPanel';
+import CreativeStudio, { type CopyCard } from './CreativeStudio';
+import OutreachResultWorkspace from './ui/OutreachResultWorkspace';
 
 interface ContextRegistryItem {
   id: string;
@@ -607,6 +609,16 @@ export default function JarvisApp() {
   const [researchEngines, setResearchEngines] = useState<string[]>([]);
   // ── COPY-A v2: Copy Focus Mode ──
   const [copyFocusMode, setCopyFocusMode] = useState(false);
+  // ── Creative Studio (카드형 카피 UI) ──
+  const [creativeStudioVisible, setCreativeStudioVisible] = useState(false);
+  const [creativeStudioCopies, setCreativeStudioCopies] = useState<CopyCard[]>([]);
+  const [creativeStudioProduct, setCreativeStudioProduct] = useState('');
+  const [creativeStudioType, setCreativeStudioType] = useState('');
+  const [creativeStudioLoading, setCreativeStudioLoading] = useState(false);
+  const [creativeStudioTrends, setCreativeStudioTrends] = useState(0);
+  const [creativeStudioRefs, setCreativeStudioRefs] = useState(0);
+  // ── Outreach Result Workspace (인플루언서 상세 모달) ──
+  const [outreachWorkspaceVisible, setOutreachWorkspaceVisible] = useState(false);
   // ── SCREEN-A.1: Scene Panel visibility ──
   const [scenePanelVisible, setScenePanelVisible] = useState(false);
   // ── ACTION-A.1: Predictive Action Cards ──
@@ -3368,6 +3380,59 @@ export default function JarvisApp() {
         // COPY-A v2: 농수축산물 전용 장관급 카피 두뇌 프롬프트
         const requestedCount = extractRequestedCount(userMessage);
         const copyCount = requestedCount || 3;
+
+        // ── CREATIVE STUDIO: 5개 이상 요청 시 트렌드 기반 카드형 UI 활성화 ──
+        if (copyCount >= 5) {
+          emitMissionLog('📊', 'TREND', '트렌드 수집 + 패턴 분석 시작', 'info');
+          setCreativeStudioVisible(true);
+          setCreativeStudioLoading(true);
+          setCreativeStudioProduct(product || '농산물');
+          setCreativeStudioType(contentType);
+          setCreativeStudioCopies([]);
+
+          try {
+            const trendRes = await fetch('/api/trend-collector', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                action: 'generate',
+                product: product || '농산물',
+                contentType,
+                count: copyCount,
+                userStyle: userMessage,
+              }),
+            });
+
+            if (trendRes.ok) {
+              const trendData = await trendRes.json();
+              if (trendData.success && trendData.copies?.length > 0) {
+                setCreativeStudioCopies(trendData.copies);
+                setCreativeStudioTrends(trendData.trendPatternsUsed || 0);
+                setCreativeStudioRefs(trendData.videosReferenced || 0);
+                setCreativeStudioLoading(false);
+                emitMissionLog('✅', 'CREATIVE STUDIO', `${trendData.copies.length}개 카피 카드 생성 완료 (트렌드 ${trendData.trendPatternsUsed}개 반영)`, 'success');
+                emitNodeState('jarvis_brain', 'success', 'Creative Studio 완료');
+                setTimeout(() => emitNodeState('jarvis_brain', 'idle'), 2000);
+                telemetryFunctionSuccess('creative_director', `${product} Creative Studio ${trendData.copies.length}개 생성`);
+                const summaryMsg = `${product || '제품'} 카피 ${trendData.copies.length}개를 Creative Studio에 생성했습니다. 카드를 클릭하면 상세 내용을 볼 수 있습니다.`;
+                addMessage('jarvis', summaryMsg, true);
+                setState('speaking');
+                startSpeakingLevel();
+                await new Promise<void>(resolve => {
+                  speak(`${product || '제품'} 카피 ${trendData.copies.length}개를 생성했습니다. Creative Studio에서 확인해 주십시오.`, undefined, () => { stopSpeakingLevel(); resolve(); });
+                });
+                resetAllNodes();
+                setConversationExpanded(true);
+                return;
+              }
+            }
+          } catch (trendErr) {
+            console.error('[JARVIS] Trend-collector error, falling back to standard:', trendErr);
+          }
+          // trend-collector 실패 시 기존 로직으로 fallback
+          setCreativeStudioVisible(false);
+          setCreativeStudioLoading(false);
+        }
         // 플랫폼 감지
         const platformHint = userMessage.includes('스레드') || userMessage.includes('쓰레드') ? 'Threads'
           : userMessage.includes('릴스') || userMessage.toLowerCase().includes('tiktok') || userMessage.includes('틱톡') ? 'TikTok'
@@ -7006,6 +7071,53 @@ G. Review Objection: 작다/비싸다/무르다/배송 손상/맛 기대와 다�
         }}
       />
 
+      {/* ── CREATIVE STUDIO: 카드형 카피 UI ── */}
+      <CreativeStudio
+        visible={creativeStudioVisible}
+        product={creativeStudioProduct}
+        contentType={creativeStudioType}
+        copies={creativeStudioCopies}
+        loading={creativeStudioLoading}
+        trendPatternsUsed={creativeStudioTrends}
+        videosReferenced={creativeStudioRefs}
+        onClose={() => { setCreativeStudioVisible(false); }}
+        onSelect={(copy) => {
+          addMessage('jarvis', `✅ "​${copy.headline}​" 카피를 선택하셨습니다. 채널별 변환을 준비하겠습니다.`);
+          handleJarvisContextEvent({ intent: 'copy_selected', screen: 'copy_card_detail', payload: copy });
+        }}
+        onRegenerate={(style) => {
+          setCreativeStudioLoading(true);
+          setCreativeStudioCopies([]);
+          fetch('/api/trend-collector', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              action: 'generate',
+              product: creativeStudioProduct,
+              contentType: creativeStudioType,
+              count: 10,
+              userStyle: style || '',
+            }),
+          }).then(r => r.json()).then(data => {
+            if (data.success && data.copies?.length > 0) {
+              setCreativeStudioCopies(data.copies);
+              setCreativeStudioTrends(data.trendPatternsUsed || 0);
+              setCreativeStudioRefs(data.videosReferenced || 0);
+            }
+            setCreativeStudioLoading(false);
+          }).catch(() => setCreativeStudioLoading(false));
+        }}
+        onJarvisContextEvent={handleJarvisContextEvent}
+      />
+
+      {/* ── OUTREACH RESULT WORKSPACE: 인플루언서 상세 모달 ── */}
+      <OutreachResultWorkspace
+        visible={outreachWorkspaceVisible}
+        candidates={outreachCandidates}
+        onClose={() => setOutreachWorkspaceVisible(false)}
+        onJarvisContextEvent={handleJarvisContextEvent}
+      />
+
       {/* ── SCREEN-A.1: Scene Preview Panel ── */}
       <JarvisScenePanel
         scene={activeScene}
@@ -8971,6 +9083,7 @@ G. Review Objection: 작다/비싸다/무르다/배송 손상/맛 기대와 다�
         visible={outreachVisible}
         onCandidateSelect={(candidate) => {
           handleJarvisContextEvent({ intent: 'candidate_selected', screen: 'candidate_detail', payload: candidate });
+          setOutreachWorkspaceVisible(true);
         }}
         candidates={outreachCandidates}
         loading={outreachLoading}
