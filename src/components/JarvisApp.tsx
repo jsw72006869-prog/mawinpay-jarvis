@@ -3367,7 +3367,7 @@ export default function JarvisApp() {
         setCreativeStudioType(contentType);
         setCreativeStudioCopies([]);
 
-        const firstBatch = Math.min(5, copyCount);
+        const firstBatch = Math.min(3, copyCount);
         const remaining = copyCount - firstBatch;
 
         const fetchCopies = async (cnt: number): Promise<any> => {
@@ -3415,21 +3415,31 @@ export default function JarvisApp() {
 
             // 2차: 나머지 추가 로드 (비동기)
             if (remaining > 0) {
-              fetchCopies(remaining).then(moreData => {
-                if (moreData?.success && moreData.copies?.length > 0) {
-                  setCreativeStudioCopies(prev => [...prev, ...moreData.copies]);
-                  setCreativeStudioTrends(t => t + (moreData.trendPatternsUsed || 0));
-                  setCreativeStudioRefs(r => r + (moreData.videosReferenced || 0));
-                  emitMissionLog('✅', 'CREATIVE STUDIO', `추가 ${moreData.copies.length}개 카피 로드 완료`, 'success');
+              // 나머지를 최대 5개씩 분할하여 순차 로드 (타임아웃 방지)
+              const loadRemaining = async () => {
+                let left = remaining;
+                while (left > 0) {
+                  const batch = Math.min(5, left);
                   try {
-                    const prev = JSON.parse(localStorage.getItem('jarvis.creativeStudio.latest') || '{}');
-                    prev.copies = [...(prev.copies || []), ...moreData.copies];
-                    prev.updatedAt = Date.now();
-                    localStorage.setItem('jarvis.creativeStudio.latest', JSON.stringify(prev));
+                    const moreData = await fetchCopies(batch);
+                    if (moreData?.success && moreData.copies?.length > 0) {
+                      setCreativeStudioCopies(prev => [...prev, ...moreData.copies]);
+                      setCreativeStudioTrends(t => t + (moreData.trendPatternsUsed || 0));
+                      setCreativeStudioRefs(r => r + (moreData.videosReferenced || 0));
+                      emitMissionLog('\u2705', 'CREATIVE STUDIO', `\uCD94\uAC00 ${moreData.copies.length}\uAC1C \uCE74\uD53C \uB85C\uB4DC \uC644\uB8CC`, 'success');
+                      try {
+                        const prev = JSON.parse(localStorage.getItem('jarvis.creativeStudio.latest') || '{}');
+                        prev.copies = [...(prev.copies || []), ...moreData.copies];
+                        prev.updatedAt = Date.now();
+                        localStorage.setItem('jarvis.creativeStudio.latest', JSON.stringify(prev));
+                      } catch {}
+                    }
                   } catch {}
+                  left -= batch;
                 }
                 setCreativeStudioLoading(false);
-              }).catch(() => setCreativeStudioLoading(false));
+              };
+              loadRemaining().catch(() => setCreativeStudioLoading(false));
             }
 
             emitNodeState('jarvis_brain', 'success', 'Creative Studio 완료');

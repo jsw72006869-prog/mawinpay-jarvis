@@ -549,26 +549,29 @@ async function generateEnhancedCopy(params: {
   };
   const instruction = typeInstructions[contentType] || typeInstructions.headcopy;
 
-  // ── 10. 스타일 학습 데이터 로드 ──
+  // ── 10. 스타일 학습 데이터 로드 (3초 타임아웃) ──
   let styleMemory = '';
   try {
     if (WORKSPACE_SHEET_ID && GOOGLE_SHEETS_CREDENTIALS) {
-      const token = await getGoogleSheetsToken();
-      const range = encodeURIComponent('StyleMemory!A:D');
-      const url = `https://sheets.googleapis.com/v4/spreadsheets/${WORKSPACE_SHEET_ID}/values/${range}?majorDimension=ROWS`;
-      const smRes: any = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
-      if (smRes.ok) {
-        const smData = await smRes.json();
-        const smRows = (smData.values || []).slice(-20);
-        const approved = smRows.filter((r: string[]) => r[2] === 'approved').map((r: string[]) => r[1]).slice(-5);
-        const rejected = smRows.filter((r: string[]) => r[2] === 'rejected').map((r: string[]) => r[1]).slice(-5);
-        if (approved.length > 0 || rejected.length > 0) {
-          styleMemory = `\n[mawinpay 스타일 학습 결과]
-대표님이 선택한 카피: ${approved.join(' | ')}
-대표님이 거절한 카피: ${rejected.join(' | ')}
-→ 선택된 카피의 톤, 길이, 감각어 밀도를 더 반영하고, 거절된 카피 패턴은 피하세요.`;
+      const stylePromise = (async () => {
+        const token = await getGoogleSheetsToken();
+        const range = encodeURIComponent('StyleMemory!A:D');
+        const url = `https://sheets.googleapis.com/v4/spreadsheets/${WORKSPACE_SHEET_ID}/values/${range}?majorDimension=ROWS`;
+        const smRes: any = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
+        if (smRes.ok) {
+          const smData = await smRes.json();
+          const smRows = (smData.values || []).slice(-20);
+          const approved = smRows.filter((r: string[]) => r[2] === 'approved').map((r: string[]) => r[1]).slice(-5);
+          const rejected = smRows.filter((r: string[]) => r[2] === 'rejected').map((r: string[]) => r[1]).slice(-5);
+          if (approved.length > 0 || rejected.length > 0) {
+            styleMemory = `\n[mawinpay \uc2a4\ud0c0\uc77c \ud559\uc2b5 \uacb0\uacfc]
+\ub300\ud45c\ub2d8\uc774 \uc120\ud0dd\ud55c \uce74\ud53c: ${approved.join(' | ')}
+\ub300\ud45c\ub2d8\uc774 \uac70\uc808\ud55c \uce74\ud53c: ${rejected.join(' | ')}
+\u2192 \uc120\ud0dd\ub41c \uce74\ud53c\uc758 \ud1a4, \uae38\uc774, \uac10\uac01\uc5b4 \ubc00\ub3c4\ub97c \ub354 \ubc18\uc601\ud558\uace0, \uac70\uc808\ub41c \uce74\ud53c \ud328\ud134\uc740 \ud53c\ud558\uc138\uc694.`;
+          }
         }
-      }
+      })();
+      await Promise.race([stylePromise, new Promise<void>(r => setTimeout(r, 3000))]);
     }
   } catch {}
 
@@ -737,7 +740,7 @@ ${instruction}
           { role: 'system', content: systemPrompt },
           { role: 'user', content: userPrompt },
         ],
-        max_tokens: 6000,
+        max_tokens: 4000,
         temperature: 0.88,
       }),
     });
@@ -747,9 +750,39 @@ ${instruction}
     const jsonMatch = content.match(/\{[\s\S]*\}/);
     if (!jsonMatch) return { success: false, error: 'JSON parse failed', raw: content };
     const parsed = JSON.parse(jsonMatch[0]);
+    // GPT 응답 필드를 UI 필드명으로 매핑 + 누락 필드 기본값
+    const mappedCopies = (parsed.copies || []).map((c: any, idx: number) => ({
+      id: c.id || `copy_${idx + 1}`,
+      headline: c.headline || '',
+      body: c.body || '',
+      hookType: c.hookType || 'unknown',
+      emotionTrigger: c.emotionTrigger || '',
+      viralScore: c.viralScore || c.score || 80,
+      score: c.score || c.viralScore || 80,
+      sensoryLevel: c.sensoryLevel || 'medium',
+      // Human Desire Engine 필드 매핑
+      desires_used: c.desires_used || c.desires || [],
+      anxiety_resolved: c.anxiety_resolved || c.anxiety || null,
+      trigger_used: c.trigger_used || c.trigger || null,
+      sensory_hook: c.sensory_hook || (c.sensory_words ? c.sensory_words.join(', ') : null),
+      sensory_words: c.sensory_words || (c.sensory_hook ? [c.sensory_hook] : []),
+      why_this_works: c.why_this_works || '',
+      // 댓글 예측
+      predicted_comments: c.predicted_comments || [],
+      comment_engagement_score: c.comment_engagement_score || 70,
+      // 골든타임
+      best_posting_time: c.best_posting_time || goldenTime.times[0] || '20:00',
+      best_posting_reason: c.best_posting_reason || goldenTime.reason || '',
+      // Anti-Boring + A/B
+      anti_boring_pass: c.anti_boring_pass !== false,
+      ab_group: c.ab_group || (idx % 2 === 0 ? 'A' : 'B'),
+      referenceNote: c.referenceNote || '',
+      tags: c.tags || [],
+      platformVersions: c.platformVersions || {},
+    }));
     return {
       success: true,
-      copies: parsed.copies || [],
+      copies: mappedCopies,
       metadata: {
         desires: desires.map(d => ({ type: d, label: DESIRE_LABEL[d] || d })),
         anxieties: anxieties.map(a => ({ type: a, label: ANXIETY_LABEL[a] || a })),
@@ -810,12 +843,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       if (savedPatterns.length < 3) {
         try {
           const searchKeywords = Array.isArray(keywords) ? keywords : [product || '농산물'];
-          // 15초 타임아웃으로 실시간 수집 시도
+          // 8초 타임아웃으로 실시간 수집 시도 (전체 60초 내 완료 보장)
           const trendPromise = (async () => {
             liveVideos = await collectTrendingVideos(product || '농산물', searchKeywords);
             livePatterns = await analyzePatterns(product || '농산물', liveVideos);
           })();
-          const timeoutPromise = new Promise<void>((resolve) => setTimeout(resolve, 15000));
+          const timeoutPromise = new Promise<void>((resolve) => setTimeout(resolve, 8000));
           await Promise.race([trendPromise, timeoutPromise]);
           // 수집 성공 시 비동기 저장 (기다리지 않음)
           if (livePatterns.length > 0) {
