@@ -9304,7 +9304,7 @@ html, body {
 .order-focus-layout {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 340px;
-  grid-template-rows: 36px 58px minmax(0, 1fr) 88px 68px;
+  grid-template-rows: 36px 58px minmax(0, 1fr) 88px minmax(68px, auto);
   grid-template-areas:
     "status status"
     "brief side"
