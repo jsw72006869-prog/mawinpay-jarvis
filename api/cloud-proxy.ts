@@ -4106,6 +4106,37 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         return res.status(200).json(result);
       }
 
+      // Google Sheets 읽기 (jarvis-brain.ts에서 GET으로 호출)
+      if (endpoint === 'sheets-read') {
+        if (!WORKSPACE_SHEET_ID || !GOOGLE_SHEETS_CREDENTIALS) {
+          return res.status(200).json({ summary: { influencers: [], emails: [], naver: [] }, contextText: '', status: 'not_configured' });
+        }
+        try {
+          const influencerData = await sheetsRead(OUTREACH_CRM_TAB);
+          const influencerRows = influencerData.values || [];
+          const headers = influencerRows[0] || [];
+          const influencers = influencerRows.slice(1).map((row: string[]) => {
+            const obj: any = {};
+            headers.forEach((h: string, i: number) => { obj[h] = row[i] || ''; });
+            return obj;
+          });
+          const emailCount = influencers.filter((i: any) => i.contact_email && i.contact_email.includes('@')).length;
+          return res.status(200).json({
+            summary: {
+              influencers: influencers.slice(0, 50),
+              emails: influencers.filter((i: any) => i.contact_email).slice(0, 20),
+              naver: influencers.filter((i: any) => i.platform === 'Naver Blog').slice(0, 20),
+            },
+            total: influencers.length,
+            emailCount,
+            contextText: `인플루언서 후보 ${influencers.length}명 (이메일 확인 ${emailCount}명)`,
+            status: 'ok',
+          });
+        } catch (e: any) {
+          return res.status(200).json({ summary: { influencers: [], emails: [], naver: [] }, contextText: '', status: 'error', error: e.message });
+        }
+      }
+
       return res.status(400).json({ error: `Unknown GET endpoint: ${endpoint}` });
     }
 
