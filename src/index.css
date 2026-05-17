@@ -10790,3 +10790,72 @@ html, body {
 }
 
 /* ── end DATAWALL-NODE-MOTION-A.1 ── */
+
+/* ═══ JARVIS-UI-PREMIUM-A.1: 애플/아이언맨 감성 애니메이션 ═══ */
+@keyframes jarvis-fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(12px) scale(0.97);
+    filter: blur(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+    filter: blur(0);
+  }
+}
+
+@keyframes jarvis-slide-right {
+  from {
+    opacity: 0;
+    transform: translateX(40px);
+    filter: blur(3px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+    filter: blur(0);
+  }
+}
+
+@keyframes jarvis-glow-pulse {
+  0%, 100% { box-shadow: 0 0 20px rgba(0,245,255,0.05), 0 8px 32px rgba(0,0,0,0.3); }
+  50% { box-shadow: 0 0 30px rgba(0,245,255,0.1), 0 8px 40px rgba(0,0,0,0.4); }
+}
+
+/* 대화 패널 — 부드러운 등장 */
+.conversation-panel-v2 {
+  animation: jarvis-fade-in 0.5s cubic-bezier(0.25, 0.46, 0.45, 0.94) both;
+}
+
+/* 대화 메시지 — 순차 등장 */
+.conversation-panel-v2 .msg-bubble {
+  animation: jarvis-fade-in 0.35s cubic-bezier(0.25, 0.46, 0.45, 0.94) both;
+}
+
+/* ActionCard — 부드러운 등장 */
+.acp-panel {
+  animation: jarvis-fade-in 0.4s cubic-bezier(0.25, 0.46, 0.45, 0.94) both;
+}
+
+/* ResultDeck — 이미 framer-motion 사용 중이므로 glow만 추가 */
+.result-deck-overlay {
+  animation: jarvis-glow-pulse 4s ease-in-out infinite;
+}
+
+/* OUTREACH 패널 — 우측 슬라이드인 (framer-motion 보조) */
+.outreach-panel-premium {
+  animation: jarvis-slide-right 0.5s cubic-bezier(0.25, 0.46, 0.45, 0.94) both;
+}
+
+/* 패널 공통 — 유리 질감 배경 */
+.jarvis-glass-panel {
+  background: linear-gradient(165deg, rgba(6,10,18,0.95) 0%, rgba(10,16,28,0.97) 100%);
+  backdrop-filter: blur(20px) saturate(1.2);
+  -webkit-backdrop-filter: blur(20px) saturate(1.2);
+  border: 1px solid rgba(0,245,255,0.08);
+  box-shadow: 
+    0 0 20px rgba(0,245,255,0.04),
+    0 8px 32px rgba(0,0,0,0.3),
+    inset 0 1px 0 rgba(255,255,255,0.03);
+}

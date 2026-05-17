@@ -80,10 +80,10 @@ export default function InfluencerOutreachPanel({ visible, candidates, loading, 
   return (
     <AnimatePresence>
       <motion.div
-        initial={{ opacity: 0, x: 300 }}
-        animate={{ opacity: 1, x: 0 }}
-        exit={{ opacity: 0, x: 300 }}
-        transition={{ type: 'spring', damping: 25, stiffness: 200 }}
+        initial={{ opacity: 0, x: 60, filter: 'blur(8px)' }}
+        animate={{ opacity: 1, x: 0, filter: 'blur(0px)' }}
+        exit={{ opacity: 0, x: 60, filter: 'blur(8px)' }}
+        transition={{ duration: 0.5, ease: [0.25, 0.46, 0.45, 0.94] }}
         style={{
           position: 'fixed', top: 0, right: 0, bottom: 0,
           width: '420px', maxWidth: '90vw',

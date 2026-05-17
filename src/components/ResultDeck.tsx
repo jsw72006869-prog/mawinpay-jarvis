@@ -329,10 +329,10 @@ export default function ResultDeck({
       {visible && (
         <motion.div
           className="result-deck-overlay rd-v12b"
-          initial={{ opacity: 0, x: -60, scale: 0.95 }}
-          animate={{ opacity: 1, x: 0, scale: 1 }}
-          exit={{ opacity: 0, x: -40, scale: 0.96 }}
-          transition={{ duration: 0.5, ease: [0.22, 1, 0.36, 1] }}
+          initial={{ opacity: 0, x: -40, scale: 0.97, filter: 'blur(6px)' }}
+          animate={{ opacity: 1, x: 0, scale: 1, filter: 'blur(0px)' }}
+          exit={{ opacity: 0, x: -30, scale: 0.98, filter: 'blur(4px)' }}
+          transition={{ duration: 0.5, ease: [0.25, 0.46, 0.45, 0.94] }}
         >
           {/* ═══ Header ═══ */}
           <div className="rd-header">

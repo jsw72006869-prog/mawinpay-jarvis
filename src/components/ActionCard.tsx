@@ -204,9 +204,10 @@ function ModeBadge({ mode }: { mode: ActionMode }) {
 function ApprovalPreviewCard({ data, onDismiss }: { data: ApprovalPreviewData; onDismiss: () => void }) {
   return (
     <motion.div
-      initial={{ opacity: 0, scale: 0.95 }}
-      animate={{ opacity: 1, scale: 1 }}
-      exit={{ opacity: 0, scale: 0.95 }}
+      initial={{ opacity: 0, scale: 0.96, y: 16, filter: 'blur(6px)' }}
+      animate={{ opacity: 1, scale: 1, y: 0, filter: 'blur(0px)' }}
+      exit={{ opacity: 0, scale: 0.97, y: 8, filter: 'blur(4px)' }}
+      transition={{ duration: 0.45, ease: [0.25, 0.46, 0.45, 0.94] }}
       style={{
         background: 'linear-gradient(135deg, rgba(30,10,10,0.95), rgba(20,5,5,0.9))',
         border: `1px solid rgba(239,68,68,0.35)`,
@@ -477,10 +478,10 @@ export default function ActionCard({ context, onActionSelect, onDismiss, workflo
 
       {/* Main Action Card */}
       <motion.div
-        initial={{ opacity: 0, y: 12 }}
-        animate={{ opacity: 1, y: 0 }}
-        exit={{ opacity: 0, y: -8 }}
-        transition={{ duration: 0.3 }}
+        initial={{ opacity: 0, y: 20, filter: 'blur(6px)' }}
+        animate={{ opacity: 1, y: 0, filter: 'blur(0px)' }}
+        exit={{ opacity: 0, y: -8, filter: 'blur(4px)' }}
+        transition={{ duration: 0.45, ease: [0.25, 0.46, 0.45, 0.94] }}
         style={{
           background: 'linear-gradient(135deg, rgba(6,15,30,0.9), rgba(0,10,25,0.85))',
           border: `1px solid ${THEME.border}`,
