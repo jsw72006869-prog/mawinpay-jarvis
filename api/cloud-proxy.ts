@@ -3159,9 +3159,9 @@ async function handleOutreachCollect(params: any) {
         const rawDesc = (item.description || '').replace(/<[^>]*>/g, '');
         const cleanDesc = rawDesc.substring(0, 100);
 
-        // ── 이메일 추출: description/title 텍스트에서 직접 추출 ──
+        // ── 이메일 추출 1순위: description/title 텍스트에서 직접 추출 ──
         const emailRegex = /[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}/g;
-        const skipDomains = ['.png','.jpg','.gif','naver.com','kakao.com','example.com'];
+        const skipDomains = ['.png','.jpg','.gif','example.com'];
         const extractedEmails = [
           ...(rawDesc.match(emailRegex) || []),
           ...(cleanTitle.match(emailRegex) || []),
@@ -3169,19 +3169,11 @@ async function handleOutreachCollect(params: any) {
         let blogEmail = extractedEmails[0] || '';
         let emailSrc = blogEmail ? 'blog_post_description' : '';
 
-        // ── 이메일 미발견 시: 블로그 소개글 페이지 크롤링 시도 ──
+        // ── 이메일 추출 2순위: blogId@naver.com 자동 조합 ──
+        // 네이버 블로그 URL의 blogId = 네이버 아이디 = 네이버 이메일 앞부분
         if (!blogEmail && blogId) {
-          try {
-            const profileRes = await fetch(`https://blog.naver.com/BlogInfo.naver?blogId=${blogId}`, {
-              headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36' },
-              signal: AbortSignal.timeout(5000),
-            });
-            if (profileRes.ok) {
-              const profileHtml = await profileRes.text();
-              const profileEmails = (profileHtml.match(emailRegex) || []).filter(e => !skipDomains.some(d => e.includes(d)));
-              if (profileEmails.length > 0) { blogEmail = profileEmails[0]; emailSrc = 'blog_profile_page'; }
-            }
-          } catch { /* 크롤링 실패 무시 */ }
+          blogEmail = `${blogId}@naver.com`;
+          emailSrc = 'naver_id_derived';
         }
         const practicalSegment = tagPracticalSegment(cleanDesc + ' ' + cleanTitle, item.bloggername || '');
         segmentStats[practicalSegment] = (segmentStats[practicalSegment] || 0) + 1;
