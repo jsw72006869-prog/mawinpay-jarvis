@@ -3,7 +3,7 @@ import react from '@vitejs/plugin-react';
 export default defineConfig({
   define: {
     // 빌드 캐시 무효화용 타임스탬프 (변경 시 새 번들 생성)
-    __BUILD_TIME__: JSON.stringify('2026-05-18T08:00:00Z'),
+    __BUILD_TIME__: JSON.stringify('2026-05-18T17:35:00Z'),
   },
   plugins: [react()],
   server: {
