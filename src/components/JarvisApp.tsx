@@ -57,12 +57,12 @@ interface ContextRegistryItem {
 
 // ── 시그니처 응답 목록 (GPT 대기 없이 즉시 재생) ──
 const SIGNATURE_RESPONSES = [
-  'Good evening, Mr. Stark. All systems are online and fully operational.',
-  'At your service, Mr. Stark. How may I assist you today?',
-  'Welcome back, sir. Initializing all protocols. Standing by.',
-  'Good to have you back, Mr. Stark. All systems nominal.',
-  'I\'ve been expecting you, sir. Ready when you are.',
-  'J.A.R.V.I.S. online. At your command, Mr. Stark.',
+  '안녕하세요, 선생님. 모든 시스템이 정상 작동 중입니다.',
+  '자비스 온라인입니다, 선생님. 무엇을 도와드릴까요?',
+  '다시 오셨군요, 선생님. 모든 프로토콜 초기화 완료입니다.',
+  '선생님, 오늘 업무를 시작하겠습니다. 스마트스토어 현황부터 확인할까요?',
+  '기다리고 있었습니다, 선생님. 언제든지 말씀해 주세요.',
+  '자비스 시스템 온라인. 선생님의 명령을 기다립니다.',
 ];
 
 // ── 고급 색상 팔레트 ──
