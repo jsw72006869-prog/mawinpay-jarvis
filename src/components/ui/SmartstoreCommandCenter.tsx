@@ -258,9 +258,128 @@ function OrderResultCard({
   );
 }
 
+// ── 브리핑 타입 감지 헬퍼 ──
+function isBriefingMessage(text: string): boolean {
+  return (
+    text.includes('커맨드 리포트') ||
+    text.includes('자비스 일일') ||
+    text.includes('[1. 스마트스토어 현황]') ||
+    text.includes('[스마트스토어]') ||
+    (text.startsWith('[LIST]') && (text.includes('브리핑') || text.includes('리포트')))
+  );
+}
+
+// ── 브리핑 섹션 아이콘/색상 ──
+const BRIEF_SECTION_ICONS: Record<string, { icon: string; color: string }> = {
+  '주문': { icon: '📦', color: '#00F5FF' },
+  '스마트스토어': { icon: '🛒', color: '#00F5FF' },
+  '콘텐츠': { icon: '✍️', color: '#E040FB' },
+  '아우트리치': { icon: '📧', color: '#00FF88' },
+  '시장 가격': { icon: '📊', color: '#FF9800' },
+  '농산물': { icon: '🌾', color: '#FF9800' },
+  '자비스 기능': { icon: '🤖', color: '#C8A96E' },
+  '기능': { icon: '🤖', color: '#C8A96E' },
+  '추천 액션': { icon: '🚀', color: '#76FF03' },
+  '액션': { icon: '🚀', color: '#76FF03' },
+  '시스템': { icon: '🛡️', color: '#00F5FF' },
+};
+
+function getBriefSectionMeta(title: string) {
+  for (const [key, meta] of Object.entries(BRIEF_SECTION_ICONS)) {
+    if (title.includes(key)) return meta;
+  }
+  return { icon: '◈', color: '#C8A96E' };
+}
+
+// ── 인라인 BriefingCard (SCC 전용) ──
+function SccBriefingCard({ text }: { text: string }) {
+  const sections = text.replace('[LIST]', '').trim().split(/\*\*\[/).filter(Boolean);
+  return (
+    <div style={{
+      background: 'linear-gradient(145deg, rgba(6,12,24,0.95), rgba(0,8,20,0.9))',
+      border: '1px solid rgba(200,169,110,0.2)',
+      borderRadius: 12,
+      padding: '14px 16px',
+      boxShadow: '0 4px 24px rgba(0,0,0,0.4)',
+    }}>
+      {/* 헤더 */}
+      <div style={{
+        fontFamily: 'Orbitron, monospace', fontSize: '0.52rem',
+        color: '#C8A96E', letterSpacing: '0.18em',
+        marginBottom: 12, paddingBottom: 8,
+        borderBottom: '1px solid rgba(200,169,110,0.15)',
+        display: 'flex', alignItems: 'center', gap: 6,
+      }}>
+        <span style={{ fontSize: '0.8rem', filter: 'drop-shadow(0 0 4px rgba(200,169,110,0.5))' }}>◈</span>
+        MORNING BRIEFING v3.0
+        <span style={{ marginLeft: 'auto', fontSize: '0.42rem', color: 'rgba(148,163,184,0.5)' }}>
+          {new Date().toLocaleDateString('ko-KR', { month: 'short', day: 'numeric' })}
+        </span>
+      </div>
+      {/* 섹션들 */}
+      {sections.map((section, i) => {
+        const titleEnd = section.indexOf(']');
+        const sectionTitle = titleEnd > 0 ? section.substring(0, titleEnd).replace(/\*\*/g, '') : '';
+        const content = titleEnd > 0 ? section.substring(titleEnd + 1) : section;
+        const items = content.split('\n').filter(l => l.trim().startsWith('-'));
+        const meta = getBriefSectionMeta(sectionTitle);
+        return (
+          <div key={i} style={{
+            marginBottom: i < sections.length - 1 ? 10 : 0,
+            padding: '8px 10px',
+            background: 'rgba(0,0,0,0.2)',
+            borderRadius: 8,
+            borderLeft: `3px solid ${meta.color}44`,
+          }}>
+            {sectionTitle && (
+              <div style={{
+                fontSize: '0.65rem', fontWeight: 600, color: meta.color,
+                marginBottom: 6, display: 'flex', alignItems: 'center', gap: 5,
+              }}>
+                <span style={{ fontSize: '0.75rem' }}>{meta.icon}</span>
+                {sectionTitle}
+              </div>
+            )}
+            {items.map((item, j) => {
+              const cleaned = item.replace(/^-\s*/, '').replace(/\*\*/g, '');
+              const parts = cleaned.split(/[:：]/);
+              const label = parts[0]?.trim() || '';
+              const value = parts.slice(1).join(':').trim() || '';
+              const isNumber = /\d+건|\d+원|\d+명|\d+%/.test(value);
+              const isZero = /^0건$/.test(value.trim());
+              return (
+                <div key={j} style={{
+                  display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                  padding: '4px 0',
+                  borderBottom: j < items.length - 1 ? '1px solid rgba(255,255,255,0.04)' : 'none',
+                }}>
+                  <span style={{ fontSize: '0.68rem', color: 'rgba(180,195,210,0.8)' }}>{label}</span>
+                  <span style={{
+                    fontSize: isNumber ? '0.78rem' : '0.68rem',
+                    fontWeight: isNumber ? 700 : 400,
+                    color: isZero ? 'rgba(100,120,140,0.6)' : isNumber ? meta.color : 'rgba(224,242,254,0.9)',
+                    fontFamily: isNumber ? 'Orbitron, monospace' : 'Inter, sans-serif',
+                  }}>
+                    {value}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 // ── Dialogue Log (mission-log 슬롯) ──
 function DialogueLog({ messages, isTyping }: { messages: Message[]; isTyping?: boolean }) {
-  const recentMessages = messages.slice(-4);
+  // 최근 메시지 중 브리핑이 있으면 전체 표시, 없으면 최근 4개
+  const lastBriefingIdx = [...messages].reverse().findIndex(
+    m => m.role === 'jarvis' && isBriefingMessage(m.text)
+  );
+  const hasBriefing = lastBriefingIdx !== -1;
+  const recentMessages = hasBriefing ? messages.slice(-Math.max(4, messages.length - lastBriefingIdx + 1)) : messages.slice(-4);
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 6, maxHeight: '100%', overflowY: 'auto' }}>
@@ -273,13 +392,29 @@ function DialogueLog({ messages, isTyping }: { messages: Message[]; isTyping?: b
           — DIALOGUE LOG —
         </div>
       )}
-      {recentMessages.map((msg, i) => {
+      {recentMessages.map((msg) => {
         const isJarvis = msg.role === 'jarvis';
         const isCompletion = msg.isCompletion;
         const isPkg = msg.text.includes('[PKG]');
+        const isBriefing = isJarvis && isBriefingMessage(msg.text);
+
+        if (isBriefing) {
+          return (
+            <div key={msg.id} style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+              <span style={{
+                fontFamily: 'Orbitron, monospace', fontSize: '0.42rem',
+                color: '#C8A96E', letterSpacing: '0.1em',
+              }}>
+                ◈ MORNING BRIEFING
+              </span>
+              <SccBriefingCard text={msg.text} />
+            </div>
+          );
+        }
+
         const displayText = isPkg
           ? '◈ 주문 현황 조회 완료'
-          : msg.text.replace('[LIST]', '').replace('[PKG]', '').trim().slice(0, 90) + (msg.text.length > 90 ? '…' : '');
+          : msg.text.replace('[LIST]', '').replace('[PKG]', '').trim();
 
         return (
           <div
@@ -296,7 +431,7 @@ function DialogueLog({ messages, isTyping }: { messages: Message[]; isTyping?: b
             <span style={{
               fontSize: '0.7rem',
               color: isCompletion ? '#00F5FF' : isJarvis ? 'rgba(224,242,254,0.75)' : 'rgba(148,163,184,0.65)',
-              lineHeight: 1.5, wordBreak: 'break-word',
+              lineHeight: 1.5, wordBreak: 'break-word', whiteSpace: 'pre-wrap',
             }}>
               {displayText}
             </span>
