@@ -3156,7 +3156,33 @@ async function handleOutreachCollect(params: any) {
         if (existingIds.has(blogUrl)) { telemetry.deduped++; continue; }
 
         const cleanTitle = (item.title || '').replace(/<[^>]*>/g, '');
-        const cleanDesc = (item.description || '').replace(/<[^>]*>/g, '').substring(0, 100);
+        const rawDesc = (item.description || '').replace(/<[^>]*>/g, '');
+        const cleanDesc = rawDesc.substring(0, 100);
+
+        // ── 이메일 추출: description/title 텍스트에서 직접 추출 ──
+        const emailRegex = /[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}/g;
+        const skipDomains = ['.png','.jpg','.gif','naver.com','kakao.com','example.com'];
+        const extractedEmails = [
+          ...(rawDesc.match(emailRegex) || []),
+          ...(cleanTitle.match(emailRegex) || []),
+        ].filter(e => !skipDomains.some(d => e.includes(d)));
+        let blogEmail = extractedEmails[0] || '';
+        let emailSrc = blogEmail ? 'blog_post_description' : '';
+
+        // ── 이메일 미발견 시: 블로그 소개글 페이지 크롤링 시도 ──
+        if (!blogEmail && blogId) {
+          try {
+            const profileRes = await fetch(`https://blog.naver.com/BlogInfo.naver?blogId=${blogId}`, {
+              headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36' },
+              signal: AbortSignal.timeout(5000),
+            });
+            if (profileRes.ok) {
+              const profileHtml = await profileRes.text();
+              const profileEmails = (profileHtml.match(emailRegex) || []).filter(e => !skipDomains.some(d => e.includes(d)));
+              if (profileEmails.length > 0) { blogEmail = profileEmails[0]; emailSrc = 'blog_profile_page'; }
+            }
+          } catch { /* 크롤링 실패 무시 */ }
+        }
         const practicalSegment = tagPracticalSegment(cleanDesc + ' ' + cleanTitle, item.bloggername || '');
         segmentStats[practicalSegment] = (segmentStats[practicalSegment] || 0) + 1;
 
@@ -3182,10 +3208,10 @@ async function handleOutreachCollect(params: any) {
           recentContentUrl: item.link || '',
           subscriberOrVisitor: '-',
           viewCount: '-',
-          publicContactStatus: 'unknown',
-          publicEmailMasked: '',
-          contact_email: '',
-          emailSource: '',
+          publicContactStatus: blogEmail ? 'public_email' : 'blog_url_only',
+          publicEmailMasked: blogEmail ? blogEmail.replace(/(.{2}).*@/, '$1***@') : '',
+          contact_email: blogEmail,
+          emailSource: emailSrc,
           productFitScore: fit.score,
           productFitReason: fit.reason,
           suggestedProduct: productName,
