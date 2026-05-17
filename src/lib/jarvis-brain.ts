@@ -440,7 +440,7 @@ function deterministicMatch(text: string): JarvisAction | null {
     const urlMatch = text.match(/https?:\/\/[^\s"'<>]+/i);
     const sourceUrl = urlMatch ? urlMatch[0] : '';
     // 참고 텍스트 추출 (따옴표 안 또는 줄바꿈 뒤 텍스트)
-    const quoteMatch = text.match(/["'\u201C\u201D]([^"'\u201C\u201D\n]{10,})["'\u201C\u201D]/);
+    const quoteMatch = text.match(/["'“”]([^"'“”\n]{10,})["'“”]/);
     const sourceText = quoteMatch ? quoteMatch[1] : '';
     return {
       type: 'copy_social_research' as any,
@@ -509,7 +509,7 @@ function deterministicMatch(text: string): JarvisAction | null {
     // 리뷰 텍스트 추출
     const reviewText = text;
     // 소셜 텍스트 추출 (따옴표 안)
-    const quoteMatch = text.match(/["'\u201C\u201D]([^"'\u201C\u201D\n]{10,})["'\u201C\u201D]/);
+    const quoteMatch = text.match(/["'“”]([^"'“”\n]{10,})["'“”]/);
     const sourceText = quoteMatch ? quoteMatch[1] : '';
     return {
       type: 'copy_orchestrator' as any,

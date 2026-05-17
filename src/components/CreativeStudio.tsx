@@ -254,7 +254,7 @@ function CopyDetailModal({
                     color: activeTab === tab ? '#00F5FF' : 'rgba(255,255,255,0.5)',
                     fontSize: '11px', fontWeight: 500,
                   }}>
-                    {tab === 'full' ? '\uC6D0\uBCF8' : tab === 'threads' ? '\uC2A4\uB808\uB4DC' : tab === 'reels' ? '\uB9B4\uC2A4' : '\uCE74\uCE74\uC624\uD1A1'}
+                    {tab === 'full' ? '원본' : tab === 'threads' ? '스레드' : tab === 'reels' ? '릴스' : '카카오톡'}
                   </button>
                 ))}
               </div>
@@ -264,9 +264,9 @@ function CopyDetailModal({
                 color: 'rgba(255,255,255,0.8)', fontSize: '13px', lineHeight: 1.7, whiteSpace: 'pre-wrap',
               }}>
                 {activeTab === 'full' && copy.body}
-                {activeTab === 'threads' && (copy.platformVersions?.threads || '(\uC2A4\uB808\uB4DC \uBC84\uC804 \uBBF8\uC0DD\uC131)')}
-                {activeTab === 'reels' && (copy.platformVersions?.reels || '(\uB9B4\uC2A4 \uBC84\uC804 \uBBF8\uC0DD\uC131)')}
-                {activeTab === 'kakao' && (copy.platformVersions?.kakao || '(\uCE74\uCE74\uC624\uD1A1 \uBC84\uC804 \uBBF8\uC0DD\uC131)')}
+                {activeTab === 'threads' && (copy.platformVersions?.threads || '(스레드 버전 미생성)')}
+                {activeTab === 'reels' && (copy.platformVersions?.reels || '(릴스 버전 미생성)')}
+                {activeTab === 'kakao' && (copy.platformVersions?.kakao || '(카카오톡 버전 미생성)')}
               </div>
             </div>
           )}
@@ -317,7 +317,7 @@ function CopyDetailModal({
               <div>
                 <div style={{ color: 'rgba(0,200,100,0.8)', fontSize: '9px', letterSpacing: '1px' }}>BEST POSTING TIME</div>
                 <div style={{ color: 'rgba(255,255,255,0.7)', fontSize: '12px', marginTop: '2px' }}>
-                  {copy.best_posting_reason || '\uCD5C\uC801 \uBC1C\uD589 \uC2DC\uAC04'}
+                  {copy.best_posting_reason || '최적 발행 시간'}
                 </div>
               </div>
             </div>
@@ -358,19 +358,19 @@ function CopyDetailModal({
             padding: '10px 18px', borderRadius: '8px', cursor: 'pointer',
             background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.15)',
             color: 'rgba(255,255,255,0.7)', fontSize: '12px', fontWeight: 500,
-          }}>\uBCF5\uC0AC</button>
+          }}>복사</button>
           <button onClick={() => { onClose(); saveStyleFeedback(copy.headline, 'rejected', product); }} style={{
             padding: '10px 18px', borderRadius: '8px', cursor: 'pointer',
             background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.15)',
             color: 'rgba(255,255,255,0.7)', fontSize: '12px', fontWeight: 500,
-          }}>\uD328\uC2A4</button>
+          }}>패스</button>
           <button onClick={() => onSelect(copy)} style={{
             padding: '10px 24px', borderRadius: '8px', cursor: 'pointer',
             background: 'linear-gradient(135deg, rgba(0,245,255,0.2), rgba(0,180,255,0.3))',
             border: '1px solid rgba(0,245,255,0.5)',
             color: '#00F5FF', fontSize: '12px', fontWeight: 700,
             boxShadow: '0 4px 20px rgba(0,245,255,0.15)',
-          }}>\uC774\uAC78\uB85C \uACB0\uC815</button>
+          }}>이걸로 결정</button>
         </div>
       </motion.div>
     </motion.div>
@@ -535,7 +535,7 @@ export default function CreativeStudio({
               }}
             />
             <div style={{ color: 'rgba(255,255,255,0.6)', fontSize: '12px', textAlign: 'center' }}>
-              \uC695\uAD6C \uBD84\uC11D · \uBD88\uC548 \uD574\uC18C · \uD2B8\uB9AC\uAC70 \uB9E4\uCE6D · \uAC10\uAC01 \uC8FC\uC785 \uC911...
+              욕구 분석 · 불안 해소 · 트리거 매칭 · 감각 주입 중...
             </div>
           </div>
         )}
@@ -637,7 +637,7 @@ export default function CreativeStudio({
                       background: 'rgba(180,130,255,0.04)', border: '1px solid rgba(180,130,255,0.1)',
                       color: 'rgba(255,255,255,0.5)', fontSize: '10px',
                     }}>
-                      💬 \uC608\uC0C1 \uB313\uAE00: "{copy.predicted_comments[0]}"
+                      💬 예상 댓글: "{copy.predicted_comments[0]}"
                     </div>
                   )}
                 </motion.div>
@@ -656,27 +656,27 @@ export default function CreativeStudio({
               padding: '7px 12px', borderRadius: '8px', cursor: 'pointer',
               background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.12)',
               color: 'rgba(255,255,255,0.6)', fontSize: '10px',
-            }}>↻ \uB2E4\uC2DC</button>
-            <button onClick={() => onRegenerate?.('\uB354 \uC790\uADF9\uC801\uC73C\uB85C')} style={{
+            }}>↻ 다시</button>
+            <button onClick={() => onRegenerate?.('더 자극적으로')} style={{
               padding: '7px 12px', borderRadius: '8px', cursor: 'pointer',
               background: 'rgba(255,100,100,0.06)', border: '1px solid rgba(255,100,100,0.2)',
               color: 'rgba(255,100,100,0.7)', fontSize: '10px',
-            }}>⚡ \uC790\uADF9\uC801</button>
-            <button onClick={() => onRegenerate?.('\uB354 \uAC10\uC131\uC801\uC73C\uB85C')} style={{
+            }}>⚡ 자극적</button>
+            <button onClick={() => onRegenerate?.('더 감성적으로')} style={{
               padding: '7px 12px', borderRadius: '8px', cursor: 'pointer',
               background: 'rgba(180,130,255,0.06)', border: '1px solid rgba(180,130,255,0.2)',
               color: 'rgba(180,130,255,0.7)', fontSize: '10px',
-            }}>✦ \uAC10\uC131</button>
-            <button onClick={() => onRegenerate?.('\uC9E7\uACE0 \uC784\uD329\uD2B8 \uC788\uAC8C')} style={{
+            }}>✦ 감성</button>
+            <button onClick={() => onRegenerate?.('짧고 임팩트 있게')} style={{
               padding: '7px 12px', borderRadius: '8px', cursor: 'pointer',
               background: 'rgba(0,255,136,0.06)', border: '1px solid rgba(0,255,136,0.2)',
               color: 'rgba(0,255,136,0.7)', fontSize: '10px',
-            }}>⊘ \uC9E7\uAC8C</button>
-            <button onClick={() => onRegenerate?.('\uBD88\uC548 \uD574\uC18C \uC911\uC2EC\uC73C\uB85C')} style={{
+            }}>⊘ 짧게</button>
+            <button onClick={() => onRegenerate?.('불안 해소 중심으로')} style={{
               padding: '7px 12px', borderRadius: '8px', cursor: 'pointer',
               background: 'rgba(255,184,0,0.06)', border: '1px solid rgba(255,184,0,0.2)',
               color: 'rgba(255,184,0,0.7)', fontSize: '10px',
-            }}>🛡️ \uBD88\uC548\uD574\uC18C</button>
+            }}>🛡️ 불안해소</button>
           </div>
         )}
       </motion.div>

@@ -8104,14 +8104,14 @@ html, body {
   border-radius: 50%;
   flex-shrink: 0;
 }
-.scc-radar-indicator[data-status="\uC900\uBE44"] {
+.scc-radar-indicator[data-status="준비"] {
   background: #a78bfa;
   box-shadow: 0 0 4px rgba(167,139,250,0.4);
 }
-.scc-radar-indicator[data-status="\uB300\uAE30"] {
+.scc-radar-indicator[data-status="대기"] {
   background: rgba(107,114,128,0.5);
 }
-.scc-radar-indicator[data-status="\uC608\uC815"] {
+.scc-radar-indicator[data-status="예정"] {
   background: rgba(34,211,238,0.3);
 }
 .scc-radar-label {

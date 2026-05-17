@@ -1351,14 +1351,14 @@ function calcRelevanceScore(title: string, description: string, product: string)
   // 가점 신호
   if (t.includes(p)) score += 40;
   if (d.includes(p)) score += 10;
-  if (/\uc218\ud655|\uc81c\ucca0|\ubcf4\uad00|\uace0\ub974\ub294\ubc95|\uba39\ubc29|\ub18d\uc7a5|\uc0b0\uc9c0|\ud6c4\uc219/.test(t)) score += 20;
-  if (/\uc218\ud655|\uc81c\ucca0|\ubcf4\uad00|\uace0\ub974\ub294\ubc95|\uba39\ubc29|\ub18d\uc7a5|\uc0b0\uc9c0|\ud6c4\uc219/.test(d)) score += 5;
-  if (/\uc2dd\ud488|\uc2dd\uc7ac|\ub18d\uc0b0\ubb3c|\uc2e0\uc120|\uc81c\ucca0|\uad6c\ub9e4|\uc8fc\ubb38|\ub9db|\ub9b9|\ub2ec\ucf64|\uace0\uc18c\ud55c|\uc544\uc0ad|\ud5a5/.test(t)) score += 10;
+  if (/수확|제철|보관|고르는법|먹방|농장|산지|후숙/.test(t)) score += 20;
+  if (/수확|제철|보관|고르는법|먹방|농장|산지|후숙/.test(d)) score += 5;
+  if (/식품|식재|농산물|신선|제철|구매|주문|맛|릹|달콤|고소한|아삭|향/.test(t)) score += 10;
 
   // 감점 신호 (노이즈 키워드)
-  if (/\uc601\uc5b4\ub85c|\uc601\uc5b4\uacf5\ubd80|\uc601\uc5b4|\uc601\uc5b4\ub2e8\uc5b4|\uc601\uc5b4\ud559\uc2b5/.test(t)) score -= 40;
-  if (/\uc74c\uc545|\ub313\uc2a4|\ucc3c\ub9b0\uc9c0|\ube0c\uc774\ub85c\uadf8|\uc5ec\ud589|\uac8c\uc784|\uc560\ub2c8|\ub9cc\ud654|\ub4dc\ub77c\ub9c8/.test(t)) score -= 30;
-  if (/\uc1fc\uce20\ubaa8\uc74c|\ud074\ub9bd\ubaa8\uc74c|\ubaa8\uc74c|\ucef4\ud544/.test(t)) score -= 20;
+  if (/영어로|영어공부|영어|영어단어|영어학습/.test(t)) score -= 40;
+  if (/음악|댓스|찼린지|브이로그|여행|게임|애니|만화|드라마/.test(t)) score -= 30;
+  if (/쇼츠모음|클립모음|모음|컴필/.test(t)) score -= 20;
   if (t.includes('shorts') && !t.includes(p)) score -= 15;
 
   return Math.max(0, Math.min(100, score));
@@ -1368,19 +1368,19 @@ function calcRelevanceScore(title: string, description: string, product: string)
 function classifyPattern(title: string): string[] {
   const t = title;
   const patterns: string[] = [];
-  if (/\uc218\ud655|\ub18d\uc7a5|\uc0b0\uc9c0|\ud604\uc7a5|\ubc1b/.test(t)) patterns.push('\uc218\ud655\ud604\uc7a5\ud615');
-  if (/\uccab\uc785|\uba39\uc5b4\ubcf4\ub2c8|\uba39\ubc29|\uc2e4\uc81c|\ub9db\ubcf4\ub2c8|\ub9ac\uc561\uc158/.test(t)) patterns.push('\uccab\uc785\ubc18\uc751\ud615');
-  if (/\ubabb\ub09c\uc774|\ud76c\uc18c|\ud55c\uc815|\ub9c8\uc9c0\ub9c9|\ub2e4\ud314|\uc5c6\ub2e4/.test(t)) patterns.push('\ubabb\ub09c\uc774\/\ud76c\uc18c\uc131\ud615');
-  if (/\uc2e4\uc218|\ud6c4\ud68c|\uc8fc\uc758|\uc870\uc2ec|\ub9de\ub294\ubc95|\uc120\ud0dd\ubc95/.test(t)) patterns.push('\uc2e4\uc218\ud68c\ud53c\ud615');
-  if (/\uace0\ub974\ub294\ubc95|\uae30\uc900|\ucc28\uc774|\ub4f1\uae09|\uc120\ud0dd|\ud310\ubcc4/.test(t)) patterns.push('\uace0\ub974\ub294\ubc95\/\uae30\uc900\uc81c\uc2dc\ud615');
-  if (/\ubcf4\uad00|\ud6c4\uc219|\uc219\uc131|\uc62c\ubc14\ub978/.test(t)) patterns.push('\ubcf4\uad00\ubc95\/\ud6c4\uc219\ud615');
-  if (/\uc6d0|\uac00\uaca9|\ud55c\uc815\uc218\ub7c9|\uc800\ub834|\uc2f8|\uac00\uc131\ube44/.test(t)) patterns.push('\uac00\uaca9\/\ud55c\uc815\uc218\ub7c9\ud615');
-  if (/\uc544\uc774|\uac00\uc871|\uac04\uc2dd|\uc544\uc774\ub4e4|\uc5b4\ub9b0\uc774/.test(t)) patterns.push('\uac00\uc871\/\uc544\uc774\uac04\uc2dd\ud615');
-  if (/\uce90\ud551|\uc5ec\ud589|\uc57c\uc678|\ud53c\ud06c\ub2c9/.test(t)) patterns.push('\uce90\ud551\/\uc5ec\ud589\ud615');
-  if (/\uc0b0\uc9c0\uc9c1\uc1a1|\uc9c1\uc1a1|\ub18d\ubd80|\uc0b0\uc9c0|\uc2e0\ub8b0/.test(t)) patterns.push('\uc0b0\uc9c0\uc9c1\uc1a1\/\uc2e0\ub8b0\ud615');
-  if (/\uc81c\ucca0|\ub9c8\uac10|\ub05d\ubb3c|\uc2dc\uc98c|\ub9c8\uc9c0\ub9c9/.test(t)) patterns.push('\uc81c\ucca0\ub9c8\uac10\ud615');
-  if (/\ub9db|\ud5a5|\uc544\uc0ad|\ub2ec\ucf64|\uace0\uc18c\ud55c|\uc2e4\ud55c|\uc2e4\ud0c4|\uc2e4\ud55c|\ud5a5\uae30/.test(t)) patterns.push('\uac10\uac01\ubb18\uc0ac\ud615');
-  if (patterns.length === 0) patterns.push('\uc77c\ubc18\uc815\ubcf4\ud615');
+  if (/수확|농장|산지|현장|받/.test(t)) patterns.push('수확현장형');
+  if (/첫입|먹어보니|먹방|실제|맛보니|리액션/.test(t)) patterns.push('첫입반응형');
+  if (/못난이|희소|한정|마지막|다팔|없다/.test(t)) patterns.push('못난이\/희소성형');
+  if (/실수|후회|주의|조심|맞는법|선택법/.test(t)) patterns.push('실수회피형');
+  if (/고르는법|기준|차이|등급|선택|판별/.test(t)) patterns.push('고르는법\/기준제시형');
+  if (/보관|후숙|숙성|올바른/.test(t)) patterns.push('보관법\/후숙형');
+  if (/원|가격|한정수량|저렴|싸|가성비/.test(t)) patterns.push('가격\/한정수량형');
+  if (/아이|가족|간식|아이들|어린이/.test(t)) patterns.push('가족\/아이간식형');
+  if (/캐핑|여행|야외|피크닉/.test(t)) patterns.push('캐핑\/여행형');
+  if (/산지직송|직송|농부|산지|신뢰/.test(t)) patterns.push('산지직송\/신뢰형');
+  if (/제철|마감|끝물|시즌|마지막/.test(t)) patterns.push('제철마감형');
+  if (/맛|향|아삭|달콤|고소한|실한|실탄|실한|향기/.test(t)) patterns.push('감각묘사형');
+  if (patterns.length === 0) patterns.push('일반정보형');
   return patterns;
 }
 
@@ -1563,7 +1563,7 @@ async function handleCopyReviewResearch(params: any) {
   const hasReviewText = reviewText.length > 20 && /[1-5]점|리뷰|후기|댓글|물러|배송|맛|향|포장|아이|재구매|아쉬|좋|싫|별로|만족|불만|작다|크다|비싸|싸|달다|시다/.test(reviewText);
 
   // 개인정보 필터링 패턴
-  const piiPatterns = /(\d{2,3}[-\s]?\d{3,4}[-\s]?\d{4})|(\w+@\w+\.\w+)|([\uac00-\ud7a3]{2,4}\s*님)|(\d{10,})|(\d{1,3}[-\s]\d{1,4}[-\s]\d{1,4})/g;
+  const piiPatterns = /(\d{2,3}[-\s]?\d{3,4}[-\s]?\d{4})|(\w+@\w+\.\w+)|([가-힣]{2,4}\s*님)|(\d{10,})|(\d{1,3}[-\s]\d{1,4}[-\s]\d{1,4})/g;
 
   let reviewInsights: any = {};
 
@@ -2038,7 +2038,7 @@ async function handleCopyResearch(params: any) {
   const contentType = params?.contentType || 'headcopy';
   const count = Math.min(Number(params?.count) || 8, 15); // 필터를 위해 더 많이 가져오기
 
-  // YouTube \uc778\uae30 \uc601\uc0c1 \uac80\uc0c9
+  // YouTube 인기 영상 검색
   let allVideos: any[] = [];
   let filteredVideos: any[] = [];
   let researchInsight = '';
@@ -2056,14 +2056,14 @@ async function handleCopyResearch(params: any) {
     failReason = e.message?.includes('quota') ? 'quota exceeded' : e.message?.includes('API') ? 'API error' : 'network error';
   }
 
-  // COPY-R.1.1 수\uc815 B: \uad00\ub828\uc131 \ud544\ud130 \uc801\uc6a9
+  // COPY-R.1.1 수정 B: 관련성 필터 적용
   if (allVideos.length > 0) {
     const scored = allVideos.map((v: any) => ({
       ...v,
       relevanceScore: calcRelevanceScore(v.title, v.description || '', product),
     }));
 
-    // relevanceScore >= 60 \ubd84\uc11d \ub300\uc0c1, 40~59 \ubcf4\uc870 \ucc38\uace0, < 40 \uc81c\uc678
+    // relevanceScore >= 60 분석 대상, 40~59 보조 참고, < 40 제외
     filteredVideos = scored
       .filter((v: any) => v.relevanceScore >= 40)
       .sort((a: any, b: any) => {
@@ -2075,19 +2075,19 @@ async function handleCopyResearch(params: any) {
       .slice(0, 5);
 
     if (filteredVideos.length === 0) {
-      // \uad00\ub828\uc131 \ud544\ud130 \ud1b5\uacfc \uc601\uc0c1 \uc5c6\uc73c\uba74 \uc804\uccb4\uc5d0\uc11c \uc870\ud68c\uc218 \uc21c \uc0c1\uc704 3\uac74 fallback
+      // 관련성 필터 통과 영상 없으면 전체에서 조회수 순 상위 3건 fallback
       filteredVideos = scored.sort((a: any, b: any) => (b.viewCount || 0) - (a.viewCount || 0)).slice(0, 3);
     }
   }
 
-  // \ud328\ud134 \ucd94\ucd9c
+  // 패턴 추출
   if (filteredVideos.length > 0) {
     const titles = filteredVideos.map((v: any) => v.title);
     const totalViews = filteredVideos.reduce((sum: number, v: any) => sum + (v.viewCount || 0), 0);
     const avgViews = filteredVideos.length > 0 ? Math.round(totalViews / filteredVideos.length) : 0;
     const topVideo = filteredVideos[0];
 
-    // COPY-R.1.1 \uc218\uc815 C: \ub178\uc774\uc988 \ud0a4\uc6cc\ub4dc \uc81c\uc678 \ud6c4 \ud328\ud134 \ubd84\ub958 \uac15\ud654
+    // COPY-R.1.1 수정 C: 노이즈 키워드 제외 후 패턴 분류 강화
     const allPatterns: string[] = [];
     filteredVideos.forEach((v: any) => {
       classifyPattern(v.title).forEach((p: string) => allPatterns.push(p));
@@ -2099,60 +2099,60 @@ async function handleCopyResearch(params: any) {
       .slice(0, 4)
       .map(([p]) => p);
 
-    // \uc18c\ube44\uc790 \uad00\uc2ec/\ubd88\uc548 \ud0a4\uc6cc\ub4dc \ucd94\ucd9c
+    // 소비자 관심/불안 키워드 추출
     const concernKeywords: string[] = [];
-    if (titles.some((t: string) => /\uc2e4\uc218|\ud6c4\ud68c|\uc8fc\uc758|\uc870\uc2ec/.test(t))) concernKeywords.push('\uc2e4\uc218\ud68c\ud53c');
-    if (titles.some((t: string) => /\ubcf4\uad00|\ud6c4\uc219|\uc624\ub798/.test(t))) concernKeywords.push('\ubcf4\uad00\ubc95');
-    if (titles.some((t: string) => /\uace0\ub974\ub294\ubc95|\ub4f1\uae09|\uae30\uc900/.test(t))) concernKeywords.push('\uc120\ud0dd\uae30\uc900');
-    if (titles.some((t: string) => /\uc2e0\uc120|\uc0b0\uc9c0|\ub18d\uc7a5|\uc9c1\uc1a1/.test(t))) concernKeywords.push('\uc2e0\uc120\ub3c4/\uc0b0\uc9c0');
+    if (titles.some((t: string) => /실수|후회|주의|조심/.test(t))) concernKeywords.push('실수회피');
+    if (titles.some((t: string) => /보관|후숙|오래/.test(t))) concernKeywords.push('보관법');
+    if (titles.some((t: string) => /고르는법|등급|기준/.test(t))) concernKeywords.push('선택기준');
+    if (titles.some((t: string) => /신선|산지|농장|직송/.test(t))) concernKeywords.push('신선도/산지');
 
-    // \ucd94\ucc9c \ud6c4\ud0b9 \uacf5\uc2dd
-    const hookFormula = topPatterns.includes('\uccab\uc785\ubc18\uc751\ud615')
-      ? `"\uc774 ${product}\ub294 \uadf8\ub0e5 \ub9db\uc788\ub2e4\uac00 \uc544\ub2c8\ub77c, \uccab\uc785/\uc81c\ucca0/\ud76c\uc18c\uc131\uc73c\ub85c \ub9d0\ud574\uc57c \ud55c\ub2e4."`
-      : topPatterns.includes('\uc218\ud655\ud604\uc7a5\ud615')
-      ? `"\uc218\ud655 \ud604\uc7a5\uc5d0\uc11c \ubc14\ub85c \uc628 \ub290\ub08c\uc744 \uc804\ub2ec\ud558\ub294 \ubb38\uc7a5 \uc0ac\uc6a9"`
-      : topPatterns.includes('\ubabb\ub09c\uc774\/\ud76c\uc18c\uc131\ud615')
-      ? `"\ud76c\uc18c\uc131/\ud55c\uc815 \uc218\ub7c9 \uad6c\uc870\ub97c \uc751\uc6a9"`
-      : `"${product}\uc758 \uc81c\ucca0\uac10\uacfc \uc2e4\ud654\uc131\uc744 \uc911\uc2ec\uc73c\ub85c \uc791\uc131"`;
+    // 추천 후킹 공식
+    const hookFormula = topPatterns.includes('첫입반응형')
+      ? `"이 ${product}는 그냥 맛있다가 아니라, 첫입/제철/희소성으로 말해야 한다."`
+      : topPatterns.includes('수확현장형')
+      ? `"수확 현장에서 바로 온 느낌을 전달하는 문장 사용"`
+      : topPatterns.includes('못난이\/희소성형')
+      ? `"희소성/한정 수량 구조를 응용"`
+      : `"${product}의 제철감과 실화성을 중심으로 작성"`;
 
-    // COPY-R.1.1 \uc218\uc815 F: \uc778\uc0ac\uc774\ud2b8 \ud328\ub110 \ubb38\uad6c \uac1c\uc120 (\uce74\ud53c \uc801\uc6a9 \ubc29\ud5a5 \uc911\uc2ec)
+    // COPY-R.1.1 수정 F: 인사이트 패널 문구 개선 (카피 적용 방향 중심)
     const topVideoSummary = topVideo?.title?.length > 30
       ? topVideo.title.substring(0, 28) + '...'
       : topVideo?.title || '';
 
-    researchInsight = `[COPY-R \uc870\uc0ac \uc778\uc0ac\uc774\ud2b8 \u2014 ${product}]
-\uc870\uc0ac \ucd9c\ucc98: YouTube ${allVideos.length}\uac74 \uac80\uc0c9
-\ubd84\uc11d \ub300\uc0c1: \uad00\ub828\uc131 \ud544\ud130 \ud1b5\uacfc ${filteredVideos.length}\uac74
-\ud3c9\uade0 \uc870\ud68c\uc218: ${avgViews.toLocaleString()}\ud68c
-\ucd5c\uace0 \ubc18\uc751 \uc601\uc0c1: "${topVideoSummary}" (${topVideo?.viewCountFormatted}\ud68c)
+    researchInsight = `[COPY-R 조사 인사이트 — ${product}]
+조사 출처: YouTube ${allVideos.length}건 검색
+분석 대상: 관련성 필터 통과 ${filteredVideos.length}건
+평균 조회수: ${avgViews.toLocaleString()}회
+최고 반응 영상: "${topVideoSummary}" (${topVideo?.viewCountFormatted}회)
 
-\ubc18\uc751 \uc88b\uc740 \uad6c\uc870:
+반응 좋은 구조:
 ${topPatterns.map((p: string) => `- ${p}`).join('\n')}
 
-\uce74\ud53c \uc801\uc6a9 \ubc29\ud5a5:
+카피 적용 방향:
 - ${hookFormula}
-${concernKeywords.length > 0 ? `- \uc18c\ube44\uc790 \uad00\uc2ec: ${concernKeywords.join(', ')} \uc5b8\uae09\uc2dc \ubc18\uc751\ub960 \ub192\uc74c` : ''}
-- \uc81c\ucca0\uac10/\uc2e4\ud654\uc131/\uc0b0\uc9c0 \uc2a4\ud1a0\ub9ac\ub97c \uc911\uc2ec\uc73c\ub85c \uc791\uc131
+${concernKeywords.length > 0 ? `- 소비자 관심: ${concernKeywords.join(', ')} 언급시 반응률 높음` : ''}
+- 제철감/실화성/산지 스토리를 중심으로 작성
 
-\ud53c\ud574\uc57c \ud560 \ubc29\ud5a5:
-- \ub2e8\uc21c \ud488\ubaa9\uba85 \ubc18\ubcf5
-- shorts/\uc601\uc5b4\ub85c \uac19\uc740 \uac80\uc0c9 \ub178\uc774\uc988 \uae30\ubc18 \ubb38\uad6c`;
+피해야 할 방향:
+- 단순 품목명 반복
+- shorts/영어로 같은 검색 노이즈 기반 문구`;
 
-    // COPY-R.1.1 \uc218\uc815 G: COPY-A \uc8fc\uc785 \uc778\uc0ac\uc774\ud2b8 \uac1c\uc120
+    // COPY-R.1.1 수정 G: COPY-A 주입 인사이트 개선
     researchInsight += `
 
-[COPY-A \uc8fc\uc785 \uc778\uc0ac\uc774\ud2b8]
-\ud575\uc2ec \ud328\ud134: ${topPatterns.join(' + ')}
-\uc18c\ube44\uc790 \uad00\uc2ec/\ubd88\uc548: ${concernKeywords.length > 0 ? concernKeywords.join(', ') : '\uc2e4\ud654\uc131/\uc81c\ucca0\uac10'}
-\ucd94\ucc9c \ud6c4\ud0b9 \uacf5\uc2dd: ${hookFormula}
-\uce74\ud53c \uc801\uc6a9 \ubc29\ud5a5: ${product}\uc758 \uc81c\ucca0\uac10\uacfc \uc2e4\ud654\uc131\uc744 \uc911\uc2ec\uc73c\ub85c \uc791\uc131
-\ud53c\ud574\uc57c \ud560 \ud45c\ud604: shorts/\uc601\uc5b4\ub85c \uac19\uc740 \uac80\uc0c9 \ub178\uc774\uc988\ub294 \uce74\ud53c\uc5d0 \ubc18\uc601\ud558\uc9c0 \uc54a\ub294\ub2e4`;
+[COPY-A 주입 인사이트]
+핵심 패턴: ${topPatterns.join(' + ')}
+소비자 관심/불안: ${concernKeywords.length > 0 ? concernKeywords.join(', ') : '실화성/제철감'}
+추천 후킹 공식: ${hookFormula}
+카피 적용 방향: ${product}의 제철감과 실화성을 중심으로 작성
+피해야 할 표현: shorts/영어로 같은 검색 노이즈는 카피에 반영하지 않는다`;
   } else if (failReason) {
-    // fallback: \uc2e4\ud328 \uc6d0\uc778 \ub0b4\ubd80 \ub85c\uadf8\ub9cc, \uc0ac\uc6a9\uc790\uc5d0\uac8c\ub294 \uc548\ub0b4 \uba54\uc2dc\uc9c0\ub9cc
-    console.error(`[COPY-R] \uc2e4\ud328 \uc6d0\uc778: ${failReason}`);
-    researchInsight = ''; // \ube48 \ubb38\uc790\uc5f4 = fallback \uc2e0\ud638
+    // fallback: 실패 원인 내부 로그만, 사용자에게는 안내 메시지만
+    console.error(`[COPY-R] 실패 원인: ${failReason}`);
+    researchInsight = ''; // 빈 문자열 = fallback 신호
   } else {
-    researchInsight = ''; // \uad00\ub828 \uc601\uc0c1 \uc5c6\uc74c = fallback
+    researchInsight = ''; // 관련 영상 없음 = fallback
   }
 
   return {

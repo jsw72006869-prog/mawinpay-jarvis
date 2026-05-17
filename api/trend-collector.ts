@@ -564,10 +564,10 @@ async function generateEnhancedCopy(params: {
           const approved = smRows.filter((r: string[]) => r[2] === 'approved').map((r: string[]) => r[1]).slice(-5);
           const rejected = smRows.filter((r: string[]) => r[2] === 'rejected').map((r: string[]) => r[1]).slice(-5);
           if (approved.length > 0 || rejected.length > 0) {
-            styleMemory = `\n[mawinpay \uc2a4\ud0c0\uc77c \ud559\uc2b5 \uacb0\uacfc]
-\ub300\ud45c\ub2d8\uc774 \uc120\ud0dd\ud55c \uce74\ud53c: ${approved.join(' | ')}
-\ub300\ud45c\ub2d8\uc774 \uac70\uc808\ud55c \uce74\ud53c: ${rejected.join(' | ')}
-\u2192 \uc120\ud0dd\ub41c \uce74\ud53c\uc758 \ud1a4, \uae38\uc774, \uac10\uac01\uc5b4 \ubc00\ub3c4\ub97c \ub354 \ubc18\uc601\ud558\uace0, \uac70\uc808\ub41c \uce74\ud53c \ud328\ud134\uc740 \ud53c\ud558\uc138\uc694.`;
+            styleMemory = `\n[mawinpay 스타일 학습 결과]
+대표님이 선택한 카피: ${approved.join(' | ')}
+대표님이 거절한 카피: ${rejected.join(' | ')}
+→ 선택된 카피의 톤, 길이, 감각어 밀도를 더 반영하고, 거절된 카피 패턴은 피하세요.`;
           }
         }
       })();
