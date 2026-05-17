@@ -319,13 +319,15 @@ function ApprovalPreviewCard({ action, reason }: { action: string; reason: strin
 // ── Helper: detect message type ──
 function getMessageType(text: string): 'smartstore' | 'briefing' | 'normal' {
   if (text.startsWith('[PKG]')) return 'smartstore';
-  if (text.startsWith('[LIST]') && (
-    text.includes('브리핑') ||
+  // [LIST] 태그 유무와 관계없이 브리핑 키워드로 감지
+  const isBriefing = (
     text.includes('커맨드 리포트') ||
-    text.includes('리포트') ||
-    text.includes('[1. 스마트스토어') ||
-    text.includes('[스마트스토어]')
-  )) return 'briefing';
+    text.includes('자비스 일일') ||
+    text.includes('[1. 스마트스토어 현황]') ||
+    text.includes('[스마트스토어]') ||
+    (text.startsWith('[LIST]') && (text.includes('브리핑') || text.includes('리포트')))
+  );
+  if (isBriefing) return 'briefing';
   return 'normal';
 }
 
