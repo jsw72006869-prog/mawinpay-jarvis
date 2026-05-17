@@ -24,6 +24,7 @@ type PredictiveAction = {
 interface PredictiveActionPanelProps {
   actions: PredictiveAction[];
   visible: boolean;
+  outreachOpen?: boolean;
   statusMessage: string;
   onActionClick: (action: PredictiveAction) => void;
 }
@@ -50,7 +51,8 @@ const BADGE: Record<string, { text: string; color: string }> = {
 };
 
 const PredictiveActionPanel: React.FC<PredictiveActionPanelProps> = ({
-  actions, visible, statusMessage, onActionClick,
+  actions, visible,
+  outreachOpen = false, statusMessage, onActionClick,
 }) => {
   if (!actions.length) return null;
 
@@ -62,7 +64,7 @@ const PredictiveActionPanel: React.FC<PredictiveActionPanelProps> = ({
     <AnimatePresence>
       {visible && (
         <motion.div
-          className="acp-panel"
+          className={`acp-panel${outreachOpen ? " acp-outreach-shift" : ""}`}
           initial={{ opacity: 0, y: 16, scale: 0.97 }}
           animate={{ opacity: 1, y: 0, scale: 1 }}
           exit={{ opacity: 0, y: 12, scale: 0.97 }}

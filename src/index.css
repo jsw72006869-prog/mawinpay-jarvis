@@ -10859,3 +10859,14 @@ html, body {
     0 8px 32px rgba(0,0,0,0.3),
     inset 0 1px 0 rgba(255,255,255,0.03);
 }
+
+/* ── LAYOUT-REDESIGN-A.1: OUTREACH 열릴 때 PredictiveActionPanel 좌측 배치 ── */
+.acp-panel.acp-outreach-shift {
+  left: 170px !important;
+  transform: none !important;
+  width: calc(100vw - 620px) !important;
+  min-width: 340px;
+  max-width: 600px;
+  bottom: 80px !important;
+  max-height: 320px !important;
+}
