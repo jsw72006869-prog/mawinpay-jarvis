@@ -3344,12 +3344,66 @@ export default function JarvisApp() {
       emitMissionLog('🎨', 'COPY-R', '조사 인사이트 주입 → 카피 생성 시작', 'info');
 
       const copyCountMatch = userMessage.match(/(\d+)\s*개/);
-      const copyCount = copyCountMatch ? Math.min(parseInt(copyCountMatch[1]), 10) : 3;
+      const copyCount = copyCountMatch ? Math.min(parseInt(copyCountMatch[1]), 20) : 3;
       const researchPrefix = researchInsight
         ? `\n\n[COPY-R 조사 결과 주입]\n${researchInsight}\n\n위 조사 결과를 반드시 반영하여 카피를 작성하세요.\n`
         : '';
 
-      // creative_content action으로 위임
+      // ── CREATIVE STUDIO: 5개 이상 요청 시 직접 트렌드 기반 카드형 UI 활성화 (creative_content 위임 없이) ──
+      if (copyCount >= 5) {
+        emitMissionLog('📊', 'TREND', '트렌드 수집 + 패턴 분석 시작', 'info');
+        setCreativeStudioVisible(true);
+        setCreativeStudioLoading(true);
+        setCreativeStudioProduct(product || '농산물');
+        setCreativeStudioType(contentType);
+        setCreativeStudioCopies([]);
+
+        try {
+          const trendRes = await fetch('/api/trend-collector', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              action: 'generate',
+              product: product || '농산물',
+              contentType,
+              count: copyCount,
+              userStyle: userMessage,
+              researchInsight: researchInsight || undefined,
+            }),
+          });
+
+          if (trendRes.ok) {
+            const trendData = await trendRes.json();
+            if (trendData.success && trendData.copies?.length > 0) {
+              setCreativeStudioCopies(trendData.copies);
+              setCreativeStudioTrends(trendData.trendPatternsUsed || 0);
+              setCreativeStudioRefs(trendData.videosReferenced || 0);
+              setCreativeStudioLoading(false);
+              emitMissionLog('✅', 'CREATIVE STUDIO', `${trendData.copies.length}개 카피 카드 생성 완료 (트렌드 ${trendData.trendPatternsUsed}개 반영)`, 'success');
+              emitNodeState('jarvis_brain', 'success', 'Creative Studio 완료');
+              setTimeout(() => emitNodeState('jarvis_brain', 'idle'), 2000);
+              telemetryFunctionSuccess('creative_director', `${product} Creative Studio ${trendData.copies.length}개 생성`);
+              const summaryMsg = `${product || '제품'} 카피 ${trendData.copies.length}개를 Creative Studio에 생성했습니다. 카드를 클릭하면 상세 내용을 볼 수 있습니다.`;
+              addMessage('jarvis', summaryMsg, true);
+              setState('speaking');
+              startSpeakingLevel();
+              await new Promise<void>(resolve => {
+                speak(`${product || '제품'} 카피 ${trendData.copies.length}개를 생성했습니다. Creative Studio에서 확인해 주십시오.`, undefined, () => { stopSpeakingLevel(); resolve(); });
+              });
+              resetAllNodes();
+              setConversationExpanded(true);
+              return;
+            }
+          }
+        } catch (trendErr) {
+          console.error('[JARVIS] Trend-collector error, falling back to standard:', trendErr);
+        }
+        // trend-collector 실패 시 기존 로직으로 fallback
+        setCreativeStudioVisible(false);
+        setCreativeStudioLoading(false);
+      }
+
+      // creative_content action으로 위임 (5개 미만 또는 Creative Studio 실패 시)
       Object.assign(action, {
         type: 'creative_content',
         params: { product, content_type: contentType, count: copyCount, userMessage, researchInsight, researchPrefix, videosFound, topVideos, isCopyR: true },
