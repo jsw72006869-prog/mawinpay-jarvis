@@ -1,4 +1,4 @@
-import React, { useRef, useEffect, useState } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence, useAnimation } from 'framer-motion';
 import DailyBriefPanel from './DailyBriefPanel';
 import OrderFlowRadar from './OrderFlowRadar';
@@ -52,17 +52,18 @@ interface Props {
 // ── Premium cubic-bezier easings ──
 const EASE_OUT_EXPO = [0.16, 1, 0.3, 1] as const;
 const EASE_OUT_QUART = [0.25, 1, 0.5, 1] as const;
+const EASE_SPRING = [0.34, 1.56, 0.64, 1] as const; // 약간 스프링감
 
 // ── Staged entrance variants ──
-const workspaceVariants = {
+const workspaceVariants: import('framer-motion').Variants = {
   hidden: { opacity: 0, scale: 0.985, y: 8 },
   visible: {
     opacity: 1, scale: 1, y: 0,
-    transition: { duration: 0.32, ease: EASE_OUT_EXPO },
+    transition: { duration: 0.32, ease: EASE_OUT_EXPO as unknown as import('framer-motion').Easing },
   },
   exit: {
     opacity: 0, scale: 0.99,
-    transition: { duration: 0.18, ease: [0.4, 0, 1, 1] },
+    transition: { duration: 0.18, ease: [0.4, 0, 1, 1] as unknown as import('framer-motion').Easing },
   },
 };
 
@@ -72,23 +73,43 @@ const dimVariants = {
   exit: { opacity: 0, transition: { duration: 0.18 } },
 };
 
-// Stage 3: 중앙 주문현황 main board
-const mainVariants = {
-  hidden: { opacity: 0, y: 12 },
-  visible: {
-    opacity: 1, y: 0,
-    transition: { delay: 0.18, duration: 0.38, ease: EASE_OUT_EXPO },
-  },
+// ── 패널별 reveal variants (Staged Panel Reveal) ──
+// 각 패널이 서로 다른 방향에서 등장하여 시각적 다양성 제공
+const makeRevealVariants = (
+  fromDir: 'up' | 'down' | 'left' | 'right',
+  delay = 0,
+  duration = 0.42
+) => {
+  const offset = 18;
+  const from = {
+    up: { y: offset, x: 0 },
+    down: { y: -offset, x: 0 },
+    left: { x: offset, y: 0 },
+    right: { x: -offset, y: 0 },
+  }[fromDir];
+  return {
+    hidden: { opacity: 0, ...from, scale: 0.97 },
+    visible: {
+      opacity: 1, x: 0, y: 0, scale: 1,
+      transition: { delay, duration, ease: EASE_SPRING },
+    },
+  };
 };
 
-// Stage 4: metric card stagger container
+// 각 패널별 reveal variants
+const mainRevealVariants = makeRevealVariants('up', 0, 0.44);
+const sideRevealVariants = makeRevealVariants('left', 0, 0.44);
+const flowRevealVariants = makeRevealVariants('down', 0, 0.38);
+const logRevealVariants = makeRevealVariants('down', 0, 0.38);
+
+// 레거시 호환 (기존 코드에서 참조)
+const mainVariants = makeRevealVariants('up', 0.18, 0.38);
 const metricGridVariants = {
   hidden: {},
   visible: {
     transition: { staggerChildren: 0.05, delayChildren: 0.28 },
   },
 };
-
 const metricCardVariants = {
   hidden: { opacity: 0, y: 10 },
   visible: {
@@ -96,23 +117,28 @@ const metricCardVariants = {
     transition: { duration: 0.22, ease: EASE_OUT_QUART },
   },
 };
+const sideVariants = makeRevealVariants('left', 0.32, 0.32);
+const bottomVariants = makeRevealVariants('down', 0.44, 0.3);
 
-// Stage 5: 우측 side panel (오른쪽에서 미세하게 들어옴)
-const sideVariants = {
-  hidden: { opacity: 0, x: 14 },
-  visible: {
-    opacity: 1, x: 0,
-    transition: { delay: 0.32, duration: 0.32, ease: EASE_OUT_EXPO },
-  },
+// ── Staged Panel Reveal 타이밍 설정 ──
+// 자비스가 말하는 동안 패널이 순서대로 등장
+const PANEL_REVEAL_DELAYS: Record<string, number> = {
+  status: 0,      // 즉시
+  brief: 200,     // 0.2초 후
+  main: 700,      // 0.7초 후 (자비스 첫 문장 이후)
+  side: 1400,     // 1.4초 후
+  flow: 2100,     // 2.1초 후
+  log: 2800,      // 2.8초 후 (마지막)
 };
 
-// Stage 6: 하단 flow + log (은은하게 마지막 등장)
-const bottomVariants = {
-  hidden: { opacity: 0, y: 8 },
-  visible: {
-    opacity: 1, y: 0,
-    transition: { delay: 0.44, duration: 0.3, ease: EASE_OUT_QUART },
-  },
+// 브리핑 메시지 감지 시 더 빠른 타이밍
+const BRIEFING_REVEAL_DELAYS: Record<string, number> = {
+  status: 0,
+  brief: 150,
+  main: 500,
+  side: 1000,
+  flow: 1600,
+  log: 2200,
 };
 
 // ── 주문현황 결과 카드 (compact metric tile) ──
@@ -470,23 +496,73 @@ export default function SmartstoreCommandCenter({
   onActionDismiss,
   onApprovalDismiss,
 }: Props) {
-  // ── 최초 등장 1회만 staged entrance 실행 ──
-  // useState로 관리하여 animate prop이 'visible'로 안정적으로 유지되도록 함
+  // ── 기본 animate 상태 ──
   const [animateState, setAnimateState] = useState<'hidden' | 'visible'>('hidden');
   const hasEnteredRef = useRef(false);
+
+  // ── Staged Panel Reveal: 패널별 표시 상태 ──
+  // 각 패널이 순서대로 등장하도록 개별 제어
+  const [panelVisible, setPanelVisible] = useState({
+    status: false,
+    brief: false,
+    main: false,
+    side: false,
+    flow: false,
+    log: false,
+  });
+  const revealTimersRef = useRef<ReturnType<typeof setTimeout>[]>([]);
+  const lastMessageCountRef = useRef(0);
+  const lastJarvisMessageRef = useRef('');
+
+  // 패널 순차 reveal 함수
+  const triggerStagedReveal = useCallback((isBriefing = false) => {
+    // 기존 타이머 정리
+    revealTimersRef.current.forEach(t => clearTimeout(t));
+    revealTimersRef.current = [];
+
+    const delays = isBriefing ? BRIEFING_REVEAL_DELAYS : PANEL_REVEAL_DELAYS;
+    const panels: (keyof typeof panelVisible)[] = ['status', 'brief', 'main', 'side', 'flow', 'log'];
+
+    // 우선 모두 숨기기 (status/brief는 즉시 표시)
+    setPanelVisible({ status: true, brief: true, main: false, side: false, flow: false, log: false });
+
+    panels.slice(2).forEach(panel => {
+      const t = setTimeout(() => {
+        setPanelVisible(prev => ({ ...prev, [panel]: true }));
+      }, delays[panel]);
+      revealTimersRef.current.push(t);
+    });
+  }, []);
+
+  // 자비스 메시지 변경 감지 → 새 메시지 등장 시 staged reveal 트리거
+  useEffect(() => {
+    if (!visible) return;
+    const jarvisMessages = messages.filter(m => m.role === 'jarvis');
+    if (jarvisMessages.length === 0) return;
+    const lastMsg = jarvisMessages[jarvisMessages.length - 1];
+    // 새 자비스 메시지인지 확인
+    if (lastMsg.id !== lastJarvisMessageRef.current) {
+      lastJarvisMessageRef.current = lastMsg.id;
+      const isBriefing = isBriefingMessage(lastMsg.text);
+      triggerStagedReveal(isBriefing);
+    }
+  }, [messages, visible, triggerStagedReveal]);
 
   useEffect(() => {
     if (visible) {
       if (!hasEnteredRef.current) {
         hasEnteredRef.current = true;
-        // 최초 등장: hidden → visible 트랜지션 실행
         setAnimateState('visible');
+        // 워크스페이스 열릴 때 기본 패널 즐시 표시
+        setPanelVisible({ status: true, brief: true, main: false, side: false, flow: false, log: false });
       }
-      // 이미 entered: animateState는 'visible' 유지 (재트랜지션 없음)
     } else {
-      // 닫힐 때: 다음 열림 시 다시 entrance 실행하도록 리셋
       hasEnteredRef.current = false;
       setAnimateState('hidden');
+      // 닫힐 때 모두 숨기기
+      revealTimersRef.current.forEach(t => clearTimeout(t));
+      setPanelVisible({ status: false, brief: false, main: false, side: false, flow: false, log: false });
+      lastJarvisMessageRef.current = '';
     }
   }, [visible]);
 
@@ -556,83 +632,119 @@ export default function SmartstoreCommandCenter({
             </button>
           )}
 
-          {/* ── status: Mission Status Strip ── */}
-          <div className="order-focus-status" style={{ position: 'relative', zIndex: 1 }}>
+          {/* ── status: Mission Status Strip (Staged Panel Reveal - 즉시) ── */}
+          <motion.div
+            className="order-focus-status"
+            variants={makeRevealVariants('down', 0, 0.32)}
+            initial="hidden"
+            animate={panelVisible.status ? 'visible' : 'hidden'}
+            style={{ position: 'relative', zIndex: 1 }}
+          >
             <MissionStatusStrip />
-          </div>
+          </motion.div>
 
-          {/* ── brief: Compact Brief Strip ── */}
-          <div className="order-focus-brief" style={{ position: 'relative', zIndex: 1 }}>
+          {/* ── brief: Compact Brief Strip (Staged Panel Reveal - 0.15~0.2초) ── */}
+          <motion.div
+            className="order-focus-brief"
+            variants={makeRevealVariants('down', 0, 0.36)}
+            initial="hidden"
+            animate={panelVisible.brief ? 'visible' : 'hidden'}
+            style={{ position: 'relative', zIndex: 1 }}
+          >
             <DailyBriefPanel orderData={orderData} variant="horizontal" />
-          </div>
-
-          {/* ── Stage 3+4: main 주문현황 compact metric tiles ── */}
-          <motion.div
-            className="order-focus-main"
-            variants={mainVariants}
-            initial="hidden"
-            animate={animateState}
-            style={{ position: 'relative', zIndex: 1 }}
-          >
-            <OrderResultCard messages={messages} animateState={animateState} />
           </motion.div>
 
-          {/* ── Stage 5: side (오른쪽에서 12~14px 미세하게 들어옴) ── */}
-          <motion.div
-            className="order-focus-side"
-            variants={sideVariants}
-            initial="hidden"
-            animate={animateState}
-            style={{ position: 'relative', zIndex: 1 }}
-          >
-            <div className="sidecar-actions">
-              {hasActionContext && onActionSelect && onActionDismiss ? (
-                <ActionCard
-                  context={actionContext!}
-                  workflowSteps={workflowSteps}
-                  approvalPreview={approvalPreview}
-                  onApprovalDismiss={onApprovalDismiss}
-                  onActionSelect={onActionSelect}
-                  onDismiss={onActionDismiss}
-                />
-              ) : (
-                <div style={{
-                  display: 'flex', flexDirection: 'column', gap: 6,
-                  alignItems: 'center', justifyContent: 'center',
-                  padding: '20px 0', opacity: 0.35,
-                }}>
-                  <div style={{ fontFamily: 'Orbitron, monospace', fontSize: '0.5rem', color: '#22C55E', letterSpacing: '0.15em' }}>
-                    NEXT ACTIONS
-                  </div>
-                  <div style={{ fontSize: '0.62rem', color: 'rgba(148,163,184,0.5)' }}>
-                    주문 조회 후 표시됩니다
-                  </div>
+          {/* ── main: 주문현황 (Staged Panel Reveal - 자비스 첫 말 이후) ── */}
+          <AnimatePresence>
+            {panelVisible.main && (
+              <motion.div
+                className="order-focus-main"
+                key="panel-main"
+                variants={mainRevealVariants}
+                initial="hidden"
+                animate="visible"
+                exit={{ opacity: 0, scale: 0.97, transition: { duration: 0.2 } }}
+                style={{ position: 'relative', zIndex: 1 }}
+              >
+                <OrderResultCard messages={messages} animateState={animateState} />
+              </motion.div>
+            )}
+          </AnimatePresence>
+
+          {/* ── side: Next Actions + Approval (Staged Panel Reveal - 중반) ── */}
+          <AnimatePresence>
+            {panelVisible.side && (
+              <motion.div
+                className="order-focus-side"
+                key="panel-side"
+                variants={sideRevealVariants}
+                initial="hidden"
+                animate="visible"
+                exit={{ opacity: 0, x: 14, transition: { duration: 0.2 } }}
+                style={{ position: 'relative', zIndex: 1 }}
+              >
+                <div className="sidecar-actions">
+                  {hasActionContext && onActionSelect && onActionDismiss ? (
+                    <ActionCard
+                      context={actionContext!}
+                      workflowSteps={workflowSteps}
+                      approvalPreview={approvalPreview}
+                      onApprovalDismiss={onApprovalDismiss}
+                      onActionSelect={onActionSelect}
+                      onDismiss={onActionDismiss}
+                    />
+                  ) : (
+                    <div style={{
+                      display: 'flex', flexDirection: 'column', gap: 6,
+                      alignItems: 'center', justifyContent: 'center',
+                      padding: '20px 0', opacity: 0.35,
+                    }}>
+                      <div style={{ fontFamily: 'Orbitron, monospace', fontSize: '0.5rem', color: '#22C55E', letterSpacing: '0.15em' }}>
+                        NEXT ACTIONS
+                      </div>
+                      <div style={{ fontSize: '0.62rem', color: 'rgba(148,163,184,0.5)' }}>
+                        주문 조회 후 표시됩니다
+                      </div>
+                    </div>
+                  )}
                 </div>
-              )}
-            </div>
-            <div className="sidecar-approval">
-              <ApprovalQueuePanel />
-            </div>
-          </motion.div>
+                <div className="sidecar-approval">
+                  <ApprovalQueuePanel />
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
 
-          {/* ── Stage 6: flow + log (마지막에 은은하게) ── */}
-          <motion.div
-            className="order-focus-flow"
-            variants={bottomVariants}
-            initial="hidden"
-            animate={animateState}
-            style={{ position: 'relative', zIndex: 1 }}
-          >
-            <OrderFlowRadar variant="horizontal" />
-          </motion.div>
+          {/* ── flow: Order Flow Radar (Staged Panel Reveal - 후반) ── */}
+          <AnimatePresence>
+            {panelVisible.flow && (
+              <motion.div
+                className="order-focus-flow"
+                key="panel-flow"
+                variants={flowRevealVariants}
+                initial="hidden"
+                animate="visible"
+                exit={{ opacity: 0, y: -8, transition: { duration: 0.2 } }}
+                style={{ position: 'relative', zIndex: 1 }}
+              >
+                <OrderFlowRadar variant="horizontal" />
+              </motion.div>
+            )}
+          </AnimatePresence>
 
-          <motion.div
-            className="order-focus-log"
-            variants={{ hidden: { opacity: 0, y: 8 }, visible: { opacity: 1, y: 0, transition: { delay: 0.5, duration: 0.28, ease: EASE_OUT_QUART } } }}
-            initial="hidden"
-            animate={animateState}
-            style={{ position: 'relative', zIndex: 1 }}
-          >
+          {/* ── log: Dialogue Log (Staged Panel Reveal - 마지막) ── */}
+          <AnimatePresence>
+            {panelVisible.log && (
+              <motion.div
+                className="order-focus-log"
+                key="panel-log"
+                variants={logRevealVariants}
+                initial="hidden"
+                animate="visible"
+                exit={{ opacity: 0, y: -8, transition: { duration: 0.2 } }}
+                style={{ position: 'relative', zIndex: 1 }}
+              >
+          {/* 다이얼로그 로그 헤더 */}
             <div style={{
               display: 'flex', alignItems: 'center', gap: 8,
               marginBottom: 8, paddingBottom: 6,
@@ -657,7 +769,10 @@ export default function SmartstoreCommandCenter({
               </div>
             </div>
             <DialogueLog messages={messages} isTyping={isTyping} />
-          </motion.div>
+              </motion.div>
+            )}
+          </AnimatePresence>
+
         </motion.div>
       </div>
     </>
