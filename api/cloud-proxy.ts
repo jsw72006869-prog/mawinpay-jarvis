@@ -35,9 +35,64 @@ const SMARTSTORE_CLIENT_SECRET = process.env.SMARTSTORE_CLIENT_SECRET || '';
 const QUOTAGUARD_URL = process.env.QUOTAGUARD_URL || process.env.QUOTAGUARDSTATIC_URL || '';
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY || '';
 const YOUTUBE_API_KEY = process.env.YOUTUBE_API_KEY || '';
+const YOUTUBE_API_KEY_BACKUP = process.env.YOUTUBE_API_KEY_BACKUP || '';
+
+// YouTube API 키 로테이션 상태
+let youtubeKeyState = {
+  primary: YOUTUBE_API_KEY,
+  backup: YOUTUBE_API_KEY_BACKUP,
+  currentKey: YOUTUBE_API_KEY,
+  primaryExhausted: false,
+  lastSwitchTime: 0,
+};
+
+function handleYouTubeQuotaError(error: any): string {
+  const errorMsg = error?.message || error?.toString() || '';
+  const is429 = error?.status === 429 || errorMsg.includes('quotaExceeded') || errorMsg.includes('exceeded');
+  if (is429 && youtubeKeyState.backup && !youtubeKeyState.primaryExhausted) {
+    youtubeKeyState.primaryExhausted = true;
+    youtubeKeyState.currentKey = youtubeKeyState.backup;
+    youtubeKeyState.lastSwitchTime = Date.now();
+    console.log(`[YouTube API] 기존 키 할당량 소진 → 백업 키로 전환`);
+    return youtubeKeyState.backup;
+  }
+  return youtubeKeyState.currentKey;
+}
+
+function getCurrentYouTubeKey(): string {
+  return youtubeKeyState.currentKey || YOUTUBE_API_KEY;
+}
 const NAVER_API_BASE = 'https://api.commerce.naver.com/external';
 const KAMIS_API_KEY = process.env.KAMIS_API_KEY || '';
 const KAMIS_CERT_ID = process.env.KAMIS_CERT_ID || '';
+
+async function fetchYouTubeAPI(url: string, retryCount = 0): Promise<any> {
+  const maxRetries = 1;
+  try {
+    const response = await fetch(url);
+    if (!response.ok) {
+      const data = await response.json().catch(() => ({}));
+      if (response.status === 403 && (data.error?.message?.includes('quotaExceeded') || data.error?.message?.includes('exceeded'))) {
+        if (retryCount < maxRetries && youtubeKeyState.backup) {
+          const newKey = handleYouTubeQuotaError({ status: 429, message: 'quotaExceeded' });
+          const newUrl = url.replace(/key=[^&]+/, `key=${newKey}`);
+          console.log(`[YouTube API] 백업 키로 재시도`);
+          return fetchYouTubeAPI(newUrl, retryCount + 1);
+        }
+      }
+      throw new Error(`YouTube API ${response.status}: ${data.error?.message || 'error'}`);
+    }
+    return response.json();
+  } catch (err: any) {
+    if (retryCount < maxRetries && youtubeKeyState.backup && (err.message?.includes('quotaExceeded') || err.message?.includes('exceeded'))) {
+      const newKey = handleYouTubeQuotaError(err);
+      const newUrl = url.replace(/key=[^&]+/, `key=${newKey}`);
+      console.log(`[YouTube API] 백업 키로 재시도`);
+      return fetchYouTubeAPI(newUrl, retryCount + 1);
+    }
+    throw err;
+  }
+}
 
 // ── 허용된 QuotaGuard IP 목록 (네이버 API 센터에 등록된 IP) ──
 const ALLOWED_IPS = ['52.5.238.209', '52.6.13.167', '72.252.132.247'];
@@ -2269,15 +2324,15 @@ async function searchYouTubeDirect(keyword: string, maxResults: number = 10) {
 
   for (const kw of keywords) {
     if (allResults.length >= count) break;
-    const searchUrl = `https://www.googleapis.com/youtube/v3/search?part=snippet&type=channel&q=${encodeURIComponent(kw)}&maxResults=50&regionCode=KR&hl=ko&key=${YOUTUBE_API_KEY}`;
-    const searchRes: any = await fetch(searchUrl);
+    const searchUrl = `https://www.googleapis.com/youtube/v3/search?part=snippet&type=channel&q=${encodeURIComponent(kw)}&maxResults=50&regionCode=KR&hl=ko&key=${getCurrentYouTubeKey()}`;
+    const searchRes: any = await fetchYouTubeAPI(searchUrl);
     if (!searchRes.ok) continue;
     const searchData = await searchRes.json();
     if (!searchData.items || searchData.items.length === 0) continue;
 
     const channelIds = searchData.items.map((item: any) => item.snippet.channelId || item.id.channelId).join(',');
-    const channelsUrl = `https://www.googleapis.com/youtube/v3/channels?part=snippet,statistics,brandingSettings&id=${channelIds}&key=${YOUTUBE_API_KEY}`;
-    const channelsRes: any = await fetch(channelsUrl);
+    const channelsUrl = `https://www.googleapis.com/youtube/v3/channels?part=snippet,statistics,brandingSettings&id=${channelIds}&key=${getCurrentYouTubeKey()}`;
+    const channelsRes: any = await fetchYouTubeAPI(channelsUrl);
     if (!channelsRes.ok) continue;
     const channelsData = await channelsRes.json();
 
@@ -2317,17 +2372,17 @@ async function searchPopularVideos(keyword: string, maxResults: number = 5, peri
   else if (period === 'year') publishedAfter = new Date(Date.now() - 365 * 86400000).toISOString();
 
   const count = Math.min(maxResults, 20);
-  let searchUrl = `https://www.googleapis.com/youtube/v3/search?part=snippet&type=video&q=${encodeURIComponent(keyword)}&order=viewCount&maxResults=${count}&regionCode=KR&hl=ko&key=${YOUTUBE_API_KEY}`;
+  let searchUrl = `https://www.googleapis.com/youtube/v3/search?part=snippet&type=video&q=${encodeURIComponent(keyword)}&order=viewCount&maxResults=${count}&regionCode=KR&hl=ko&key=${getCurrentYouTubeKey()}`;
   if (publishedAfter) searchUrl += `&publishedAfter=${publishedAfter}`;
 
-  const searchRes: any = await fetch(searchUrl);
+  const searchRes: any = await fetchYouTubeAPI(searchUrl);
   if (!searchRes.ok) throw new Error(`YouTube Search API 오류: ${searchRes.status}`);
   const searchData = await searchRes.json();
   if (!searchData.items || searchData.items.length === 0) return { success: true, videos: [], analysis: '', summary: '검색 결과가 없습니다.' };
 
   const videoIds = searchData.items.map((item: any) => item.id.videoId).join(',');
-  const videosUrl = `https://www.googleapis.com/youtube/v3/videos?part=snippet,statistics,contentDetails&id=${videoIds}&key=${YOUTUBE_API_KEY}`;
-  const videosRes: any = await fetch(videosUrl);
+  const videosUrl = `https://www.googleapis.com/youtube/v3/videos?part=snippet,statistics,contentDetails&id=${videoIds}&key=${getCurrentYouTubeKey()}`;
+  const videosRes: any = await fetchYouTubeAPI(videosUrl);
   if (!videosRes.ok) throw new Error(`YouTube Videos API 오류: ${videosRes.status}`);
   const videosData = await videosRes.json();
 
@@ -2874,8 +2929,8 @@ async function handleOutreachCollect(params: any) {
   if ((platform === 'all' || platform === 'youtube') && YOUTUBE_API_KEY) {
     try {
       // A-1: 키워드 관련 인기 영상 검색 (viewCount 순)
-      const trendSearchUrl = `https://www.googleapis.com/youtube/v3/search?part=snippet&type=video&q=${encodeURIComponent(productName + ' 리뷰')}&order=viewCount&maxResults=15&regionCode=KR&hl=ko&key=${YOUTUBE_API_KEY}`;
-      const trendRes: any = await fetch(trendSearchUrl);
+      const trendSearchUrl = `https://www.googleapis.com/youtube/v3/search?part=snippet&type=video&q=${encodeURIComponent(productName + ' 리뷰')}&order=viewCount&maxResults=15&regionCode=KR&hl=ko&key=${getCurrentYouTubeKey()}`;
+      const trendRes: any = await fetchYouTubeAPI(trendSearchUrl);
       telemetry.apiCalls++; telemetry.searchCalls++; telemetry.quotaUsed += 100;
 
       if (trendRes.ok) {
@@ -2899,8 +2954,8 @@ async function handleOutreachCollect(params: any) {
 
       // A-2: 추가 트렌드 검색 (최근 1주일 인기)
       const weekAgo = new Date(Date.now() - 7 * 86400000).toISOString();
-      const recentTrendUrl = `https://www.googleapis.com/youtube/v3/search?part=snippet&type=video&q=${encodeURIComponent(productName)}&order=viewCount&maxResults=10&regionCode=KR&hl=ko&publishedAfter=${weekAgo}&key=${YOUTUBE_API_KEY}`;
-      const recentRes: any = await fetch(recentTrendUrl);
+      const recentTrendUrl = `https://www.googleapis.com/youtube/v3/search?part=snippet&type=video&q=${encodeURIComponent(productName)}&order=viewCount&maxResults=10&regionCode=KR&hl=ko&publishedAfter=${weekAgo}&key=${getCurrentYouTubeKey()}`;
+      const recentRes: any = await fetchYouTubeAPI(recentTrendUrl);
       telemetry.apiCalls++; telemetry.searchCalls++; telemetry.quotaUsed += 100;
 
       if (recentRes.ok) {
@@ -2938,8 +2993,8 @@ async function handleOutreachCollect(params: any) {
 
       for (let i = 0; i < maxSearches; i++) {
         const { segment, query } = searchQueries[i];
-        const searchUrl = `https://www.googleapis.com/youtube/v3/search?part=snippet&type=channel&q=${encodeURIComponent(query)}&maxResults=${Math.min(perSearchMax, 20)}&regionCode=KR&hl=ko&key=${YOUTUBE_API_KEY}`;
-        const searchRes: any = await fetch(searchUrl);
+        const searchUrl = `https://www.googleapis.com/youtube/v3/search?part=snippet&type=channel&q=${encodeURIComponent(query)}&maxResults=${Math.min(perSearchMax, 20)}&regionCode=KR&hl=ko&key=${getCurrentYouTubeKey()}`;
+        const searchRes: any = await fetchYouTubeAPI(searchUrl);
         telemetry.apiCalls++; telemetry.searchCalls++; telemetry.quotaUsed += 100;
 
         if (!searchRes.ok) {
@@ -2972,8 +3027,8 @@ async function handleOutreachCollect(params: any) {
       const batchSize = 50;
       for (let batchStart = 0; batchStart < allChannelIds.length; batchStart += batchSize) {
         const batch = allChannelIds.slice(batchStart, batchStart + batchSize);
-        const channelsUrl = `https://www.googleapis.com/youtube/v3/channels?part=snippet,statistics,brandingSettings&id=${batch.join(',')}&key=${YOUTUBE_API_KEY}`;
-        const channelsRes: any = await fetch(channelsUrl);
+        const channelsUrl = `https://www.googleapis.com/youtube/v3/channels?part=snippet,statistics,brandingSettings&id=${batch.join(',')}&key=${getCurrentYouTubeKey()}`;
+        const channelsRes: any = await fetchYouTubeAPI(channelsUrl);
         telemetry.apiCalls++; telemetry.channelCalls++; telemetry.quotaUsed += 1;
 
         if (!channelsRes.ok) continue;
@@ -5179,8 +5234,8 @@ async function collectYouTubeCandidates(keyword: string, product: string, maxRes
   const candidates: CollectorResult[] = [];
   const hotContent: CollectorResult[] = [];
   try {
-    const searchUrl = `https://www.googleapis.com/youtube/v3/search?part=snippet&type=video&q=${encodeURIComponent(keyword)}&order=viewCount&maxResults=${maxResults}&regionCode=KR&hl=ko&key=${YOUTUBE_API_KEY}`;
-    const searchRes = await fetch(searchUrl);
+    const searchUrl = `https://www.googleapis.com/youtube/v3/search?part=snippet&type=video&q=${encodeURIComponent(keyword)}&order=viewCount&maxResults=${maxResults}&regionCode=KR&hl=ko&key=${getCurrentYouTubeKey()}`;
+    const searchRes = await fetchYouTubeAPI(searchUrl);
     if (!searchRes.ok) {
       const errData = await searchRes.json() as any;
       if (errData.error?.errors?.[0]?.reason === 'quotaExceeded') return { candidates: [], hotContent: [], status: 'quota_exceeded', error: 'YouTube API quota exceeded' };
@@ -5196,16 +5251,16 @@ async function collectYouTubeCandidates(keyword: string, product: string, maxRes
     let videoMap: Record<string, any> = {};
 
     if (channelIds.length > 0) {
-      const chUrl = `https://www.googleapis.com/youtube/v3/channels?part=snippet,statistics&id=${channelIds.join(',')}&key=${YOUTUBE_API_KEY}`;
-      const chRes = await fetch(chUrl);
+      const chUrl = `https://www.googleapis.com/youtube/v3/channels?part=snippet,statistics&id=${channelIds.join(',')}&key=${getCurrentYouTubeKey()}`;
+      const chRes = await fetchYouTubeAPI(chUrl);
       if (chRes.ok) {
         const chData = await chRes.json() as any;
         for (const ch of (chData.items || [])) channelMap[ch.id] = ch;
       }
     }
     if (videoIds.length > 0) {
-      const vUrl = `https://www.googleapis.com/youtube/v3/videos?part=statistics,snippet&id=${videoIds.join(',')}&key=${YOUTUBE_API_KEY}`;
-      const vRes = await fetch(vUrl);
+      const vUrl = `https://www.googleapis.com/youtube/v3/videos?part=statistics,snippet&id=${videoIds.join(',')}&key=${getCurrentYouTubeKey()}`;
+      const vRes = await fetchYouTubeAPI(vUrl);
       if (vRes.ok) {
         const vData = await vRes.json() as any;
         for (const v of (vData.items || [])) videoMap[v.id] = v;
