@@ -121,6 +121,20 @@ const SECTION_ICONS: Record<string, { icon: string; color: string }> = {
   '마케팅': { icon: '🎯', color: '#E040FB' },
   '할일': { icon: '✅', color: '#76FF03' },
   '일정': { icon: '📅', color: '#7BB3F0' },
+  // v3.0 섹션들
+  'Creative Studio': { icon: '✍️', color: '#E040FB' },
+  '콘텐츠': { icon: '✍️', color: '#E040FB' },
+  '아우트리치': { icon: '📧', color: '#00FF88' },
+  '인플루언서': { icon: '📧', color: '#00FF88' },
+  '농산물': { icon: '🌾', color: '#FF9800' },
+  '시장 가격': { icon: '📊', color: '#FF9800' },
+  'Workspace': { icon: '💾', color: '#7BB3F0' },
+  '저장': { icon: '💾', color: '#7BB3F0' },
+  '자비스 기능': { icon: '🤖', color: '#C8A96E' },
+  '기능': { icon: '🤖', color: '#C8A96E' },
+  '추천 액션': { icon: '🚀', color: '#76FF03' },
+  '액션': { icon: '🚀', color: '#76FF03' },
+  '시스템': { icon: '🛡️', color: '#00F5FF' },
 };
 
 function getSectionMeta(title: string) {
@@ -305,7 +319,13 @@ function ApprovalPreviewCard({ action, reason }: { action: string; reason: strin
 // ── Helper: detect message type ──
 function getMessageType(text: string): 'smartstore' | 'briefing' | 'normal' {
   if (text.startsWith('[PKG]')) return 'smartstore';
-  if (text.startsWith('[LIST]') && text.includes('브리핑')) return 'briefing';
+  if (text.startsWith('[LIST]') && (
+    text.includes('브리핑') ||
+    text.includes('커맨드 리포트') ||
+    text.includes('리포트') ||
+    text.includes('[1. 스마트스토어') ||
+    text.includes('[스마트스토어]')
+  )) return 'briefing';
   return 'normal';
 }
 
