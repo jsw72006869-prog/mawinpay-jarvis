@@ -3306,45 +3306,53 @@ export default function JarvisApp() {
       const contentType = String(params.contentType || 'headcopy');
       const userMessage = String(params.userMessage || text);
 
-      emitMissionLog('🔍', 'COPY-R', 'YouTube 반응 패턴 조사 시작', 'info');
-      emitMissionLog('📊', 'COPY-R', `${product || '제품'} 인기 영상 분석 중...`, 'working');
-      addMessage('assistant', `🔍 **COPY-R 조사 시작** — ${product || '제품'} 관련 YouTube 인기 영상을 분석하고 있습니다...`);
+      // copyCount를 먼저 계산하여 5개 이상이면 YouTube 조사 건너뛰고 바로 Creative Studio로 진입
+      const copyCountMatch = userMessage.match(/(\d+)\s*개/);
+      const copyCount = copyCountMatch ? Math.min(parseInt(copyCountMatch[1]), 20) : 3;
 
       let researchInsight = '';
       let videosFound = 0;
       let topVideos: any[] = [];
 
-      try {
-        const researchRes = await fetch('/api/cloud-proxy', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ task: 'copy-research', product, contentType, count: 5 }),
-        });
-        const researchData = await researchRes.json();
-        if (researchData.success) {
-          researchInsight = researchData.researchInsight || '';
-          videosFound = researchData.videosFound || 0;
-          topVideos = researchData.topVideos || [];
-          const totalSearched = researchData.totalSearched || videosFound;
-          if (videosFound > 0) {
-            emitMissionLog('✅', 'COPY-R', `YouTube ${totalSearched}건 검색 → 관련성 필터 통과 ${videosFound}건 분석 완료`, 'success');
-          } else if (researchData.failReason) {
-            addMessage('assistant', `유튜브 조사에 실패했습니다. COPY-A 기본 카피 두뇌로 생성합니다.`);
-            emitMissionLog('⚠️', 'COPY-R', 'YouTube 조사 실패 — COPY-A 기본 전략으로 진행', 'warning');
+      // 5개 이상이면 YouTube 조사 건너뛰고 바로 trend-collector로 (trend-collector가 자체 트렌드 수집)
+      if (copyCount < 5) {
+        emitMissionLog('🔍', 'COPY-R', 'YouTube 반응 패턴 조사 시작', 'info');
+        emitMissionLog('📊', 'COPY-R', `${product || '제품'} 인기 영상 분석 중...`, 'working');
+        addMessage('assistant', `🔍 **COPY-R 조사 시작** — ${product || '제품'} 관련 YouTube 인기 영상을 분석하고 있습니다...`);
+
+        try {
+          const researchRes = await fetch('/api/cloud-proxy', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ task: 'copy-research', product, contentType, count: 5 }),
+          });
+          const researchData = await researchRes.json();
+          if (researchData.success) {
+            researchInsight = researchData.researchInsight || '';
+            videosFound = researchData.videosFound || 0;
+            topVideos = researchData.topVideos || [];
+            const totalSearched = researchData.totalSearched || videosFound;
+            if (videosFound > 0) {
+              emitMissionLog('✅', 'COPY-R', `YouTube ${totalSearched}건 검색 → 관련성 필터 통과 ${videosFound}건 분석 완료`, 'success');
+            } else if (researchData.failReason) {
+              addMessage('assistant', `유튜브 조사에 실패했습니다. COPY-A 기본 카피 두뇌로 생성합니다.`);
+              emitMissionLog('⚠️', 'COPY-R', 'YouTube 조사 실패 — COPY-A 기본 전략으로 진행', 'warning');
+            } else {
+              emitMissionLog('⚠️', 'COPY-R', '관련 영상 없음 — COPY-A 기본 전략으로 진행', 'warning');
+            }
           } else {
-            emitMissionLog('⚠️', 'COPY-R', '관련 영상 없음 — COPY-A 기본 전략으로 진행', 'warning');
+            emitMissionLog('⚠️', 'COPY-R', 'YouTube 조사 실패 — COPY-A 기본 전략으로 진행', 'warning');
           }
-        } else {
-          emitMissionLog('⚠️', 'COPY-R', 'YouTube 조사 실패 — COPY-A 기본 전략으로 진행', 'warning');
+        } catch (err) {
+          emitMissionLog('⚠️', 'COPY-R', 'YouTube 조사 오류 — 기본 전략으로 진행', 'warning');
         }
-      } catch (err) {
-        emitMissionLog('⚠️', 'COPY-R', 'YouTube 조사 오류 — 기본 전략으로 진행', 'warning');
+      } else {
+        emitMissionLog('🚀', 'COPY-R', `${copyCount}개 카피 요청 → Creative Studio 직접 진입 (YouTube 조사 생략)`, 'info');
+        addMessage('assistant', `🎨 **Creative Studio 활성화** — ${product || '제품'} 카피 ${copyCount}개를 트렌드 기반으로 생성합니다...`);
       }
 
-      emitMissionLog('🎨', 'COPY-R', '조사 인사이트 주입 → 카피 생성 시작', 'info');
+      emitMissionLog('🎨', 'COPY-R', '카피 생성 시작', 'info');
 
-      const copyCountMatch = userMessage.match(/(\d+)\s*개/);
-      const copyCount = copyCountMatch ? Math.min(parseInt(copyCountMatch[1]), 20) : 3;
       const researchPrefix = researchInsight
         ? `\n\n[COPY-R 조사 결과 주입]\n${researchInsight}\n\n위 조사 결과를 반드시 반영하여 카피를 작성하세요.\n`
         : '';
