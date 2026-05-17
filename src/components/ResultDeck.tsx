@@ -49,6 +49,7 @@ export interface ResultDeckProps {
   onDismiss: () => void;
   onCopy: () => void;
   onSaveToWorkspace: () => void;
+  onCardSelect?: (item: ResultItem, index: number) => void;
   // COPY-R
   isCopyR?: boolean;
   researchInsight?: string;
@@ -270,6 +271,7 @@ export default function ResultDeck({
   videosFound = 0,
   topVideos = [],
   excludedEngines = [],
+  onCardSelect,
 }: ResultDeckProps) {
   const [showContent, setShowContent] = useState(false);
   const [copied, setCopied] = useState(false);
@@ -425,7 +427,7 @@ export default function ResultDeck({
               {showContent && displayItems.map((item, idx) => (
                 <motion.div
                   key={item.id || idx}
-                  className="rd-copy-card"
+                  className="rd-copy-card" onClick={() => onCardSelect?.(item, idx)}
                   initial={{ opacity: 0, y: 20, scale: 0.97 }}
                   animate={{ opacity: 1, y: 0, scale: 1 }}
                   transition={{ delay: 0.15 + idx * 0.08, duration: 0.4, ease: [0.22, 1, 0.36, 1] }}
@@ -442,7 +444,7 @@ export default function ResultDeck({
                         </span>
                       )}
                     </div>
-                    <button className="rd-copy-card-copy-btn" onClick={() => handleCopy(item.body)}>⎘</button>
+                    <button className="rd-copy-card-copy-btn" onClick={(e) => { e.stopPropagation(); handleCopy(item.body); }}>⎘</button>
                   </div>
 
                   {/* COPY-A v2 구조화 카드 렌더링 */}
