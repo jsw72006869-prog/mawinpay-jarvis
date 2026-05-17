@@ -3359,9 +3359,13 @@ export default function JarvisApp() {
         setCreativeStudioCopies([]);
 
         try {
+          // AbortController로 55초 타임아웃 설정 (Vercel maxDuration 60초 이내)
+          const trendAbort = new AbortController();
+          const trendTimeout = setTimeout(() => trendAbort.abort(), 55000);
           const trendRes = await fetch('/api/trend-collector', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
+            signal: trendAbort.signal,
             body: JSON.stringify({
               action: 'generate',
               product: product || '농산물',
@@ -3371,6 +3375,7 @@ export default function JarvisApp() {
               researchInsight: researchInsight || undefined,
             }),
           });
+          clearTimeout(trendTimeout);
 
           if (trendRes.ok) {
             const trendData = await trendRes.json();

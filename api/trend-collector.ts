@@ -569,22 +569,32 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return res.status(200).json(result);
     }
 
-    // ── Action: generate — 트렌드 기반 강화 카피 생성 ──
+        // ── Action: generate — 트렌드 기반 강화 카피 생성 ──
     if (action === 'generate') {
       const copyCount = Math.min(Number(count) || 10, 20);
-      
-      // 1. 저장된 트렌드 라이브러리 로드
-      const savedPatterns = await loadTrendLibrary(product || '농산물');
-      
-      // 2. 실시간 트렌드도 수집 (저장된 게 부족하면)
+      // 1. 저장된 트렌드 라이브러리 로드 (실패 시 빈 배열)
+      let savedPatterns: TrendPattern[] = [];
+      try {
+        savedPatterns = await loadTrendLibrary(product || '농산물');
+      } catch { savedPatterns = []; }
+      // 2. 실시간 트렌드 수집 (저장된 게 부족하면, 15초 타임아웃)
       let livePatterns: TrendPattern[] = [];
       let liveVideos: TrendVideo[] = [];
       if (savedPatterns.length < 3) {
-        const searchKeywords = Array.isArray(keywords) ? keywords : [product || '농산물'];
-        liveVideos = await collectTrendingVideos(product || '농산물', searchKeywords);
-        livePatterns = await analyzePatterns(product || '농산물', liveVideos);
-        // 자동 저장
-        await saveTrendToSheets(product || '농산물', livePatterns, liveVideos);
+        try {
+          const searchKeywords = Array.isArray(keywords) ? keywords : [product || '농산물'];
+          // 15초 타임아웃으로 실시간 수집 시도
+          const trendPromise = (async () => {
+            liveVideos = await collectTrendingVideos(product || '농산물', searchKeywords);
+            livePatterns = await analyzePatterns(product || '농산물', liveVideos);
+          })();
+          const timeoutPromise = new Promise<void>((resolve) => setTimeout(resolve, 15000));
+          await Promise.race([trendPromise, timeoutPromise]);
+          // 수집 성공 시 비동기 저장 (기다리지 않음)
+          if (livePatterns.length > 0) {
+            saveTrendToSheets(product || '농산물', livePatterns, liveVideos).catch(() => {});
+          }
+        } catch { /* 실시간 수집 실패 시 무시 — 카피 생성은 계속 */ }
       }
 
       const allPatterns = [...savedPatterns, ...livePatterns].slice(0, 8);
