@@ -597,29 +597,10 @@ async function generateEnhancedCopy(params: {
 6. 감각(맛, 향, 식감, 온도, 소리)을 글로 느끼게 해야 합니다.
 7. 각 카피는 완전히 다른 각도/톤/구조로 쓰세요. 비슷한 카피 반복 금지.
 
-[후킹 유형 마스터]
-- sensory_hook: 감각 자극. "한 입 베는 순간, 즙이 턱 아래로 흐르는..."
-- conflict_hook: 반전/갈등. "농부들이 절대 안 팔려고 하는 복숭아가 있다"
-- confession_hook: 솔직한 고백. "사실 나도 이거 먹기 전에는 다 똑같은 줄 알았다"
-- seasonal_hook: 계절 긴박감. "지금 이 2주가 지나면 내년까지 못 먹는다"
-- contrarian_hook: 통념 부수기. "마트에서 사는 사람들이 모르는 것"
-- local_trust_hook: 산지 신뢰. "우리 아버지가 40년 키운 나무에서"
-- memory_hook: 추억 자극. "어릴 때 할머니 댁 뒤에서 따먹던 그 맛"
-- limited_timing_hook: 한정 긴박. "오늘 수확한 거 내일까지만"
-- identity_hook: 정체성. "이거 아는 사람만 사는 복숭아"
-- question_hook: 질문 호기심. "왜 해마다 맛이 다른지 아세요?"
-- surprise_hook: 놀라운 사실. "당도 24도인데 신맛이 나요"
+[후킹 유형] sensory_hook/conflict_hook/confession_hook/seasonal_hook/contrarian_hook/local_trust_hook/memory_hook/limited_timing_hook/identity_hook/question_hook/surprise_hook — 각각 다른 유형 사용, 중복 금지
 
-[문장 리듬 법칙]
-짧은 문장 → 긴 문장 → 짧은 문장 (호흡 리듬)
-줄바꿈 적극 활용, 말줄임표(...)로 여운
-
-[감각어 마스터 클래스]
-맛: 달콤/새콤/짭조름/청량/농밀/상큼함/꽀덕함
-식감: 아삭/터짐/즙이 톡/물컹/사각/쫀득/쏠득
-향: 달콤한 향/은은한 향/풀내음/꽃향
-온도: 차가운/시원한/따뜻한/얼음장 같은
-소리: 아삭/톡/쏠득/바삭
+[문장 리듬] 짧은→긴→짧은, 줄바꿈 활용, 말줄임표(...)로 여운
+[감각어] 맛(달콤/새콤/청량) 식감(아삭/터짐/즙이톡/쫀득) 향(달콤한/은은한/풀내음) 온도(차가운/시원한) 소리(아삭/톡/바삭)
 
 [mawinpay 스타일]
 - 친근하고 말하듯 툭 던지는 문장. 광고 같으면 실패.
@@ -631,25 +612,9 @@ async function generateEnhancedCopy(params: {
 ${userStyle ? `- 추가 스타일: ${userStyle}` : ''}
 ${styleMemory}
 
-[Anti-Boring Filter — 이거 쓰면 즉시 FAIL]
-"제철 OOO를 지금 만나보세요" → FAIL
-"특별한 가격으로 준비했습니다" → FAIL
-"신선하고 맛있는" → FAIL
-"최고의 품질" → FAIL / "역대급" → FAIL
-"지금 바로 구매하세요" → FAIL
-"많은 분들이 찾는" → FAIL
-"대박 할인" → FAIL
-
-[Copy Risk Guard]
-절대 금지: 허위 효능, 과장 표현, 가격 스팸, 허위 재고, 매출/성공 보장
-
-[품질 자가 검증]
-✔ 첫 문장만 읽어도 스크롤을 멈추는가?
-✔ 실제 사람이 카톡으로 보낼 법한 문장인가?
-✔ 감각어가 2개 이상 들어갔는가?
-✔ 다른 카피와 완전히 다른 각도인가?
-✔ 금지 표현을 쓰지 않았는가?
-통과 못하면 다시 쓰세요.`;
+[FAIL 표현] "만나보세요"/"특별한 가격"/"신선하고 맛있는"/"최고의 품질"/"역대급"/"지금 바로 구매"/"많은 분들이"/"대박 할인" → 즉시 재작성
+[금지] 허위 효능, 과장, 가격 스팸, 허위 재고, 매출 보장
+[검증] 스크롤 멈춤? 카톡으로 보낼 법? 감각어 2개+? 다른 카피와 다른 각도?`;
 
   // ═══ User Prompt ═══
   const userPrompt = `[상품] ${product}
@@ -718,11 +683,7 @@ ${instruction}
       "tags": ["#태그1", "#태그2"],
       "viralScore": 85,
       "sensoryLevel": "high|medium|low",
-      "platformVersions": {
-        "threads": "스레드 버전",
-        "reels": "릴스 버전",
-        "kakao": "카카오톡 버전"
-      }
+      "platformVersions": { "threads": "스레드 1줄 변환", "reels": "릴스 1줄 변환", "kakao": "카카오톡 1줄 변환" }
     }
   ]
 }`;
@@ -735,12 +696,12 @@ ${instruction}
         'Authorization': `Bearer ${OPENAI_API_KEY}`,
       },
       body: JSON.stringify({
-        model: 'gpt-4.1-mini',
+        model: 'gemini-2.5-flash',
         messages: [
           { role: 'system', content: systemPrompt },
           { role: 'user', content: userPrompt },
         ],
-        max_tokens: 4000,
+        max_tokens: 3500,
         temperature: 0.88,
       }),
     });

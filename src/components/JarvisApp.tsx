@@ -3497,7 +3497,8 @@ export default function JarvisApp() {
         const copyCount = requestedCount || 3;
 
         // ── CREATIVE STUDIO: 5개 이상 요청 시 트렌드 기반 카드형 UI 활성화 ──
-        if (copyCount >= 5) {
+        // copy_research에서 이미 Creative Studio를 활성화한 경우 중복 호출 방지
+        if (copyCount >= 5 && !creativeStudioVisible) {
           emitMissionLog('📊', 'TREND', '트렌드 수집 + 패턴 분석 시작', 'info');
           setCreativeStudioVisible(true);
           setCreativeStudioLoading(true);
