@@ -711,36 +711,113 @@ ${instruction}
     const jsonMatch = content.match(/\{[\s\S]*\}/);
     if (!jsonMatch) return { success: false, error: 'JSON parse failed', raw: content };
     const parsed = JSON.parse(jsonMatch[0]);
-    // GPT 응답 필드를 UI 필드명으로 매핑 + 누락 필드 기본값
-    const mappedCopies = (parsed.copies || []).map((c: any, idx: number) => ({
-      id: c.id || `copy_${idx + 1}`,
-      headline: c.headline || '',
-      body: c.body || '',
-      hookType: c.hookType || 'unknown',
-      emotionTrigger: c.emotionTrigger || '',
-      viralScore: c.viralScore || c.score || 80,
-      score: c.score || c.viralScore || 80,
-      sensoryLevel: c.sensoryLevel || 'medium',
-      // Human Desire Engine 필드 매핑
-      desires_used: c.desires_used || c.desires || [],
-      anxiety_resolved: c.anxiety_resolved || c.anxiety || null,
-      trigger_used: c.trigger_used || c.trigger || null,
-      sensory_hook: c.sensory_hook || (c.sensory_words ? c.sensory_words.join(', ') : null),
-      sensory_words: c.sensory_words || (c.sensory_hook ? [c.sensory_hook] : []),
-      why_this_works: c.why_this_works || '',
-      // 댓글 예측
-      predicted_comments: c.predicted_comments || [],
-      comment_engagement_score: c.comment_engagement_score || 70,
-      // 골든타임
-      best_posting_time: c.best_posting_time || goldenTime.times[0] || '20:00',
-      best_posting_reason: c.best_posting_reason || goldenTime.reason || '',
-      // Anti-Boring + A/B
-      anti_boring_pass: c.anti_boring_pass !== false,
-      ab_group: c.ab_group || (idx % 2 === 0 ? 'A' : 'B'),
-      referenceNote: c.referenceNote || '',
-      tags: c.tags || [],
-      platformVersions: c.platformVersions || {},
-    }));
+    // ═══ Anti-Boring Filter (인라인) ═══
+    const BORING_RX: [RegExp, string, number][] = [
+      [/제철\s*.{1,5}를?\s*지금\s*만나보세요/, '제철 OOO를 지금 만나보세요', 20],
+      [/특별한\s*가격/, '특별한 가격', 20],
+      [/신선하고\s*맛있는/, '신선하고 맛있는', 15],
+      [/최고의\s*품질/, '최고의 품질', 20],
+      [/지금\s*만나보세요/, '지금 만나보세요', 18],
+      [/놓치지\s*마세요/, '놓치지 마세요', 15],
+      [/역대급/, '역대급', 15],
+      [/대박\s*할인/, '대박 할인', 15],
+      [/건강에\s*좋/, '건강에 좋습니다', 20],
+      [/지금\s*바로\s*구매/, '지금 바로 구매', 20],
+      [/서두르세요/, '서두르세요', 12],
+      [/최저가\s*보장/, '최저가 보장', 15],
+      [/합리적인\s*가격/, '합리적인 가격', 15],
+      [/프리미엄\s*품질/, '프리미엄 품질', 12],
+      [/풍부한\s*영양/, '풍부한 영양', 12],
+      [/다양한\s*혜택/, '다양한 혜택', 10],
+      [/한\s*단계\s*업그레이드/, '한 단계 업그레이드', 10],
+      [/달콤함을\s*놓치지/, '달콤함을 놓치지', 15],
+      [/특별한\s*기회/, '특별한 기회', 15],
+      [/만족\s*보장/, '만족 보장', 15],
+      [/오늘만\s*특가/, '오늘만 특가', 12],
+    ];
+    function runBoringCheck(text: string): { score: number; reasons: string[]; pass: boolean } {
+      let sc = 0; const reasons: string[] = [];
+      for (const [rx, reason, w] of BORING_RX) { if (rx.test(text)) { sc += w; reasons.push(reason); } }
+      // 구조적 지루함
+      const sens = text.match(/달콤|아삭|쫀득|바삭|촉촉|향|과즙|터지|물씬|식감|시원한|쫄깃|고소한|새콤|톡톡/g);
+      if (!sens || sens.length === 0) { sc += 10; reasons.push('감각 표현 없음'); }
+      if (!/있잖아|솔직히|근데|사실|그래서|진짜|되게|완전/.test(text)) { sc += 8; reasons.push('구어체 없음'); }
+      const lines = (text.match(/\n/g) || []).length;
+      if (text.length > 50 && lines < 2) { sc += 8; reasons.push('줄바꿈 부족'); }
+      return { score: Math.min(100, sc), reasons, pass: sc < 30 };
+    }
+    // ═══ Hook Score (인라인) ═══
+    function calcHookScore(text: string): number {
+      const first = text.split('\n')[0]?.trim() || '';
+      let s = 50;
+      if (first.length <= 7) s += 20;
+      else if (first.length <= 15) s += 15;
+      else if (first.length <= 25) s += 5;
+      else s -= 10;
+      if (/\?/.test(first)) s += 5;
+      if (/있잖아|솔직히|근데|사실/.test(first)) s += 5;
+      return Math.max(0, Math.min(100, s));
+    }
+    // ═══ Sensory Score (인라인) ═══
+    function calcSensoryScore(text: string): number {
+      let s = 40;
+      const w = text.match(/달콤|아삭|쫀득|바삭|촉촉|향|과즙|터지|물씬|식감|시원한|쫄깃|고소한|새콤|톡톡|사각사각/g) || [];
+      if (w.length >= 3) s += 30;
+      else if (w.length >= 1) s += 15;
+      else s -= 10;
+      if (/열었|베어물|올려|삶|구워|갈랐|터지|흐르|퍼지|올라/.test(text)) s += 15;
+      return Math.max(0, Math.min(100, s));
+    }
+    // ═══ 서버사이드 종합 점수 계산 ═══
+    function serverJudge(text: string): { finalScore: number; boringScore: number; hookScore: number; sensoryScore: number; pass: boolean; boringReasons: string[] } {
+      const boring = runBoringCheck(text);
+      const hook = calcHookScore(text);
+      const sensory = calcSensoryScore(text);
+      const finalScore = Math.round(hook * 0.3 + sensory * 0.3 + (100 - boring.score) * 0.4);
+      return { finalScore, boringScore: boring.score, hookScore: hook, sensoryScore: sensory, pass: boring.pass && finalScore >= 50, boringReasons: boring.reasons };
+    }
+
+    // GPT 응답 필드를 UI 필드명으로 매핑 + 서버사이드 품질 검증
+    const mappedCopies = (parsed.copies || []).map((c: any, idx: number) => {
+      const fullText = `${c.headline || ''}\n${c.body || ''}`;
+      const judge = serverJudge(fullText);
+      return {
+        id: c.id || `copy_${idx + 1}`,
+        headline: c.headline || '',
+        body: c.body || '',
+        hookType: c.hookType || 'unknown',
+        emotionTrigger: c.emotionTrigger || '',
+        // 서버사이드 검증 점수로 교체 (모델 자가 보고 무시)
+        viralScore: judge.finalScore,
+        score: judge.finalScore,
+        sensoryLevel: judge.sensoryScore >= 70 ? 'high' : judge.sensoryScore >= 40 ? 'medium' : 'low',
+        // Human Desire Engine 필드 매핑
+        desires_used: c.desires_used || c.desires || [],
+        anxiety_resolved: c.anxiety_resolved || c.anxiety || null,
+        trigger_used: c.trigger_used || c.trigger || null,
+        sensory_hook: c.sensory_hook || (c.sensory_words ? c.sensory_words.join(', ') : null),
+        sensory_words: c.sensory_words || (c.sensory_hook ? [c.sensory_hook] : []),
+        why_this_works: c.why_this_works || '',
+        // 댓글 예측
+        predicted_comments: c.predicted_comments || [],
+        comment_engagement_score: c.comment_engagement_score || 70,
+        // 골든타임
+        best_posting_time: c.best_posting_time || goldenTime.times[0] || '20:00',
+        best_posting_reason: c.best_posting_reason || goldenTime.reason || '',
+        // Anti-Boring: 서버사이드 실제 검증 결과
+        anti_boring_pass: judge.pass,
+        anti_boring_score: judge.boringScore,
+        anti_boring_reasons: judge.boringReasons,
+        hook_score: judge.hookScore,
+        sensory_score: judge.sensoryScore,
+        ab_group: c.ab_group || (idx % 2 === 0 ? 'A' : 'B'),
+        referenceNote: c.referenceNote || '',
+        tags: c.tags || [],
+        platformVersions: c.platformVersions || {},
+      };
+    })
+    // 서버사이드 점수 기준으로 정렬 (높은 점수 우선)
+    .sort((a: any, b: any) => b.score - a.score);
     return {
       success: true,
       copies: mappedCopies,
