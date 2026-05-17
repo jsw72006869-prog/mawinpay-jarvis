@@ -3091,10 +3091,10 @@ async function handleOutreachCollect(params: any) {
             subscriberOrVisitor: subs > 0 ? (subs >= 10000 ? `${(subs/10000).toFixed(1)}만` : `${subs.toLocaleString()}`) : '-',
             viewCount: views > 0 ? (views >= 100000000 ? `${(views/100000000).toFixed(1)}억` : views >= 10000 ? `${(views/10000).toFixed(0)}만` : views.toLocaleString()) : '-',
             publicContactStatus: channelData.publicContactStatus,
-            // OUTREACH-EMAIL-CAPTURE-FIX.1: 마스킹 이메일은 publicEmailMasked에만 보관, contact_email에는 저장하지 않음
+            // OUTREACH-EMAIL-CAPTURE-FIX.1: 마스킹 이메일은 publicEmailMasked에만 보관
             publicEmailMasked: contact.email ? maskEmail(contact.email) : '',
-            // OUTREACH-EMAIL-CAPTURE-FIX.1: 공개 이메일(***미포함, @포함)만 contact_email로 저장
-            contact_email: (contact.email && !contact.email.includes('***') && contact.email.includes('@')) ? contact.email : '',
+            // OUTREACH-EMAIL-CAPTURE-FIX.1: 구글 시트 저장용 원본 이메일 (마스킹 제거)
+            contact_email: (contact.email && contact.email.includes('@')) ? contact.email : '',
             emailSource: hasEmail ? 'channel_description' : '',
             productFitScore: fit.score,
             productFitReason: fit.reason,
@@ -3299,27 +3299,21 @@ async function handleOutreachSaveCandidates(params: any) {
       const hasMasked = (c.publicEmailMasked || '').includes('***');
       const contactUrl = c.contact_url || '';
       // OUTREACH-EMAIL-CAPTURE-FIX.1: 4-case 이메일 저장 정책 통일
-      // case 1: 공개 이메일 원문 확인됨 (***미포함, @포함)
-      // case 2: 마스킹/블러/일부 가림 이메일만 확인됨
+      // case 1: 공개 이메일 원문 확인됨 (@포함)
+      // case 2: 마스킹/블러/일부 가림 이메일만 확인됨 (현재는 원본을 가져오므로 case 1과 통합 가능하나 구조 유지)
       // case 3: 문의 링크만 있음
       // case 4: 연락 경로 없음
       let contactEmail = '';
       let emailStatus = 'no_contact';
       let contactRoute = 'none';
       let contactPriority = 'none';
-      const isValidPublicEmail = rawContactEmail && !rawContactEmail.includes('***') && rawContactEmail.includes('@');
-      if (isValidPublicEmail) {
-        // case 1: 공개 이메일 원문 확인됨
+      const hasEmail = rawContactEmail && rawContactEmail.includes('@');
+      if (hasEmail) {
+        // case 1 & 2: 이메일 확인됨 (마스킹 없이 원본 저장)
         contactEmail = rawContactEmail;
         emailStatus = 'public_email';
         contactRoute = 'email';
         contactPriority = 'public_email';
-      } else if (hasMasked || (rawContactEmail && rawContactEmail.includes('***'))) {
-        // case 2: 마스킹/블러/일부 가림 이메일만 확인됨
-        contactEmail = ''; // 마스킹 이메일은 저장하지 않음
-        emailStatus = 'masked_or_unverified';
-        contactRoute = 'needs_verification';
-        contactPriority = contactUrl ? 'contact_form' : 'none';
       } else if (contactUrl) {
         // case 3: 문의 링크만 있음
         contactEmail = '';
