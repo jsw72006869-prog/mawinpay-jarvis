@@ -66,28 +66,34 @@ const NAVER_API_BASE = 'https://api.commerce.naver.com/external';
 const KAMIS_API_KEY = process.env.KAMIS_API_KEY || '';
 const KAMIS_CERT_ID = process.env.KAMIS_CERT_ID || '';
 
-async function fetchYouTubeAPI(url: string, retryCount = 0): Promise<any> {
+async function fetchYouTubeAPI(url: string, retryCount = 0): Promise<Response> {
   const maxRetries = 1;
   try {
     const response = await fetch(url);
     if (!response.ok) {
-      const data = await response.json().catch(() => ({}));
-      if (response.status === 403 && (data.error?.message?.includes('quotaExceeded') || data.error?.message?.includes('exceeded'))) {
-        if (retryCount < maxRetries && youtubeKeyState.backup) {
-          const newKey = handleYouTubeQuotaError({ status: 429, message: 'quotaExceeded' });
-          const newUrl = url.replace(/key=[^&]+/, `key=${newKey}`);
-          console.log(`[YouTube API] 백업 키로 재시도`);
-          return fetchYouTubeAPI(newUrl, retryCount + 1);
-        }
+      // quota 에러인지 확인하기 위해 clone 후 body 읽기
+      const cloned = response.clone();
+      const data = await cloned.json().catch(() => ({}));
+      const isQuota = response.status === 403 && (
+        data.error?.message?.includes('quotaExceeded') ||
+        data.error?.message?.includes('exceeded') ||
+        data.error?.errors?.[0]?.reason === 'quotaExceeded'
+      );
+      if (isQuota && retryCount < maxRetries && youtubeKeyState.backup) {
+        const newKey = handleYouTubeQuotaError({ status: 429, message: 'quotaExceeded' });
+        const newUrl = url.replace(/key=[^&]+/, `key=${newKey}`);
+        console.log(`[YouTube API] 할당량 초과 → 백업 키로 재시도`);
+        return fetchYouTubeAPI(newUrl, retryCount + 1);
       }
-      throw new Error(`YouTube API ${response.status}: ${data.error?.message || 'error'}`);
+      // quota 에러가 아니면 원본 response 그대로 반환 (호출자가 .ok 체크)
+      return response;
     }
-    return response.json();
+    return response;
   } catch (err: any) {
     if (retryCount < maxRetries && youtubeKeyState.backup && (err.message?.includes('quotaExceeded') || err.message?.includes('exceeded'))) {
       const newKey = handleYouTubeQuotaError(err);
       const newUrl = url.replace(/key=[^&]+/, `key=${newKey}`);
-      console.log(`[YouTube API] 백업 키로 재시도`);
+      console.log(`[YouTube API] 네트워크 에러 → 백업 키로 재시도`);
       return fetchYouTubeAPI(newUrl, retryCount + 1);
     }
     throw err;
