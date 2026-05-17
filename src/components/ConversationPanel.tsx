@@ -28,6 +28,8 @@ interface ConversationPanelProps {
   sttStatus: STTStatus;
   isExpanded: boolean;
   onToggleExpand: () => void;
+
+  outreachOffset?: number;
 }
 
 // ── Theme Constants ──
@@ -343,6 +345,7 @@ export default function ConversationPanel({
   sttStatus,
   isExpanded,
   onToggleExpand,
+  outreachOffset = 0,
 }: ConversationPanelProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const [autoScroll, setAutoScroll] = useState(true);
@@ -381,11 +384,12 @@ export default function ConversationPanel({
       style={{
         position: 'fixed',
         top: 80,
-        left: '50%',
+        left: `calc(50% - ${outreachOffset / 2}px)`,
         transform: 'translateX(-50%)',
         maxHeight: 'calc(50vh - 80px)',
-        width: 'min(480px, 90vw)',
+        width: outreachOffset > 0 ? `min(480px, calc(100vw - ${outreachOffset + 40}px))` : 'min(480px, 90vw)',
         zIndex: 50,
+        transition: 'left 0.3s ease, width 0.3s ease',
         pointerEvents: 'auto',
         display: 'flex',
         flexDirection: 'column',
