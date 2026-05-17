@@ -3358,7 +3358,7 @@ export default function JarvisApp() {
         ? `\n\n[COPY-R 조사 결과 주입]\n${researchInsight}\n\n위 조사 결과를 반드시 반영하여 카피를 작성하세요.\n`
         : '';
 
-      // ── CREATIVE STUDIO: 5개 이상 요청 시 직접 트렌드 기반 카드형 UI 활성화 (creative_content 위임 없이) ──
+      // ── CREATIVE STUDIO: 5개 이상 요청 시 분할 생성 (먼저 5개 빠르게 → 나머지 추가 로드) ──
       if (copyCount >= 5) {
         emitMissionLog('📊', 'TREND', '트렌드 수집 + 패턴 분석 시작', 'info');
         setCreativeStudioVisible(true);
@@ -3367,59 +3367,84 @@ export default function JarvisApp() {
         setCreativeStudioType(contentType);
         setCreativeStudioCopies([]);
 
-        try {
-          // AbortController로 55초 타임아웃 설정 (Vercel maxDuration 60초 이내)
-          const trendAbort = new AbortController();
-          const trendTimeout = setTimeout(() => trendAbort.abort(), 55000);
-          const trendRes = await fetch('/api/trend-collector', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            signal: trendAbort.signal,
-            body: JSON.stringify({
-              action: 'generate',
-              product: product || '농산물',
-              contentType,
-              count: copyCount,
-              userStyle: userMessage,
-              researchInsight: researchInsight || undefined,
-            }),
-          });
-          clearTimeout(trendTimeout);
+        const firstBatch = Math.min(5, copyCount);
+        const remaining = copyCount - firstBatch;
 
-          if (trendRes.ok) {
-            const trendData = await trendRes.json();
-            if (trendData.success && trendData.copies?.length > 0) {
-              setCreativeStudioCopies(trendData.copies);
-              setCreativeStudioTrends(trendData.trendPatternsUsed || 0);
-              setCreativeStudioRefs(trendData.videosReferenced || 0);
-              setCreativeStudioMetadata(trendData.metadata || null);
-              setCreativeStudioLoading(false);
-              // 2번 화면(Data Wall)에 동기화
-              try {
-                localStorage.setItem('jarvis.creativeStudio.latest', JSON.stringify({
-                  copies: trendData.copies,
-                  product,
-                  contentType: contentType || 'headcopy',
-                  trends: trendData.trendPatternsUsed || 0,
-                  refs: trendData.videosReferenced || 0,
-                  updatedAt: Date.now(),
-                }));
-              } catch {}
-              emitMissionLog('✅', 'CREATIVE STUDIO', `${trendData.copies.length}개 카피 카드 생성 완료 (트렌드 ${trendData.trendPatternsUsed}개 반영)`, 'success');
-              emitNodeState('jarvis_brain', 'success', 'Creative Studio 완료');
-              setTimeout(() => emitNodeState('jarvis_brain', 'idle'), 2000);
-              telemetryFunctionSuccess('creative_director', `${product} Creative Studio ${trendData.copies.length}개 생성`);
-              const summaryMsg = `${product || '제품'} 카피 ${trendData.copies.length}개를 Creative Studio에 생성했습니다. 카드를 클릭하면 상세 내용을 볼 수 있습니다.`;
-              addMessage('jarvis', summaryMsg, true);
-              setState('speaking');
-              startSpeakingLevel();
-              await new Promise<void>(resolve => {
-                speak(`${product || '제품'} 카피 ${trendData.copies.length}개를 생성했습니다. Creative Studio에서 확인해 주십시오.`, undefined, () => { stopSpeakingLevel(); resolve(); });
-              });
-              resetAllNodes();
-              setConversationExpanded(true);
-              return;
+        const fetchCopies = async (cnt: number): Promise<any> => {
+          const abort = new AbortController();
+          const timeout = setTimeout(() => abort.abort(), 58000);
+          try {
+            const r = await fetch('/api/trend-collector', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              signal: abort.signal,
+              body: JSON.stringify({
+                action: 'generate',
+                product: product || '농산물',
+                contentType,
+                count: cnt,
+                userStyle: userMessage,
+                researchInsight: researchInsight || undefined,
+              }),
+            });
+            clearTimeout(timeout);
+            if (r.ok) return await r.json();
+          } catch (e) { clearTimeout(timeout); }
+          return null;
+        };
+
+        try {
+          // 1차: 5개 먼저 빠르게 생성
+          const firstData = await fetchCopies(firstBatch);
+          if (firstData?.success && firstData.copies?.length > 0) {
+            setCreativeStudioCopies(firstData.copies);
+            setCreativeStudioTrends(firstData.trendPatternsUsed || 0);
+            setCreativeStudioRefs(firstData.videosReferenced || 0);
+            setCreativeStudioMetadata(firstData.metadata || null);
+            setCreativeStudioLoading(remaining > 0);
+            try {
+              localStorage.setItem('jarvis.creativeStudio.latest', JSON.stringify({
+                copies: firstData.copies, product,
+                contentType: contentType || 'headcopy',
+                trends: firstData.trendPatternsUsed || 0,
+                refs: firstData.videosReferenced || 0,
+                updatedAt: Date.now(),
+              }));
+            } catch {}
+            emitMissionLog('✅', 'CREATIVE STUDIO', `${firstData.copies.length}개 카피 카드 생성 완료`, 'success');
+
+            // 2차: 나머지 추가 로드 (비동기)
+            if (remaining > 0) {
+              fetchCopies(remaining).then(moreData => {
+                if (moreData?.success && moreData.copies?.length > 0) {
+                  setCreativeStudioCopies(prev => [...prev, ...moreData.copies]);
+                  setCreativeStudioTrends(t => t + (moreData.trendPatternsUsed || 0));
+                  setCreativeStudioRefs(r => r + (moreData.videosReferenced || 0));
+                  emitMissionLog('✅', 'CREATIVE STUDIO', `추가 ${moreData.copies.length}개 카피 로드 완료`, 'success');
+                  try {
+                    const prev = JSON.parse(localStorage.getItem('jarvis.creativeStudio.latest') || '{}');
+                    prev.copies = [...(prev.copies || []), ...moreData.copies];
+                    prev.updatedAt = Date.now();
+                    localStorage.setItem('jarvis.creativeStudio.latest', JSON.stringify(prev));
+                  } catch {}
+                }
+                setCreativeStudioLoading(false);
+              }).catch(() => setCreativeStudioLoading(false));
             }
+
+            emitNodeState('jarvis_brain', 'success', 'Creative Studio 완료');
+            setTimeout(() => emitNodeState('jarvis_brain', 'idle'), 2000);
+            telemetryFunctionSuccess('creative_director', `${product} Creative Studio ${firstData.copies.length}개 생성`);
+            const summaryMsg = `${product || '제품'} 카피 ${firstData.copies.length}개를 Creative Studio에 생성했습니다.${remaining > 0 ? ` 나머지 ${remaining}개도 곧 추가됩니다.` : ''} 카드를 클릭하면 상세 내용을 볼 수 있습니다.`;
+            addMessage('jarvis', summaryMsg, true);
+            setState('speaking');
+            startSpeakingLevel();
+            await new Promise<void>(resolve => {
+              speak(`${product || '제품'} 카피 ${firstData.copies.length}개를 생성했습니다. Creative Studio에서 확인해 주십시오.`, undefined, () => { stopSpeakingLevel(); resolve(); });
+            });
+            resetAllNodes();
+            setConversationExpanded(true);
+            return;
           }
         } catch (trendErr) {
           console.error('[JARVIS] Trend-collector error, falling back to standard:', trendErr);
