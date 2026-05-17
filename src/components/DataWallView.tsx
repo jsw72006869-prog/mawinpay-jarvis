@@ -957,6 +957,19 @@ const DataWallView: React.FC = () => {
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [candidatePage, setCandidatePage] = useState(0);
   const openingTimerRef = useRef<number | null>(null);
+  // Creative Studio 데이터 (localStorage에서 읽음)
+  const [csData, setCsData] = useState<{
+    copies: any[];
+    product: string;
+    contentType: string;
+    trends: number;
+    refs: number;
+    updatedAt: number;
+  } | null>(null);
+  const [csSelectedCopy, setCsSelectedCopy] = useState<any | null>(null);
+  const [csSelectedRank, setCsSelectedRank] = useState(0);
+  // 인플루언서 상세 모달
+  const [selectedInfluencer, setSelectedInfluencer] = useState<RealIntelCandidate | null>(null);
 
   /* ─── Read real candidates from localStorage ─── */
   const refreshCandidates = useCallback(() => {
@@ -1101,6 +1114,9 @@ const DataWallView: React.FC = () => {
         if (openingTimerRef.current) window.clearTimeout(openingTimerRef.current);
         openingTimerRef.current = window.setTimeout(() => setOpeningActive(false), 6000);
       }
+      // Creative Studio 데이터 읽기
+      const csRaw = readJson<any>('jarvis.creativeStudio.latest');
+      if (csRaw && csRaw.copies?.length > 0) setCsData(csRaw);
       refreshCandidates();
     };
     refreshFromStorage();
@@ -1306,6 +1322,315 @@ const DataWallView: React.FC = () => {
         />
 
       </section>
+
+      {/* ═══ CREATIVE STUDIO FULL VIEW (2번 화면 전용) ═══ */}
+      {csData && csData.copies.length > 0 && (
+        <section className="datawall-creative-studio datawall-enter datawall-delay-3" style={{
+          margin: '0 20px', padding: '16px 20px',
+          background: 'rgba(0,180,255,0.03)', borderRadius: '12px',
+          border: '1px solid rgba(0,180,255,0.15)',
+        }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
+            <div>
+              <span style={{ color: '#00F5FF', fontSize: '9px', letterSpacing: '3px' }}>CREATIVE STUDIO</span>
+              <span style={{ color: 'rgba(255,255,255,0.4)', fontSize: '10px', marginLeft: '12px' }}>
+                {csData.product} · {csData.copies.length}개 카피 · {csData.trends} 트렌드 · {csData.refs} refs
+              </span>
+            </div>
+            <span style={{ color: 'rgba(255,255,255,0.3)', fontSize: '9px' }}>
+              {new Date(csData.updatedAt).toLocaleTimeString('ko-KR')}
+            </span>
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: '10px', maxHeight: '320px', overflowY: 'auto' }}>
+            {[...csData.copies].sort((a: any, b: any) => (b.viralScore || 0) - (a.viralScore || 0)).map((copy: any, idx: number) => (
+              <div
+                key={copy.id || idx}
+                onClick={() => { setCsSelectedCopy(copy); setCsSelectedRank(idx + 1); }}
+                style={{
+                  padding: '12px 14px', borderRadius: '10px', cursor: 'pointer',
+                  background: idx === 0 ? 'rgba(0,245,255,0.06)' : 'rgba(255,255,255,0.02)',
+                  border: `1px solid ${idx < 3 ? 'rgba(0,245,255,0.25)' : 'rgba(255,255,255,0.08)'}`,
+                  transition: 'all 0.2s',
+                }}
+                onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.borderColor = 'rgba(0,245,255,0.5)'; }}
+                onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.borderColor = idx < 3 ? 'rgba(0,245,255,0.25)' : 'rgba(255,255,255,0.08)'; }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '6px' }}>
+                  <span style={{
+                    width: '20px', height: '20px', borderRadius: '5px', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    fontSize: '9px', fontWeight: 700,
+                    background: idx < 3 ? 'rgba(0,255,136,0.15)' : 'rgba(255,255,255,0.05)',
+                    color: idx < 3 ? '#00FF88' : 'rgba(255,255,255,0.4)',
+                    border: `1px solid ${idx < 3 ? 'rgba(0,255,136,0.3)' : 'rgba(255,255,255,0.1)'}`,
+                  }}>{idx + 1}</span>
+                  <span style={{ flex: 1, color: '#fff', fontSize: '12px', fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {copy.headline}
+                  </span>
+                  <span style={{
+                    padding: '2px 6px', borderRadius: '6px', fontSize: '9px', fontWeight: 700,
+                    background: (copy.viralScore || 0) >= 80 ? 'rgba(0,255,136,0.12)' : 'rgba(0,245,255,0.08)',
+                    color: (copy.viralScore || 0) >= 80 ? '#00FF88' : '#00F5FF',
+                    border: `1px solid ${(copy.viralScore || 0) >= 80 ? 'rgba(0,255,136,0.3)' : 'rgba(0,245,255,0.2)'}`,
+                  }}>{copy.viralScore || 0}</span>
+                </div>
+                <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap' }}>
+                  {copy.hookType && <span style={{ padding: '1px 6px', borderRadius: '6px', background: 'rgba(0,245,255,0.06)', border: '1px solid rgba(0,245,255,0.12)', color: 'rgba(0,245,255,0.6)', fontSize: '8px' }}>{copy.hookType}</span>}
+                  {copy.emotionTrigger && <span style={{ padding: '1px 6px', borderRadius: '6px', background: 'rgba(255,184,0,0.06)', border: '1px solid rgba(255,184,0,0.12)', color: 'rgba(255,184,0,0.6)', fontSize: '8px' }}>{copy.emotionTrigger}</span>}
+                  {copy.sensoryLevel === 'high' && <span style={{ padding: '1px 6px', borderRadius: '6px', background: 'rgba(255,100,100,0.06)', border: '1px solid rgba(255,100,100,0.12)', color: 'rgba(255,100,100,0.6)', fontSize: '8px' }}>🔥 high</span>}
+                </div>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
+
+      {/* ═══ INFLUENCER DETAIL GRID (2번 화면 전용) ═══ */}
+      {realCandidates.length > 0 && (
+        <section className="datawall-influencer-grid datawall-enter datawall-delay-4" style={{
+          margin: '12px 20px 0', padding: '16px 20px',
+          background: 'rgba(0,255,136,0.02)', borderRadius: '12px',
+          border: '1px solid rgba(0,255,136,0.12)',
+        }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
+            <div>
+              <span style={{ color: '#00FF88', fontSize: '9px', letterSpacing: '3px' }}>INFLUENCER INTEL</span>
+              <span style={{ color: 'rgba(255,255,255,0.4)', fontSize: '10px', marginLeft: '12px' }}>
+                {totalCandidates}명 · 추천 {tierCounts.추천} · 검토 {tierCounts.검토}
+              </span>
+            </div>
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))', gap: '10px', maxHeight: '280px', overflowY: 'auto' }}>
+            {realCandidates.slice(0, 12).map((c, idx) => (
+              <div
+                key={c.contextId}
+                onClick={() => setSelectedInfluencer(c)}
+                style={{
+                  padding: '12px 14px', borderRadius: '10px', cursor: 'pointer',
+                  background: c.recommendationTier === '추천' ? 'rgba(0,255,136,0.04)' : 'rgba(255,255,255,0.02)',
+                  border: `1px solid ${c.recommendationTier === '추천' ? 'rgba(0,255,136,0.2)' : 'rgba(255,255,255,0.08)'}`,
+                  transition: 'all 0.2s',
+                }}
+                onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.borderColor = 'rgba(0,255,136,0.5)'; }}
+                onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.borderColor = c.recommendationTier === '추천' ? 'rgba(0,255,136,0.2)' : 'rgba(255,255,255,0.08)'; }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                  <div style={{
+                    width: '32px', height: '32px', borderRadius: '50%',
+                    background: 'rgba(0,255,136,0.1)', border: '1px solid rgba(0,255,136,0.2)',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    fontSize: '12px', color: '#00FF88', fontWeight: 700,
+                  }}>{c.platform === 'YouTube' ? 'YT' : c.platform === 'Instagram' ? 'IG' : c.platform === 'TikTok' ? 'TK' : 'CH'}</div>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ color: '#fff', fontSize: '12px', fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.name}</div>
+                    <div style={{ color: 'rgba(255,255,255,0.4)', fontSize: '9px', marginTop: '2px' }}>
+                      {c.subscribers ? `${(c.subscribers / 1000).toFixed(1)}K` : ''} · {c.recommendationTier || '검토'}
+                    </div>
+                  </div>
+                  <div style={{
+                    padding: '3px 8px', borderRadius: '8px', fontSize: '10px', fontWeight: 700,
+                    background: (c.finalScore || 0) >= 70 ? 'rgba(0,255,136,0.12)' : 'rgba(0,245,255,0.08)',
+                    color: (c.finalScore || 0) >= 70 ? '#00FF88' : '#00F5FF',
+                    border: `1px solid ${(c.finalScore || 0) >= 70 ? 'rgba(0,255,136,0.3)' : 'rgba(0,245,255,0.2)'}`,
+                  }}>{c.finalScore || 0}점</div>
+                </div>
+                {c.fitReason && (
+                  <div style={{ marginTop: '8px', color: 'rgba(255,255,255,0.5)', fontSize: '10px', lineHeight: 1.4, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {c.fitReason}
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
+
+      {/* ═══ COPY DETAIL MODAL (2번 화면) ═══ */}
+      {csSelectedCopy && (
+        <div
+          onClick={() => setCsSelectedCopy(null)}
+          style={{
+            position: 'fixed', inset: 0, zIndex: 9500,
+            background: 'rgba(0,0,0,0.85)', backdropFilter: 'blur(12px)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px',
+          }}
+        >
+          <div onClick={(e) => e.stopPropagation()} style={{
+            width: '100%', maxWidth: '680px', maxHeight: '90vh',
+            background: 'linear-gradient(160deg, rgba(8,14,32,0.99) 0%, rgba(4,8,20,0.99) 100%)',
+            border: '1px solid rgba(0,180,255,0.25)', borderRadius: '16px',
+            overflow: 'hidden', display: 'flex', flexDirection: 'column',
+            boxShadow: '0 24px 80px rgba(0,100,255,0.2)',
+          }}>
+            {/* Header */}
+            <div style={{ padding: '20px 24px', borderBottom: '1px solid rgba(0,180,255,0.15)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'rgba(0,180,255,0.03)' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                <div style={{ width: '32px', height: '32px', borderRadius: '8px', background: 'rgba(0,255,136,0.15)', border: '1px solid rgba(0,255,136,0.3)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '12px', fontWeight: 700, color: '#00FF88' }}>{csSelectedRank}</div>
+                <div>
+                  <div style={{ color: '#fff', fontSize: '14px', fontWeight: 600 }}>{csData?.product} 카피</div>
+                  <div style={{ color: 'rgba(255,255,255,0.5)', fontSize: '11px', marginTop: '2px' }}>{csSelectedCopy.hookType} · {csSelectedCopy.emotionTrigger}</div>
+                </div>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                <span style={{ padding: '4px 10px', borderRadius: '12px', background: 'rgba(0,255,136,0.12)', border: '1px solid rgba(0,255,136,0.3)', color: '#00FF88', fontSize: '12px', fontWeight: 700 }}>{csSelectedCopy.viralScore}점</span>
+                <button onClick={() => setCsSelectedCopy(null)} style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.15)', color: '#aaa', padding: '6px 12px', borderRadius: '6px', cursor: 'pointer', fontSize: '12px' }}>✕</button>
+              </div>
+            </div>
+            {/* Body */}
+            <div style={{ flex: 1, overflowY: 'auto', padding: '24px' }}>
+              <div style={{ padding: '16px 20px', borderRadius: '12px', background: 'rgba(0,245,255,0.04)', border: '1px solid rgba(0,245,255,0.15)', marginBottom: '20px' }}>
+                <div style={{ color: 'rgba(0,245,255,0.7)', fontSize: '9px', letterSpacing: '2px', marginBottom: '8px' }}>HEADLINE</div>
+                <div style={{ color: '#fff', fontSize: '18px', fontWeight: 700, lineHeight: 1.5 }}>{csSelectedCopy.headline}</div>
+              </div>
+              <div style={{ marginBottom: '20px' }}>
+                <div style={{ color: 'rgba(255,255,255,0.5)', fontSize: '9px', letterSpacing: '2px', marginBottom: '8px' }}>FULL SCRIPT</div>
+                <div style={{ color: 'rgba(255,255,255,0.85)', fontSize: '14px', lineHeight: 1.8, whiteSpace: 'pre-wrap' }}>{csSelectedCopy.body}</div>
+              </div>
+              {csSelectedCopy.platformVersions && (
+                <div style={{ marginBottom: '20px' }}>
+                  <div style={{ color: 'rgba(255,255,255,0.5)', fontSize: '9px', letterSpacing: '2px', marginBottom: '8px' }}>PLATFORM VERSIONS</div>
+                  <div style={{ display: 'grid', gap: '8px' }}>
+                    {csSelectedCopy.platformVersions.threads && <div style={{ padding: '10px 14px', borderRadius: '8px', background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)' }}><span style={{ color: '#00F5FF', fontSize: '9px' }}>스레드</span><div style={{ color: 'rgba(255,255,255,0.7)', fontSize: '12px', marginTop: '4px' }}>{csSelectedCopy.platformVersions.threads}</div></div>}
+                    {csSelectedCopy.platformVersions.reels && <div style={{ padding: '10px 14px', borderRadius: '8px', background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)' }}><span style={{ color: '#FF6464', fontSize: '9px' }}>릴스</span><div style={{ color: 'rgba(255,255,255,0.7)', fontSize: '12px', marginTop: '4px' }}>{csSelectedCopy.platformVersions.reels}</div></div>}
+                    {csSelectedCopy.platformVersions.kakao && <div style={{ padding: '10px 14px', borderRadius: '8px', background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)' }}><span style={{ color: '#FFB800', fontSize: '9px' }}>카카오톡</span><div style={{ color: 'rgba(255,255,255,0.7)', fontSize: '12px', marginTop: '4px' }}>{csSelectedCopy.platformVersions.kakao}</div></div>}
+                  </div>
+                </div>
+              )}
+              {csSelectedCopy.referenceNote && (
+                <div style={{ padding: '12px 16px', borderRadius: '8px', background: 'rgba(255,184,0,0.06)', border: '1px solid rgba(255,184,0,0.2)', marginBottom: '16px' }}>
+                  <div style={{ color: 'rgba(255,184,0,0.7)', fontSize: '9px', letterSpacing: '1px', marginBottom: '4px' }}>REFERENCE</div>
+                  <div style={{ color: 'rgba(255,255,255,0.7)', fontSize: '12px' }}>{csSelectedCopy.referenceNote}</div>
+                </div>
+              )}
+              {csSelectedCopy.tags && csSelectedCopy.tags.length > 0 && (
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+                  {csSelectedCopy.tags.map((tag: string, i: number) => (
+                    <span key={i} style={{ padding: '4px 10px', borderRadius: '12px', background: 'rgba(0,245,255,0.08)', border: '1px solid rgba(0,245,255,0.2)', color: 'rgba(0,245,255,0.8)', fontSize: '11px' }}>{tag}</span>
+                  ))}
+                </div>
+              )}
+            </div>
+            {/* Footer */}
+            <div style={{ padding: '16px 24px', borderTop: '1px solid rgba(0,180,255,0.15)', display: 'flex', gap: '10px', justifyContent: 'flex-end', background: 'rgba(0,0,0,0.3)' }}>
+              <button onClick={() => { if (csSelectedCopy.body) navigator.clipboard.writeText(csSelectedCopy.body); }} style={{ padding: '10px 18px', borderRadius: '8px', cursor: 'pointer', background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.15)', color: 'rgba(255,255,255,0.7)', fontSize: '12px' }}>복사</button>
+              <button onClick={() => setCsSelectedCopy(null)} style={{ padding: '10px 18px', borderRadius: '8px', cursor: 'pointer', background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.15)', color: 'rgba(255,255,255,0.7)', fontSize: '12px' }}>닫기</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ═══ INFLUENCER DETAIL MODAL (2번 화면) ═══ */}
+      {selectedInfluencer && (
+        <div
+          onClick={() => setSelectedInfluencer(null)}
+          style={{
+            position: 'fixed', inset: 0, zIndex: 9500,
+            background: 'rgba(0,0,0,0.85)', backdropFilter: 'blur(12px)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px',
+          }}
+        >
+          <div onClick={(e) => e.stopPropagation()} style={{
+            width: '100%', maxWidth: '720px', maxHeight: '90vh',
+            background: 'linear-gradient(160deg, rgba(8,14,32,0.99) 0%, rgba(4,8,20,0.99) 100%)',
+            border: '1px solid rgba(0,255,136,0.25)', borderRadius: '16px',
+            overflow: 'hidden', display: 'flex', flexDirection: 'column',
+            boxShadow: '0 24px 80px rgba(0,255,136,0.15)',
+          }}>
+            {/* Header */}
+            <div style={{ padding: '20px 24px', borderBottom: '1px solid rgba(0,255,136,0.15)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'rgba(0,255,136,0.03)' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+                <div style={{ width: '44px', height: '44px', borderRadius: '50%', background: 'rgba(0,255,136,0.1)', border: '2px solid rgba(0,255,136,0.3)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '16px', color: '#00FF88', fontWeight: 700 }}>
+                  {selectedInfluencer.platform === 'YouTube' ? 'YT' : selectedInfluencer.platform === 'Instagram' ? 'IG' : 'CH'}
+                </div>
+                <div>
+                  <div style={{ color: '#fff', fontSize: '16px', fontWeight: 700 }}>{selectedInfluencer.name}</div>
+                  <div style={{ color: 'rgba(255,255,255,0.5)', fontSize: '11px', marginTop: '3px' }}>
+                    {selectedInfluencer.platform} · {selectedInfluencer.subscribers ? `${(selectedInfluencer.subscribers / 1000).toFixed(1)}K 구독` : ''}
+                  </div>
+                </div>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                <span style={{
+                  padding: '6px 14px', borderRadius: '12px', fontSize: '13px', fontWeight: 700,
+                  background: selectedInfluencer.recommendationTier === '추천' ? 'rgba(0,255,136,0.15)' : 'rgba(0,245,255,0.1)',
+                  border: `1px solid ${selectedInfluencer.recommendationTier === '추천' ? 'rgba(0,255,136,0.4)' : 'rgba(0,245,255,0.3)'}`,
+                  color: selectedInfluencer.recommendationTier === '추천' ? '#00FF88' : '#00F5FF',
+                }}>{selectedInfluencer.recommendationTier || '검토'}</span>
+                <button onClick={() => setSelectedInfluencer(null)} style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.15)', color: '#aaa', padding: '6px 12px', borderRadius: '6px', cursor: 'pointer', fontSize: '12px' }}>✕</button>
+              </div>
+            </div>
+            {/* Body */}
+            <div style={{ flex: 1, overflowY: 'auto', padding: '24px' }}>
+              {/* Fit Score */}
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '12px', marginBottom: '20px' }}>
+                <div style={{ padding: '14px', borderRadius: '10px', background: 'rgba(0,255,136,0.05)', border: '1px solid rgba(0,255,136,0.15)', textAlign: 'center' }}>
+                  <div style={{ color: 'rgba(0,255,136,0.6)', fontSize: '9px', letterSpacing: '1px', marginBottom: '6px' }}>FIT SCORE</div>
+                  <div style={{ color: '#00FF88', fontSize: '24px', fontWeight: 700 }}>{selectedInfluencer.finalScore || 0}</div>
+                </div>
+                <div style={{ padding: '14px', borderRadius: '10px', background: 'rgba(0,245,255,0.05)', border: '1px solid rgba(0,245,255,0.15)', textAlign: 'center' }}>
+                  <div style={{ color: 'rgba(0,245,255,0.6)', fontSize: '9px', letterSpacing: '1px', marginBottom: '6px' }}>ENGAGEMENT</div>
+                  <div style={{ color: '#00F5FF', fontSize: '24px', fontWeight: 700 }}>{selectedInfluencer.engagementRate ? `${selectedInfluencer.engagementRate.toFixed(1)}%` : '—'}</div>
+                </div>
+                <div style={{ padding: '14px', borderRadius: '10px', background: 'rgba(255,184,0,0.05)', border: '1px solid rgba(255,184,0,0.15)', textAlign: 'center' }}>
+                  <div style={{ color: 'rgba(255,184,0,0.6)', fontSize: '9px', letterSpacing: '1px', marginBottom: '6px' }}>CONTACT</div>
+                  <div style={{ color: '#FFB800', fontSize: '14px', fontWeight: 600 }}>{selectedInfluencer.contactStatus === 'contactable' ? '공개 이메일' : selectedInfluencer.contactStatus === 'url_only' ? 'URL만' : '미확인'}</div>
+                </div>
+              </div>
+              {/* Fit Reason */}
+              {selectedInfluencer.fitReason && (
+                <div style={{ padding: '14px 18px', borderRadius: '10px', background: 'rgba(0,255,136,0.04)', border: '1px solid rgba(0,255,136,0.12)', marginBottom: '16px' }}>
+                  <div style={{ color: 'rgba(0,255,136,0.6)', fontSize: '9px', letterSpacing: '1px', marginBottom: '6px' }}>추천 이유</div>
+                  <div style={{ color: 'rgba(255,255,255,0.8)', fontSize: '13px', lineHeight: 1.6 }}>{selectedInfluencer.fitReason}</div>
+                </div>
+              )}
+              {/* Quality Scores */}
+              {(selectedInfluencer.contentQuality || selectedInfluencer.audienceFit || selectedInfluencer.brandSafety) && (
+                <div style={{ marginBottom: '16px' }}>
+                  <div style={{ color: 'rgba(255,255,255,0.5)', fontSize: '9px', letterSpacing: '2px', marginBottom: '10px' }}>QUALITY BREAKDOWN</div>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '8px' }}>
+                    {selectedInfluencer.contentQuality !== undefined && (
+                      <div style={{ padding: '10px', borderRadius: '8px', background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)' }}>
+                        <div style={{ color: 'rgba(255,255,255,0.4)', fontSize: '9px', marginBottom: '4px' }}>콘텐츠 품질</div>
+                        <div style={{ color: '#fff', fontSize: '16px', fontWeight: 600 }}>{selectedInfluencer.contentQuality}</div>
+                      </div>
+                    )}
+                    {selectedInfluencer.audienceFit !== undefined && (
+                      <div style={{ padding: '10px', borderRadius: '8px', background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)' }}>
+                        <div style={{ color: 'rgba(255,255,255,0.4)', fontSize: '9px', marginBottom: '4px' }}>타겟 적합도</div>
+                        <div style={{ color: '#fff', fontSize: '16px', fontWeight: 600 }}>{selectedInfluencer.audienceFit}</div>
+                      </div>
+                    )}
+                    {selectedInfluencer.brandSafety !== undefined && (
+                      <div style={{ padding: '10px', borderRadius: '8px', background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)' }}>
+                        <div style={{ color: 'rgba(255,255,255,0.4)', fontSize: '9px', marginBottom: '4px' }}>브랜드 안전</div>
+                        <div style={{ color: '#fff', fontSize: '16px', fontWeight: 600 }}>{selectedInfluencer.brandSafety}</div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+              {/* Risk Flags */}
+              {selectedInfluencer.riskFlags && selectedInfluencer.riskFlags.length > 0 && (
+                <div style={{ padding: '12px 16px', borderRadius: '8px', background: 'rgba(255,50,50,0.05)', border: '1px solid rgba(255,50,50,0.15)', marginBottom: '16px' }}>
+                  <div style={{ color: 'rgba(255,50,50,0.7)', fontSize: '9px', letterSpacing: '1px', marginBottom: '6px' }}>RISK FLAGS</div>
+                  <div style={{ color: 'rgba(255,255,255,0.7)', fontSize: '12px' }}>{selectedInfluencer.riskFlags.join(' · ')}</div>
+                </div>
+              )}
+              {/* Channel URL */}
+              {selectedInfluencer.channelUrl && (
+                <div style={{ marginTop: '12px' }}>
+                  <a href={selectedInfluencer.channelUrl} target="_blank" rel="noopener noreferrer" style={{ color: '#00F5FF', fontSize: '12px', textDecoration: 'none', borderBottom: '1px solid rgba(0,245,255,0.3)' }}>
+                    채널 바로가기 →
+                  </a>
+                </div>
+              )}
+            </div>
+            {/* Footer */}
+            <div style={{ padding: '16px 24px', borderTop: '1px solid rgba(0,255,136,0.15)', display: 'flex', gap: '10px', justifyContent: 'flex-end', background: 'rgba(0,0,0,0.3)' }}>
+              <button onClick={() => setSelectedInfluencer(null)} style={{ padding: '10px 18px', borderRadius: '8px', cursor: 'pointer', background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.15)', color: 'rgba(255,255,255,0.7)', fontSize: '12px' }}>닫기</button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ═══ EXECUTION LOCK STRIP ═══ */}
       <footer className="datawall-execution-strip datawall-enter datawall-delay-5">

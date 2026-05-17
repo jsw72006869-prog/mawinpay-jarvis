@@ -382,31 +382,96 @@ async function generateEnhancedCopy(params: {
 
   const instruction = typeInstructions[contentType] || typeInstructions.headcopy;
 
+  // 스타일 학습 데이터 로드 (localStorage에서 저장된 피드백)
+  let styleMemory = '';
+  try {
+    // Sheets에서 스타일 학습 데이터 로드
+    if (WORKSPACE_SHEET_ID && GOOGLE_SHEETS_CREDENTIALS) {
+      const token = await getGoogleSheetsToken();
+      const range = encodeURIComponent('StyleMemory!A:D');
+      const url = `https://sheets.googleapis.com/v4/spreadsheets/${WORKSPACE_SHEET_ID}/values/${range}?majorDimension=ROWS`;
+      const smRes: any = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
+      if (smRes.ok) {
+        const smData = await smRes.json();
+        const smRows = (smData.values || []).slice(-20); // 최근 20건
+        const approved = smRows.filter((r: string[]) => r[2] === 'approved').map((r: string[]) => r[1]).slice(-5);
+        const rejected = smRows.filter((r: string[]) => r[2] === 'rejected').map((r: string[]) => r[1]).slice(-5);
+        if (approved.length > 0 || rejected.length > 0) {
+          styleMemory = `\n[mawinpay 스타일 학습 결과]
+대표님이 선택한 카피 예시: ${approved.join(' | ')}
+대표님이 거절한 카피 예시: ${rejected.join(' | ')}
+→ 선택된 카피의 톤, 길이, 감각어 밀도를 더 반영하고, 거절된 카피의 패턴은 피하세요.`;
+        }
+      }
+    }
+  } catch {} // 스타일 메모리 실패해도 카피 생성은 계속
+
   const systemPrompt = `당신은 "농산물 바이럴 카피 마스터"입니다.
 대한민국 농산물/식품 분야에서 가장 반응이 좋은 카피를 쓰는 전문가입니다.
+당신의 카피는 실제로 스레드/릴스/카카오톡에서 바이럴이 되어 수백 개의 댓글과 DM을 유도합니다.
 
-[핵심 원칙]
-1. 광고 냄새가 나면 안 됩니다. 친구에게 말하듯 자연스럽게.
-2. 첫 문장에서 스크롤을 멈추게 해야 합니다.
-3. 감각(맛, 향, 식감, 온도)을 글로 느끼게 해야 합니다.
-4. 계절감, 수확 타이밍, 한정성을 활용합니다.
-5. 댓글/DM/저장을 유도하는 여운을 남깁니다.
+[핵심 원칙 — 절대 어기지 마세요]
+1. 광고 냄새가 나면 실패입니다. 친구에게 카톡으로 말하듯, 자연스럽게.
+2. 첫 문장 1.5초 안에 스크롤을 멈추게 해야 합니다. 첫 문장이 전부입니다.
+3. 감각(맛, 향, 식감, 온도, 소리)을 글로 느끼게 해야 합니다. 독자가 침을 삼키게.
+4. 계절감, 수확 타이밍, 한정성을 자연스럽게 녹여내세요.
+5. 댓글/DM/저장을 유도하는 여운을 남기세요. 끝을 다 말하지 마세요.
 6. 과장 광고, 허위 효능, 매출 보장 표현은 절대 금지합니다.
+7. 각 카피는 완전히 다른 각도/톤/구조로 쓰세요. 비슷한 카피 반복 금지.
+8. 실제 사람이 쓰는 구어체, 말줄임표, 감탄사를 자연스럽게 사용하세요.
+
+[후킹 유형별 마스터 템플릿]
+- sensory_hook: 감각을 자극하는 문장으로 시작. "한 입 베는 순간, 즙이 턱 아래로 흐르는..."
+- conflict_hook: 예상을 깨는 반전/갈등. "농부들이 절대 안 팔려고 하는 복숭아가 있다"
+- confession_hook: 솔직한 고백/인정. "사실 나도 이거 먹기 전에는 복숭아 다 똑같은 줄 알았다"
+- seasonal_hook: 계절/시기 긴박감. "지금 이 2주가 지나면 내년까지 못 먹는다"
+- contrarian_hook: 통념 부수기. "마트에서 복숭아 사는 사람들이 모르는 것"
+- local_trust_hook: 산지/농부 신뢰. "우리 아버지가 40년 키운 나무에서"
+- memory_hook: 추억/감성 자극. "어릴 때 할머니 댓 뒤에서 따먹던 그 맛"
+- limited_timing_hook: 한정/긴박. "오늘 수확한 거 내일까지만 받을 수 있음"
+- identity_hook: 정체성/자부심. "이거 아는 사람만 사는 복숭아"
+- question_hook: 질문으로 호기심. "복숭아 달기가 왜 해마다 다른지 아세요?"
+- surprise_hook: 놀라운 사실. "이 복숭아 당도 24도인데 신맛이 나요"
+
+[문장 리듬 법칙]
+- 짧은 문장 → 긴 문장 → 짧은 문장 (호흡 리듬)
+- 줄바꿈을 적극 활용 (스레드/릴스는 줄바꿈이 생명)
+- 말줄임표(...)로 여운 남기기
+- 감탄사는 아끼지 마세요 ("진짜", "실화", "레전드")
+
+[감각어 마스터 클래스]
+- 맛: 달콤/새콤/짭조름/청량/농밀/상큼함/꽀덕함
+- 식감: 아삭/터짐/즙이 톡/물컹/사각/쪰덕/쏠득
+- 향: 달콤한 향/은은한 향/풀내음/꽃향/수박 향
+- 온도: 차가운/시원한/따뜻한/뜨거운/얼음장 같은
+- 소리: 아삭/톡/쏠득/시원하게/바삭
 
 [mawinpay 스타일]
-- 친근하고 말하듯 툭 던지는 문장
-- 강한 첫 문장으로 시작
-- 계절감과 식감을 살린 묘사
-- 스토리텔링 (수확 현장, 농부 이야기)
-- 댓글/DM 유도하는 마무리
-- 여운 있는 끝맺음
-${userStyle ? `- 추가 스타일: ${userStyle}` : ''}
+- 친근하고 말하듯 툹 던지는 문장. 광고 같으면 실패.
+- 강한 첫 문장으로 시작. 첫 줄이 전부.
+- 계절감과 식감을 살린 생생한 묘사
+- 스토리텔링 (수확 현장, 농부 이야기, 산지 풍경)
+- 댓글/DM 유도하는 마무리 ("나만 그런가?", "이거 아는 사람?")
+- 여운 있는 끝맺음 (다 말하지 않기)
+${userStyle ? `- 추가 스타일 요청: ${userStyle}` : ''}
+${styleMemory}
 
-[금지 표현]
-- "최저가 보장", "효능 보장", "매출 보장"
+[금지 표현 — 이거 쓰면 실격]
+- "최저가 보장", "효능 보장", "매출 보장", "성공 보장"
 - "지금 안 사면 후회", "한정 수량 마감 임박" (과도한 공포)
 - 가짜 리뷰처럼 꾸며 쓰기
-- 근거 없는 건강 효능 주장`;
+- 근거 없는 건강 효능 주장
+- "대박 할인", "무료 배송" 등 가격 중심 표현
+- "많은 분들이", "화제의" 등 모호한 사회적 증거
+
+[품질 자가 검증]
+각 카피를 쓰고 나서 스스로 점검하세요:
+✔ 첫 문장만 읽어도 스크롤을 멈추는가?
+✔ 실제 사람이 카톡으로 보낼 법한 문장인가?
+✔ 감각어가 2개 이상 들어갔는가?
+✔ 다른 카피와 완전히 다른 각도인가?
+✔ 금지 표현을 쓰지 않았는가?
+통과 못하면 다시 쓰세요.`;
 
   const userPrompt = `[상품] ${product}
 [콘텐츠 타입] ${contentType}
@@ -557,7 +622,30 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       });
     }
 
-    return res.status(400).json({ error: `Unknown action: ${action}. Use "collect", "generate", or "library".` });
+    // ── Action: save_feedback — 스타일 학습 피드백 저장 ──
+    if (action === 'save_feedback') {
+      const { headline, feedbackType } = req.body || {};
+      try {
+        if (WORKSPACE_SHEET_ID && GOOGLE_SHEETS_CREDENTIALS && headline) {
+          const token = await getGoogleSheetsToken();
+          const now = new Date().toISOString();
+          const row = [[now, headline, feedbackType || 'unknown', product || '']];
+          const range = encodeURIComponent('StyleMemory!A1');
+          const url = `https://sheets.googleapis.com/v4/spreadsheets/${WORKSPACE_SHEET_ID}/values/${range}:append?valueInputOption=RAW&insertDataOption=INSERT_ROWS`;
+          await fetch(url, {
+            method: 'POST',
+            headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+            body: JSON.stringify({ values: row }),
+          });
+          return res.status(200).json({ success: true, saved: true });
+        }
+        return res.status(200).json({ success: true, saved: false, reason: 'no_sheets_config' });
+      } catch (e: any) {
+        return res.status(200).json({ success: false, error: e.message });
+      }
+    }
+
+    return res.status(400).json({ error: `Unknown action: ${action}. Use "collect", "generate", "library", or "save_feedback".` });
   } catch (e: any) {
     console.error('[trend-collector] Error:', e);
     return res.status(500).json({ error: e.message });

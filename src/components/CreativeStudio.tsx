@@ -286,7 +286,7 @@ function CopyDetailModal({
             복사
           </button>
           <button
-            onClick={onClose}
+            onClick={() => { onClose(); saveStyleFeedback(copy.headline, 'rejected', product); }}
             style={{
               padding: '10px 18px', borderRadius: '8px', cursor: 'pointer',
               background: 'rgba(255,255,255,0.06)',
@@ -312,6 +312,35 @@ function CopyDetailModal({
       </motion.div>
     </motion.div>
   );
+}
+
+// ═══ 스타일 학습 피드백 저장 ═══
+async function saveStyleFeedback(headline: string, action: 'approved' | 'rejected', product: string) {
+  try {
+    // 1. localStorage에 즉시 저장 (로컬 캐시)
+    const existing = JSON.parse(localStorage.getItem('jarvis.styleMemory') || '[]');
+    existing.push({
+      headline,
+      action,
+      product,
+      timestamp: new Date().toISOString(),
+    });
+    // 최대 50건만 유지
+    if (existing.length > 50) existing.splice(0, existing.length - 50);
+    localStorage.setItem('jarvis.styleMemory', JSON.stringify(existing));
+
+    // 2. Google Sheets에 저장 (API 호출)
+    fetch('/api/trend-collector', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        action: 'save_feedback',
+        headline,
+        feedbackType: action,
+        product,
+      }),
+    }).catch(() => {}); // 실패해도 무시
+  } catch {}
 }
 
 // ═══ 메인 컴포넌트 ═══
@@ -346,6 +375,15 @@ export default function CreativeStudio({
     onSelect(copy);
     setSelectedCopy(null);
     onJarvisContextEvent?.({ intent: 'copy_selected', payload: { copy } });
+    // 스타일 학습: approved 피드백 저장
+    saveStyleFeedback(copy.headline, 'approved', product);
+  };
+
+  const handlePass = (copy: CopyCard) => {
+    setSelectedCopy(null);
+    onJarvisContextEvent?.({ intent: 'copy_passed', payload: { copy } });
+    // 스타일 학습: rejected 피드백 저장
+    saveStyleFeedback(copy.headline, 'rejected', product);
   };
 
   return (
