@@ -33,9 +33,10 @@ interface Props {
   onSave: (candidates: InfluencerCandidate[]) => void;
   onViewEmail?: (candidate: InfluencerCandidate) => void;
   onViewFollowUp?: (candidate: InfluencerCandidate) => void;
+  onCandidateSelect?: (candidate: InfluencerCandidate) => void;
 }
 
-export default function InfluencerOutreachPanel({ visible, candidates, loading, onClose, onSave, onViewEmail, onViewFollowUp }: Props) {
+export default function InfluencerOutreachPanel({ visible, candidates, loading, onClose, onSave, onViewEmail, onViewFollowUp, onCandidateSelect }: Props) {
   const [filter, setFilter] = useState<'all' | 'high' | 'youtube' | 'naver'>('all');
   const [selectedCandidate, setSelectedCandidate] = useState<InfluencerCandidate | null>(null);
   const [emailView, setEmailView] = useState<'first' | 'followup' | null>(null);
@@ -179,7 +180,7 @@ export default function InfluencerOutreachPanel({ visible, candidates, loading, 
                   cursor: 'pointer',
                   position: 'relative', overflow: 'hidden',
                 }}
-                onClick={() => setSelectedCandidate(c)}
+                onClick={() => { setSelectedCandidate(c); onCandidateSelect?.(c); }}
               >
                 {/* Score Badge */}
                 <div style={{

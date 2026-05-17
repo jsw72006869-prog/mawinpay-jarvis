@@ -8,6 +8,7 @@ import { saveLearnedKnowledge, getLearnedKnowledge, getMemoryStats, clearAllMemo
 import { appendInfluencersToSheet, appendEmailLogToSheet, appendNaverResultsToSheet, appendInstagramToSheet, appendLocalBusinessToSheet, generateMockInfluencers, generateEmailLogs, sendEmailsViaResend, buildInfluencerEmailHtml, type NaverCollectedData } from '../lib/google-sheets';
 import ConversationStream, { type Message } from './ConversationStream';
 import ConversationPanel, { type STTStatus } from './ConversationPanel';
+import { getContextReply, buildCandidateConversationContext, buildOutreachCompletionContext, buildCopyCardConversationContext, buildCopyCompletionContext, buildDataWallConversationContext, type JarvisContextEvent, type JarvisReply, type JarvisSuggestedAction } from '../lib/jarvis-dialogue';
 import ActionCard, { type ActionContext, type WorkflowStep, type ApprovalPreviewData, buildWorkflowSteps, matchVoiceToAction, buildApprovalPreview } from './ActionCard';
 import SparkleParticles from './SparkleParticles';
 import ClapDetector from './ClapDetector';
@@ -408,6 +409,8 @@ export default function JarvisApp() {
     _setActiveSceneRaw(scene);
   }, []);
   const [messages, setMessages] = useState<Message[]>([]);
+  const [suggestedActions, setSuggestedActions] = useState<JarvisSuggestedAction[]>([]);
+  const lastAssistantMsgRef = useRef<string>('');
   const [isListening, setIsListening] = useState(false);
   const [micLevel, setMicLevel] = useState(0);
   const [speakingLevel, setSpeakingLevel] = useState(0);
@@ -1110,6 +1113,58 @@ export default function JarvisApp() {
   const addMessage = useCallback((role: 'user' | 'jarvis', text: string, isCompletion = false) => {
     setMessages(prev => [...prev, { id: Date.now().toString(), role, text, timestamp: new Date(), isCompletion }].slice(-8));
   }, []);
+
+
+
+  // ── JARVIS-CONVERSATION-OS-A.1: Context Event Handler ──
+  const handleJarvisContextEvent = useCallback(async (event: JarvisContextEvent) => {
+    const currentState = stateRef.current;
+    // busy 상태면 짧은 안내 후 queue
+    if (currentState === 'speaking' || currentState === 'thinking' || currentState === 'working') {
+      addMessage('jarvis', '선생님, 방금 작업을 마무리하는 중입니다. 잠시만 기다려주세요.');
+      return;
+    }
+
+    setState('thinking');
+    try {
+      let ctx: any = { screen: event.screen, intent: event.intent, executeLocked: true, lastAssistantMessage: lastAssistantMsgRef.current };
+
+      // Intent별 context 구성
+      if (event.intent === 'candidate_selected' && event.payload) {
+        ctx = buildCandidateConversationContext({ candidate: event.payload, lastAssistantMessage: lastAssistantMsgRef.current });
+      } else if (event.intent === 'outreach_collection_completed' && event.payload) {
+        ctx = buildOutreachCompletionContext({ candidates: event.payload as any[], lastAssistantMessage: lastAssistantMsgRef.current });
+      } else if (event.intent === 'copy_card_selected' && event.payload) {
+        ctx = buildCopyCardConversationContext({ copy: event.payload, lastAssistantMessage: lastAssistantMsgRef.current });
+      } else if (event.intent === 'copy_generation_completed' && event.payload) {
+        const p = event.payload as any;
+        ctx = buildCopyCompletionContext({ copies: p.copies || [], product: p.product || '', type: p.type || '', lastAssistantMessage: lastAssistantMsgRef.current });
+      } else if (event.intent === 'datawall_briefing_requested' && event.payload) {
+        ctx = buildDataWallConversationContext({ dataWallState: event.payload, lastAssistantMessage: lastAssistantMsgRef.current });
+      }
+
+      const reply = await getContextReply(ctx);
+
+      if (reply.shouldShowInChat) {
+        addMessage('jarvis', reply.text, true);
+        lastAssistantMsgRef.current = reply.text;
+      }
+      if (reply.suggestedActions) {
+        setSuggestedActions(reply.suggestedActions);
+      }
+      if (reply.shouldSpeak) {
+        setState('speaking');
+        startSpeakingLevel();
+        await new Promise<void>(resolve => {
+          speak(reply.text, undefined, () => { stopSpeakingLevel(); resolve(); });
+        });
+      }
+      setState('listening');
+    } catch (err: any) {
+      console.error('[JARVIS-DIALOGUE] handleContextEvent error:', err.message);
+      setState('listening');
+    }
+  }, [addMessage, speak, setState]);
 
   const jarvisRespond = useCallback(async (text: string, action?: JarvisAction) => {
     setIsTyping(true);
@@ -8867,6 +8922,9 @@ G. Review Objection: 작다/비싸다/무르다/배송 손상/맛 기대와 다�
       />
       <InfluencerOutreachPanel
         visible={outreachVisible}
+        onCandidateSelect={(candidate) => {
+          handleJarvisContextEvent({ intent: 'candidate_selected', screen: 'candidate_detail', payload: candidate });
+        }}
         candidates={outreachCandidates}
         loading={outreachLoading}
         onClose={() => setOutreachVisible(false)}
