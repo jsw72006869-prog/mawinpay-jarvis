@@ -1,17 +1,19 @@
-# DATAWALL-NODE-MOTION-A.1: Agent Icon Micro-Activity Layer Report
+# DATAWALL-NODE-MOTION-A.1: Agent Icon Micro-Activity Layer + Visual Proof Report
 
-**작업명**: DATAWALL-NODE-MOTION-A.1 / Agent Icon Micro-Activity Layer
-**분류**: 2번 화면 미세 모션 강화
-**목적**: 현재 DATAWALL-NODE-CANVAS-A.1 구조를 유지하면서, 노드 아이콘/상태/커넥터에 미세한 작업감 애니메이션을 추가하여 1번 화면 수준의 시네마틱 모션과 비주얼 폴리싱을 구현
+## 1. 작업 개요
 
-## 1. 수정 파일
+본 보고서는 `DATAWALL-NODE-MOTION-A.1` 작업의 최종 검증 결과를 담고 있습니다. 기존 `DATAWALL-NODE-CANVAS-A.1` 작업에서 구현된 n8n-style Agent Workflow Canvas에 **Micro-Activity Layer**를 추가하여 아이콘과 노드의 '작업감'을 강화하고, 시네마틱 UI 폴리싱을 통해 전반적인 시각적 완성도를 높이는 것이 목표였습니다. 데이터/API 로직 수정 없이 UI/UX 개선에만 집중하여 진행되었습니다.
+
+## 2. 수정 파일 목록
 
 - `src/components/DataWallView.tsx`
 - `src/index.css`
 
-## 2. 추가된 Micro-Motion 목록 및 설명
+## 3. 추가된 Micro-Motion 목록 및 구현 설명
 
-### 2.1. Active Node Motion
+### 3.1. Active Node Motion
+
+Active 상태의 노드에는 다음과 같은 미세 모션이 추가되었습니다.
 
 - **CURRENT badge shimmer**: `is-current` 클래스를 가진 노드의 `CURRENT` 뱃지에 아주 약한 shimmer 효과를 추가했습니다.
 - **Node top-right tiny processing dots**: 활성화된 노드 우상단에 3개의 작은 점들이 순차적으로 움직이는 `agentDotWork` 애니메이션을 추가하여 '작업 중'임을 시각적으로 표현했습니다.
@@ -19,7 +21,7 @@
 - **Icon orb satellite**: 노드 아이콘 주변에 작은 위성(satellite) 점이 천천히 회전하는 `agentOrbOrbit` 애니메이션을 추가했습니다.
 - **Node 내부 하단 micro progress rail**: 노드 하단에 미세한 진행 바가 좌우로 움직이는 `agentMicroRail` 애니메이션을 추가했습니다.
 
-### 2.2. Icon Orb / Satellite 구현
+### 3.2. Icon Orb / Satellite 구현
 
 `AgentFlowNode` 컴포넌트 내의 `agent-node-orb` 요소에 `orb-${node.status}` 클래스를 추가하여 노드 상태별로 다른 시각적 효과를 부여했습니다.
 
@@ -32,25 +34,36 @@
 - **`orb-error`**: 작고 느린 warning blink (`agentOrbWarning` 애니메이션)를 추가하여 에러 상태를 시각적으로 알립니다.
 - **`agent-orb-satellite`**: `orb-current` 상태일 때만 표시되며, `agentOrbOrbit` 애니메이션을 통해 아이콘 주변을 회전합니다.
 
-### 2.3. Connector Flow 개선
+### 3.3. Connector Flow 개선
 
 - **Active edge**: `is-active` 클래스를 가진 커넥터에 `datawallFlowSweep` 애니메이션을 적용하여 작은 빛의 패킷이 흐르는 듯한 느낌을 주어 실제 작업 흐름을 시각적으로 강화했습니다.
 - **Completed edge**: `is-completed` 클래스를 가진 커넥터는 은은한 선으로 표시됩니다.
 - **Locked path**: `is-locked-path` 클래스를 가진 커넥터는 dim 처리됩니다.
 
-### 2.4. Activity Inspector Signal Motion
+### 3.4. Activity Inspector Signal Motion
 
 오른쪽 `Activity Inspector` 패널의 `signal-row` 내 `signal-dot`에 `signalDotPulse` 애니메이션을 추가하여 작은 상태 점이 맥동하는 모션을 부여했습니다. `is-amber` 클래스일 경우 애니메이션을 비활성화하여 과도한 활성화 느낌을 방지했습니다.
 
-### 2.5. `not_connected` / `locked` Motion 제한 방식
+### 3.5. `not_connected` / `locked` Motion 제한 방식
 
 - `not_connected` 노드는 `agent-orb-satellite` 및 `agent-node-processing` 애니메이션을 비활성화하고, `box-shadow`를 제거하며 `opacity`를 낮춰 움직임을 거의 주지 않도록 했습니다.
 - `locked` 노드는 `agent-orb-satellite` 애니메이션을 비활성화하여 '일하는 느낌'이 아닌 '잠긴 실행 단계'로 보이도록 시각적 제한을 두었습니다.
 - `prefers-reduced-motion: reduce` 미디어 쿼리를 사용하여 사용자가 애니메이션을 선호하지 않을 경우 모든 미세 모션을 비활성화하도록 설정했습니다.
 
-## 3. 실제 링크 테스트 결과
+## 4. Build 결과
 
-**검증 링크**: `https://mawinpay-jarvis.vercel.app/?view=data-wall&mode=secondary`
+`pnpm build` 결과, 성공적으로 빌드가 완료되었습니다. (빌드 시간: 11.23s)
+
+```
+vite v6.4.2 building for production...
+✓ 1050 modules transformed.
+... (생략)
+✓ built in 11.23s
+```
+
+## 5. 실제 링크 테스트 결과
+
+**테스트 링크**: [https://mawinpay-jarvis.vercel.app/?view=data-wall&mode=secondary](https://mawinpay-jarvis.vercel.app/?view=data-wall&mode=secondary)
 
 | 검증 항목 | 결과 | 상세 내용 |
 |---|---|---|
@@ -62,35 +75,20 @@
 | 전체가 산만하지 않은가 | **PASS** | 미세 모션들이 전반적으로 시네마틱 톤과 어울리며 산만하지 않고, 작업의 활성도를 자연스럽게 표현합니다. |
 | 1번 화면과 톤이 맞는가 | **PASS** | 전체적인 디자인, 색상, 애니메이션 스타일이 1번 화면의 시네마틱 톤과 일관성을 유지합니다. |
 
-## 4. 수정 후 스크린샷
+## 6. 수정 후 스크린샷
 
-### 4.1. 전체 화면 캡처
+(첨부 파일 참조)
 
-![전체 화면 캡처](/home/ubuntu/proof_assets/01_full_screen.webp)
+- `01_full_screen.webp`: 전체 2번 화면
+- `02_node_canvas.webp`: Node Canvas 영역 확대
+- `03_active_node.webp`: Active Node (Smartstore) 확대
+- `04_connector_flow.webp`: Connector Flow (Smartstore -> Outreach) 확대
+- `05_activity_inspector.webp`: Activity Inspector signal 영역 확대
+- `06_execute_locked.webp`: EXECUTE LOCKED 영역
 
-### 4.2. Node Canvas 캡처
+## 7. 1번 화면 회귀 테스트 결과
 
-![Node Canvas 캡처](/home/ubuntu/proof_assets/02_node_canvas.webp)
-
-### 4.3. Active Node (Copy Brain) 캡처
-
-![Active Node (Copy Brain) 캡처](/home/ubuntu/proof_assets/03_active_node_copy_brain.webp)
-
-### 4.4. Connector Flow 캡처
-
-![Connector Flow (Smartstore - Outreach) 캡처](/home/ubuntu/proof_assets/04_connector_flow_1.webp)
-
-![Connector Flow (Hot Content - Copy Brain) 캡처](/home/ubuntu/proof_assets/05_connector_flow_2.webp)
-
-### 4.5. Activity Inspector 캡처
-
-![Activity Inspector 캡처](/home/ubuntu/proof_assets/06_activity_inspector.webp)
-
-### 4.6. EXECUTE LOCKED 캡처
-
-![EXECUTE LOCKED 캡처](/home/ubuntu/proof_assets/07_execute_locked.webp)
-
-## 5. 1번 화면 회귀 테스트 결과
+**테스트 링크**: [https://mawinpay-jarvis.vercel.app/](https://mawinpay-jarvis.vercel.app/)
 
 | 검증 항목 | 결과 | 상세 내용 |
 |---|---|---|
@@ -98,7 +96,7 @@
 | “오늘 업무 브리핑 해줘” 실행 | **PASS** | 1번 화면에서 `오늘 업무 브리핑 해줘` 명령 실행 시 브리핑 내용이 정상적으로 표시됨을 확인했습니다. |
 | 2번 화면 재진입 | **PASS** | 1번 화면 테스트 후 2번 화면으로 재접속 시 n8n-style 캔버스가 미세 모션과 함께 정상적으로 표시됨을 확인했습니다. |
 
-## 6. 보안 검증 결과
+## 8. 보안 검증 결과
 
 | 검증 항목 | 결과 | 상세 내용 |
 |---|---|---|
@@ -110,10 +108,10 @@
 | 고객 개인정보 없음 | **PASS** | 화면에 고객명, 전화번호, 주소, 주문번호 등 개인정보가 노출되지 않음을 확인했습니다. |
 | EXECUTE LOCKED 유지 | **PASS** | 하단 `EXECUTE LOCKED` 바가 정상적으로 유지됨을 확인했습니다. |
 
-## 7. 최종 판단
+## 9. 최종 판단
 
 **PASS**
 
-제공된 지시서의 모든 미세 모션 및 시각적 폴리싱 요구사항을 성공적으로 구현했으며, 실제 링크에서 정상 동작함을 확인했습니다. 기존 기능에 대한 회귀 및 보안 문제도 발생하지 않았습니다. 전반적으로 1번 화면과 일관된 시네마틱 톤을 유지하면서 2번 화면의 활성도를 효과적으로 표현합니다.
+제공된 지시서의 모든 미세 모션 및 시각적 폴리싱 요구사항을 성공적으로 구현했으며, 실제 링크에서 정상 동작함을 확인했습니다. 기존 기능에 대한 회귀도 없으며, 보안 원칙도 준수되었습니다. 전반적으로 1번 화면과 일관된 시네마틱 톤을 유지하면서 2번 화면의 활성도를 효과적으로 표현합니다.
 
 ---
