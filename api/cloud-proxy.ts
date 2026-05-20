@@ -3247,6 +3247,16 @@ async function handleOutreachCollect(params: any) {
   const finalCandidates = candidates.slice(0, max);
   const shortfall = requireEmail ? Math.max(0, max - finalCandidates.length) : 0;
 
+  // ── AUTO-SAVE: 수집 완료 후 influencer_candidates_v2 자동 저장 ──
+  let autoSaveResult: any = null;
+  if (finalCandidates.length > 0 && WORKSPACE_SHEET_ID && GOOGLE_SHEETS_CREDENTIALS) {
+    try {
+      autoSaveResult = await handleOutreachSaveCandidates({ candidates: finalCandidates, dryRun: false });
+    } catch (e: any) {
+      autoSaveResult = { success: false, error: e.message };
+    }
+  }
+
   return {
     success: true,
     candidates: finalCandidates,
@@ -3265,6 +3275,7 @@ async function handleOutreachCollect(params: any) {
     },
     shortfall,
     appendMode: true,
+    autoSave: autoSaveResult,
     message: requireEmail
       ? `4단계 파이프라인으로 ${productName} 공동구매 이메일 확인 후보 ${finalCandidates.length}명을 수집했습니다.${shortfall > 0 ? ` (${shortfall}명 부족)` : ''}`
       : `4단계 파이프라인으로 ${productName} 공동구매 후보 ${finalCandidates.length}명을 수집했습니다.`,
