@@ -2983,31 +2983,66 @@ async function handleOutreachCollect(params: any) {
   }
 
   // ══════════════════════════════════════════════════════════════
-  // STEP B: Candidate Expansion — 세그먼트별 채널 검색 + Trend 채널 병합
+  // STEP B+C: 목표 인원 달성까지 반복 수집 루프
   // ══════════════════════════════════════════════════════════════
   const allChannelIds: string[] = [...trendChannelIds];
 
-  if ((platform === 'all' || platform === 'youtube') && YOUTUBE_API_KEY) {
-    try {
-      const relevantSegments = getRelevantSegments(productName);
-      const searchQueries = getSearchQueries(relevantSegments);
-      searchedSegments.push(...relevantSegments);
+  // 반복 수집용 추가 쿼리 풀 (라운드마다 다른 키워드 사용)
+  const EXTRA_QUERY_SUFFIXES = [
+    '추천', '리뷰', '브이로그', '공동구매', '협찬', '체험단',
+    '먹방', '요리', '캠핑', '살림', '일상', '간식', '레시피',
+    '구독자', '채널', '유튜버', '인플루언서', '크리에이터',
+  ];
+  let extraQueryIdx = 0;
+  let collectRound = 0;
+  const MAX_QUOTA = 1800; // 최대 quota 소모 한도
+  const MAX_ROUNDS = 8;   // 최대 반복 횟수
 
-      // 세그먼트별 채널 검색 (quota 관리: 최대 6개 검색)
-      const maxSearches = Math.min(searchQueries.length, 6);
-      const perSearchMax = Math.ceil((max * 2) / maxSearches);
+  while (
+    (platform === 'all' || platform === 'youtube') &&
+    YOUTUBE_API_KEY &&
+    candidates.length < max &&
+    telemetry.quotaUsed < MAX_QUOTA &&
+    collectRound < MAX_ROUNDS
+  ) {
+    collectRound++;
+    const roundChannelIds: string[] = [];
+
+    try {
+      // 1라운드: 기존 세그먼트 쿼리 사용 / 이후 라운드: 추가 키워드 사용
+      let searchQueries: { segment: string; query: string }[];
+      if (collectRound === 1) {
+        const relevantSegments = getRelevantSegments(productName);
+        searchQueries = getSearchQueries(relevantSegments);
+        searchedSegments.push(...relevantSegments);
+      } else {
+        // 추가 라운드: 아직 사용하지 않은 suffix 키워드로 검색
+        const suffix = EXTRA_QUERY_SUFFIXES[extraQueryIdx % EXTRA_QUERY_SUFFIXES.length];
+        extraQueryIdx++;
+        const suffix2 = EXTRA_QUERY_SUFFIXES[extraQueryIdx % EXTRA_QUERY_SUFFIXES.length];
+        extraQueryIdx++;
+        searchQueries = [
+          { segment: '추가검색', query: `${productName} ${suffix}` },
+          { segment: '추가검색2', query: `${keyword} ${suffix2}` },
+        ];
+      }
+
+      const maxSearches = Math.min(searchQueries.length, collectRound === 1 ? 6 : 3);
+      const needed = max - candidates.length;
+      const perSearchMax = Math.min(Math.ceil((needed * 3) / maxSearches), 20);
 
       for (let i = 0; i < maxSearches; i++) {
+        if (candidates.length >= max) break;
+        if (telemetry.quotaUsed >= MAX_QUOTA) break;
+
         const { segment, query } = searchQueries[i];
-        const searchUrl = `https://www.googleapis.com/youtube/v3/search?part=snippet&type=channel&q=${encodeURIComponent(query)}&maxResults=${Math.min(perSearchMax, 20)}&regionCode=KR&hl=ko&key=${getCurrentYouTubeKey()}`;
+        const searchUrl = `https://www.googleapis.com/youtube/v3/search?part=snippet&type=channel&q=${encodeURIComponent(query)}&maxResults=${perSearchMax}&regionCode=KR&hl=ko&key=${getCurrentYouTubeKey()}`;
         const searchRes: any = await fetchYouTubeAPI(searchUrl);
         telemetry.apiCalls++; telemetry.searchCalls++; telemetry.quotaUsed += 100;
 
         if (!searchRes.ok) {
           const errData = await searchRes.json() as any;
-          if (errData.error?.errors?.[0]?.reason === 'quotaExceeded') {
-            break; // quota 초과 시 더 이상 검색하지 않고 현재까지 수집된 것으로 진행
-          }
+          if (errData.error?.errors?.[0]?.reason === 'quotaExceeded') break;
           continue;
         }
         const searchData = await searchRes.json() as any;
@@ -3016,23 +3051,22 @@ async function handleOutreachCollect(params: any) {
         const newChannelIds = searchData.items
           .map((item: any) => item.snippet.channelId || item.id?.channelId)
           .filter((id: string) => id && !seenChannelIds.has(id) && !existingIds.has(id));
-        newChannelIds.forEach((id: string) => { seenChannelIds.add(id); allChannelIds.push(id); });
+        newChannelIds.forEach((id: string) => { seenChannelIds.add(id); roundChannelIds.push(id); allChannelIds.push(id); });
         telemetry.searchChannelsFound += newChannelIds.length;
       }
     } catch (e: any) {
-      // 검색 실패해도 Trend 채널로 계속 진행
+      // 검색 실패해도 계속 진행
     }
-  }
 
-  // ══════════════════════════════════════════════════════════════
-  // STEP C: Public Contact Verification — 채널 상세 + 이메일 확인
-  // ══════════════════════════════════════════════════════════════
-  if ((platform === 'all' || platform === 'youtube') && YOUTUBE_API_KEY && allChannelIds.length > 0) {
+    // ── STEP C: 이번 라운드에서 수집한 채널 상세 + 이메일 확인 ──
+    const roundIds = collectRound === 1 ? allChannelIds : roundChannelIds;
+    if (roundIds.length === 0) { if (collectRound > 1) break; continue; }
+
     try {
-      // 50개씩 배치로 channels.list 호출
       const batchSize = 50;
-      for (let batchStart = 0; batchStart < allChannelIds.length; batchStart += batchSize) {
-        const batch = allChannelIds.slice(batchStart, batchStart + batchSize);
+      for (let batchStart = 0; batchStart < roundIds.length; batchStart += batchSize) {
+        if (candidates.length >= max) break;
+        const batch = roundIds.slice(batchStart, batchStart + batchSize);
         const channelsUrl = `https://www.googleapis.com/youtube/v3/channels?part=snippet,statistics,brandingSettings&id=${batch.join(',')}&key=${getCurrentYouTubeKey()}`;
         const channelsRes: any = await fetchYouTubeAPI(channelsUrl);
         telemetry.apiCalls++; telemetry.channelCalls++; telemetry.quotaUsed += 1;
@@ -3041,13 +3075,13 @@ async function handleOutreachCollect(params: any) {
         const channelsData = await channelsRes.json() as any;
 
         for (const ch of (channelsData.items || [])) {
+          if (candidates.length >= max) break;
           const snippet = ch.snippet || {};
           const stats = ch.statistics || {};
           const branding = ch.brandingSettings?.channel || {};
           const subs = parseInt(stats.subscriberCount || '0', 10);
           const views = parseInt(stats.viewCount || '0', 10);
 
-          // 이메일 추출 강화: snippet.description + branding.description + customUrl
           const allDescText = [
             snippet.description || '',
             branding.description || '',
@@ -3071,8 +3105,6 @@ async function handleOutreachCollect(params: any) {
           };
 
           const fit = calculateProductFitScore(channelData, keyword, productName);
-
-          // Dedupe: channelId 기반
           const channelUrl = `https://www.youtube.com/channel/${ch.id}`;
 
           const candidate = {
@@ -3091,9 +3123,7 @@ async function handleOutreachCollect(params: any) {
             subscriberOrVisitor: subs > 0 ? (subs >= 10000 ? `${(subs/10000).toFixed(1)}만` : `${subs.toLocaleString()}`) : '-',
             viewCount: views > 0 ? (views >= 100000000 ? `${(views/100000000).toFixed(1)}억` : views >= 10000 ? `${(views/10000).toFixed(0)}만` : views.toLocaleString()) : '-',
             publicContactStatus: channelData.publicContactStatus,
-            // OUTREACH-EMAIL-CAPTURE-FIX.1: 마스킹 이메일은 publicEmailMasked에만 보관
             publicEmailMasked: contact.email ? maskEmail(contact.email) : '',
-            // OUTREACH-EMAIL-CAPTURE-FIX.1: 구글 시트 저장용 원본 이메일 (마스킹 제거)
             contact_email: (contact.email && contact.email.includes('@')) ? contact.email : '',
             emailSource: hasEmail ? 'channel_description' : '',
             productFitScore: fit.score,
@@ -3107,13 +3137,11 @@ async function handleOutreachCollect(params: any) {
             notes: trendChannelIds.includes(ch.id) ? '🔥 트렌드 발견' : '',
             thumbnailUrl: snippet.thumbnails?.medium?.url || snippet.thumbnails?.default?.url || '',
             excludedReason: '',
-            // OUTREACH-COPY.1: 품목별 맞치형 제안 3콼럼
             proposal_angle: generateProposalAngle(channelData, keyword, productName),
             proposal_subject: generateProposalSubject(productName, keyword),
             proposal_draft: generateProposalDraft(channelData, keyword, productName),
           };
 
-          // 이메일 필수 조건 처리
           if (requireEmail && !hasEmail) {
             candidate.excludedReason = contact.email ? 'invalid_email_format' : 'no_public_email';
             excludedCandidates.push(candidate);
@@ -3123,11 +3151,12 @@ async function handleOutreachCollect(params: any) {
         }
       }
     } catch (e: any) {
-      if (e.message?.includes('할당량')) {
-        // quota 초과 시 현재까지 수집된 것으로 진행
-      }
+      // quota 초과 등 에러 시 현재까지 진행
     }
-  }
+
+    // 목표 인원 달성 시 루프 종료
+    if (candidates.length >= max) break;
+  } // end while STEP B+C
 
   // ── Naver Blog 수집 ──
   if (platform === 'all' || platform === 'naver') {
