@@ -3142,7 +3142,8 @@ async function handleOutreachCollect(params: any) {
             proposal_draft: generateProposalDraft(channelData, keyword, productName),
           };
 
-          if (requireEmail && !hasEmail) {
+          // EMAIL-ONLY-FILTER.1: 이메일 없는 후보는 항상 제외 (requireEmail 파라미터 무관)
+          if (!hasEmail) {
             candidate.excludedReason = contact.email ? 'invalid_email_format' : 'no_public_email';
             excludedCandidates.push(candidate);
           } else {
@@ -3348,6 +3349,12 @@ async function handleOutreachSaveCandidates(params: any) {
     let saved = 0, updated = 0, skipped = 0;
     const dryRunLog: any[] = [];
     for (const c of candidates) {
+      // EMAIL-ONLY-FILTER.1: 이메일 없는 후보는 저장 건너뛸
+      const rawEmail = c.contact_email || '';
+      if (!rawEmail || !rawEmail.includes('@')) {
+        skipped++;
+        continue;
+      }
       const platform = c.platform || '';
       const profileUrl = c.profile_url || c.channelOrBlogUrl || '';
       const channelName = c.channel_name || c.name || '';
