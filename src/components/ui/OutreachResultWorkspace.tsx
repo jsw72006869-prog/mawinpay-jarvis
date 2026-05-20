@@ -242,7 +242,7 @@ export default function OutreachResultWorkspace({
   onJarvisContextEvent,
   sheetsUrl,
 }: OutreachResultWorkspaceProps) {
-  const [filter, setFilter] = useState<'all' | 'high' | 'youtube' | 'naver' | 'email'>('all');
+  const [filter, setFilter] = useState<'all' | 'high' | 'youtube' | 'naver' | 'email' | 'qualified' | 'review'>('all');
   const [selectedCandidate, setSelectedCandidate] = useState<InfluencerCandidate | null>(null);
   const [detailOpen, setDetailOpen] = useState(false);
   const [page, setPage] = useState(0);
@@ -253,6 +253,8 @@ export default function OutreachResultWorkspace({
     if (filter === 'youtube') return c.platform.toLowerCase().includes('youtube');
     if (filter === 'naver') return c.platform.toLowerCase().includes('naver');
     if (filter === 'email') return c.publicContactStatus === 'email_public' || !!c.publicEmailMasked;
+    if (filter === 'qualified') return (c as any).target_match_status === 'qualified';
+    if (filter === 'review') return (c as any).target_match_status === 'review';
     return true;
   });
 
@@ -264,6 +266,8 @@ export default function OutreachResultWorkspace({
     contactable: candidates.filter(c => c.publicContactStatus === 'email_public' || c.publicContactStatus === 'form_available').length,
     highFit: candidates.filter(c => c.productFitScore >= 60).length,
     emailDraft: candidates.filter(c => c.firstEmailDraft).length,
+    qualified: candidates.filter(c => (c as any).target_match_status === 'qualified').length,
+    review: candidates.filter(c => (c as any).target_match_status === 'review').length,
   };
 
   const getScoreColor = (score: number) => {
@@ -383,6 +387,8 @@ export default function OutreachResultWorkspace({
           <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
             {[
               { key: 'all', label: '전체' },
+              { key: 'qualified', label: `✅ 적합 (${stats.qualified})` },
+              { key: 'review', label: `⚠️ 검토 (${stats.review})` },
               { key: 'high', label: '적합도↑' },
               { key: 'youtube', label: 'YouTube' },
               { key: 'naver', label: 'Naver' },
@@ -483,6 +489,19 @@ export default function OutreachResultWorkspace({
 
                     {/* 상태 배지 */}
                     <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+                      {/* OUTREACH-TARGET-FIT-A.1: target match status 배지 */}
+                      {(c as any).target_match_status === 'qualified' && (
+                        <span className="outreach-status-badge" style={{
+                          background: 'rgba(0,255,136,0.15)', border: '1px solid rgba(0,255,136,0.5)',
+                          color: '#00ff88', padding: '2px 7px', borderRadius: '3px', fontSize: '9px', fontWeight: 700,
+                        }}>✅ 적합</span>
+                      )}
+                      {(c as any).target_match_status === 'review' && (
+                        <span className="outreach-status-badge" style={{
+                          background: 'rgba(255,170,0,0.15)', border: '1px solid rgba(255,170,0,0.5)',
+                          color: '#ffaa00', padding: '2px 7px', borderRadius: '3px', fontSize: '9px', fontWeight: 700,
+                        }}>⚠️ 검토</span>
+                      )}
                       {(c.publicContactStatus === 'email_public' || c.publicEmailMasked) && (
                         <span className="outreach-status-badge" style={{
                           background: 'rgba(0,255,136,0.12)', border: '1px solid rgba(0,255,136,0.35)',
@@ -494,6 +513,13 @@ export default function OutreachResultWorkspace({
                           background: 'rgba(0,255,136,0.08)', border: '1px solid rgba(0,255,136,0.25)',
                           color: '#00ff88', padding: '2px 7px', borderRadius: '3px', fontSize: '9px',
                         }}>HIGH FIT</span>
+                      )}
+                      {/* requested_vertical 표시 */}
+                      {(c as any).requested_vertical && (c as any).requested_vertical !== 'unknown' && (
+                        <span style={{
+                          background: 'rgba(170,136,255,0.12)', border: '1px solid rgba(170,136,255,0.35)',
+                          color: '#aa88ff', padding: '2px 7px', borderRadius: '3px', fontSize: '9px',
+                        }}>{(c as any).requested_vertical}</span>
                       )}
                     </div>
 

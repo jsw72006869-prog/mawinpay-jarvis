@@ -2,6 +2,7 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import mysql from 'mysql2/promise';
 import crypto from 'crypto';
+import { evaluateTargetFit, detectVerticalFromKeyword, VERTICAL_QUERY_PACKS, type OutreachTargetVertical, type TargetMatchStatus, type TargetFitResult } from './target-fit-gate';
 
 // Dynamic imports for ESM-only packages (resolved at runtime)
 let _bcrypt: any = null;
@@ -2478,7 +2479,7 @@ const SHEET_HEADERS: Record<string, string[]> = {
   growth_campaigns: ['campaignId','createdAt','product','source','targetUrl','directUrl','couponCode','campaignMemo','status'],
   purchase_order_drafts: ['draftId','createdAt','supplier','productSummary','totalQuantity','totalAmountIfAvailable','status','safePreview'],
   influencer_candidates: ['influencer_id','platform','channel_name','handle','profile_url','contact_email','contact_url','email_status','category_tags','source_keyword','source_product','followers_or_subscribers','avg_views','fit_score','fit_reason','outreach_status','last_contacted_at','reply_status','next_action','duplicate_hash','created_at','updated_at','notes'],
-  influencer_candidates_v2: ['influencer_id','platform','channel_name','handle','profile_url','contact_email','contact_url','email_status','category_tags','source_keyword','source_product','followers_or_subscribers','avg_views','fit_score','fit_reason','outreach_status','last_contacted_at','reply_status','next_action','duplicate_hash','created_at','updated_at','notes','proposal_angle','proposal_subject','proposal_draft'],
+  influencer_candidates_v2: ['influencer_id','platform','channel_name','handle','profile_url','contact_email','contact_url','email_status','category_tags','source_keyword','source_product','followers_or_subscribers','avg_views','fit_score','fit_reason','outreach_status','last_contacted_at','reply_status','next_action','duplicate_hash','created_at','updated_at','notes','proposal_angle','proposal_subject','proposal_draft','requested_vertical','target_match_status','target_match_score','target_evidence_terms','target_evidence_fields','exclude_reason','qualified_for_requested_vertical','collected_query'],
   market_price_checks: ['checkId','createdAt','productName','rawMaterialCost','currentPrice','shippingCost','packagingCost','platformFeeRate','otherCosts','competitorPrices','competitorMinPrice','competitorAvgPrice','netSalesAmount','estimatedMargin','estimatedMarginRate','jarvisDecision','recommendedAction','sourceCommand'],
   // DAILY-BRIEF-A.1: Daily Brief 4탭
   daily_operations_brief: ['brief_id','date_kst','period_start_kst','period_end_kst','smartstore_new_orders','smartstore_ready_orders','smartstore_delivering','smartstore_delivered','smartstore_purchase_decided','smartstore_confirm_needed','outreach_discovered','outreach_public_email_found','outreach_contact_url_found','outreach_draft_ready','outreach_approval_waiting','outreach_email_sent','outreach_positive_replies','outreach_accepted','outreach_followup_needed','outreach_followup_drafted','outreach_followup_sent','hot_youtube_count','hot_threads_count','hot_instagram_count','hot_tiktok_count','hot_naver_blog_count','telegram_sent','telegram_sent_at','telegram_error_code','created_at','notes'],
@@ -2844,7 +2845,7 @@ function generateFollowUpDraft(channel: any, keyword: string, product: string): 
 }
 
 async function handleOutreachCollect(params: any) {
-  const { keyword, product, maxCandidates = 20, platform = 'all', requireEmail = true, existingCandidateIds = [] } = params;
+  const { keyword, product, maxCandidates = 20, platform = 'all', requireEmail = true, existingCandidateIds = [], requestedVertical: explicitVertical } = params;
   if (!keyword) return { success: false, error: 'keyword required' };
 
   const candidates: any[] = [];
@@ -2852,6 +2853,9 @@ async function handleOutreachCollect(params: any) {
   const now = new Date().toISOString();
   const max = Math.min(maxCandidates, 50); // 50명 cap
   const productName = product || keyword;
+
+  // OUTREACH-TARGET-FIT-A.1: requestedVertical 감지
+  const requestedVertical: OutreachTargetVertical = explicitVertical || detectVerticalFromKeyword(keyword);
 
   // ── Telemetry 추적 ──
   const telemetry = {
@@ -2903,8 +2907,14 @@ async function handleOutreachCollect(params: any) {
     return Object.entries(segmentScores).sort((a, b) => b[1] - a[1]).slice(0, 5).map(([seg]) => seg);
   }
 
-  // ── 세그먼트별 검색어 생성 ──
+  // ── 세그먼트별 검색어 생성 (OUTREACH-TARGET-FIT-A.1: vertical query pack 우선) ──
   function getSearchQueries(segments: string[]): { segment: string; query: string }[] {
+    // vertical query pack이 있으면 우선 사용
+    const verticalPack = VERTICAL_QUERY_PACKS[requestedVertical] || [];
+    if (verticalPack.length > 0) {
+      return verticalPack.slice(0, 8).map((q, i) => ({ segment: `vertical_${i}`, query: q }));
+    }
+    // fallback: 기존 세그먼트 기반
     const queries: { segment: string; query: string }[] = [];
     for (const seg of segments) {
       const kws = PRACTICAL_SEGMENTS[seg] || [seg];
@@ -3107,6 +3117,29 @@ async function handleOutreachCollect(params: any) {
           const fit = calculateProductFitScore(channelData, keyword, productName);
           const channelUrl = `https://www.youtube.com/channel/${ch.id}`;
 
+          // OUTREACH-TARGET-FIT-A.1: Target Fit Gate 평가
+          const targetFit = evaluateTargetFit({
+            requestedVertical,
+            channelTitle: snippet.title || '',
+            channelDescription: allDescText,
+            recentVideoTitles: [],
+            category: practicalSegment,
+          });
+
+          // OUTREACH-TARGET-FIT-A.1: finalFitScore 계산
+          const targetMatchScore = targetFit.targetMatchScore;
+          const contentRelevanceScore = Math.min(fit.score, 100);
+          const audienceFitScore = (subs >= 1000 && subs <= 500000) ? 80 : (subs > 500000 ? 50 : 40);
+          const contactabilityScore = hasEmail ? 100 : 0;
+          const recentActivityScore = views > 1000000 ? 80 : (views > 100000 ? 60 : 40);
+          const finalFitScore = Math.round(
+            targetMatchScore * 0.45 +
+            contentRelevanceScore * 0.25 +
+            audienceFitScore * 0.15 +
+            contactabilityScore * 0.10 +
+            recentActivityScore * 0.05
+          );
+
           const candidate = {
             candidateId: generateRecordId('inf'),
             collectedAt: now,
@@ -3126,7 +3159,7 @@ async function handleOutreachCollect(params: any) {
             publicEmailMasked: contact.email ? maskEmail(contact.email) : '',
             contact_email: (contact.email && contact.email.includes('@')) ? contact.email : '',
             emailSource: hasEmail ? 'channel_description' : '',
-            productFitScore: fit.score,
+            productFitScore: finalFitScore,
             productFitReason: fit.reason,
             suggestedProduct: productName,
             suggestedOfferAngle: generateOfferAngle(channelData, keyword, productName),
@@ -3140,11 +3173,22 @@ async function handleOutreachCollect(params: any) {
             proposal_angle: generateProposalAngle(channelData, keyword, productName),
             proposal_subject: generateProposalSubject(productName, keyword),
             proposal_draft: generateProposalDraft(channelData, keyword, productName),
+            // OUTREACH-TARGET-FIT-A.1: Target Fit 필드
+            requested_vertical: requestedVertical,
+            target_match_status: targetFit.targetMatchStatus,
+            target_match_score: targetMatchScore,
+            target_evidence_terms: targetFit.evidenceTerms.join(', '),
+            target_evidence_fields: targetFit.evidenceFields.join(', '),
+            target_exclude_reason: targetFit.excludeReason || '',
+            qualified_for_requested_vertical: targetFit.targetMatchStatus === 'qualified' ? 'Y' : 'N',
           };
 
-          // EMAIL-ONLY-FILTER.1: 이메일 없는 후보는 항상 제외 (requireEmail 파라미터 무관)
+          // EMAIL-ONLY-FILTER.1 + TARGET-FIT-A.1: 이메일 없거나 분야 부적합이면 제외
           if (!hasEmail) {
             candidate.excludedReason = contact.email ? 'invalid_email_format' : 'no_public_email';
+            excludedCandidates.push(candidate);
+          } else if (requestedVertical !== 'unknown' && targetFit.targetMatchStatus === 'excluded') {
+            candidate.excludedReason = targetFit.excludeReason || `${requestedVertical} 분야 부적합`;
             excludedCandidates.push(candidate);
           } else {
             candidates.push(candidate);
@@ -3274,8 +3318,16 @@ async function handleOutreachCollect(params: any) {
   const excludedInvalidEmail = excludedCandidates.filter(c => c.excludedReason === 'invalid_email_format').length;
   const excludedContactOnly = excludedCandidates.filter(c => c.excludedReason === 'contact_link_only').length;
 
+  // OUTREACH-TARGET-FIT-A.1: 분야 적합도 통계
+  const excludedTargetMismatch = excludedCandidates.filter(c => c.excludedReason && c.excludedReason.includes('분야')).length;
+  const qualifiedCount = candidates.filter(c => c.target_match_status === 'qualified').length;
+  const reviewCount = candidates.filter(c => c.target_match_status === 'review').length;
+  const allQualified = [...candidates, ...excludedCandidates].filter(c => c.target_match_status === 'qualified').length;
+  const allReview = [...candidates, ...excludedCandidates].filter(c => c.target_match_status === 'review').length;
+  const allExcludedTarget = [...candidates, ...excludedCandidates].filter(c => c.target_match_status === 'excluded').length;
+
   const finalCandidates = candidates.slice(0, max);
-  const shortfall = requireEmail ? Math.max(0, max - finalCandidates.length) : 0;
+  const shortfall = Math.max(0, max - finalCandidates.length);
 
   // ── AUTO-SAVE: 수집 완료 후 influencer_candidates_v2 자동 저장 ──
   let autoSaveResult: any = null;
@@ -3287,6 +3339,10 @@ async function handleOutreachCollect(params: any) {
     }
   }
 
+  // OUTREACH-TARGET-FIT-A.1: 브리핑 메시지 생성
+  const verticalLabel = requestedVertical !== 'unknown' ? requestedVertical : productName;
+  const qualifiedEmailCount = finalCandidates.filter(c => c.target_match_status === 'qualified' && c.contact_email).length;
+
   return {
     success: true,
     candidates: finalCandidates,
@@ -3294,21 +3350,36 @@ async function handleOutreachCollect(params: any) {
     keyword,
     product: productName,
     requireEmail,
+    requestedVertical,
     searchedSegments,
     segmentStats,
     telemetry,
+    // OUTREACH-TARGET-FIT-A.1: Target Fit 통계
+    targetFitStats: {
+      qualified: qualifiedCount,
+      review: reviewCount,
+      excludedTarget: excludedTargetMismatch,
+      qualifiedWithEmail: qualifiedEmailCount,
+    },
     excluded: {
       total: excludedCandidates.length,
       noEmail: excludedNoEmail,
       invalidEmail: excludedInvalidEmail,
       contactLinkOnly: excludedContactOnly,
+      targetMismatch: excludedTargetMismatch,
     },
+    excludedCandidates: excludedCandidates.slice(0, 10).map(c => ({
+      name: c.name,
+      target_match_status: c.target_match_status,
+      target_match_score: c.target_match_score,
+      excludedReason: c.excludedReason,
+    })),
     shortfall,
     appendMode: true,
     autoSave: autoSaveResult,
-    message: requireEmail
-      ? `4단계 파이프라인으로 ${productName} 공동구매 이메일 확인 후보 ${finalCandidates.length}명을 수집했습니다.${shortfall > 0 ? ` (${shortfall}명 부족)` : ''}`
-      : `4단계 파이프라인으로 ${productName} 공동구매 후보 ${finalCandidates.length}명을 수집했습니다.`,
+    message: requestedVertical !== 'unknown'
+      ? `대표님, ${verticalLabel} 인플루언서 후보 ${candidates.length + excludedCandidates.length}명을 수집했습니다. 그중 ${verticalLabel} 근거가 확인된 최종 적합 후보는 ${qualifiedCount}명이고, 공개 이메일까지 확인된 후보는 ${qualifiedEmailCount}명입니다. ${verticalLabel} 근거가 약한 ${excludedTargetMismatch}명은 제외로 분류했습니다. 상세 이메일은 Google Sheets에서 확인할 수 있고, 실제 발송은 잠금 상태입니다.`
+      : `4단계 파이프라인으로 ${productName} 후보 ${finalCandidates.length}명을 수집했습니다.${shortfall > 0 ? ` (${shortfall}명 부족)` : ''}`,
   };
 }
 
@@ -3444,6 +3515,15 @@ async function handleOutreachSaveCandidates(params: any) {
         c.proposal_angle || generateProposalAngle(c, c.source_keyword || c.keyword || c.seedKeyword || '', c.source_product || c.suggestedProduct || ''),
         c.proposal_subject || generateProposalSubject(c.source_product || c.suggestedProduct || '', c.source_keyword || c.keyword || c.seedKeyword || ''),
         c.proposal_draft || generateProposalDraft(c, c.source_keyword || c.keyword || c.seedKeyword || '', c.source_product || c.suggestedProduct || ''),
+        // OUTREACH-TARGET-FIT-A.1: target fit 컬럼
+        c.requested_vertical || '',
+        c.target_match_status || '',
+        String(c.target_match_score || ''),
+        c.target_evidence_terms || '',
+        c.target_evidence_fields || '',
+        c.target_exclude_reason || c.excludedReason || '',
+        c.qualified_for_requested_vertical || '',
+        c.collected_query || c.keyword || '',
       ];
       if (dryRun) {
         const isDup = existingHashes.has(dupHash);
