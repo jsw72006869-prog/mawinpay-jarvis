@@ -2461,7 +2461,7 @@ async function sheetsAppend(tab: string, values: string[][]): Promise<any> {
 
 async function sheetsRead(tab: string, range?: string): Promise<any> {
   const token = await getGoogleSheetsToken();
-  const r = range || `${tab}!A1:Z1000`;
+  const r = range || `${tab}!A1:AZ1000`; // COPY-S.1A: read extended Copy Brain columns
   const url = `https://sheets.googleapis.com/v4/spreadsheets/${WORKSPACE_SHEET_ID}/values/${encodeURIComponent(r)}`;
   const res: any = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
   const data = await res.json();
