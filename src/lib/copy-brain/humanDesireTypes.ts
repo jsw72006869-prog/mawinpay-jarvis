@@ -89,6 +89,8 @@ export interface HumanDesireCopyResult {
   platformFitScore: number;
   desireFitScore: number;
   anxietyResolutionScore: number;
+  triggerFitScore: number;
+  sensoryScore: number;
   mawinVoiceScore: number;
   originalityScore: number;
   boringScore: number;

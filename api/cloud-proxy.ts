@@ -2489,7 +2489,7 @@ const SHEET_HEADERS: Record<string, string[]> = {
   // OUTREACH-COPY-AGENT-MASTER-A.1: viral_content_swipe 탭 (Hot Content 카피 학습 재료)
   viral_content_swipe: ['id','platform','source_product','source_keyword','content_url','creator_name','hook_text','thumbnail_text','post_summary','engagement_visible','comment_signal','hot_reason','copy_pattern','emotion_trigger','buyer_desire','usable_for','hot_score','copy_pattern_score','risk_score','created_at','notes'],
   // COPY-BRAIN-A.1: Copy Brain 저장 구조
-  copy_generation_log: ['copy_id','product','platform','output_type','source_keyword','generated_text','product_truth','buyer_desire','copy_dna','hook_type','score_hook','score_sensory','score_buyer_desire','score_product_truth','score_platform_fit','score_mawi_voice','score_originality','score_action','score_risk','boring_score','final_score','recommended','risk_flags','rewrite_required','dna_source','used_viral_content_count','used_content_ids','copy_dna_summary','created_at','notes'],
+  copy_generation_log: ['copy_id','product','platform','output_type','source_keyword','generated_text','product_truth','buyer_desire','copy_dna','hook_type','score_hook','score_sensory','score_buyer_desire','score_product_truth','score_platform_fit','score_mawi_voice','score_originality','score_action','score_risk','boring_score','final_score','recommended','risk_flags','rewrite_required','dna_source','used_viral_content_count','used_content_ids','copy_dna_summary','created_at','notes','strategy','human_desires','customer_anxieties','purchase_triggers','sensory_profile','platform_rules','performance_memory_used','desire_fit_score','anxiety_resolution_score','trigger_fit_score','platform_specificity_score','why_recommended','rewrite_hint'],
   copy_feedback_log: ['feedback_id','copy_id','feedback','reason','edited_text','product','platform','created_at','notes'],
   mawin_style_rules: ['rule_id','category','rule_text','priority','active','created_at','notes'],
 };
@@ -6178,13 +6178,502 @@ function judgeCopyServer(text: string, platform: string, productTruth: any, buye
 }
 
 // ═══ handleCopyBrainGenerate ═══
+type HDPlatform =
+  | 'threads' | 'youtube_shorts' | 'youtube_thumbnail' | 'instagram_reels'
+  | 'tiktok' | 'naver_blog' | 'outreach_email' | 'smartstore_detail';
+
+const HD_GENERIC_PHRASES = [
+  '지금 만나보세요', '특별한 가격', '최고의 품질', '합리적인 가격',
+  '신선하고 맛있는', '많은 관심 부탁드립니다', '놓치지 마세요', '고객님께 추천드립니다',
+];
+
+const HD_PRODUCT_PROFILES: Record<string, any> = {
+  peach: {
+    aliases: ['peach', '복숭아', '딱복', '물복', '백도', '천도'],
+    desires: ['not_miss_season', 'feed_family', 'gift_praise', 'avoid_regret', 'choose_good_quality'],
+    anxieties: ['bad_taste', 'damaged_delivery', 'different_from_photo', 'bad_gift_feedback'],
+    triggers: ['seasonal_peak', 'direct_from_farm', 'kids_snack'],
+    sensory: {
+      texture: ['말랑함', '아삭함', '과즙', '달큰함'],
+      aroma: ['복숭아 향', '냉장고 문 열 때 퍼지는 향', '여름 과일 향'],
+      scene: ['아이 간식', '여름 디저트', '선물 상자', '냉장고', '가족 밥상'],
+      timing: ['제철 초입', '수확 직후', '끝물', '비 오기 전후'],
+      emotionalImages: ['향으로 먼저 들키는 과일', '여름이 냉장고에 들어온 느낌'],
+    },
+  },
+  corn: {
+    aliases: ['corn', '옥수수', '찰옥수수', '초당옥수수'],
+    desires: ['feed_family', 'not_miss_season', 'buy_from_trusted_person', 'avoid_regret', 'choose_good_quality'],
+    anxieties: ['bad_taste', 'ugly_or_small', 'family_rejects', 'overpriced'],
+    triggers: ['seasonal_peak', 'direct_from_farm', 'camping', 'kids_snack'],
+    sensory: {
+      texture: ['쫀득함', '탱글함', '알알이 씹히는 식감'],
+      aroma: ['옥수수 찐 냄새', '여름 간식 냄새'],
+      scene: ['아이 간식', '캠핑', '가족 간식', '찜기', '시골집'],
+      timing: ['여름 제철', '수확 직후', '주말 캠핑 전'],
+      emotionalImages: ['집 안 공기가 여름이 되는 냄새', '손에 들고 먹는 제철 간식'],
+    },
+  },
+  kimchi_cabbage: {
+    aliases: ['kimchi_cabbage', '절임배추', '배추', '김장'],
+    desires: ['avoid_regret', 'feed_family', 'buy_from_trusted_person', 'choose_good_quality', 'not_miss_season'],
+    anxieties: ['bad_taste', 'damaged_delivery', 'overpriced', 'different_from_photo', 'bad_gift_feedback'],
+    triggers: ['kimjang', 'seasonal_peak', 'direct_from_farm'],
+    sensory: {
+      texture: ['아삭함', '속이 찬 느낌'],
+      aroma: ['김장 양념 냄새', '겨울 밥상 냄새'],
+      scene: ['김장날', '가족 겨울 준비', '김치통', '겨울 밥상'],
+      timing: ['김장철', '예약 시즌', '겨울 전'],
+      emotionalImages: ['실패하면 안 되는 겨울 준비', '집안의 겨울을 준비하는 일'],
+    },
+  },
+};
+
+const HD_LABELS: Record<string, string> = {
+  save_money: '돈을 아끼고 싶음',
+  choose_good_quality: '좋은 품질을 고르고 싶음',
+  feed_family: '가족에게 먹이고 싶음',
+  avoid_regret: '후회하고 싶지 않음',
+  buy_before_others: '남보다 먼저 사고 싶음',
+  not_miss_season: '제철을 놓치고 싶지 않음',
+  gift_praise: '선물 칭찬을 받고 싶음',
+  buy_from_trusted_person: '믿을 사람에게 사고 싶음',
+};
+
+function hdNormalizeProduct(product: string): string {
+  const normalized = String(product || '').toLowerCase().trim();
+  for (const [key, profile] of Object.entries(HD_PRODUCT_PROFILES)) {
+    if (profile.aliases.some((alias: string) => normalized.includes(alias.toLowerCase()) || alias.toLowerCase().includes(normalized))) {
+      return key;
+    }
+  }
+  return normalized || 'unknown';
+}
+
+function hdProfile(product: string): any {
+  const key = hdNormalizeProduct(product);
+  return HD_PRODUCT_PROFILES[key] || {
+    aliases: [product],
+    desires: ['choose_good_quality', 'avoid_regret', 'buy_from_trusted_person'],
+    anxieties: ['bad_taste', 'different_from_photo', 'overpriced'],
+    triggers: ['seasonal_peak', 'direct_from_farm'],
+    sensory: { texture: [], aroma: [], scene: [], timing: [], emotionalImages: [] },
+  };
+}
+
+function hdNormalizePlatform(platform: string, outputType?: string): HDPlatform {
+  const raw = String(platform || outputType || '').toLowerCase();
+  if (raw.includes('thumbnail')) return 'youtube_thumbnail';
+  if (raw.includes('shorts')) return 'youtube_shorts';
+  if (raw.includes('reels')) return 'instagram_reels';
+  if (raw.includes('tiktok')) return 'tiktok';
+  if (raw.includes('blog') || raw.includes('naver')) return 'naver_blog';
+  if (raw.includes('email') || raw.includes('outreach')) return 'outreach_email';
+  if (raw.includes('smartstore')) return 'smartstore_detail';
+  return 'threads';
+}
+
+function hdRankDesires(product: string, platform: HDPlatform): HDHumanDesire[] {
+  const base = [...hdProfile(product).desires] as HDHumanDesire[];
+  const boosts: Record<HDPlatform, HDHumanDesire[]> = {
+    threads: ['avoid_regret', 'not_miss_season', 'feed_family'],
+    youtube_thumbnail: ['not_miss_season', 'avoid_regret', 'buy_before_others'],
+    youtube_shorts: ['feed_family', 'not_miss_season'],
+    instagram_reels: ['feed_family', 'not_miss_season'],
+    tiktok: ['buy_before_others', 'not_miss_season'],
+    naver_blog: ['avoid_regret', 'buy_from_trusted_person', 'choose_good_quality'],
+    outreach_email: ['buy_from_trusted_person', 'choose_good_quality'],
+    smartstore_detail: ['avoid_regret', 'choose_good_quality', 'buy_from_trusted_person'],
+  };
+  return [...new Set([...boosts[platform], ...base])].slice(0, 4);
+}
+
+function hdRankAnxieties(product: string, platform: HDPlatform): HDCustomerAnxiety[] {
+  const base = [...hdProfile(product).anxieties] as HDCustomerAnxiety[];
+  if (platform === 'naver_blog' || platform === 'smartstore_detail') {
+    return [...new Set(['different_from_photo', 'bad_taste', 'overpriced', ...base])].slice(0, 4) as HDCustomerAnxiety[];
+  }
+  if (platform === 'outreach_email') {
+    return [...new Set(['bad_gift_feedback', 'different_from_photo', ...base])].slice(0, 3) as HDCustomerAnxiety[];
+  }
+  return base.slice(0, 4);
+}
+
+function hdPurchaseTriggers(params: any): { triggers: HDPurchaseTrigger[]; verified: HDPurchaseTrigger[]; unverified: HDPurchaseTrigger[] } {
+  const profileTriggers = [...hdProfile(params.product).triggers] as HDPurchaseTrigger[];
+  const signals = params.verifiedSignals || {};
+  const verified: HDPurchaseTrigger[] = [];
+  const unverified: HDPurchaseTrigger[] = [];
+  for (const trigger of profileTriggers) {
+    const ok =
+      (trigger === 'seasonal_peak' && signals.seasonalPeak) ||
+      (trigger === 'limited_quantity' && signals.limitedQuantity) ||
+      (trigger === 'harvested_today' && signals.harvestedToday) ||
+      (trigger === 'repurchase' && signals.repurchase) ||
+      (trigger === 'sold_out_risk' && signals.soldOutRisk) ||
+      (trigger === 'group_buy_deadline' && signals.deadline) ||
+      ['direct_from_farm', 'holiday', 'kimjang', 'camping', 'kids_snack'].includes(trigger);
+    (ok ? verified : unverified).push(trigger);
+  }
+  return { triggers: [...verified, ...unverified].slice(0, 4), verified, unverified };
+}
+
+function hdPlatformRules(platform: HDPlatform, outputType: string): any {
+  const rules: Record<HDPlatform, any> = {
+    threads: {
+      objective: 'identity, conflict, commentable human reaction',
+      formatRules: ['short first line', '2-5 line rhythm', 'indirect selling', 'lingering last line'],
+      avoidRules: ['direct ad CTA', 'catalog tone', 'long explanation'],
+      examples: ['딱복파랑 물복파는 진짜 쉽게 화해 안 한다.'],
+    },
+    youtube_thumbnail: {
+      objective: 'click curiosity and seasonal urgency',
+      formatRules: ['6-12 Korean characters preferred', 'short noun phrase', 'contrast or warning'],
+      avoidRules: ['long sentence', 'polite ad copy'],
+      examples: ['향으로 들킴'],
+    },
+    youtube_shorts: {
+      objective: 'first 3 seconds visual hook',
+      formatRules: ['scene first', 'subtitle rhythm', 'sensory action'],
+      avoidRules: ['opening with product explanation'],
+    },
+    instagram_reels: { objective: 'fast emotional sensory response', formatRules: ['short visual caption', 'scene language'], avoidRules: ['over-explaining'] },
+    tiktok: { objective: 'repeatable fast hook', formatRules: ['rhythmic', 'short', 'no ad smell'], avoidRules: ['formal tone'] },
+    naver_blog: { objective: 'search intent and anxiety resolution', formatRules: ['trust', 'selection criteria', 'review tone'], avoidRules: ['thin headline'] },
+    outreach_email: { objective: 'creator context fit and reply', formatRules: ['creator context', 'campaign fit', 'soft close'], avoidRules: ['mass-mail tone'] },
+    smartstore_detail: { objective: 'purchase anxiety resolution', formatRules: ['specific quality clue', 'delivery anxiety care'], avoidRules: ['unsupported guarantee'] },
+  };
+  return { ...rules[platform], outputType };
+}
+
+async function hdReadPerformanceMemory(options: any): Promise<any[]> {
+  try {
+    await ensureHeaders('copy_performance_memory');
+    const data = await sheetsRead('copy_performance_memory');
+    const values = data?.values || [];
+    if (values.length <= 1) return [];
+    const headers = values[0];
+    let rows = values.slice(1).map((row: any[]) => {
+      const obj: any = {};
+      headers.forEach((h: string, i: number) => { obj[h] = row[i] || ''; });
+      return {
+        contentId: obj.content_id,
+        product: obj.product,
+        platform: obj.platform,
+        copyText: obj.copy_text,
+        formatType: obj.format_type,
+        views: Number(obj.views || 0) || undefined,
+        comments: Number(obj.comments || 0) || undefined,
+        saves: Number(obj.saves || 0) || undefined,
+        shares: Number(obj.shares || 0) || undefined,
+        openchatJoins: Number(obj.openchat_joins || 0) || undefined,
+        orders: Number(obj.orders || 0) || undefined,
+        resultLabel: obj.result_label || 'unknown',
+        whyWorked: obj.why_worked,
+        whyFailed: obj.why_failed,
+        createdAt: obj.created_at,
+      };
+    });
+    if (options.product) rows = rows.filter((r: any) => hdNormalizeProduct(r.product) === hdNormalizeProduct(options.product));
+    if (options.platform) rows = rows.filter((r: any) => r.platform === options.platform);
+    if (options.resultLabel) rows = rows.filter((r: any) => r.resultLabel === options.resultLabel);
+    return rows.slice(-(options.limit || 12));
+  } catch {
+    return [];
+  }
+}
+
+function hdSummarizePerformance(memory: any[]): any {
+  if (!memory.length) {
+    return { winningPatterns: ['성과 데이터 없음'], losingPatterns: [], recommendedHookTypes: [], avoidPatterns: [] };
+  }
+  const won = memory.filter(m => m.resultLabel === 'won');
+  const lost = memory.filter(m => m.resultLabel === 'lost');
+  return {
+    winningPatterns: won.map(m => m.whyWorked || m.copyText).filter(Boolean).slice(0, 5),
+    losingPatterns: lost.map(m => m.whyFailed || m.copyText).filter(Boolean).slice(0, 5),
+    recommendedHookTypes: [...new Set(won.map(m => m.formatType).filter(Boolean))].slice(0, 5),
+    avoidPatterns: lost.map(m => m.whyFailed).filter(Boolean).slice(0, 5),
+  };
+}
+
+function hdCompilePrompt(context: any): string {
+  const performanceSummary = hdSummarizePerformance(context.performanceMemory || []);
+  return `You are MAWINPAY JARVIS Copy Brain COPY-S.1.
+Do not write from product name only. Write from human desire, customer anxiety, purchase trigger, MAWIN owner voice, agricultural sensory data, performance memory, and platform grammar.
+
+Product: ${context.product}
+Platform: ${context.platform}
+Output type: ${context.outputType}
+Source keyword: ${context.sourceKeyword || ''}
+Top desires: ${context.desires.map((d: string) => `${d}(${HD_LABELS[d] || d})`).join(', ')}
+Customer anxieties to resolve without fearmongering: ${context.anxieties.join(', ')}
+Purchase triggers: ${context.triggers.join(', ')}
+Sensory profile: ${JSON.stringify(context.sensoryProfile)}
+MAWIN voice: ${context.mawinVoiceRules.join(' / ')}
+Performance memory summary: ${JSON.stringify(performanceSummary)}
+Platform rules: ${JSON.stringify(context.platformRules)}
+Banned generic phrases: ${HD_GENERIC_PHRASES.join(', ')}
+
+Goal: Do not describe the product. Trigger human desire and resolve customer anxiety.
+Return only JSON:
+{"copies":[{"text":"...","desires":["..."],"anxieties":["..."],"triggers":["..."],"sensory":["..."],"hookType":"...","whyRecommended":"...","rewriteHint":"..."}]}`;
+}
+
+function hdTemplateCopies(context: any, count: number): any[] {
+  const p = hdNormalizeProduct(context.product);
+  const platform = context.platform as HDPlatform;
+  const lines: string[] = [];
+  if (p === 'peach' && platform === 'youtube_thumbnail') {
+    lines.push('향으로 들킴', '딱복 물복 전쟁', '선물 실패 금지', '끝물 오기 전');
+  } else if (p === 'peach' && platform === 'youtube_shorts') {
+    lines.push('냉장고 문을 여는 순간.\n복숭아 향이 먼저 나옵니다.\n맛 설명은 그다음이에요.');
+  } else if (p === 'peach') {
+    lines.push('복숭아는 맛있다고 말하기 전에\n향으로 먼저 들킨다.', '딱복파랑 물복파는\n진짜 쉽게 화해 안 한다.', '선물용 과일은\n맛보다 먼저 걱정부터 고르게 된다.');
+  } else if (p === 'corn' && platform === 'youtube_shorts') {
+    lines.push('찜기 김이 올라오는 순간.\n옥수수 냄새가 먼저 여름을 데려옵니다.\n한 알씩 씹히는 그 소리까지요.');
+  } else if (p === 'corn') {
+    lines.push('옥수수 찌는 냄새가 나면\n집 안 공기가 먼저 여름이 된다.', '아이 간식이라고 샀는데\n어른 손이 먼저 간다.');
+  } else if (p === 'kimchi_cabbage' && platform === 'naver_blog') {
+    lines.push('절임배추 고르는 법: 김장은 맛보다 먼저 실패하면 안 된다는 마음으로 시작된다');
+  } else if (p === 'kimchi_cabbage') {
+    lines.push('김장은 맛보다 먼저\n실패하면 안 된다는 마음으로 시작된다.', '겨울 밥상은\n배추 속이 차는 순간부터 준비된다.');
+  } else {
+    lines.push(`${context.product}는 설명보다 먼저 마음에 걸리는 장면이 있어야 팔린다.`);
+  }
+  return Array.from({ length: Math.max(1, count) }, (_, i) => {
+    const text = lines[i % lines.length];
+    return {
+      text,
+      desires: context.desires.slice(0, 3),
+      anxieties: context.anxieties.slice(0, 2),
+      triggers: context.triggers.slice(0, 2),
+      sensory: [...context.sensoryProfile.texture, ...context.sensoryProfile.aroma, ...context.sensoryProfile.emotionalImages].slice(0, 3),
+      hookType: platform === 'youtube_thumbnail' ? 'curiosity_contrast' : 'sensory_desire',
+      whyRecommended: '상품 설명보다 욕망, 불안, 감각 장면을 먼저 건드립니다.',
+      rewriteHint: '',
+    };
+  });
+}
+
+function hdScoreCopy(text: string, context: any): any {
+  const base = judgeCopyServer(text, context.platform, resolveProductTruth(context.product), context.desires);
+  const hasGeneric = HD_GENERIC_PHRASES.some(p => text.includes(p));
+  const allSensory = [...context.sensoryProfile.texture, ...context.sensoryProfile.aroma, ...context.sensoryProfile.scene, ...context.sensoryProfile.emotionalImages];
+  const sensoryHits = allSensory.filter((s: string) => text.includes(s) || s.split(' ').some(part => part.length > 1 && text.includes(part))).length;
+  const desireWords = ['가족', '선물', '후회', '제철', '믿', '먼저', '걱정', '아이', '들킴', '전쟁', '실패'];
+  const anxietyWords = ['걱정', '실패', '다를', '선물', '후회', '맛', '작', '상처'];
+  const triggerWords = ['제철', '김장', '여름', '캠핑', '간식', '끝물', '시즌', '겨울'];
+  const sensoryAtoms = ['향', '냄새', '아삭', '쫀득', '탱글', '과즙', '찜기', '밥상'];
+  const sensoryAtomHits = sensoryAtoms.filter(w => text.includes(w)).length;
+  const desireFitScore = Math.min(100, 45 + desireWords.filter(w => text.includes(w)).length * 15);
+  const anxietyResolutionScore = Math.min(100, 45 + anxietyWords.filter(w => text.includes(w)).length * 12);
+  const triggerFitScore = Math.min(100, 45 + triggerWords.filter(w => text.includes(w)).length * 12);
+  const sensoryScore = Math.min(100, 35 + sensoryHits * 20 + sensoryAtomHits * 10);
+  const lineCount = text.split('\n').filter(Boolean).length;
+  let platformSpecificityScore = 55;
+  if (context.platform === 'threads' && lineCount >= 2 && lineCount <= 5) platformSpecificityScore += 25;
+  if (context.platform === 'youtube_thumbnail' && text.replace(/\s/g, '').length <= 12) platformSpecificityScore += 30;
+  if (context.platform === 'youtube_shorts' && /순간|먼저|냄새|향|소리/.test(text)) platformSpecificityScore += 25;
+  if (context.platform === 'naver_blog' && /고르는 법|기준|실패|걱정/.test(text)) platformSpecificityScore += 25;
+  const isBlogTitle = context.platform === 'naver_blog' && String(context.outputType || '').includes('blog_title');
+  const hasBlogSearchIntent = /고르는 법|선택|확인|기준|예약 전|김장철|줄이는|봐야 할 것|5가지/.test(text);
+  const hasBlogTrustOrAnxiety = /실패|걱정|기준|확인|맛보다 먼저|예약 전|선택 전/.test(text);
+  if (isBlogTitle && hasBlogSearchIntent) platformSpecificityScore += 15;
+  platformSpecificityScore = Math.max(0, Math.min(100, platformSpecificityScore));
+  let finalScore = Math.max(0, Math.min(100, Math.round(
+    base.final_score * 0.60 +
+    desireFitScore * 0.10 +
+    anxietyResolutionScore * 0.10 +
+    sensoryScore * 0.10 +
+    platformSpecificityScore * 0.10
+  )));
+  if (isBlogTitle && hasBlogSearchIntent && hasBlogTrustOrAnxiety && !hasGeneric) {
+    finalScore = Math.min(100, finalScore + 6);
+  }
+  const boringScore = hasGeneric ? Math.max(base.boring_score, 80) : base.boring_score;
+  const minimumScore = isBlogTitle ? 58 : 60;
+  const sensoryEnough = isBlogTitle ? (sensoryScore >= 45 || hasBlogTrustOrAnxiety) : sensoryScore >= 55;
+  const recommended = !hasGeneric && platformSpecificityScore >= 55 && boringScore < 40 && base.risk_score < 40 && sensoryEnough && desireFitScore >= 55 && finalScore >= minimumScore;
+  return {
+    ...base,
+    boring_score: boringScore,
+    final_score: finalScore,
+    recommended,
+    rewrite_required: !recommended,
+    desire_fit_score: desireFitScore,
+    anxiety_resolution_score: anxietyResolutionScore,
+    trigger_fit_score: triggerFitScore,
+    sensory_score_hd: sensoryScore,
+    platform_specificity_score: platformSpecificityScore,
+    rewrite_reason: hasGeneric ? 'generic_ad_copy' : base.rewrite_reason,
+  };
+}
+
+async function handleHumanDesireCopyGenerate(params: any) {
+  const {
+    product,
+    platform = 'threads',
+    outputTypes = ['headline_copy'],
+    outputType,
+    sourceKeyword = '',
+    count = 10,
+    dryRun = true,
+    usePerformanceMemory = true,
+    verifiedSignals,
+    seedCopies,
+  } = params;
+  const selectedOutputType = outputType || (Array.isArray(outputTypes) ? outputTypes[0] : outputTypes) || 'headline_copy';
+  const resolvedPlatform = hdNormalizePlatform(platform, selectedOutputType);
+  const profile = hdProfile(product);
+  const purchase = hdPurchaseTriggers({ product, platform: resolvedPlatform, sourceKeyword, verifiedSignals });
+  const performanceMemory = usePerformanceMemory ? await hdReadPerformanceMemory({ product, platform: resolvedPlatform, limit: 12 }) : [];
+  const context = {
+    product,
+    platform: resolvedPlatform,
+    outputType: selectedOutputType,
+    sourceKeyword,
+    desires: hdRankDesires(product, resolvedPlatform),
+    anxieties: hdRankAnxieties(product, resolvedPlatform),
+    triggers: purchase.triggers,
+    sensoryProfile: { product, ...profile.sensory },
+    mawinVoiceRules: ['short casually thrown sentence', 'agricultural field feeling', 'local/regional feeling', 'human warmth', 'confident but not exaggerated', 'strong aftertaste in the last line'],
+    platformRules: hdPlatformRules(resolvedPlatform, selectedOutputType),
+    performanceMemory,
+  };
+  const prompt = hdCompilePrompt(context);
+
+  let rawCopies: any[] = [];
+  let source = 'gpt';
+  if (dryRun) {
+    if (Array.isArray(seedCopies) && seedCopies.length > 0) {
+      rawCopies = seedCopies.map((text: any) => typeof text === 'string' ? { text } : text);
+      source = 'dry_run_seed';
+    } else {
+      rawCopies = hdTemplateCopies(context, Number(count || 10));
+      source = 'template_fallback';
+    }
+  } else {
+    const OPENAI_KEY = process.env.OPENAI_API_KEY || '';
+    if (!OPENAI_KEY) return { success: false, errorCode: 'OPENAI_API_KEY_NOT_CONFIGURED', fake_copy_generated: false };
+    try {
+      const gptRes: any = await fetch('https://api.openai.com/v1/chat/completions', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${OPENAI_KEY}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          model: 'gpt-4.1-mini',
+          messages: [
+            { role: 'system', content: 'Return valid JSON only. Never expose secrets, emails, tokens, or credentials.' },
+            { role: 'user', content: prompt },
+          ],
+          temperature: 0.85,
+          max_tokens: 2500,
+        }),
+      });
+      if (!gptRes.ok) return { success: false, errorCode: 'GPT_API_ERROR', fake_copy_generated: false };
+      const gptData: any = await gptRes.json();
+      const content = gptData.choices?.[0]?.message?.content || '';
+      const match = content.match(/\{[\s\S]*\}/);
+      const parsed = match ? JSON.parse(match[0]) : null;
+      rawCopies = Array.isArray(parsed?.copies) ? parsed.copies : [];
+    } catch (e: any) {
+      return { success: false, errorCode: 'GPT_PARSE_OR_REQUEST_FAILED', errorMessage: e.message?.substring(0, 120), fake_copy_generated: false };
+    }
+  }
+
+  const copies = rawCopies.slice(0, Number(count || 10)).map((copy: any, index: number) => {
+    const text = String(copy.text || '').trim();
+    const score = hdScoreCopy(text, context);
+    return {
+      id: `HD-${Date.now()}-${index + 1}`,
+      text,
+      platform: resolvedPlatform,
+      outputType: selectedOutputType,
+      desires: copy.desires || context.desires.slice(0, 3),
+      anxieties: copy.anxieties || context.anxieties.slice(0, 2),
+      triggers: copy.triggers || context.triggers.slice(0, 2),
+      sensory: copy.sensory || context.sensoryProfile.texture.slice(0, 2),
+      hookType: copy.hookType || 'human_desire_hook',
+      platformFitScore: score.platform_fit_score,
+      desireFitScore: score.desire_fit_score,
+      anxietyResolutionScore: score.anxiety_resolution_score,
+      triggerFitScore: score.trigger_fit_score,
+      sensoryScore: score.sensory_score_hd,
+      mawinVoiceScore: score.mawi_voice_score,
+      originalityScore: score.originality_score,
+      boringScore: score.boring_score,
+      riskScore: score.risk_score,
+      finalScore: score.final_score,
+      recommended: score.recommended,
+      whyRecommended: copy.whyRecommended || (score.recommended ? '욕망, 불안 해소, 감각 장면, 플랫폼 문법이 함께 잡혔습니다.' : '추천 전 문장 구체화가 필요합니다.'),
+      rewriteHint: score.recommended ? (copy.rewriteHint || '') : (copy.rewriteHint || score.rewrite_reason || ''),
+      source,
+      score,
+    };
+  }).sort((a: any, b: any) => b.finalScore - a.finalScore);
+
+  if (!dryRun) {
+    const now = new Date().toISOString();
+    const rows = copies.map((c: any) => [
+      c.id, product, resolvedPlatform, selectedOutputType, sourceKeyword, c.text,
+      '', '', '', c.hookType,
+      '', c.sensoryScore, c.desireFitScore, '', c.platformFitScore, c.mawinVoiceScore,
+      c.originalityScore, '', c.riskScore, c.boringScore, c.finalScore, String(c.recommended),
+      (c.score?.risk_flags || []).join(','), String(!c.recommended), '', '0', '', '', now, '',
+      'human_desire', c.desires.join(','), c.anxieties.join(','), c.triggers.join(','),
+      JSON.stringify(c.sensory), JSON.stringify(context.platformRules.formatRules),
+      String(performanceMemory.length > 0), String(c.desireFitScore), String(c.anxietyResolutionScore),
+      String(c.triggerFitScore), String(c.platformFitScore), c.whyRecommended, c.rewriteHint || '',
+    ]);
+    try {
+      await ensureHeaders('copy_generation_log');
+      await sheetsAppend('copy_generation_log', rows);
+    } catch (e: any) {
+      return { success: false, errorCode: 'COPY_GENERATION_LOG_SAVE_FAILED', errorMessage: e.message?.substring(0, 120), copies };
+    }
+  }
+
+  return {
+    success: true,
+    dryRun,
+    strategy: 'human_desire',
+    source,
+    product,
+    platform: resolvedPlatform,
+    outputType: selectedOutputType,
+    performanceMemoryUsed: performanceMemory.length > 0,
+    context: {
+      desires: context.desires,
+      anxieties: context.anxieties,
+      triggers: context.triggers,
+      sensoryProfile: context.sensoryProfile,
+      platformRules: context.platformRules,
+      performanceMemorySummary: hdSummarizePerformance(performanceMemory),
+    },
+    copies,
+    summary: {
+      total: copies.length,
+      recommended: copies.filter((c: any) => c.recommended).length,
+      rewrite_required: copies.filter((c: any) => !c.recommended).length,
+      generic_filtered: copies.filter((c: any) => c.rewriteHint === 'generic_ad_copy').length,
+    },
+    promptPreview: prompt.substring(0, 1200),
+  };
+}
+
+// ═══ handleCopyBrainGenerate ═══
+
 async function handleCopyBrainGenerate(params: any) {
   const {
     product, platform = 'threads',
     outputTypes = ['headline_copy','threads_post','thumbnail_copy','shorts_script_15s','outreach_email_draft'],
-    sourceKeyword = '', count = 3, dryRun = true, viralContentIds,
+    sourceKeyword = '', count = 3, dryRun = true, viralContentIds, strategy = 'default',
   } = params;
   if (!product) return { success: false, error: 'product required' };
+
+  if (strategy === 'human_desire') {
+    return handleHumanDesireCopyGenerate(params);
+  }
 
   const OPENAI_KEY = process.env.OPENAI_API_KEY || '';
   if (!OPENAI_KEY && !dryRun) return { success: false, error: 'OPENAI_API_KEY not configured' };

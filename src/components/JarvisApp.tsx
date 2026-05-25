@@ -3496,6 +3496,103 @@ export default function JarvisApp() {
         const requestedCount = extractRequestedCount(userMessage);
         const copyCount = requestedCount || 3;
 
+        // COPY-S.1A route agricultural copy requests through Human Desire when the API supports it.
+        const resolveHumanDesirePlatform = (message: string, type: string) => {
+          const raw = `${message} ${type}`.toLowerCase();
+          if (raw.includes('???') || raw.includes('thumbnail')) return 'youtube_thumbnail';
+          if (raw.includes('??') || raw.includes('shorts')) return 'youtube_shorts';
+          if (raw.includes('??') || raw.includes('reels')) return 'instagram_reels';
+          if (raw.includes('??') || raw.includes('tiktok')) return 'tiktok';
+          if (raw.includes('???') || raw.includes('blog')) return 'naver_blog';
+          if (raw.includes('??') || raw.includes('email')) return 'outreach_email';
+          return 'threads';
+        };
+        const resolveHumanDesireOutputType = (message: string, type: string) => {
+          const raw = `${message} ${type}`.toLowerCase();
+          if (raw.includes('???') || raw.includes('thumbnail')) return 'thumbnail_copy';
+          if (raw.includes('??') || raw.includes('shorts')) return 'shorts_script_15s';
+          if (raw.includes('??') || raw.includes('reels')) return 'reels_script_15s';
+          if (raw.includes('???') || raw.includes('blog')) return 'blog_title';
+          if (raw.includes('??') || raw.includes('email')) return 'email_subject';
+          if (raw.includes('???') || raw.includes('threads')) return 'threads_post';
+          return 'headline_copy';
+        };
+        const toHumanDesireResultItem = (copy: any, index: number) => ({
+          id: copy.id || `hd-copy-${Date.now()}-${index}`,
+          title: copy.text?.split('\n')[0] || `${index + 1} copy`,
+          body: copy.text || '',
+          text: copy.text || '',
+          tone: copy.recommended ? 'recommended' : 'rewrite',
+          format: 'human_desire',
+          platform: copy.platform,
+          outputType: copy.outputType,
+          finalScore: copy.finalScore,
+          recommended: copy.recommended,
+          desires: copy.desires,
+          anxieties: copy.anxieties,
+          triggers: copy.triggers,
+          sensory: copy.sensory,
+          hookType: copy.hookType,
+          whyRecommended: copy.whyRecommended,
+          rewriteHint: copy.rewriteHint,
+          boringScore: copy.boringScore,
+          scoreLabel: copy.recommended ? 'RECOMMENDED' : 'REWRITE',
+        });
+        const fetchHumanDesireCopies = async () => {
+          const hdPlatform = resolveHumanDesirePlatform(userMessage, contentType);
+          const hdOutputType = resolveHumanDesireOutputType(userMessage, contentType);
+          try {
+            const r = await fetch('/api/cloud-proxy', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                task: 'copy_brain_generate',
+                params: {
+                  strategy: 'human_desire',
+                  product: product || 'agri_product',
+                  platform: hdPlatform,
+                  outputType: hdOutputType,
+                  outputTypes: [hdOutputType],
+                  sourceKeyword: userMessage,
+                  count: copyCount,
+                  usePerformanceMemory: true,
+                  dryRun: true,
+                },
+              }),
+            });
+            if (!r.ok) return null;
+            const data = await r.json();
+            return data?.success && Array.isArray(data.copies) ? data : null;
+          } catch {
+            return null;
+          }
+        };
+
+        const hdData = await fetchHumanDesireCopies();
+        if (hdData?.copies?.length > 0) {
+          if (copyCount >= 5) {
+            setCreativeStudioVisible(true);
+            setCreativeStudioLoading(false);
+            setCreativeStudioProduct(product || 'agri_product');
+            setCreativeStudioType(contentType);
+            setCreativeStudioCopies(hdData.copies);
+            setCreativeStudioTrends(0);
+            setCreativeStudioRefs(0);
+            setCreativeStudioMetadata({ strategy: 'human_desire', context: hdData.context || null });
+          } else {
+            setResultDeckVisible(true);
+            setResultDeckContent(hdData.copies.map((c: any) => c.text).join('\n\n'));
+            setResultDeckType(contentType);
+            setResultDeckProduct(product || '');
+            setResultDeckItems(hdData.copies.map(toHumanDesireResultItem));
+          }
+          handleJarvisContextEvent({ intent: 'copy_generation_completed', screen: 'copy_result', payload: { copies: hdData.copies, product: product || '', type: contentType || '' } });
+          addMessage('jarvis', `${product || '??'} copy ${hdData.copies.length}?? Human Desire Engine?? ??????. ??? ???? ??? ???????.`, true);
+          setConversationExpanded(true);
+          return;
+        }
+
+
         // ── CREATIVE STUDIO: 5개 이상 요청 시 트렌드 기반 카드형 UI 활성화 ──
         // copy_research에서 이미 Creative Studio를 활성화한 경우 중복 호출 방지
         if (copyCount >= 5 && !creativeStudioVisible) {

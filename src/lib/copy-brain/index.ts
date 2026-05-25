@@ -1,6 +1,6 @@
 /**
  * COPY-BRAIN-A.1: Mawin Agricultural Copy Brain Core
- * 모든 엔진 통합 export
+ * 모든 ?�진 ?�합 export
  */
 export * from './copyBrainTypes';
 export { getProductTruth, productTruthToPrompt } from './productTruthEngine';
@@ -12,3 +12,6 @@ export { detectBoringCopy, antiBoringWarning } from './antiBoringFilter';
 export { judgeCopy } from './copyJudge';
 export { checkCopyRisk, riskGuardPromptWarning } from './copyRiskGuard';
 export { compileCopyBrainPrompt, previewPrompt } from './copyBrainCompiler';
+
+export * from './humanDesireTypes';
+export * from './performanceMemoryEngine';

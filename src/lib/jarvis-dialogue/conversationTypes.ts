@@ -65,6 +65,13 @@ export type CopyResultCardSafe = {
   buyerDesire?: string;
   recommended?: boolean;
   riskFlags?: string[];
+  desires?: string[];
+  anxieties?: string[];
+  triggers?: string[];
+  sensory?: string[];
+  finalScore?: number;
+  whyRecommended?: string;
+  rewriteHint?: string;
 };
 
 export type OutreachCollectionSummarySafe = {

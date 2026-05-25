@@ -13,14 +13,32 @@ import { motion, AnimatePresence } from 'framer-motion';
 // ═══ 타입 정의 ═══
 export interface CopyCard {
   id: string;
-  headline: string;
-  body: string;
-  hookType: string;
-  emotionTrigger: string;
-  referenceNote: string;
-  tags: string[];
-  viralScore: number;
-  sensoryLevel: 'high' | 'medium' | 'low';
+  headline?: string;
+  body?: string;
+  text?: string;
+  platform?: string;
+  outputType?: string;
+  hookType?: string;
+  emotionTrigger?: string;
+  referenceNote?: string;
+  tags?: string[];
+  viralScore?: number;
+  finalScore?: number;
+  recommended?: boolean;
+  boringScore?: number;
+  riskScore?: number;
+  platformFitScore?: number;
+  desireFitScore?: number;
+  anxietyResolutionScore?: number;
+  triggerFitScore?: number;
+  sensoryScore?: number;
+  sensoryLevel?: 'high' | 'medium' | 'low';
+  desires?: string[];
+  anxieties?: string[];
+  triggers?: string[];
+  sensory?: string[];
+  whyRecommended?: string;
+  rewriteHint?: string;
   platformVersions?: {
     threads?: string;
     reels?: string;
@@ -71,14 +89,14 @@ function getScoreColor(score: number): string {
   return '#FF6B6B';
 }
 
-function getHookLabel(hookType: string): string {
+function getHookLabel(hookType?: string): string {
   const labels: Record<string, string> = {
     sensory_hook: '감각자극', conflict_hook: '갈등유발', confession_hook: '고백형',
     seasonal_hook: '계절감', contrarian_hook: '반전형', local_trust_hook: '산지신뢰',
     memory_hook: '추억형', limited_timing_hook: '한정형', identity_hook: '정체성',
     question_hook: '질문형', surprise_hook: '놀라움',
   };
-  return labels[hookType] || hookType;
+  return hookType ? (labels[hookType] || hookType) : 'human_desire_hook';
 }
 
 function getSensoryIcon(level: string): string {
@@ -93,6 +111,64 @@ function getTypeLabel(type: string): string {
     youtube_thumbnail: '썸네일 문구', instagram_copy: '인스타 캡션', full_package: '마케팅 패키지',
   };
   return labels[type] || '마케팅 콘텐츠';
+}
+
+function getCopyText(copy: CopyCard): string {
+  return copy.text || copy.body || copy.headline || '';
+}
+
+function getCopyHeadline(copy: CopyCard): string {
+  return copy.headline || copy.text?.split('\n')[0] || copy.body?.split('\n')[0] || '';
+}
+
+function getCopyScore(copy: CopyCard): number {
+  return Number(copy.finalScore ?? copy.viralScore ?? 0);
+}
+
+function getCopyDesires(copy: CopyCard): string[] {
+  return copy.desires || copy.desires_used || [];
+}
+
+function getCopyAnxieties(copy: CopyCard): string[] {
+  return copy.anxieties || (copy.anxiety_resolved ? [copy.anxiety_resolved] : []);
+}
+
+function getCopyTriggers(copy: CopyCard): string[] {
+  return copy.triggers || (copy.trigger_used ? [copy.trigger_used] : []);
+}
+
+function getCopySensory(copy: CopyCard): string[] {
+  return copy.sensory || copy.sensory_words || [];
+}
+
+function CompactBadges({ label, values, tone }: { label: string; values?: string[]; tone: 'pink' | 'amber' | 'cyan' | 'orange' }) {
+  if (!values || values.length === 0) return null;
+  const colors = {
+    pink: ['rgba(255,100,200,0.08)', 'rgba(255,100,200,0.25)', 'rgba(255,100,200,0.9)'],
+    amber: ['rgba(255,184,0,0.08)', 'rgba(255,184,0,0.25)', 'rgba(255,184,0,0.9)'],
+    cyan: ['rgba(0,200,255,0.08)', 'rgba(0,200,255,0.25)', 'rgba(0,200,255,0.9)'],
+    orange: ['rgba(255,130,80,0.08)', 'rgba(255,130,80,0.25)', 'rgba(255,130,80,0.9)'],
+  }[tone];
+  const shown = values.slice(0, 3);
+  const extra = values.length - shown.length;
+  return (
+    <>
+      {shown.map((value, i) => (
+        <span key={`${label}-${value}-${i}`} style={{
+          padding: '4px 9px', borderRadius: '12px',
+          background: colors[0], border: `1px solid ${colors[1]}`,
+          color: colors[2], fontSize: '10px',
+        }}>{label} {String(value).replace(/_/g, ' ')}</span>
+      ))}
+      {extra > 0 && (
+        <span style={{
+          padding: '4px 8px', borderRadius: '12px',
+          background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.12)',
+          color: 'rgba(255,255,255,0.55)', fontSize: '10px',
+        }}>+{extra}</span>
+      )}
+    </>
+  );
 }
 
 const DESIRE_EMOJI: Record<string, string> = {
@@ -145,10 +221,10 @@ function CopyDetailModal({
           <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
             <div style={{
               width: '32px', height: '32px', borderRadius: '8px',
-              background: `linear-gradient(135deg, ${getScoreColor(copy.viralScore)}22, ${getScoreColor(copy.viralScore)}44)`,
-              border: `1px solid ${getScoreColor(copy.viralScore)}66`,
+              background: `linear-gradient(135deg, ${getScoreColor(getCopyScore(copy))}22, ${getScoreColor(getCopyScore(copy))}44)`,
+              border: `1px solid ${getScoreColor(getCopyScore(copy))}66`,
               display: 'flex', alignItems: 'center', justifyContent: 'center',
-              fontSize: '12px', fontWeight: 700, color: getScoreColor(copy.viralScore),
+              fontSize: '12px', fontWeight: 700, color: getScoreColor(getCopyScore(copy)),
             }}>{rank}</div>
             <div>
               <div style={{ color: '#fff', fontSize: '14px', fontWeight: 600 }}>{product} 카피</div>
@@ -161,10 +237,10 @@ function CopyDetailModal({
           <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
             <div style={{
               padding: '4px 10px', borderRadius: '12px',
-              background: `${getScoreColor(copy.viralScore)}18`,
-              border: `1px solid ${getScoreColor(copy.viralScore)}44`,
-              color: getScoreColor(copy.viralScore), fontSize: '12px', fontWeight: 700,
-            }}>{copy.viralScore}점</div>
+              background: `${getScoreColor(getCopyScore(copy))}18`,
+              border: `1px solid ${getScoreColor(getCopyScore(copy))}44`,
+              color: getScoreColor(getCopyScore(copy)), fontSize: '12px', fontWeight: 700,
+            }}>{getCopyScore(copy)}점</div>
             <button onClick={onClose} style={{
               background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.15)',
               color: '#aaa', padding: '6px 12px', borderRadius: '6px', cursor: 'pointer', fontSize: '12px',
@@ -181,23 +257,37 @@ function CopyDetailModal({
             marginBottom: '20px',
           }}>
             <div style={{ color: 'rgba(0,245,255,0.7)', fontSize: '9px', letterSpacing: '2px', marginBottom: '8px' }}>HEADLINE</div>
-            <div style={{ color: '#fff', fontSize: '18px', fontWeight: 700, lineHeight: 1.5 }}>{copy.headline}</div>
+            <div style={{ color: '#fff', fontSize: '18px', fontWeight: 700, lineHeight: 1.5 }}>{getCopyHeadline(copy)}</div>
           </div>
 
           {/* Why This Works — 자비스 해설 */}
-          {copy.why_this_works && (
+          {(copy.whyRecommended || copy.why_this_works) && (
             <div style={{
               padding: '14px 16px', borderRadius: '10px',
               background: 'linear-gradient(135deg, rgba(0,255,136,0.04), rgba(0,180,255,0.04))',
               border: '1px solid rgba(0,255,136,0.2)', marginBottom: '16px',
             }}>
               <div style={{ color: 'rgba(0,255,136,0.8)', fontSize: '9px', letterSpacing: '2px', marginBottom: '6px' }}>WHY THIS WORKS</div>
-              <div style={{ color: 'rgba(255,255,255,0.85)', fontSize: '13px', lineHeight: 1.6 }}>{copy.why_this_works}</div>
+              <div style={{ color: 'rgba(255,255,255,0.85)', fontSize: '13px', lineHeight: 1.6 }}>{copy.whyRecommended || copy.why_this_works}</div>
+            </div>
+          )}
+
+          {copy.rewriteHint && (
+            <div style={{
+              padding: '12px 14px', borderRadius: '10px',
+              background: 'rgba(255,184,0,0.05)', border: '1px solid rgba(255,184,0,0.18)',
+              color: 'rgba(255,255,255,0.78)', fontSize: '12px', lineHeight: 1.5, marginBottom: '16px',
+            }}>
+              <span style={{ color: 'rgba(255,184,0,0.85)', fontWeight: 700 }}>다시쓰기 힌트</span> {copy.rewriteHint}
             </div>
           )}
 
           {/* Human Desire / Anxiety / Trigger 태그 */}
           <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginBottom: '16px' }}>
+            <CompactBadges label="욕구" values={getCopyDesires(copy)} tone="pink" />
+            <CompactBadges label="불안" values={getCopyAnxieties(copy)} tone="amber" />
+            <CompactBadges label="트리거" values={getCopyTriggers(copy)} tone="cyan" />
+            <CompactBadges label="감각" values={getCopySensory(copy)} tone="orange" />
             {copy.desires_used?.map((d, i) => (
               <span key={`d-${i}`} style={{
                 padding: '4px 10px', borderRadius: '12px',
@@ -224,7 +314,7 @@ function CopyDetailModal({
           {/* Full Script */}
           <div style={{ marginBottom: '20px' }}>
             <div style={{ color: 'rgba(255,255,255,0.5)', fontSize: '9px', letterSpacing: '2px', marginBottom: '8px' }}>FULL SCRIPT</div>
-            <div style={{ color: 'rgba(255,255,255,0.85)', fontSize: '14px', lineHeight: 1.8, whiteSpace: 'pre-wrap' }}>{copy.body}</div>
+            <div style={{ color: 'rgba(255,255,255,0.85)', fontSize: '14px', lineHeight: 1.8, whiteSpace: 'pre-wrap' }}>{getCopyText(copy)}</div>
           </div>
 
           {/* Sensory Words */}
@@ -263,7 +353,7 @@ function CopyDetailModal({
                 background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)',
                 color: 'rgba(255,255,255,0.8)', fontSize: '13px', lineHeight: 1.7, whiteSpace: 'pre-wrap',
               }}>
-                {activeTab === 'full' && copy.body}
+                {activeTab === 'full' && getCopyText(copy)}
                 {activeTab === 'threads' && (copy.platformVersions?.threads || '(스레드 버전 미생성)')}
                 {activeTab === 'reels' && (copy.platformVersions?.reels || '(릴스 버전 미생성)')}
                 {activeTab === 'kakao' && (copy.platformVersions?.kakao || '(카카오톡 버전 미생성)')}
@@ -354,12 +444,12 @@ function CopyDetailModal({
           padding: '16px 24px', borderTop: '1px solid rgba(0,180,255,0.15)',
           display: 'flex', gap: '10px', justifyContent: 'flex-end', background: 'rgba(0,0,0,0.3)',
         }}>
-          <button onClick={() => navigator.clipboard.writeText(copy.body)} style={{
+          <button onClick={() => navigator.clipboard.writeText(getCopyText(copy))} style={{
             padding: '10px 18px', borderRadius: '8px', cursor: 'pointer',
             background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.15)',
             color: 'rgba(255,255,255,0.7)', fontSize: '12px', fontWeight: 500,
           }}>복사</button>
-          <button onClick={() => { onClose(); saveStyleFeedback(copy.headline, 'rejected', product); }} style={{
+          <button onClick={() => { onClose(); saveStyleFeedback(getCopyHeadline(copy), 'rejected', product); }} style={{
             padding: '10px 18px', borderRadius: '8px', cursor: 'pointer',
             background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.15)',
             color: 'rgba(255,255,255,0.7)', fontSize: '12px', fontWeight: 500,
@@ -402,25 +492,43 @@ export default function CreativeStudio({
 
   if (!visible) return null;
 
-  const sortedCopies = [...copies].sort((a, b) => b.viralScore - a.viralScore);
+  const sortedCopies = [...copies].sort((a, b) => getCopyScore(b) - getCopyScore(a));
 
   const handleCardClick = (copy: CopyCard, rank: number) => {
     setSelectedCopy(copy);
     setSelectedRank(rank);
-    onJarvisContextEvent?.({ intent: 'copy_card_detail', payload: { copy, rank } });
+    onJarvisContextEvent?.({
+      intent: 'copy_card_selected',
+      payload: {
+        ...copy,
+        text: getCopyText(copy),
+        title: getCopyHeadline(copy),
+        platform: copy.platform,
+        outputType: copy.outputType,
+        desires: getCopyDesires(copy),
+        anxieties: getCopyAnxieties(copy),
+        triggers: getCopyTriggers(copy),
+        sensory: getCopySensory(copy),
+        finalScore: getCopyScore(copy),
+        recommended: copy.recommended,
+        whyRecommended: copy.whyRecommended || copy.why_this_works,
+        rewriteHint: copy.rewriteHint,
+        rank,
+      },
+    });
   };
 
   const handleSelect = (copy: CopyCard) => {
     onSelect(copy);
     setSelectedCopy(null);
     onJarvisContextEvent?.({ intent: 'copy_selected', payload: { copy } });
-    saveStyleFeedback(copy.headline, 'approved', product);
+    saveStyleFeedback(getCopyHeadline(copy), 'approved', product);
   };
 
   const handlePass = (copy: CopyCard) => {
     setSelectedCopy(null);
     onJarvisContextEvent?.({ intent: 'copy_passed', payload: { copy } });
-    saveStyleFeedback(copy.headline, 'rejected', product);
+    saveStyleFeedback(getCopyHeadline(copy), 'rejected', product);
   };
 
   return (
@@ -570,26 +678,26 @@ export default function CreativeStudio({
                     <div style={{
                       width: '22px', height: '22px', borderRadius: '6px',
                       background: idx < 3
-                        ? `linear-gradient(135deg, ${getScoreColor(copy.viralScore)}22, ${getScoreColor(copy.viralScore)}44)`
+                        ? `linear-gradient(135deg, ${getScoreColor(getCopyScore(copy))}22, ${getScoreColor(getCopyScore(copy))}44)`
                         : 'rgba(255,255,255,0.05)',
-                      border: `1px solid ${idx < 3 ? getScoreColor(copy.viralScore) + '66' : 'rgba(255,255,255,0.1)'}`,
+                      border: `1px solid ${idx < 3 ? getScoreColor(getCopyScore(copy)) + '66' : 'rgba(255,255,255,0.1)'}`,
                       display: 'flex', alignItems: 'center', justifyContent: 'center',
                       fontSize: '10px', fontWeight: 700,
-                      color: idx < 3 ? getScoreColor(copy.viralScore) : 'rgba(255,255,255,0.4)',
+                      color: idx < 3 ? getScoreColor(getCopyScore(copy)) : 'rgba(255,255,255,0.4)',
                     }}>{idx + 1}</div>
                     <div style={{ flex: 1 }}>
                       <div style={{
                         color: '#fff', fontSize: '13px', fontWeight: 600, lineHeight: 1.4,
                         display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden',
-                      }}>{copy.headline}</div>
+                      }}>{getCopyHeadline(copy)}</div>
                     </div>
                     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '3px', flexShrink: 0 }}>
                       <div style={{
                         padding: '2px 7px', borderRadius: '8px',
-                        background: `${getScoreColor(copy.viralScore)}15`,
-                        border: `1px solid ${getScoreColor(copy.viralScore)}44`,
-                        color: getScoreColor(copy.viralScore), fontSize: '10px', fontWeight: 700,
-                      }}>{copy.viralScore}</div>
+                        background: `${getScoreColor(getCopyScore(copy))}15`,
+                        border: `1px solid ${getScoreColor(getCopyScore(copy))}44`,
+                        color: getScoreColor(getCopyScore(copy)), fontSize: '10px', fontWeight: 700,
+                      }}>{getCopyScore(copy)}</div>
                       {copy.best_posting_time && (
                         <div style={{ color: 'rgba(0,200,100,0.6)', fontSize: '9px' }}>⏰ {copy.best_posting_time}</div>
                       )}
@@ -603,12 +711,26 @@ export default function CreativeStudio({
                       background: 'rgba(0,245,255,0.08)', border: '1px solid rgba(0,245,255,0.15)',
                       color: 'rgba(0,245,255,0.7)', fontSize: '9px',
                     }}>{getHookLabel(copy.hookType)}</span>
-                    {copy.desires_used?.[0] && (
+                    {getCopyDesires(copy)[0] && (
                       <span style={{
                         padding: '2px 6px', borderRadius: '6px',
                         background: 'rgba(255,100,200,0.06)', border: '1px solid rgba(255,100,200,0.15)',
                         color: 'rgba(255,100,200,0.7)', fontSize: '9px',
-                      }}>{DESIRE_EMOJI[copy.desires_used[0]] || '❤️'} {copy.desires_used[0].replace(/_/g, ' ')}</span>
+                      }}>{DESIRE_EMOJI[getCopyDesires(copy)[0]] || '❤️'} {getCopyDesires(copy)[0].replace(/_/g, ' ')}</span>
+                    )}
+                    {getCopyAnxieties(copy)[0] && (
+                      <span style={{
+                        padding: '2px 6px', borderRadius: '6px',
+                        background: 'rgba(255,184,0,0.06)', border: '1px solid rgba(255,184,0,0.15)',
+                        color: 'rgba(255,184,0,0.7)', fontSize: '9px',
+                      }}>불안 {getCopyAnxieties(copy)[0].replace(/_/g, ' ')}</span>
+                    )}
+                    {getCopyTriggers(copy)[0] && (
+                      <span style={{
+                        padding: '2px 6px', borderRadius: '6px',
+                        background: 'rgba(0,200,255,0.06)', border: '1px solid rgba(0,200,255,0.15)',
+                        color: 'rgba(0,200,255,0.7)', fontSize: '9px',
+                      }}>트리거 {getCopyTriggers(copy)[0].replace(/_/g, ' ')}</span>
                     )}
                     {copy.comment_engagement_score && (
                       <span style={{
@@ -627,7 +749,16 @@ export default function CreativeStudio({
                     <span style={{
                       padding: '2px 5px', borderRadius: '6px',
                       color: 'rgba(255,255,255,0.3)', fontSize: '9px',
-                    }}>{getSensoryIcon(copy.sensoryLevel)} {copy.sensoryLevel}</span>
+                    }}>{getSensoryIcon(copy.sensoryLevel || 'medium')} {copy.sensoryLevel || 'medium'}</span>
+                    {copy.recommended !== undefined && (
+                      <span style={{
+                        padding: '2px 6px', borderRadius: '6px',
+                        background: copy.recommended ? 'rgba(0,255,136,0.07)' : 'rgba(255,184,0,0.06)',
+                        border: `1px solid ${copy.recommended ? 'rgba(0,255,136,0.18)' : 'rgba(255,184,0,0.16)'}`,
+                        color: copy.recommended ? 'rgba(0,255,136,0.75)' : 'rgba(255,184,0,0.75)',
+                        fontSize: '9px',
+                      }}>{copy.recommended ? '추천' : '검토'}</span>
+                    )}
                   </div>
 
                   {/* Predicted Comment Preview (1st card only) */}

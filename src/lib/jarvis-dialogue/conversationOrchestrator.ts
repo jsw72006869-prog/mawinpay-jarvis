@@ -59,6 +59,13 @@ function buildUserPrompt(ctx: JarvisConversationContext): string {
 - 본문: ${c.text?.slice(0, 150)}
 - 플랫폼: ${c.platform || '미지정'}
 - 후킹 유형: ${c.hookType || '미분류'}
+- 욕구: ${c.desires?.join(', ') || '없음'}
+- 불안 해소: ${c.anxieties?.join(', ') || '없음'}
+- 트리거: ${c.triggers?.join(', ') || '없음'}
+- 감각: ${c.sensory?.join(', ') || '없음'}
+- 점수: ${c.finalScore ?? '미계산'}
+- 추천 이유: ${c.whyRecommended || '없음'}
+- 다시쓰기 힌트: ${c.rewriteHint || '없음'}
 - 추천: ${c.recommended ? '예' : '아니오'}
 - 위험 플래그: ${c.riskFlags?.join(', ') || '없음'}`);
   }
@@ -159,13 +166,16 @@ function buildContextualFallback(ctx: JarvisConversationContext): JarvisReply {
       const c = ctx.selectedCopy;
       actions.push(
         { id: 'more_aggressive', label: '더 자극적으로', mode: 'draft' },
-        { id: 'threads_style', label: 'Threads 스타일로', mode: 'draft' },
-        { id: 'youtube_thumb', label: 'YouTube 썸네일용', mode: 'draft' },
-        { id: 'save_copy', label: '저장하기', mode: 'observe' },
+        { id: 'more_conversational', label: '더 말하듯이', mode: 'draft' },
+        { id: 'more_field_scene', label: '더 현장감 있게', mode: 'draft' },
+        { id: 'shorten_thumbnail', label: '썸네일용으로 줄이기', mode: 'draft' },
+        { id: 'reels_first_3s', label: '릴스 첫 3초로 변환', mode: 'draft' },
+        { id: 'expand_threads', label: '스레드 글로 확장', mode: 'draft' },
+        { id: 'email_subject', label: '이메일 제목으로 변환', mode: 'draft' },
       );
       return {
         text: c
-          ? `선생님, 이 카피는 ${c.hookType || '일반'} 유형입니다. ${c.recommended ? '추천 후보로 분류되었습니다.' : ''} ${c.riskFlags && c.riskFlags.length > 0 ? `주의: ${c.riskFlags.join(', ')}` : '위험 요소는 없습니다.'}`
+          ? `선생님, 이 카피는 ${(c.desires || []).slice(0, 2).join(', ') || '구매 욕구'}를 건드리고 ${(c.anxieties || []).slice(0, 2).join(', ') || '구매 불안'}을 줄이는 구조입니다. ${c.platform ? `${c.platform} 문법에 맞춰 평가했고, ` : ''}${c.recommended ? '추천 후보로 분류되었습니다.' : '조금 더 다듬으면 좋겠습니다.'} ${c.whyRecommended || ''}`
           : '선생님, 카피 정보를 확인하고 있습니다.',
         shouldSpeak: true,
         shouldShowInChat: true,

@@ -22,6 +22,19 @@ export interface ResultItem {
   id: string;
   title: string;
   body: string;
+  text?: string;
+  platform?: string;
+  outputType?: string;
+  finalScore?: number;
+  recommended?: boolean;
+  desires?: string[];
+  anxieties?: string[];
+  triggers?: string[];
+  sensory?: string[];
+  hookType?: string;
+  whyRecommended?: string;
+  rewriteHint?: string;
+  boringScore?: number;
   tone?: string;
   format?: string;
   scoreLabel?: string;
@@ -38,6 +51,31 @@ export interface ResultItem {
   whyItWorks?: string;
   riskLevel?: string;
   scores?: CopyAScores;
+}
+
+function getItemText(item: ResultItem): string {
+  return item.text || item.body || item.headline || '';
+}
+
+function compactValues(values?: string[]): string[] {
+  return Array.isArray(values) ? values.filter(Boolean).slice(0, 3) : [];
+}
+
+function FieldChips({ label, values, color }: { label: string; values?: string[]; color: string }) {
+  const shown = compactValues(values);
+  if (shown.length === 0) return null;
+  const extra = Math.max(0, (values?.length || 0) - shown.length);
+  return (
+    <div className="rd-hd-chip-row">
+      <span className="rd-hd-chip-label">{label}</span>
+      {shown.map((value, i) => (
+        <span key={`${label}-${value}-${i}`} className="rd-hd-chip" style={{ borderColor: `${color}55`, color }}>
+          {String(value).replace(/_/g, ' ')}
+        </span>
+      ))}
+      {extra > 0 && <span className="rd-hd-chip muted">+{extra}</span>}
+    </div>
+  );
 }
 
 export interface ResultDeckProps {
@@ -438,6 +476,12 @@ export default function ResultDeck({
                     <div className="rd-copy-card-title">{item.title}</div>
                     <div className="rd-copy-card-badges">
                       {item.tone && <span className="rd-tone-chip">{item.tone}</span>}
+                      {item.platform && <span className="rd-tone-chip">{item.platform}</span>}
+                      {item.outputType && <span className="rd-tone-chip">{item.outputType}</span>}
+                      {item.finalScore !== undefined && <span className="rd-tone-chip">{item.finalScore}점</span>}
+                      {item.recommended !== undefined && (
+                        <span className="rd-tone-chip">{item.recommended ? '추천' : '검토'}</span>
+                      )}
                       {item.riskLevel && (
                         <span className="rd-risk-chip" style={{ borderColor: getRiskColor(item.riskLevel), color: getRiskColor(item.riskLevel) }}>
                           {item.riskLevel}
@@ -494,11 +538,26 @@ export default function ResultDeck({
                   ) : (
                     /* 기존 일반 카드 렌더링 */
                     <div className="rd-copy-card-text">
-                      {item.body.split('\n').map((line, i) => (
+                      {getItemText(item).split('\n').map((line, i) => (
                         <p key={i} className={line.startsWith('-') || line.startsWith('•') ? 'rd-bullet' : ''}>
                           {line}
                         </p>
                       ))}
+                    </div>
+                  )}
+
+                  {(item.desires?.length || item.anxieties?.length || item.triggers?.length || item.sensory?.length || item.whyRecommended || item.rewriteHint) && (
+                    <div className="rd-hd-fields">
+                      <FieldChips label="욕구" values={item.desires} color="#ff8bd8" />
+                      <FieldChips label="불안" values={item.anxieties} color="#ffbf4d" />
+                      <FieldChips label="트리거" values={item.triggers} color="#40d7ff" />
+                      <FieldChips label="감각" values={item.sensory} color="#ff9b62" />
+                      {item.whyRecommended && (
+                        <div className="rd-hd-note"><strong>추천 이유</strong> {item.whyRecommended}</div>
+                      )}
+                      {item.rewriteHint && (
+                        <div className="rd-hd-note warn"><strong>다시쓰기 힌트</strong> {item.rewriteHint}</div>
+                      )}
                     </div>
                   )}
 

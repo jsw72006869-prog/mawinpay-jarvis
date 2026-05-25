@@ -50,6 +50,13 @@ export function toSafeCopyCard(copy: any): CopyResultCardSafe {
     buyerDesire: copy.buyerDesire || '',
     recommended: Boolean(copy.recommended),
     riskFlags: copy.riskFlags || [],
+    desires: copy.desires || copy.desires_used || [],
+    anxieties: copy.anxieties || (copy.anxiety_resolved ? [copy.anxiety_resolved] : []),
+    triggers: copy.triggers || (copy.trigger_used ? [copy.trigger_used] : []),
+    sensory: copy.sensory || copy.sensory_words || [],
+    finalScore: Number(copy.finalScore ?? copy.viralScore ?? 0),
+    whyRecommended: copy.whyRecommended || copy.why_this_works || '',
+    rewriteHint: copy.rewriteHint || '',
   };
 }
 
