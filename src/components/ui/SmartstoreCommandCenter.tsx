@@ -585,6 +585,7 @@ export default function SmartstoreCommandCenter({
       <div className="scc-stage">
         {/* ── Stage 2: workspace shell (scale 0.985→1, y 8→0, 220~320ms) ── */}
         <motion.div
+          data-testid="smartstore-workspace"
           className="scc-workspace order-focus-layout"
           variants={workspaceVariants}
           initial="hidden"

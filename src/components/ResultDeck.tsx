@@ -366,6 +366,7 @@ export default function ResultDeck({
     <AnimatePresence>
       {visible && (
         <motion.div
+          data-testid="result-deck"
           className="result-deck-overlay rd-v12b"
           initial={{ opacity: 0, x: -40, scale: 0.97, filter: 'blur(6px)' }}
           animate={{ opacity: 1, x: 0, scale: 1, filter: 'blur(0px)' }}
@@ -464,6 +465,7 @@ export default function ResultDeck({
             <AnimatePresence>
               {showContent && displayItems.map((item, idx) => (
                 <motion.div
+                  data-testid="copy-card"
                   key={item.id || idx}
                   className="rd-copy-card" onClick={() => onCardSelect?.(item, idx)}
                   initial={{ opacity: 0, y: 20, scale: 0.97 }}
@@ -547,7 +549,7 @@ export default function ResultDeck({
                   )}
 
                   {(item.desires?.length || item.anxieties?.length || item.triggers?.length || item.sensory?.length || item.whyRecommended || item.rewriteHint) && (
-                    <div className="rd-hd-fields">
+                    <div className="rd-hd-fields" data-testid="copy-card-human-desire-fields">
                       <FieldChips label="욕구" values={item.desires} color="#ff8bd8" />
                       <FieldChips label="불안" values={item.anxieties} color="#ffbf4d" />
                       <FieldChips label="트리거" values={item.triggers} color="#40d7ff" />
@@ -562,7 +564,7 @@ export default function ResultDeck({
                   )}
 
                   {item.scoreLabel && !isCopyACard(item) && (
-                    <div className="rd-legacy-score">
+                    <div className="rd-legacy-score" data-testid="copy-card-score">
                       <span>{item.scoreLabel}</span>
                     </div>
                   )}

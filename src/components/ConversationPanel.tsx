@@ -532,6 +532,7 @@ export default function ConversationPanel({
 
               return (
                 <motion.div
+                  data-testid="jarvis-dialogue-message"
                   key={msg.id}
                   initial={{ opacity: 0, y: 12 }}
                   animate={{ opacity: 1, y: 0 }}

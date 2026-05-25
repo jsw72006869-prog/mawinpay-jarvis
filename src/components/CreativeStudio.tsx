@@ -534,6 +534,7 @@ export default function CreativeStudio({
   return (
     <>
       <motion.div
+        data-testid="creative-studio"
         className="creative-studio-panel"
         initial={{ opacity: 0, x: -40, filter: 'blur(8px)' }}
         animate={{ opacity: 1, x: 0, filter: 'blur(0px)' }}
@@ -657,6 +658,7 @@ export default function CreativeStudio({
             <AnimatePresence>
               {sortedCopies.map((copy, idx) => (
                 <motion.div
+                  data-testid="copy-card"
                   key={copy.id}
                   initial={{ opacity: 0, y: 20 }}
                   animate={{ opacity: 1, y: 0 }}
@@ -692,7 +694,7 @@ export default function CreativeStudio({
                       }}>{getCopyHeadline(copy)}</div>
                     </div>
                     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '3px', flexShrink: 0 }}>
-                      <div style={{
+                      <div data-testid="copy-card-score" style={{
                         padding: '2px 7px', borderRadius: '8px',
                         background: `${getScoreColor(getCopyScore(copy))}15`,
                         border: `1px solid ${getScoreColor(getCopyScore(copy))}44`,
@@ -705,7 +707,7 @@ export default function CreativeStudio({
                   </div>
 
                   {/* Tags Row */}
-                  <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap' }}>
+                  <div data-testid="copy-card-human-desire-fields" style={{ display: 'flex', gap: '4px', flexWrap: 'wrap' }}>
                     <span style={{
                       padding: '2px 6px', borderRadius: '6px',
                       background: 'rgba(0,245,255,0.08)', border: '1px solid rgba(0,245,255,0.15)',

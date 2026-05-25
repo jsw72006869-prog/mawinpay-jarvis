@@ -1231,7 +1231,7 @@ const DataWallView: React.FC = () => {
   const displayNode = agentGraph.nodes.find(n => n.id === displayNodeId) ?? agentGraph.selectedNode;
 
   return (
-    <main className={`datawall-node-page ${systemArmed ? 'is-armed' : ''} ${openingActive ? 'is-opening' : ''}`}>
+    <main data-testid="datawall-workstation" className={`datawall-node-page ${systemArmed ? 'is-armed' : ''} ${openingActive ? 'is-opening' : ''}`}>
       {/* ─── Background ─── */}
       <div className="datawall-bg" aria-hidden="true">
         <div className="datawall-bg-grid" />
@@ -1634,7 +1634,7 @@ const DataWallView: React.FC = () => {
 
       {/* ═══ EXECUTION LOCK STRIP ═══ */}
       <footer className="datawall-execution-strip datawall-enter datawall-delay-5">
-        <span className="exec-lock-badge">🔐 EXECUTE LOCKED</span>
+        <span className="exec-lock-badge" data-testid="execute-locked">🔐 EXECUTE LOCKED</span>
         <span className="exec-sep">·</span>
         <span>ACTIVE READONLY</span>
         <span className="exec-sep">·</span>
