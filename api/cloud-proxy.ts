@@ -2505,12 +2505,23 @@ async function ensureTab(tab: string): Promise<void> {
   // Ignore error if tab already exists
 }
 
+function toSheetColumnName(index: number): string {
+  let n = index;
+  let name = '';
+  while (n > 0) {
+    const rem = (n - 1) % 26;
+    name = String.fromCharCode(65 + rem) + name;
+    n = Math.floor((n - 1) / 26);
+  }
+  return name;
+}
+
 async function ensureHeaders(tab: string): Promise<void> {
   const headers = SHEET_HEADERS[tab];
   if (!headers) return;
   try {
     // OUTREACH-COPY.1: 헤더 행 전체 읽어서 컬럼 수 비교 후 부족하면 업데이트
-    const lastCol = String.fromCharCode(64 + headers.length); // e.g. Z for 26 cols
+    const lastCol = toSheetColumnName(headers.length); // supports AA/AB columns
     const result = await sheetsRead(tab, `${tab}!A1:${lastCol}1`);
     const existingHeaders: string[] = result.values?.[0] || [];
     if (existingHeaders.length === 0) {
@@ -2526,7 +2537,7 @@ async function ensureHeaders(tab: string): Promise<void> {
     } else if (existingHeaders.length < headers.length) {
       // 헤더 컬럼 수 부족 - 누락된 컬럼만 추가
       const missingHeaders = headers.slice(existingHeaders.length);
-      const startColLetter = String.fromCharCode(65 + existingHeaders.length); // 다음 빈 컬럼
+      const startColLetter = toSheetColumnName(existingHeaders.length + 1);
       const token = await getGoogleSheetsToken();
       const range = encodeURIComponent(`${tab}!${startColLetter}1`);
       const url = `https://sheets.googleapis.com/v4/spreadsheets/${WORKSPACE_SHEET_ID}/values/${range}?valueInputOption=RAW`;
