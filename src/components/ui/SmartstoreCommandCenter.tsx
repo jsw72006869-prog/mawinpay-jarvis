@@ -32,6 +32,8 @@ interface OrderData {
   pendingShipping?: number;
   purchaseConfirmed?: number;
   fetchedAt?: string | null;
+  source?: string;
+  dataReliable?: boolean;
 }
 
 interface Props {
@@ -653,6 +655,18 @@ export default function SmartstoreCommandCenter({
             style={{ position: 'relative', zIndex: 1 }}
           >
             <DailyBriefPanel orderData={orderData} variant="horizontal" />
+            <div style={{
+              marginTop: 6,
+              display: 'flex',
+              justifyContent: 'flex-end',
+              gap: 8,
+              fontSize: '10px',
+              color: orderData?.dataReliable === false ? '#ffb86b' : 'rgba(148,163,184,0.65)',
+              letterSpacing: '0.04em',
+            }}>
+              <span>ProductOrderId 기준</span>
+              {orderData?.dataReliable === false && <span>API 상태 확인 필요</span>}
+            </div>
           </motion.div>
 
           {/* ── main: 주문현황 (Staged Panel Reveal - 자비스 첫 말 이후) ── */}

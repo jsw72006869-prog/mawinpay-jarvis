@@ -226,6 +226,7 @@ function CandidateDetailDrawer({
 interface OutreachResultWorkspaceProps {
   visible: boolean;
   candidates: InfluencerCandidate[];
+  collectionSummary?: any;
   loading?: boolean;
   onClose: () => void;
   onSave?: (candidates: InfluencerCandidate[]) => void;
@@ -236,6 +237,7 @@ interface OutreachResultWorkspaceProps {
 export default function OutreachResultWorkspace({
   visible,
   candidates,
+  collectionSummary,
   loading,
   onClose,
   onSave,
@@ -269,6 +271,9 @@ export default function OutreachResultWorkspace({
     qualified: candidates.filter(c => (c as any).target_match_status === 'qualified').length,
     review: candidates.filter(c => (c as any).target_match_status === 'review').length,
   };
+  const countSummary = collectionSummary || {};
+  const apiStatus = countSummary.youtubeApiStatus || '';
+  const saveSkippedDryRun = Array.isArray(countSummary.apiWarnings) && countSummary.apiWarnings.includes('sheet_save_skipped:dryRun');
 
   const getScoreColor = (score: number) => {
     if (score >= 70) return '#00ff88';
@@ -378,6 +383,49 @@ export default function OutreachResultWorkspace({
         </div>
 
         {/* ── 필터 + 페이지네이션 ── */}
+        {collectionSummary && (
+          <div style={{
+            padding: '10px 24px',
+            borderBottom: '1px solid rgba(0,180,255,0.08)',
+            display: 'flex',
+            gap: '8px',
+            flexWrap: 'wrap',
+            alignItems: 'center',
+            flexShrink: 0,
+          }}>
+            {[
+              { label: '전체 검색', value: countSummary.rawSearchResultCount },
+              { label: '중복 제거 후보', value: countSummary.dedupedChannelCount },
+              { label: saveSkippedDryRun ? '저장 대기 후보' : '저장 후보', value: saveSkippedDryRun ? countSummary.candidateReadyToSaveCount : countSummary.savedCandidateCount },
+              { label: '화면 표시 후보', value: countSummary.displayedCandidateCount },
+              { label: '공개 이메일', value: countSummary.publicEmailCount },
+              { label: '연락 가능', value: countSummary.contactableCount },
+            ].filter(item => item.value !== undefined && item.value !== null).map(item => (
+              <span key={item.label} style={{
+                border: '1px solid rgba(0,180,255,0.18)',
+                background: 'rgba(0,180,255,0.06)',
+                color: 'rgba(230,247,255,0.82)',
+                borderRadius: 4,
+                padding: '5px 8px',
+                fontSize: 10,
+              }}>{item.label} {item.value}명</span>
+            ))}
+            {apiStatus && (
+              <span style={{
+                border: `1px solid ${apiStatus === 'ok' ? 'rgba(0,255,136,0.25)' : 'rgba(255,170,0,0.35)'}`,
+                background: apiStatus === 'ok' ? 'rgba(0,255,136,0.08)' : 'rgba(255,170,0,0.09)',
+                color: apiStatus === 'ok' ? '#00ff88' : '#ffaa00',
+                borderRadius: 4,
+                padding: '5px 8px',
+                fontSize: 10,
+              }}>API 상태 {apiStatus}</span>
+            )}
+            {saveSkippedDryRun && (
+              <span style={{ color: '#ffaa00', fontSize: 10 }}>저장 생략: dryRun</span>
+            )}
+          </div>
+        )}
+
         <div style={{
           padding: '10px 24px',
           borderBottom: '1px solid rgba(0,180,255,0.08)',

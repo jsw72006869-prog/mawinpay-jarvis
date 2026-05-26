@@ -227,6 +227,153 @@ async function smartStoreRequest(path: string, options: any = {}): Promise<{ sta
   return { status: res.status, data };
 }
 
+type SmartstoreDataSource = 'naver-commerce-api' | 'fallback' | 'not_connected' | 'api_error';
+
+type SmartstoreOrderDiagnostics = {
+  requestedPeriodKst?: { from?: string; to?: string };
+  apiPeriodUtc?: { from?: string; to?: string };
+  changedOrderRawCount: number;
+  productOrderIdCount: number;
+  productOrderIdUniqueCount: number;
+  duplicateProductOrderIdCount: number;
+  detailFetchedCount: number;
+  statusBuckets: Record<string, number>;
+  apiWarnings: string[];
+  source: SmartstoreDataSource;
+};
+
+function safeDiagnosticMessage(error: any): string {
+  const raw = String(error?.code || error?.message || error || 'unknown_error');
+  return raw
+    .replace(/Bearer\s+[A-Za-z0-9._\-]+/gi, 'Bearer [redacted]')
+    .replace(/key=[^&\s]+/gi, 'key=[redacted]')
+    .replace(/[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}/g, '[email]')
+    .slice(0, 140);
+}
+
+function createSmartstoreDiagnostics(input: Partial<SmartstoreOrderDiagnostics> = {}): SmartstoreOrderDiagnostics {
+  return {
+    changedOrderRawCount: 0,
+    productOrderIdCount: 0,
+    productOrderIdUniqueCount: 0,
+    duplicateProductOrderIdCount: 0,
+    detailFetchedCount: 0,
+    statusBuckets: {},
+    apiWarnings: [],
+    source: 'naver-commerce-api',
+    ...input,
+  };
+}
+
+function getProductOrderIdFromAny(item: any): string {
+  const po = item?.productOrder || item || {};
+  return String(po.productOrderId || item?.productOrderId || '').trim();
+}
+
+function getProductOrderStatusFromAny(item: any): string {
+  const po = item?.productOrder || item || {};
+  return String(po.productOrderStatus || item?.productOrderStatus || 'UNKNOWN').trim() || 'UNKNOWN';
+}
+
+function buildProductOrderStatusBuckets(productOrders: any[]): Record<string, number> {
+  return productOrders.reduce((acc: Record<string, number>, item: any) => {
+    const status = getProductOrderStatusFromAny(item);
+    acc[status] = (acc[status] || 0) + 1;
+    return acc;
+  }, {});
+}
+
+function dedupeProductOrderRows<T = any>(rows: T[]): { rows: T[]; duplicateCount: number } {
+  const seen = new Set<string>();
+  const deduped: T[] = [];
+  let duplicateCount = 0;
+  for (const row of rows) {
+    const id = getProductOrderIdFromAny(row);
+    if (!id) {
+      deduped.push(row);
+      continue;
+    }
+    if (seen.has(id)) {
+      duplicateCount++;
+      continue;
+    }
+    seen.add(id);
+    deduped.push(row);
+  }
+  return { rows: deduped, duplicateCount };
+}
+
+function unreliableSmartstorePayload(code: string, err: any, fetchedAt: string, mode?: string) {
+  const text = `${code} ${safeDiagnosticMessage(err)}`;
+  const source: SmartstoreDataSource = text.includes('not configured') || text.includes('credentials')
+    ? 'not_connected'
+    : 'api_error';
+  const diagnostics = createSmartstoreDiagnostics({
+    source,
+    apiWarnings: [safeDiagnosticMessage(code), safeDiagnosticMessage(err)].filter(Boolean),
+  });
+  return {
+    success: false,
+    errorCode: code,
+    fetchedAt,
+    source,
+    dataReliable: false,
+    mode,
+    diagnostics,
+    counts: { newOrders: 0, pendingShipping: 0, preShipTotal: 0, shipping: null, delivered: null, purchaseConfirmed: null },
+    newOrders: 0, pendingShipping: 0, preShipTotal: 0, shipping: null, delivered: null, purchaseConfirmed: null,
+    total: 0, data: [], orders: [],
+  };
+}
+
+type YouTubeApiStatus = 'ok' | 'env_missing' | 'quota_exceeded' | 'api_error' | 'not_connected';
+
+type OutreachCollectionDiagnostics = {
+  requestedVertical?: string;
+  requestedCount?: number;
+  queryPack: string[];
+  youtubeApiStatus: YouTubeApiStatus;
+  rawSearchResultCount: number;
+  rawChannelCount: number;
+  dedupedChannelCount: number;
+  enrichedChannelCount: number;
+  savedCandidateCount: number;
+  displayedCandidateCount: number;
+  publicEmailCount: number;
+  contactableCount: number;
+  duplicateRemovedCount: number;
+  skippedReasons: Record<string, number>;
+  apiWarnings: string[];
+};
+
+function createOutreachDiagnostics(input: Partial<OutreachCollectionDiagnostics> = {}): OutreachCollectionDiagnostics {
+  return {
+    queryPack: [],
+    youtubeApiStatus: YOUTUBE_API_KEY ? 'ok' : 'env_missing',
+    rawSearchResultCount: 0,
+    rawChannelCount: 0,
+    dedupedChannelCount: 0,
+    enrichedChannelCount: 0,
+    savedCandidateCount: 0,
+    displayedCandidateCount: 0,
+    publicEmailCount: 0,
+    contactableCount: 0,
+    duplicateRemovedCount: 0,
+    skippedReasons: {},
+    apiWarnings: [],
+    ...input,
+  };
+}
+
+function bumpReason(map: Record<string, number>, reason: string) {
+  map[reason] = (map[reason] || 0) + 1;
+}
+
+function isYouTubeQuotaErrorPayload(payload: any): boolean {
+  const reason = payload?.error?.errors?.[0]?.reason || payload?.error?.status || payload?.error?.message || '';
+  return String(reason).toLowerCase().includes('quota');
+}
+
 // ── 날짜 포맷 (KST) ──
 function formatNaverDate(d: Date): string {
   const kst = new Date(d.getTime() + 9 * 60 * 60 * 1000);
@@ -277,6 +424,7 @@ function safeOrderMap(item: any) {
 async function getLastChangedItems(lastChangedType: string, days: number, useKST: boolean = false, batchSize: number = 3): Promise<any[]> {
   const now = new Date();
   const allItems: any[] = [];
+  const apiWarnings: string[] = [];
 
   // SMARTSTORE-ORDERS-FIX.11: 병렬 사이즈 파라미터화 (PAYED용=3, deep_sync용=5)
   const BATCH_SIZE = batchSize;
@@ -317,7 +465,15 @@ async function getLastChangedItems(lastChangedType: string, days: number, useKST
           if (data?.more) {
             let lastDate = items[items.length - 1]?.lastChangedDate || '';
             let hasMore = true;
+            let pageGuard = 0;
+            const seenCursors = new Set<string>();
             while (hasMore) {
+              if (!lastDate || seenCursors.has(lastDate) || pageGuard >= 20) {
+                apiWarnings.push(`pagination_loop_guard_triggered:${lastChangedType}`);
+                break;
+              }
+              seenCursors.add(lastDate);
+              pageGuard++;
               const nextParams = new URLSearchParams({
                 lastChangedFrom: lastDate,
                 lastChangedTo: toStr,
@@ -334,17 +490,22 @@ async function getLastChangedItems(lastChangedType: string, days: number, useKST
                 hasMore = nd?.more || false;
                 if (ni.length > 0) lastDate = ni[ni.length - 1]?.lastChangedDate || '';
                 else hasMore = false;
-              } else hasMore = false;
+              } else {
+                apiWarnings.push(`last_changed_http_${nr.status}:${lastChangedType}`);
+                hasMore = false;
+              }
             }
           }
           _lcsStats.success++;
           return dayItems;
         }
       } catch (err: any) {
+        if (attempt === 2) apiWarnings.push(`last_changed_error:${lastChangedType}:${safeDiagnosticMessage(err)}`);
         if (attempt < 2) await new Promise(r => setTimeout(r, 500 * (attempt + 1)));
       }
     }
     _lcsStats.fail++;
+    apiWarnings.push(`last_changed_day_failed:${lastChangedType}`);
     return [];
   }
 
@@ -355,6 +516,18 @@ async function getLastChangedItems(lastChangedType: string, days: number, useKST
     for (const items of results) allItems.push(...items);
   }
   console.log(`[getLastChangedItems] type=${lastChangedType} days=${days} => ${allItems.length}건 (success=${_lcsStats.success} fail=${_lcsStats.fail})`);
+  Object.defineProperty(allItems, '__diagnostics', {
+    value: {
+      apiPeriodUtc: {
+        from: dayRanges[dayRanges.length - 1]?.from?.toISOString(),
+        to: dayRanges[0]?.to?.toISOString(),
+      },
+      apiWarnings,
+      successDays: _lcsStats.success,
+      failedDays: _lcsStats.fail,
+    },
+    enumerable: false,
+  });
   return allItems;
 }
 
@@ -401,16 +574,18 @@ async function getPayedOrdersFast(queryDays: number = 30, forceRefresh: boolean 
   // 상태 변경일 기준이므로 30일이면 충분 (30호출 × BATCH_SIZE=5 = 6배치 ≈ 9초)
   const PAYED_RANGE = 30;
   const payedItems = await getLastChangedItems('PAYED', PAYED_RANGE);
+  const lastChangedDiagnostics = (payedItems as any).__diagnostics || {};
+  const detailWarnings: string[] = [...(lastChangedDiagnostics.apiWarnings || [])];
+  const productOrderIds = payedItems.map((item: any) => getProductOrderIdFromAny(item)).filter(Boolean);
   
   // Step 2: ID 추출 + 중복 제거
   const idSet = new Set<string>();
-  for (const item of payedItems) {
-    if (item.productOrderId) idSet.add(item.productOrderId);
-  }
+  for (const id of productOrderIds) idSet.add(id);
   const uniqueIds = [...idSet];
   console.log(`[getPayedOrdersFast] last-changed PAYED ${PAYED_RANGE}d: ${payedItems.length}건 → unique ${uniqueIds.length}건`);
 
   // Step 3: 상세 조회로 현재 상태 확인 (이미 발송처리된 주문은 PAYED가 아님)
+  let detailOrders: any[] = [];
   let payedOrders: any[] = [];
   if (uniqueIds.length > 0) {
     for (let i = 0; i < uniqueIds.length; i += 300) {
@@ -425,6 +600,7 @@ async function getPayedOrdersFast(queryDays: number = 30, forceRefresh: boolean 
           if (Array.isArray(detailData)) {
             // 현재 상태가 PAYED인 것만 필터 (발송처리된 것 제외)
             for (const item of detailData) {
+              detailOrders.push(item);
               const po = item.productOrder || item;
               if (po.productOrderStatus === 'PAYED') {
                 payedOrders.push(item);
@@ -439,6 +615,12 @@ async function getPayedOrdersFast(queryDays: number = 30, forceRefresh: boolean 
   }
 
   console.log(`[getPayedOrdersFast] 현재 PAYED 상태: ${payedOrders.length}건`);
+
+  const detailDedupe = dedupeProductOrderRows(detailOrders);
+  if (detailDedupe.duplicateCount > 0) {
+    detailWarnings.push(`detail_duplicate_product_order_ids:${detailDedupe.duplicateCount}`);
+  }
+  payedOrders = dedupeProductOrderRows(payedOrders).rows;
 
   const newOrders = payedOrders.filter((o: any) => {
     const po = o.productOrder || o;
@@ -461,6 +643,19 @@ async function getPayedOrdersFast(queryDays: number = 30, forceRefresh: boolean 
     isCached: false,
     cacheAgeMs: 0,
     fetchedAt: new Date().toISOString(),
+    dataReliable: true,
+    source: 'naver-commerce-api',
+    diagnostics: createSmartstoreDiagnostics({
+      apiPeriodUtc: lastChangedDiagnostics.apiPeriodUtc,
+      changedOrderRawCount: payedItems.length,
+      productOrderIdCount: productOrderIds.length,
+      productOrderIdUniqueCount: uniqueIds.length,
+      duplicateProductOrderIdCount: productOrderIds.length - uniqueIds.length,
+      detailFetchedCount: detailDedupe.rows.length,
+      statusBuckets: buildProductOrderStatusBuckets(detailDedupe.rows),
+      apiWarnings: detailWarnings,
+      source: 'naver-commerce-api',
+    }),
   };
 
   _ssPayedCache = { data: result, fetchedAt: Date.now() };
@@ -636,6 +831,9 @@ async function getSmartstoreStatusCounts(queryDays: number = 30) {
     delivered: deep?.delivered ?? null,
     purchaseConfirmed: deep?.purchaseConfirmed ?? null,
     settlementExpectationAmount: 0,
+    dataReliable: payedData.dataReliable !== false,
+    source: payedData.source || 'naver-commerce-api',
+    diagnostics: payedData.diagnostics,
     dashboardSnapshot: {
       newOrders: payedData.newOrdersCount,
       pendingShipping: payedData.pendingShippingCount,
@@ -854,7 +1052,9 @@ async function handleSmartstoreOrders(params: any) {
 
     const response: any = {
       success: true,
-      source: 'naver-commerce-api',
+      source: counts.source || 'naver-commerce-api',
+      dataReliable: counts.dataReliable !== false,
+      diagnostics: counts.diagnostics,
       fetchedAt,
       cacheAgeMs: 0,
       isCached: false,
@@ -890,7 +1090,9 @@ async function handleSmartstoreOrders(params: any) {
     const counts = await getSmartstoreStatusCounts(1);
     return {
       success: true,
-      source: 'naver-commerce-api',
+      source: counts.source || 'naver-commerce-api',
+      dataReliable: counts.dataReliable !== false,
+      diagnostics: counts.diagnostics,
       fetchedAt,
       cacheAgeMs: 0,
       isCached: false,
@@ -940,7 +1142,9 @@ async function handleSmartstoreOrders(params: any) {
         success: true,
         mode: 'fast_snapshot',
         // _debug 필드는 프로덕션에서 제거됨
-        source: 'naver-commerce-api',
+        source: payedData.source || 'naver-commerce-api',
+        dataReliable: payedData.dataReliable !== false,
+        diagnostics: payedData.diagnostics,
         fetchedAt,
         // 실시간 조회 항목 (PAYED)
         actionable: {
@@ -1001,6 +1205,7 @@ async function handleSmartstoreOrders(params: any) {
       const code = err?.code || (err?.message?.includes('401') ? 'SMARTSTORE_AUTH_ERROR' : err?.message?.includes('TIMEOUT') ? 'SMARTSTORE_TIMEOUT' : 'SMARTSTORE_API_ERROR');
       const isTimeout = code === 'SMARTSTORE_TIMEOUT';
       return {
+        ...unreliableSmartstorePayload(code, err, fetchedAt, 'fast_snapshot'),
         success: false,
         errorCode: code,
         errorMessage: isTimeout
@@ -1008,12 +1213,6 @@ async function handleSmartstoreOrders(params: any) {
           : code === 'SMARTSTORE_AUTH_ERROR'
           ? '스마트스토어 API 인증 오류. 토큰을 확인해주세요.'
           : `스마트스토어 API 오류: ${err?.message || '알 수 없는 오류'}`,
-        fetchedAt,
-        source: 'naver-commerce-api',
-        mode: 'fast_snapshot',
-        counts: { newOrders: 0, pendingShipping: 0, preShipTotal: 0, shipping: null, delivered: null, purchaseConfirmed: null },
-        newOrders: 0, pendingShipping: 0, preShipTotal: 0, shipping: null, delivered: null, purchaseConfirmed: null,
-        data: [], orders: [],
       };
     }
   }
@@ -1074,6 +1273,16 @@ async function handleSmartstoreOrders(params: any) {
     return {
       success: true,
       source: 'naver-commerce-api',
+      dataReliable: true,
+      diagnostics: createSmartstoreDiagnostics({
+        changedOrderRawCount: orders.length,
+        productOrderIdCount: orders.map((o: any) => getProductOrderIdFromAny(o)).filter(Boolean).length,
+        productOrderIdUniqueCount: new Set(orders.map((o: any) => getProductOrderIdFromAny(o)).filter(Boolean)).size,
+        duplicateProductOrderIdCount: Math.max(0, orders.map((o: any) => getProductOrderIdFromAny(o)).filter(Boolean).length - new Set(orders.map((o: any) => getProductOrderIdFromAny(o)).filter(Boolean)).size),
+        detailFetchedCount: orders.length,
+        statusBuckets: buildProductOrderStatusBuckets(orders),
+        source: 'naver-commerce-api',
+      }),
       fetchedAt,
       cacheAgeMs: 0,
       isCached: false,
@@ -1097,6 +1306,7 @@ async function handleSmartstoreOrders(params: any) {
     clearTimeout(handlerTimeoutId);
     const code = err?.code || (err?.message?.includes('401') ? 'SMARTSTORE_AUTH_ERROR' : err?.message?.includes('TIMEOUT') ? 'SMARTSTORE_TIMEOUT' : 'SMARTSTORE_API_ERROR');
     return {
+      ...unreliableSmartstorePayload(code, err, fetchedAt, 'orders_query'),
       success: false,
       errorCode: code,
       errorMessage: code === 'SMARTSTORE_TIMEOUT'
@@ -1104,11 +1314,6 @@ async function handleSmartstoreOrders(params: any) {
         : code === 'SMARTSTORE_AUTH_ERROR'
         ? '스마트스토어 API 인증 오류. 토큰을 확인해주세요.'
         : `스마트스토어 API 오류: ${err?.message || '알 수 없는 오류'}`,
-      fetchedAt,
-      source: 'naver-commerce-api',
-      counts: { newOrders: 0, pendingShipping: 0, preShipTotal: 0, shipping: 0, delivered: 0, purchaseConfirmed: 0 },
-      newOrders: 0, pendingShipping: 0, preShipTotal: 0, shipping: 0, delivered: 0, purchaseConfirmed: 0,
-      total: 0, data: [], orders: [],
     };
   }
 }
@@ -1151,10 +1356,34 @@ async function fetchOrders(statuses: string[], days: number): Promise<any[]> {
           const responseData = result.data.data || result.data;
           const contents = responseData.contents || responseData || [];
           if (Array.isArray(contents)) {
-            return contents.map((item: any) => {
+            const ids = contents.map((item: any) => {
               const po = item.productOrder || item;
               return po.productOrderId || null;
             }).filter(Boolean);
+            const pageSize = 300;
+            const maxPages = 10;
+            let currentPageItems = contents.length;
+            for (let page = 2; currentPageItems >= pageSize && page <= maxPages; page++) {
+              const nextParams = new URLSearchParams(params);
+              nextParams.set('page', String(page));
+              const nextResult = await smartStoreRequest(
+                `/v1/pay-order/seller/product-orders?${nextParams.toString()}`,
+                { method: 'GET' }
+              );
+              if (nextResult.status !== 200) break;
+              const nextResponseData = nextResult.data.data || nextResult.data;
+              const nextContents = nextResponseData.contents || nextResponseData || [];
+              if (!Array.isArray(nextContents) || nextContents.length === 0) break;
+              ids.push(...nextContents.map((item: any) => {
+                const po = item.productOrder || item;
+                return po.productOrderId || null;
+              }).filter(Boolean));
+              currentPageItems = nextContents.length;
+              if (page === maxPages && currentPageItems >= pageSize) {
+                console.warn(`[fetchOrders] max_pages_guard_hit statuses=${statuses.join(',')}`);
+              }
+            }
+            return [...new Set(ids)];
           }
           return []; // 정상 응답이지만 내용 없음
         }
@@ -1287,7 +1516,9 @@ async function handleDailyBriefing() {
         settlementExpectationAmount: counts.settlementExpectationAmount || 0
       },
       lastChecked: new Date().toLocaleString('ko-KR', { timeZone: 'Asia/Seoul' }),
-      source: 'Naver Commerce API'
+      source: rawCounts.source || 'Naver Commerce API',
+      dataReliable: rawCounts.dataReliable !== false,
+      diagnostics: rawCounts.diagnostics
     },
     marketIntel: {
       item: kamisResult.item || '배추',
@@ -2858,6 +3089,7 @@ function generateFollowUpDraft(channel: any, keyword: string, product: string): 
 async function handleOutreachCollect(params: any) {
   const { keyword, product, maxCandidates = 20, platform = 'all', requireEmail = true, existingCandidateIds = [], requestedVertical: explicitVertical } = params;
   if (!keyword) return { success: false, error: 'keyword required' };
+  const dryRun = params?.dryRun === true || params?.dryRun === 'true' || params?.countOnly === true || params?.countOnly === 'true';
 
   const candidates: any[] = [];
   const excludedCandidates: any[] = [];
@@ -2867,6 +3099,13 @@ async function handleOutreachCollect(params: any) {
 
   // OUTREACH-TARGET-FIT-A.1: requestedVertical 감지
   const requestedVertical: OutreachTargetVertical = explicitVertical || detectVerticalFromKeyword(keyword);
+  const outreachDiagnostics = createOutreachDiagnostics({
+    requestedVertical,
+    requestedCount: max,
+    youtubeApiStatus: (platform === 'all' || platform === 'youtube')
+      ? (YOUTUBE_API_KEY ? 'ok' : 'env_missing')
+      : 'not_connected',
+  });
 
   // ── Telemetry 추적 ──
   const telemetry = {
@@ -2963,11 +3202,15 @@ async function handleOutreachCollect(params: any) {
       if (trendRes.ok) {
         const trendData = await trendRes.json() as any;
         if (trendData.items) {
+          outreachDiagnostics.rawSearchResultCount += trendData.items.length;
           for (const item of trendData.items) {
             const chId = item.snippet?.channelId;
+            if (chId) outreachDiagnostics.rawChannelCount++;
             if (chId && !seenChannelIds.has(chId) && !existingIds.has(chId)) {
               seenChannelIds.add(chId);
               trendChannelIds.push(chId);
+            } else if (chId) {
+              outreachDiagnostics.duplicateRemovedCount++;
             }
           }
           telemetry.trendChannelsFound = trendChannelIds.length;
@@ -2975,7 +3218,9 @@ async function handleOutreachCollect(params: any) {
       } else {
         const errData = await trendRes.json() as any;
         if (errData.error?.errors?.[0]?.reason === 'quotaExceeded') {
-          return { success: true, candidates: [], quotaExceeded: true, telemetry, message: 'YouTube API 할당량 초과로 오늘은 소량/수동 검증 모드로 진행합니다.' };
+          outreachDiagnostics.youtubeApiStatus = 'quota_exceeded';
+          outreachDiagnostics.apiWarnings.push('youtube_quota_exceeded');
+          return { success: true, candidates: [], total: 0, quotaExceeded: true, telemetry, summary: outreachDiagnostics, diagnostics: outreachDiagnostics, message: 'YouTube API quota exceeded; returned no candidates without treating it as a real zero.' };
         }
       }
 
@@ -2988,11 +3233,15 @@ async function handleOutreachCollect(params: any) {
       if (recentRes.ok) {
         const recentData = await recentRes.json() as any;
         if (recentData.items) {
+          outreachDiagnostics.rawSearchResultCount += recentData.items.length;
           for (const item of recentData.items) {
             const chId = item.snippet?.channelId;
+            if (chId) outreachDiagnostics.rawChannelCount++;
             if (chId && !seenChannelIds.has(chId) && !existingIds.has(chId)) {
               seenChannelIds.add(chId);
               trendChannelIds.push(chId);
+            } else if (chId) {
+              outreachDiagnostics.duplicateRemovedCount++;
             }
           }
           telemetry.trendChannelsFound = trendChannelIds.length;
@@ -3048,6 +3297,7 @@ async function handleOutreachCollect(params: any) {
         ];
       }
 
+      outreachDiagnostics.queryPack.push(...searchQueries.map(q => q.query));
       const maxSearches = Math.min(searchQueries.length, collectRound === 1 ? 6 : 3);
       const needed = max - candidates.length;
       const perSearchMax = Math.min(Math.ceil((needed * 3) / maxSearches), 20);
@@ -3057,23 +3307,48 @@ async function handleOutreachCollect(params: any) {
         if (telemetry.quotaUsed >= MAX_QUOTA) break;
 
         const { segment, query } = searchQueries[i];
-        const searchUrl = `https://www.googleapis.com/youtube/v3/search?part=snippet&type=channel&q=${encodeURIComponent(query)}&maxResults=${perSearchMax}&regionCode=KR&hl=ko&key=${getCurrentYouTubeKey()}`;
-        const searchRes: any = await fetchYouTubeAPI(searchUrl);
-        telemetry.apiCalls++; telemetry.searchCalls++; telemetry.quotaUsed += 100;
+        let pageToken = '';
+        const maxPagesPerQuery = 2;
+        for (let pageNo = 0; pageNo < maxPagesPerQuery; pageNo++) {
+          if (candidates.length + roundChannelIds.length >= max * 2) break;
+          if (telemetry.quotaUsed >= MAX_QUOTA) break;
+          const pageParam = pageToken ? `&pageToken=${encodeURIComponent(pageToken)}` : '';
+          const searchUrl = `https://www.googleapis.com/youtube/v3/search?part=snippet&type=channel&q=${encodeURIComponent(query)}&maxResults=${perSearchMax}&regionCode=KR&hl=ko${pageParam}&key=${getCurrentYouTubeKey()}`;
+          const searchRes: any = await fetchYouTubeAPI(searchUrl);
+          telemetry.apiCalls++; telemetry.searchCalls++; telemetry.quotaUsed += 100;
 
-        if (!searchRes.ok) {
-          const errData = await searchRes.json() as any;
-          if (errData.error?.errors?.[0]?.reason === 'quotaExceeded') break;
-          continue;
+          if (!searchRes.ok) {
+            const errData = await searchRes.json().catch(() => ({})) as any;
+            if (isYouTubeQuotaErrorPayload(errData)) {
+              outreachDiagnostics.youtubeApiStatus = 'quota_exceeded';
+              outreachDiagnostics.apiWarnings.push('youtube_quota_exceeded');
+              break;
+            }
+            outreachDiagnostics.youtubeApiStatus = 'api_error';
+            outreachDiagnostics.apiWarnings.push(`youtube_search_http_${searchRes.status}`);
+            break;
+          }
+          const searchData = await searchRes.json() as any;
+          const items = Array.isArray(searchData.items) ? searchData.items : [];
+          outreachDiagnostics.rawSearchResultCount += items.length;
+          if (items.length === 0) break;
+
+          for (const item of items) {
+            const id = item.snippet?.channelId || item.id?.channelId;
+            if (!id) continue;
+            outreachDiagnostics.rawChannelCount++;
+            if (seenChannelIds.has(id) || existingIds.has(id)) {
+              outreachDiagnostics.duplicateRemovedCount++;
+              continue;
+            }
+            seenChannelIds.add(id);
+            roundChannelIds.push(id);
+            allChannelIds.push(id);
+            telemetry.searchChannelsFound++;
+          }
+          pageToken = searchData.nextPageToken || '';
+          if (!pageToken) break;
         }
-        const searchData = await searchRes.json() as any;
-        if (!searchData.items || searchData.items.length === 0) continue;
-
-        const newChannelIds = searchData.items
-          .map((item: any) => item.snippet.channelId || item.id?.channelId)
-          .filter((id: string) => id && !seenChannelIds.has(id) && !existingIds.has(id));
-        newChannelIds.forEach((id: string) => { seenChannelIds.add(id); roundChannelIds.push(id); allChannelIds.push(id); });
-        telemetry.searchChannelsFound += newChannelIds.length;
       }
     } catch (e: any) {
       // 검색 실패해도 계속 진행
@@ -3092,8 +3367,13 @@ async function handleOutreachCollect(params: any) {
         const channelsRes: any = await fetchYouTubeAPI(channelsUrl);
         telemetry.apiCalls++; telemetry.channelCalls++; telemetry.quotaUsed += 1;
 
-        if (!channelsRes.ok) continue;
+        if (!channelsRes.ok) {
+          outreachDiagnostics.youtubeApiStatus = outreachDiagnostics.youtubeApiStatus === 'quota_exceeded' ? 'quota_exceeded' : 'api_error';
+          outreachDiagnostics.apiWarnings.push(`youtube_channels_http_${channelsRes.status}`);
+          continue;
+        }
         const channelsData = await channelsRes.json() as any;
+        outreachDiagnostics.enrichedChannelCount += Array.isArray(channelsData.items) ? channelsData.items.length : 0;
 
         for (const ch of (channelsData.items || [])) {
           if (candidates.length >= max) break;
@@ -3197,9 +3477,11 @@ async function handleOutreachCollect(params: any) {
           // EMAIL-ONLY-FILTER.1 + TARGET-FIT-A.1: 이메일 없거나 분야 부적합이면 제외
           if (!hasEmail) {
             candidate.excludedReason = contact.email ? 'invalid_email_format' : 'no_public_email';
+            bumpReason(outreachDiagnostics.skippedReasons, candidate.excludedReason);
             excludedCandidates.push(candidate);
           } else if (requestedVertical !== 'unknown' && targetFit.targetMatchStatus === 'excluded') {
             candidate.excludedReason = targetFit.excludeReason || `${requestedVertical} 분야 부적합`;
+            bumpReason(outreachDiagnostics.skippedReasons, 'target_mismatch');
             excludedCandidates.push(candidate);
           } else {
             candidates.push(candidate);
@@ -3342,7 +3624,9 @@ async function handleOutreachCollect(params: any) {
 
   // ── AUTO-SAVE: 수집 완료 후 influencer_candidates_v2 자동 저장 ──
   let autoSaveResult: any = null;
-  if (finalCandidates.length > 0 && WORKSPACE_SHEET_ID && GOOGLE_SHEETS_CREDENTIALS) {
+  if (dryRun) {
+    autoSaveResult = { success: true, dryRun: true, skipped: finalCandidates.length, reason: 'dryRun' };
+  } else if (finalCandidates.length > 0 && WORKSPACE_SHEET_ID && GOOGLE_SHEETS_CREDENTIALS) {
     try {
       autoSaveResult = await handleOutreachSaveCandidates({ candidates: finalCandidates, dryRun: false });
     } catch (e: any) {
@@ -3353,11 +3637,30 @@ async function handleOutreachCollect(params: any) {
   // OUTREACH-TARGET-FIT-A.1: 브리핑 메시지 생성
   const verticalLabel = requestedVertical !== 'unknown' ? requestedVertical : productName;
   const qualifiedEmailCount = finalCandidates.filter(c => c.target_match_status === 'qualified' && c.contact_email).length;
+  outreachDiagnostics.dedupedChannelCount = seenChannelIds.size;
+  outreachDiagnostics.duplicateRemovedCount = Math.max(outreachDiagnostics.duplicateRemovedCount, outreachDiagnostics.rawChannelCount - outreachDiagnostics.dedupedChannelCount);
+  outreachDiagnostics.displayedCandidateCount = finalCandidates.length;
+  outreachDiagnostics.publicEmailCount = finalCandidates.filter(c => !!c.contact_email || c.publicContactStatus === 'email_public' || c.publicContactStatus === 'public_email').length;
+  outreachDiagnostics.contactableCount = finalCandidates.filter(c => !!c.contact_email || c.publicContactStatus === 'email_public' || c.publicContactStatus === 'public_email' || c.publicContactStatus === 'form_available').length;
+  outreachDiagnostics.savedCandidateCount = Number(autoSaveResult?.saved || 0) + Number(autoSaveResult?.updated || 0);
+  if (dryRun) outreachDiagnostics.apiWarnings.push('sheet_save_skipped:dryRun');
+  telemetry.deduped = outreachDiagnostics.duplicateRemovedCount;
 
   return {
     success: true,
     candidates: finalCandidates,
     total: candidates.length,
+    summary: {
+      rawSearchResultCount: outreachDiagnostics.rawSearchResultCount,
+      dedupedChannelCount: outreachDiagnostics.dedupedChannelCount,
+      savedCandidateCount: outreachDiagnostics.savedCandidateCount,
+      displayedCandidateCount: outreachDiagnostics.displayedCandidateCount,
+      publicEmailCount: outreachDiagnostics.publicEmailCount,
+      contactableCount: outreachDiagnostics.contactableCount,
+      candidateReadyToSaveCount: finalCandidates.length,
+      youtubeApiStatus: outreachDiagnostics.youtubeApiStatus,
+    },
+    diagnostics: outreachDiagnostics,
     keyword,
     product: productName,
     requireEmail,
@@ -4871,6 +5174,9 @@ async function handleDailyBrief24h(params: any) {
         delivered: rawCounts.delivered ?? 0,
         purchaseConfirmed: rawCounts.purchaseConfirmed ?? 0,
         confirmNeeded: rawCounts.payed?.length || 0,
+        source: rawCounts.source || 'naver-commerce-api',
+        dataReliable: rawCounts.dataReliable !== false,
+        diagnostics: rawCounts.diagnostics,
       };
     }
   } catch (e) {}

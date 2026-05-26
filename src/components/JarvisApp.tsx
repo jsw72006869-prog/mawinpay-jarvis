@@ -438,6 +438,7 @@ export default function JarvisApp() {
   const [workspaceLoading, setWorkspaceLoading] = useState(false);
   const [outreachVisible, setOutreachVisible] = useState(false);
   const [outreachCandidates, setOutreachCandidates] = useState<InfluencerCandidate[]>([]);
+  const [outreachCollectionSummary, setOutreachCollectionSummary] = useState<any>(null);
   const [outreachLoading, setOutreachLoading] = useState(false);
   const [marketPriceVisible, setMarketPriceVisible] = useState(false);
   const [marketPriceResult, setMarketPriceResult] = useState<MarketPriceResult | null>(null);
@@ -5982,6 +5983,7 @@ G. Review Objection: 작다/비싸다/무르다/배송 손상/맛 기대와 다�
           clearTimeout(timeoutId);
         }
         setOutreachLoading(false);
+        setOutreachCollectionSummary(data?.summary || data?.diagnostics ? { ...(data?.diagnostics || {}), ...(data?.summary || {}) } : null);
 
         if (data.quotaExceeded) {
           emitMissionLog('⚠️', 'OUTREACH', 'YouTube API 할당량 초과', 'warning');
@@ -7506,6 +7508,7 @@ G. Review Objection: 작다/비싸다/무르다/배송 손상/맛 기대와 다�
       <OutreachResultWorkspace
         visible={outreachWorkspaceVisible}
         candidates={outreachCandidates}
+        collectionSummary={outreachCollectionSummary}
         onClose={() => setOutreachWorkspaceVisible(false)}
         onJarvisContextEvent={handleJarvisContextEvent}
       />
