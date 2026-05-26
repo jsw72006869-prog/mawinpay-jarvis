@@ -398,8 +398,12 @@ export default function OutreachResultWorkspace({
               { label: '중복 제거 후보', value: countSummary.dedupedChannelCount },
               { label: saveSkippedDryRun ? '저장 대기 후보' : '저장 후보', value: saveSkippedDryRun ? countSummary.candidateReadyToSaveCount : countSummary.savedCandidateCount },
               { label: '화면 표시 후보', value: countSummary.displayedCandidateCount },
+              { label: '적합 후보', value: countSummary.qualifiedCount },
+              { label: '검토 필요', value: countSummary.reviewCount },
+              { label: '제외', value: countSummary.excludedCount },
               { label: '공개 이메일', value: countSummary.publicEmailCount },
               { label: '연락 가능', value: countSummary.contactableCount },
+              { label: '최종 연락 가능 적합', value: countSummary.qualifiedContactableCount },
             ].filter(item => item.value !== undefined && item.value !== null).map(item => (
               <span key={item.label} style={{
                 border: '1px solid rgba(0,180,255,0.18)',
@@ -569,7 +573,27 @@ export default function OutreachResultWorkspace({
                           color: '#aa88ff', padding: '2px 7px', borderRadius: '3px', fontSize: '9px',
                         }}>{(c as any).requested_vertical}</span>
                       )}
+                      {(c as any).target_match_score !== undefined && (
+                        <span style={{
+                          background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.14)',
+                          color: 'rgba(255,255,255,0.7)', padding: '2px 7px', borderRadius: '3px', fontSize: '9px',
+                        }}>근거점수 {(c as any).target_match_score}</span>
+                      )}
                     </div>
+
+                    {(c as any).target_evidence_terms && (
+                      <div style={{
+                        marginTop: '8px',
+                        color: 'rgba(255,255,255,0.48)',
+                        fontSize: '9px',
+                        lineHeight: 1.45,
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
+                        whiteSpace: 'nowrap',
+                      }}>
+                        근거: {String((c as any).target_evidence_terms).split(',').slice(0, 4).map(s => s.trim()).filter(Boolean).join(', ')}
+                      </div>
+                    )}
 
                     {/* 크게 보기 버튼 */}
                     <div style={{ marginTop: '10px', textAlign: 'right' }}>

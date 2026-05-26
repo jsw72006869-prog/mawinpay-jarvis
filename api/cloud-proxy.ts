@@ -341,6 +341,13 @@ type OutreachCollectionDiagnostics = {
   displayedCandidateCount: number;
   publicEmailCount: number;
   contactableCount: number;
+  qualifiedCount: number;
+  reviewCount: number;
+  excludedCount: number;
+  qualifiedContactableCount: number;
+  qualifiedPublicEmailCount: number;
+  targetMatchStatusCounts: Record<string, number>;
+  excludedReasonCounts: Record<string, number>;
   duplicateRemovedCount: number;
   skippedReasons: Record<string, number>;
   apiWarnings: string[];
@@ -358,6 +365,13 @@ function createOutreachDiagnostics(input: Partial<OutreachCollectionDiagnostics>
     displayedCandidateCount: 0,
     publicEmailCount: 0,
     contactableCount: 0,
+    qualifiedCount: 0,
+    reviewCount: 0,
+    excludedCount: 0,
+    qualifiedContactableCount: 0,
+    qualifiedPublicEmailCount: 0,
+    targetMatchStatusCounts: {},
+    excludedReasonCounts: {},
     duplicateRemovedCount: 0,
     skippedReasons: {},
     apiWarnings: [],
@@ -3478,10 +3492,12 @@ async function handleOutreachCollect(params: any) {
           if (!hasEmail) {
             candidate.excludedReason = contact.email ? 'invalid_email_format' : 'no_public_email';
             bumpReason(outreachDiagnostics.skippedReasons, candidate.excludedReason);
+            bumpReason(outreachDiagnostics.excludedReasonCounts, candidate.excludedReason);
             excludedCandidates.push(candidate);
           } else if (requestedVertical !== 'unknown' && targetFit.targetMatchStatus === 'excluded') {
             candidate.excludedReason = targetFit.excludeReason || `${requestedVertical} 분야 부적합`;
             bumpReason(outreachDiagnostics.skippedReasons, 'target_mismatch');
+            bumpReason(outreachDiagnostics.excludedReasonCounts, candidate.excludedReason);
             excludedCandidates.push(candidate);
           } else {
             candidates.push(candidate);
@@ -3551,6 +3567,24 @@ async function handleOutreachCollect(params: any) {
           publicContactStatus: 'unknown', email: '', subscriberCount: 0, viewCount: 0,
         };
         const fit = calculateProductFitScore(channelData, keyword, productName);
+        const targetFit = evaluateTargetFit({
+          requestedVertical,
+          channelTitle: item.bloggername || blogId || '',
+          channelDescription: cleanDesc,
+          recentVideoTitles: [cleanTitle],
+          recentVideoDescriptions: [rawDesc],
+          category: practicalSegment,
+        });
+        const hasBlogEmail = !!(blogEmail && blogEmail.includes('@'));
+        const targetMatchScore = targetFit.targetMatchScore;
+        const contentRelevanceScore = Math.min(fit.score, 100);
+        const contactabilityScore = hasBlogEmail ? 100 : 0;
+        const finalFitScore = Math.round(
+          targetMatchScore * 0.45 +
+          contentRelevanceScore * 0.35 +
+          contactabilityScore * 0.10 +
+          50 * 0.10
+        );
 
         const candidate = {
           candidateId: generateRecordId('inf'),
@@ -3571,7 +3605,7 @@ async function handleOutreachCollect(params: any) {
           publicEmailMasked: blogEmail ? blogEmail.replace(/(.{2}).*@/, '$1***@') : '',
           contact_email: blogEmail,
           emailSource: emailSrc,
-          productFitScore: fit.score,
+          productFitScore: requestedVertical !== 'unknown' ? finalFitScore : fit.score,
           productFitReason: fit.reason,
           suggestedProduct: productName,
           suggestedOfferAngle: generateOfferAngle(channelData, keyword, productName),
@@ -3585,10 +3619,25 @@ async function handleOutreachCollect(params: any) {
           proposal_angle: generateProposalAngle(channelData, keyword, productName),
           proposal_subject: generateProposalSubject(productName, keyword),
           proposal_draft: generateProposalDraft(channelData, keyword, productName),
+          requested_vertical: requestedVertical,
+          target_match_status: targetFit.targetMatchStatus,
+          target_match_score: targetMatchScore,
+          target_evidence_terms: targetFit.evidenceTerms.join(', '),
+          target_evidence_fields: targetFit.evidenceFields.join(', '),
+          target_exclude_reason: targetFit.excludeReason || '',
+          qualified_for_requested_vertical: targetFit.targetMatchStatus === 'qualified' ? 'Y' : 'N',
+          collected_query: naverQuery,
         };
 
         if (requireEmail) {
           candidate.excludedReason = 'no_public_email';
+          bumpReason(outreachDiagnostics.skippedReasons, candidate.excludedReason);
+          bumpReason(outreachDiagnostics.excludedReasonCounts, candidate.excludedReason);
+          excludedCandidates.push(candidate);
+        } else if (requestedVertical !== 'unknown' && targetFit.targetMatchStatus === 'excluded') {
+          candidate.excludedReason = targetFit.excludeReason || `${requestedVertical} 분야 부적합`;
+          bumpReason(outreachDiagnostics.skippedReasons, 'target_mismatch');
+          bumpReason(outreachDiagnostics.excludedReasonCounts, candidate.excludedReason);
           excludedCandidates.push(candidate);
         } else {
           candidates.push(candidate);
@@ -3612,15 +3661,22 @@ async function handleOutreachCollect(params: any) {
   const excludedContactOnly = excludedCandidates.filter(c => c.excludedReason === 'contact_link_only').length;
 
   // OUTREACH-TARGET-FIT-A.1: 분야 적합도 통계
-  const excludedTargetMismatch = excludedCandidates.filter(c => c.excludedReason && c.excludedReason.includes('분야')).length;
-  const qualifiedCount = candidates.filter(c => c.target_match_status === 'qualified').length;
-  const reviewCount = candidates.filter(c => c.target_match_status === 'review').length;
-  const allQualified = [...candidates, ...excludedCandidates].filter(c => c.target_match_status === 'qualified').length;
-  const allReview = [...candidates, ...excludedCandidates].filter(c => c.target_match_status === 'review').length;
-  const allExcludedTarget = [...candidates, ...excludedCandidates].filter(c => c.target_match_status === 'excluded').length;
-
   const finalCandidates = candidates.slice(0, max);
   const shortfall = Math.max(0, max - finalCandidates.length);
+  const allEvaluatedCandidates = [...finalCandidates, ...excludedCandidates];
+  const statusCounts = allEvaluatedCandidates.reduce((acc: Record<string, number>, c: any) => {
+    const status = c.target_match_status || 'unknown';
+    acc[status] = (acc[status] || 0) + 1;
+    return acc;
+  }, {});
+  const excludedReasonCounts = excludedCandidates.reduce((acc: Record<string, number>, c: any) => {
+    const reason = c.excludedReason || c.target_exclude_reason || 'unknown';
+    acc[reason] = (acc[reason] || 0) + 1;
+    return acc;
+  }, { ...outreachDiagnostics.excludedReasonCounts });
+  const qualifiedCount = finalCandidates.filter(c => c.target_match_status === 'qualified').length;
+  const reviewCount = finalCandidates.filter(c => c.target_match_status === 'review').length;
+  const excludedTargetMismatch = allEvaluatedCandidates.filter(c => c.target_match_status === 'excluded').length;
 
   // ── AUTO-SAVE: 수집 완료 후 influencer_candidates_v2 자동 저장 ──
   let autoSaveResult: any = null;
@@ -3642,6 +3698,13 @@ async function handleOutreachCollect(params: any) {
   outreachDiagnostics.displayedCandidateCount = finalCandidates.length;
   outreachDiagnostics.publicEmailCount = finalCandidates.filter(c => !!c.contact_email || c.publicContactStatus === 'email_public' || c.publicContactStatus === 'public_email').length;
   outreachDiagnostics.contactableCount = finalCandidates.filter(c => !!c.contact_email || c.publicContactStatus === 'email_public' || c.publicContactStatus === 'public_email' || c.publicContactStatus === 'form_available').length;
+  outreachDiagnostics.qualifiedCount = qualifiedCount;
+  outreachDiagnostics.reviewCount = reviewCount;
+  outreachDiagnostics.excludedCount = excludedTargetMismatch;
+  outreachDiagnostics.qualifiedPublicEmailCount = finalCandidates.filter(c => c.target_match_status === 'qualified' && (!!c.contact_email || c.publicContactStatus === 'email_public' || c.publicContactStatus === 'public_email')).length;
+  outreachDiagnostics.qualifiedContactableCount = finalCandidates.filter(c => c.target_match_status === 'qualified' && (!!c.contact_email || c.publicContactStatus === 'email_public' || c.publicContactStatus === 'public_email' || c.publicContactStatus === 'form_available')).length;
+  outreachDiagnostics.targetMatchStatusCounts = statusCounts;
+  outreachDiagnostics.excludedReasonCounts = excludedReasonCounts;
   outreachDiagnostics.savedCandidateCount = Number(autoSaveResult?.saved || 0) + Number(autoSaveResult?.updated || 0);
   if (dryRun) outreachDiagnostics.apiWarnings.push('sheet_save_skipped:dryRun');
   telemetry.deduped = outreachDiagnostics.duplicateRemovedCount;
@@ -3657,6 +3720,13 @@ async function handleOutreachCollect(params: any) {
       displayedCandidateCount: outreachDiagnostics.displayedCandidateCount,
       publicEmailCount: outreachDiagnostics.publicEmailCount,
       contactableCount: outreachDiagnostics.contactableCount,
+      qualifiedCount: outreachDiagnostics.qualifiedCount,
+      reviewCount: outreachDiagnostics.reviewCount,
+      excludedCount: outreachDiagnostics.excludedCount,
+      qualifiedContactableCount: outreachDiagnostics.qualifiedContactableCount,
+      qualifiedPublicEmailCount: outreachDiagnostics.qualifiedPublicEmailCount,
+      targetMatchStatusCounts: outreachDiagnostics.targetMatchStatusCounts,
+      excludedReasonCounts: outreachDiagnostics.excludedReasonCounts,
       candidateReadyToSaveCount: finalCandidates.length,
       youtubeApiStatus: outreachDiagnostics.youtubeApiStatus,
     },

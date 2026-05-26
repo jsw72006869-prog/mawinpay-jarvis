@@ -31,6 +31,20 @@ export function toSafeCandidate(candidate: any): OutreachCandidateSafe {
     recentContentSummary: candidate.recentContentSummary || '',
     reasonForFit: candidate.reasonForFit || candidate.fitReason || '',
     proposalAngle: candidate.proposalAngle || candidate.proposalStrategy || '',
+    requestedVertical: candidate.requested_vertical || candidate.requestedVertical || '',
+    targetMatchStatus: candidate.target_match_status || candidate.targetMatchStatus || '',
+    targetMatchScore: Number(candidate.target_match_score ?? candidate.targetMatchScore ?? 0),
+    targetEvidenceTerms: String(candidate.target_evidence_terms || candidate.targetEvidenceTerms || '')
+      .split(',')
+      .map((term) => term.trim())
+      .filter(Boolean)
+      .slice(0, 6),
+    targetEvidenceFields: String(candidate.target_evidence_fields || candidate.targetEvidenceFields || '')
+      .split(',')
+      .map((field) => field.trim())
+      .filter(Boolean)
+      .slice(0, 6),
+    excludeReason: candidate.target_exclude_reason || candidate.excludeReason || candidate.excludedReason || '',
     status: candidate.status || 'collected',
   };
 }

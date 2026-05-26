@@ -48,6 +48,9 @@ function buildUserPrompt(ctx: JarvisConversationContext): string {
 - 적합도: ${c.fitScore}점
 - 이메일 확인: ${c.emailExists ? '확인됨' : '미확인'}
 - 최근 콘텐츠: ${c.recentContentTitle || '없음'}
+- 요청 분야: ${c.requestedVertical || '미지정'}
+- 분야 판정: ${c.targetMatchStatus || '미분류'} (${c.targetMatchScore ?? 0}점)
+- 분야 근거: ${c.targetEvidenceTerms?.join(', ') || '없음'}
 - 적합 이유: ${c.reasonForFit || '없음'}
 - 제안 각도: ${c.proposalAngle || '없음'}`);
   }
@@ -136,7 +139,7 @@ function buildContextualFallback(ctx: JarvisConversationContext): JarvisReply {
       );
       return {
         text: c
-          ? `선생님, ${c.name || c.channelTitle}님은 ${c.platform} 채널이고 적합도 ${c.fitScore}점입니다. ${c.emailExists ? '공개 이메일이 확인되었습니다.' : '이메일은 아직 미확인입니다.'}`
+          ? `선생님, ${c.name || c.channelTitle}님은 ${c.platform} 채널이고 분야 판정은 ${c.targetMatchStatus || '미분류'}(${c.targetMatchScore ?? c.fitScore}점)입니다. 근거는 ${c.targetEvidenceTerms?.join(', ') || c.reasonForFit || '추가 확인 필요'}이고, ${c.emailExists ? '공개 이메일이 확인되었습니다.' : '이메일은 아직 미확인입니다.'} 실제 발송은 잠금 상태입니다.`
           : '선생님, 후보 정보를 확인하고 있습니다.',
         shouldSpeak: true,
         shouldShowInChat: true,

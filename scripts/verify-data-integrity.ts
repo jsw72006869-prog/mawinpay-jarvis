@@ -74,6 +74,41 @@ async function main() {
     apiWarnings: outreach.diagnostics?.apiWarnings,
     save: outreach.autoSave,
   }));
+
+  const beautyOutreach = await post('outreach-collect-beauty-target-fit', {
+    task: 'outreach-collect',
+    params: {
+      keyword: '뷰티 인플루언서',
+      product: '뷰티',
+      requestedVertical: 'beauty',
+      platform: 'youtube',
+      maxCandidates: 3,
+      requireEmail: false,
+      dryRun: true,
+      countOnly: true,
+    },
+  });
+  console.log(maskSensitive({
+    requestedVertical: beautyOutreach.requestedVertical,
+    youtubeApiStatus: beautyOutreach.diagnostics?.youtubeApiStatus,
+    rawSearchResultCount: beautyOutreach.summary?.rawSearchResultCount,
+    dedupedChannelCount: beautyOutreach.summary?.dedupedChannelCount,
+    displayedCandidateCount: beautyOutreach.summary?.displayedCandidateCount,
+    qualifiedCount: beautyOutreach.summary?.qualifiedCount,
+    reviewCount: beautyOutreach.summary?.reviewCount,
+    excludedCount: beautyOutreach.summary?.excludedCount,
+    qualifiedPublicEmailCount: beautyOutreach.summary?.qualifiedPublicEmailCount,
+    targetMatchStatusCounts: beautyOutreach.summary?.targetMatchStatusCounts,
+    excludedReasonCounts: beautyOutreach.summary?.excludedReasonCounts,
+    firstCandidate: beautyOutreach.candidates?.[0] ? {
+      name: beautyOutreach.candidates[0].name,
+      status: beautyOutreach.candidates[0].target_match_status,
+      score: beautyOutreach.candidates[0].target_match_score,
+      evidence: beautyOutreach.candidates[0].target_evidence_terms,
+      hasEmail: Boolean(beautyOutreach.candidates[0].publicEmailMasked),
+    } : null,
+    save: beautyOutreach.autoSave,
+  }));
 }
 
 main().catch((error) => {

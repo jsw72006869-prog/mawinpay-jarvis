@@ -51,6 +51,12 @@ export type OutreachCandidateSafe = {
   recentContentSummary?: string;
   reasonForFit?: string;
   proposalAngle?: string;
+  requestedVertical?: string;
+  targetMatchStatus?: string;
+  targetMatchScore?: number;
+  targetEvidenceTerms?: string[];
+  targetEvidenceFields?: string[];
+  excludeReason?: string;
   status?: string;
 };
 
