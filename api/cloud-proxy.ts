@@ -3708,10 +3708,16 @@ async function handleOutreachCollect(params: any) {
   outreachDiagnostics.savedCandidateCount = Number(autoSaveResult?.saved || 0) + Number(autoSaveResult?.updated || 0);
   if (dryRun) outreachDiagnostics.apiWarnings.push('sheet_save_skipped:dryRun');
   telemetry.deduped = outreachDiagnostics.duplicateRemovedCount;
+  const responseCandidates = dryRun
+    ? finalCandidates.map(({ contact_email, email, ...candidate }) => ({
+        ...candidate,
+        contact_email_exists: !!(contact_email && String(contact_email).includes('@')),
+      }))
+    : finalCandidates;
 
   return {
     success: true,
-    candidates: finalCandidates,
+    candidates: responseCandidates,
     total: candidates.length,
     summary: {
       rawSearchResultCount: outreachDiagnostics.rawSearchResultCount,
