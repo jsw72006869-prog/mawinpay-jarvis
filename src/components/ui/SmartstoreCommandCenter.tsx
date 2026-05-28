@@ -57,6 +57,7 @@ interface Props {
   actionContext?: ActionContext | null;
   workflowSteps?: WorkflowStep[];
   approvalPreview?: ApprovalPreviewData | null;
+  purchaseOrderBulkPreview?: any | null;
   onActionSelect?: (cmd: string) => void;
   onActionDismiss?: () => void;
   onApprovalDismiss?: () => void;
@@ -505,6 +506,7 @@ export default function SmartstoreCommandCenter({
   actionContext,
   workflowSteps = [],
   approvalPreview,
+  purchaseOrderBulkPreview,
   onActionSelect,
   onActionDismiss,
   onApprovalDismiss,
@@ -730,6 +732,48 @@ export default function SmartstoreCommandCenter({
                       </div>
                       <div style={{ fontSize: '0.62rem', color: 'rgba(148,163,184,0.5)' }}>
                         주문 조회 후 표시됩니다
+                      </div>
+                    </div>
+                  )}
+                  {purchaseOrderBulkPreview?.summary && (
+                    <div
+                      data-testid="purchase-order-bulk-preview"
+                      style={{
+                        marginTop: 10,
+                        padding: 12,
+                        borderRadius: 10,
+                        border: '1px solid rgba(34,211,238,0.16)',
+                        background: 'rgba(2,8,23,0.72)',
+                      }}
+                    >
+                      <div style={{
+                        fontFamily: 'Orbitron, monospace',
+                        fontSize: '0.5rem',
+                        letterSpacing: '0.14em',
+                        color: '#22d3ee',
+                        marginBottom: 8,
+                      }}>
+                        BULK PURCHASE ORDER
+                      </div>
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6, marginBottom: 8 }}>
+                        {[
+                          ['전체 대상', `${purchaseOrderBulkPreview.summary.totalProductOrderCount || 0}건`],
+                          ['전체 수량', `${purchaseOrderBulkPreview.summary.totalQuantity || 0}개`],
+                          ['상품군', `${purchaseOrderBulkPreview.summary.groupCount || 0}개`],
+                          ['이메일 필요', `${purchaseOrderBulkPreview.summary.emailMissingGroupCount || 0}곳`],
+                        ].map(([label, value]) => (
+                          <div key={label} style={{ border: '1px solid rgba(255,255,255,0.07)', borderRadius: 8, padding: '7px 8px' }}>
+                            <div style={{ fontSize: 10, color: 'rgba(148,163,184,0.72)' }}>{label}</div>
+                            <div style={{ fontSize: 14, color: '#e0f2fe', fontWeight: 800 }}>{value}</div>
+                          </div>
+                        ))}
+                      </div>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
+                        {(purchaseOrderBulkPreview.groups || []).slice(0, 4).map((group: any) => (
+                          <div key={group.groupId} style={{ fontSize: 11, color: 'rgba(226,232,240,0.86)', lineHeight: 1.45 }}>
+                            <strong>{group.productGroupName}</strong> {group.totalQuantity}개 · {group.carrierName || group.carrier} · {group.emailConfigured ? group.emailMasked : '이메일 필요'}
+                          </div>
+                        ))}
                       </div>
                     </div>
                   )}

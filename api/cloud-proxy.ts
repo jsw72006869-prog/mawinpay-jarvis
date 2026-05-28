@@ -5479,6 +5479,18 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       }
 
       // ── Market Price: 농산물 가격 판단 ──
+      if (resolvedTask === 'purchase-order-bulk-preview') {
+        const result = await handlePurchaseOrderBulkPreview(params || rest);
+        return res.status(200).json(result);
+      }
+      if (resolvedTask === 'purchase-order-bulk-export') {
+        const result = await handlePurchaseOrderBulkExport(params || rest);
+        return res.status(200).json(result);
+      }
+      if (resolvedTask === 'purchase-order-bulk-email-draft') {
+        const result = await handlePurchaseOrderBulkEmailDraft(params || rest);
+        return res.status(200).json(result);
+      }
       if (resolvedTask === 'approval-action-create') {
         const result = await handleApprovalActionCreate(params || rest);
         return res.status(200).json(result);
@@ -8161,4 +8173,538 @@ async function handleCopyBrainList(params: any) {
     }
     return { success: false, errorCode: 'SHEETS_READ_ERROR', errorMessage: `copy_generation_log 읽기 실패: ${msg.substring(0, 100)}` };
   }
+}
+
+type PurchaseOrderGroupCode = 'chestnut' | 'corn' | 'maesil' | 'peach' | 'unknown';
+type PurchaseOrderCarrierCode = 'lotte' | 'logen' | 'unknown';
+
+type PurchaseOrderNormalizedRow = {
+  productOrderId: string;
+  productGroupCode: PurchaseOrderGroupCode;
+  productGroupName: string;
+  carrier: PurchaseOrderCarrierCode;
+  supplierId: string;
+  supplierName: string;
+  productName: string;
+  optionName: string;
+  sellerProductCode: string;
+  quantity: number;
+  senderName: string;
+  senderPhone: string;
+  receiverName: string;
+  receiverPhone: string;
+  receiverMobile: string;
+  address: string;
+  zipCode: string;
+  memo: string;
+  deliveryMessage: string;
+  orderStatus: string;
+  placeOrderStatus: string;
+  warnings: string[];
+};
+
+const PURCHASE_ORDER_PRODUCT_RULES: Array<{
+  groupCode: PurchaseOrderGroupCode;
+  displayName: string;
+  keywords: string[];
+  priority: number;
+}> = [
+  { groupCode: 'chestnut', displayName: '밤', keywords: ['밤', '알밤', '생율'], priority: 90 },
+  { groupCode: 'corn', displayName: '옥수수', keywords: ['옥수수', '대학찰옥수수', '초당옥수수'], priority: 80 },
+  { groupCode: 'maesil', displayName: '매실', keywords: ['매실', '청매실', '황매실'], priority: 70 },
+  { groupCode: 'peach', displayName: '복숭아', keywords: ['복숭아', '딱복', '물복', '백도', '황도'], priority: 60 },
+];
+
+const PURCHASE_ORDER_CARRIER_TEMPLATES: Record<'lotte' | 'logen', {
+  carrier: 'lotte' | 'logen';
+  displayName: string;
+  sheetName: string;
+  columns: Array<{ key: keyof PurchaseOrderNormalizedRow | 'combinedProductName'; header: string; width: number }>;
+}> = {
+  lotte: {
+    carrier: 'lotte',
+    displayName: '롯데택배',
+    sheetName: 'Sheet2',
+    columns: [
+      { key: 'combinedProductName', header: '제  품 ', width: 32 },
+      { key: 'quantity', header: '수량', width: 8 },
+      { key: 'senderName', header: '보내시는분이름', width: 18 },
+      { key: 'senderPhone', header: '보내시는분 전화번호', width: 20 },
+      { key: 'receiverName', header: '받는분이름', width: 18 },
+      { key: 'receiverPhone', header: '받는분전화번호', width: 20 },
+      { key: 'receiverMobile', header: '받는분핸드폰번호', width: 20 },
+      { key: 'address', header: '주소', width: 48 },
+      { key: 'memo', header: '비고', width: 20 },
+      { key: 'zipCode', header: '우편번호 ', width: 12 },
+      { key: 'deliveryMessage', header: '배송메세지', width: 28 },
+    ],
+  },
+  logen: {
+    carrier: 'logen',
+    displayName: '로젠택배',
+    sheetName: 'Sheet1',
+    columns: [
+      { key: 'combinedProductName', header: '제  품 ', width: 32 },
+      { key: 'quantity', header: '수량', width: 8 },
+      { key: 'senderName', header: '보내시는분이름', width: 18 },
+      { key: 'senderPhone', header: '보내시는분 전화번호', width: 20 },
+      { key: 'receiverName', header: '받는분이름', width: 18 },
+      { key: 'receiverPhone', header: '받는분전화번호', width: 20 },
+      { key: 'receiverMobile', header: '받는분핸드폰번호', width: 20 },
+      { key: 'address', header: '주소', width: 48 },
+      { key: 'memo', header: '비고', width: 20 },
+      { key: 'zipCode', header: '우편번호 ', width: 12 },
+    ],
+  },
+};
+
+function pickString(...values: any[]): string {
+  for (const value of values) {
+    if (value === null || value === undefined) continue;
+    const text = String(value).trim();
+    if (text) return text;
+  }
+  return '';
+}
+
+function classifyPurchaseOrderProductGroup(input: {
+  productName?: string;
+  optionName?: string;
+  sellerProductCode?: string;
+}): { groupCode: PurchaseOrderGroupCode; displayName: string; matchedKeywords: string[]; confidence: string; warning?: string } {
+  const haystack = `${input.productName || ''} ${input.optionName || ''} ${input.sellerProductCode || ''}`.toLowerCase();
+  for (const rule of [...PURCHASE_ORDER_PRODUCT_RULES].sort((a, b) => b.priority - a.priority)) {
+    const matchedKeywords = rule.keywords.filter(keyword => haystack.includes(keyword.toLowerCase()));
+    if (matchedKeywords.length > 0) {
+      return {
+        groupCode: rule.groupCode,
+        displayName: rule.displayName,
+        matchedKeywords,
+        confidence: matchedKeywords.length >= 2 ? 'high' : 'medium',
+      };
+    }
+  }
+  return {
+    groupCode: 'unknown',
+    displayName: '미분류',
+    matchedKeywords: [],
+    confidence: 'unknown',
+    warning: 'product_group_mapping_required',
+  };
+}
+
+function maskKoreanName(value: string): string {
+  const text = String(value || '').trim();
+  if (!text) return '';
+  if (text.length <= 1) return '*';
+  return `${text[0]}${'*'.repeat(Math.max(1, text.length - 1))}`;
+}
+
+function maskPhoneLike(value: string): string {
+  const text = String(value || '').trim();
+  if (!text) return '';
+  const digits = text.replace(/\D/g, '');
+  if (digits.length < 7) return '***';
+  return `${digits.slice(0, 3)}-****-${digits.slice(-4)}`;
+}
+
+function maskAddress(value: string): string {
+  const text = String(value || '').trim();
+  if (!text) return '';
+  const parts = text.split(/\s+/).filter(Boolean);
+  return `${parts.slice(0, 2).join(' ')} ***`.trim();
+}
+
+function buildPurchaseOrderFileName(input: {
+  dateKst?: Date | string;
+  productGroupName?: string;
+  supplierName?: string;
+  ext: 'xlsx' | 'csv';
+}): string {
+  const date = input.dateKst ? new Date(input.dateKst) : new Date();
+  const kst = new Date(date.getTime() + 9 * 60 * 60 * 1000);
+  const month = kst.getUTCMonth() + 1;
+  const day = kst.getUTCDate();
+  const name = (input.productGroupName || input.supplierName || '').replace(/[\/\\:*?"<>|]/g, '').trim();
+  return `${month}-${day} ${name ? `${name} ` : ''}발주서.${input.ext}`;
+}
+
+async function readPurchaseOrderSupplierProfiles(): Promise<Record<string, { supplierName?: string; emailMasked?: string; emailConfigured: boolean; carrier?: PurchaseOrderCarrierCode }>> {
+  try {
+    const data = await sheetsRead('supplier_profiles');
+    const rows = data.values || [];
+    const headers = rows[0] || [];
+    const index = (names: string[]) => names.map(name => headers.indexOf(name)).find(i => i >= 0) ?? -1;
+    const groupIdx = index(['product_group_code', 'group_code', 'productGroupCode']);
+    const supplierNameIdx = index(['supplier_name', 'supplierName', 'vendor_name']);
+    const emailIdx = index(['contact_email', 'supplier_email', 'email']);
+    const carrierIdx = index(['carrier', 'carrier_code']);
+    const activeIdx = index(['active', 'is_active']);
+    const result: Record<string, { supplierName?: string; emailMasked?: string; emailConfigured: boolean; carrier?: PurchaseOrderCarrierCode }> = {};
+    if (groupIdx < 0) return result;
+    for (const row of rows.slice(1)) {
+      const active = activeIdx >= 0 ? String(row[activeIdx] || '').toLowerCase() : 'true';
+      if (active === 'false' || active === '0' || active === 'no') continue;
+      const groupCode = String(row[groupIdx] || '').trim();
+      if (!groupCode) continue;
+      const rawEmail = emailIdx >= 0 ? String(row[emailIdx] || '').trim() : '';
+      const carrier = carrierIdx >= 0 ? String(row[carrierIdx] || '').trim().toLowerCase() as PurchaseOrderCarrierCode : undefined;
+      result[groupCode] = {
+        supplierName: supplierNameIdx >= 0 ? String(row[supplierNameIdx] || '').trim() : undefined,
+        emailMasked: rawEmail ? maskEmail(rawEmail) : undefined,
+        emailConfigured: !!rawEmail,
+        carrier: carrier === 'lotte' || carrier === 'logen' || carrier === 'unknown' ? carrier : undefined,
+      };
+    }
+    return result;
+  } catch {
+    return {};
+  }
+}
+
+function routePurchaseOrderGroup(
+  groupCode: PurchaseOrderGroupCode,
+  groupName: string,
+  supplierProfiles: Record<string, { supplierName?: string; emailMasked?: string; emailConfigured: boolean; carrier?: PurchaseOrderCarrierCode }>
+) {
+  const profile: { supplierName?: string; emailMasked?: string; emailConfigured: boolean; carrier?: PurchaseOrderCarrierCode } =
+    supplierProfiles[groupCode] || { emailConfigured: false };
+  const defaults: Record<PurchaseOrderGroupCode, { carrier: PurchaseOrderCarrierCode; supplierId: string; supplierName: string }> = {
+    chestnut: { carrier: 'logen', supplierId: 'supplier_chestnut', supplierName: '밤 발주처' },
+    corn: { carrier: 'lotte', supplierId: 'supplier_corn', supplierName: '옥수수 발주처' },
+    maesil: { carrier: 'lotte', supplierId: 'supplier_maesil', supplierName: '매실 발주처' },
+    peach: { carrier: 'unknown', supplierId: 'supplier_peach', supplierName: '복숭아 발주처' },
+    unknown: { carrier: 'unknown', supplierId: 'supplier_unknown', supplierName: '미분류 발주처' },
+  };
+  const base = defaults[groupCode] || defaults.unknown;
+  const carrier = profile.carrier || base.carrier;
+  const supplierName = profile.supplierName || base.supplierName || groupName;
+  const warnings: string[] = [];
+  let routingStatus: string = 'ready';
+  if (groupCode === 'unknown') {
+    routingStatus = 'mapping_required';
+    warnings.push('product_group_mapping_required');
+  } else if (carrier === 'unknown') {
+    routingStatus = 'carrier_missing';
+    warnings.push('carrier_mapping_required');
+  } else if (!profile.emailConfigured) {
+    routingStatus = 'email_missing';
+    warnings.push('supplier_email_missing');
+  }
+  return {
+    productGroupCode: groupCode,
+    productGroupName: groupName,
+    carrier,
+    supplierId: base.supplierId,
+    supplierName,
+    emailConfigured: !!profile.emailConfigured,
+    emailMasked: profile.emailMasked,
+    routingStatus,
+    warnings,
+  };
+}
+
+function buildPurchaseOrderAddress(po: any): string {
+  const addr = po.shippingAddress || po.deliveryAddress || {};
+  return pickString(
+    [addr.baseAddress, addr.detailedAddress].filter(Boolean).join(' '),
+    [po.baseAddress, po.detailedAddress].filter(Boolean).join(' '),
+    po.receiverAddress,
+    po.address,
+    po.shippingAddress,
+  );
+}
+
+function normalizePurchaseOrderRow(
+  item: any,
+  supplierProfiles: Record<string, { supplierName?: string; emailMasked?: string; emailConfigured: boolean; carrier?: PurchaseOrderCarrierCode }>
+): PurchaseOrderNormalizedRow | null {
+  const po = item?.productOrder || item || {};
+  const productOrderId = getProductOrderIdFromAny(item);
+  if (!productOrderId) return null;
+  const productName = pickString(po.productName, po.product?.name, po.goodsName);
+  const optionName = pickString(po.optionContent, po.productOption, po.optionName, po.option, po.optionManageCode);
+  const sellerProductCode = pickString(po.sellerProductCode, po.sellerManagementCode, po.productCode, po.channelProductNo);
+  const q = getProductOrderQuantityFromAny(item);
+  const classification = classifyPurchaseOrderProductGroup({ productName, optionName, sellerProductCode });
+  const route = routePurchaseOrderGroup(classification.groupCode, classification.displayName, supplierProfiles);
+  const receiverName = pickString(po.receiverName, po.shippingAddress?.receiverName, po.recipientName);
+  const receiverPhone = pickString(po.receiverTelNo1, po.receiverPhone, po.shippingAddress?.tel1, po.recipientPhone);
+  const receiverMobile = pickString(po.receiverTelNo2, po.receiverMobile, po.shippingAddress?.tel2, receiverPhone);
+  const address = buildPurchaseOrderAddress(po);
+  const zipCode = pickString(po.zipCode, po.receiverZipCode, po.shippingAddress?.zipCode, po.postalCode);
+  const warnings = [
+    ...(classification.warning ? [classification.warning] : []),
+    ...route.warnings,
+    ...(q.missing ? ['quantity_missing_fallback_used'] : []),
+    ...(!receiverName || !receiverPhone || !address ? ['receiver_field_missing'] : []),
+  ];
+  return {
+    productOrderId,
+    productGroupCode: classification.groupCode,
+    productGroupName: classification.displayName,
+    carrier: route.carrier,
+    supplierId: route.supplierId,
+    supplierName: route.supplierName,
+    productName,
+    optionName,
+    sellerProductCode,
+    quantity: q.quantity,
+    senderName: SENDER_NAME || '',
+    senderPhone: SENDER_PHONE_ORDER || '',
+    receiverName,
+    receiverPhone,
+    receiverMobile,
+    address,
+    zipCode,
+    memo: '',
+    deliveryMessage: pickString(po.deliveryMemo, po.shippingMemo, po.deliveryMessage),
+    orderStatus: getProductOrderStatusFromAny(item),
+    placeOrderStatus: pickString(po.placeOrderStatus),
+    warnings,
+  };
+}
+
+async function getPurchaseOrderScopeRows(scope: string = 'pre_ship') {
+  if (scope === 'all_current') {
+    return await fetchOrders(['PAYMENT_WAITING', 'PAYED', 'DELIVERING', 'DELIVERED', 'PURCHASE_DECIDED', 'CANCELED', 'RETURNED', 'EXCHANGED'], 30);
+  }
+  const counts = await getSmartstoreStatusCounts(30);
+  if (scope === 'confirm_needed') return counts.newOrders || [];
+  return counts.payed || [];
+}
+
+async function buildBulkPurchaseOrderGroups(params: any = {}) {
+  const scope = params.scope || 'pre_ship';
+  const supplierProfiles = await readPurchaseOrderSupplierProfiles();
+  const rawOrders = await getPurchaseOrderScopeRows(scope);
+  const deduped = dedupeProductOrderRows(rawOrders || []);
+  const normalizedRows = deduped.rows
+    .map(row => normalizePurchaseOrderRow(row, supplierProfiles))
+    .filter(Boolean) as PurchaseOrderNormalizedRow[];
+
+  const grouped = new Map<string, { route: ReturnType<typeof routePurchaseOrderGroup>; rows: PurchaseOrderNormalizedRow[] }>();
+  const unknownRowsPreview: any[] = [];
+  for (const row of normalizedRows) {
+    const key = `${row.productGroupCode}_${row.supplierId}_${row.carrier}`;
+    if (!grouped.has(key)) {
+      grouped.set(key, {
+        route: routePurchaseOrderGroup(row.productGroupCode, row.productGroupName, supplierProfiles),
+        rows: [],
+      });
+    }
+    grouped.get(key)!.rows.push(row);
+    if (row.productGroupCode === 'unknown') {
+      unknownRowsPreview.push({
+        productOrderIdMasked: `${row.productOrderId.slice(0, 8)}***`,
+        productName: row.productName,
+        optionName: row.optionName,
+        quantity: row.quantity,
+        warning: 'product_group_mapping_required',
+      });
+    }
+  }
+
+  const groups = Array.from(grouped.entries()).map(([groupId, item]) => {
+    const rowCount = item.rows.length;
+    const totalQuantity = item.rows.reduce((sum, row) => sum + row.quantity, 0);
+    const carrierReady = item.route.carrier === 'lotte' || item.route.carrier === 'logen';
+    const fileName = buildPurchaseOrderFileName({
+      productGroupName: item.route.productGroupName,
+      supplierName: item.route.supplierName,
+      ext: 'xlsx',
+    });
+    return {
+      groupId,
+      productGroupCode: item.route.productGroupCode,
+      productGroupName: item.route.productGroupName,
+      supplierId: item.route.supplierId,
+      supplierName: item.route.supplierName,
+      carrier: item.route.carrier,
+      carrierName: item.route.carrier === 'lotte' ? '롯데택배' : item.route.carrier === 'logen' ? '로젠택배' : '택배사 미지정',
+      rowCount,
+      totalQuantity,
+      productOrderIds: item.rows.map(row => row.productOrderId),
+      fileName,
+      emailConfigured: item.route.emailConfigured,
+      emailMasked: item.route.emailMasked,
+      routingStatus: item.route.routingStatus,
+      canExport: carrierReady && item.route.productGroupCode !== 'unknown',
+      canEmail: carrierReady && item.route.emailConfigured && item.route.productGroupCode !== 'unknown',
+      warnings: [...new Set([...item.route.warnings, ...item.rows.flatMap(row => row.warnings)])],
+    };
+  });
+
+  const summary = {
+    totalProductOrderCount: normalizedRows.length,
+    totalQuantity: normalizedRows.reduce((sum, row) => sum + row.quantity, 0),
+    groupCount: groups.length,
+    readyGroupCount: groups.filter(group => group.routingStatus === 'ready').length,
+    emailMissingGroupCount: groups.filter(group => group.routingStatus === 'email_missing').length,
+    carrierMissingGroupCount: groups.filter(group => group.routingStatus === 'carrier_missing').length,
+    unknownProductCount: normalizedRows.filter(row => row.productGroupCode === 'unknown').length,
+    duplicateProductOrderIdCount: deduped.duplicateCount,
+    warnings: [
+      ...(deduped.duplicateCount > 0 ? [`duplicate_product_order_ids_removed:${deduped.duplicateCount}`] : []),
+      ...(groups.some(group => group.routingStatus === 'carrier_missing') ? ['carrier_mapping_required'] : []),
+      ...(groups.some(group => group.routingStatus === 'email_missing') ? ['supplier_email_missing'] : []),
+      ...(unknownRowsPreview.length > 0 ? ['product_group_mapping_required'] : []),
+    ],
+  };
+
+  return {
+    scope,
+    source: 'naver-commerce-api',
+    dataReliable: true,
+    summary,
+    groups,
+    unknownRowsPreview: unknownRowsPreview.slice(0, 10),
+    rowsByGroup: Object.fromEntries(Array.from(grouped.entries()).map(([groupId, item]) => [groupId, item.rows])),
+  };
+}
+
+function maskPurchaseOrderRow(row: PurchaseOrderNormalizedRow): PurchaseOrderNormalizedRow {
+  return {
+    ...row,
+    receiverName: maskKoreanName(row.receiverName),
+    receiverPhone: maskPhoneLike(row.receiverPhone),
+    receiverMobile: maskPhoneLike(row.receiverMobile),
+    address: maskAddress(row.address),
+    zipCode: row.zipCode ? '***' : '',
+    senderName: row.senderName ? '보내는분' : '',
+    senderPhone: row.senderPhone ? '***' : '',
+  };
+}
+
+async function generateCarrierWorkbook(input: {
+  group: any;
+  rows: PurchaseOrderNormalizedRow[];
+  includePrivateFields: boolean;
+}) {
+  if (input.group.carrier !== 'lotte' && input.group.carrier !== 'logen') {
+    return null;
+  }
+  const template = PURCHASE_ORDER_CARRIER_TEMPLATES[input.group.carrier as 'lotte' | 'logen'];
+  const ExcelJS = (await import('exceljs')).default;
+  const wb = new ExcelJS.Workbook();
+  const ws = wb.addWorksheet(template.sheetName);
+  ws.columns = template.columns.map(column => ({ header: column.header, key: column.key, width: column.width }));
+  ws.getRow(1).eachCell((cell: any) => {
+    cell.font = { bold: true, size: 11 };
+    cell.alignment = { horizontal: 'center' };
+    cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE2F0D9' } };
+  });
+  const exportRows = input.includePrivateFields ? input.rows : input.rows.map(maskPurchaseOrderRow);
+  for (const row of exportRows) {
+    const combinedProductName = [row.productName, row.optionName].filter(Boolean).join(' / ') || row.productGroupName;
+    ws.addRow({ ...row, combinedProductName });
+  }
+  const buffer = await wb.xlsx.writeBuffer();
+  return {
+    fileName: input.group.fileName,
+    mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    contentBase64: Buffer.from(buffer as any).toString('base64'),
+    rowCount: input.rows.length,
+    totalQuantity: input.rows.reduce((sum, row) => sum + row.quantity, 0),
+    carrier: input.group.carrier,
+    warnings: input.group.warnings || [],
+  };
+}
+
+async function handlePurchaseOrderBulkPreview(params: any = {}) {
+  try {
+    const result = await buildBulkPurchaseOrderGroups(params);
+    const { rowsByGroup, ...safeResult } = result;
+    return {
+      success: true,
+      task: 'purchase-order-bulk-preview',
+      executeLocked: true,
+      approvalRequiredForPrivateExport: true,
+      ...safeResult,
+    };
+  } catch (err: any) {
+    return {
+      success: false,
+      task: 'purchase-order-bulk-preview',
+      source: 'api_error',
+      dataReliable: false,
+      executeLocked: true,
+      errorCode: 'PURCHASE_ORDER_PREVIEW_FAILED',
+      message: safeDiagnosticMessage(err),
+    };
+  }
+}
+
+async function handlePurchaseOrderBulkExport(params: any = {}) {
+  const includePrivateFields = params.includePrivateFields === true || params.includePrivateFields === 'true';
+  const approvalConfirmed = params.approvalConfirmed === true || params.approvalConfirmed === 'true';
+  if (includePrivateFields && !approvalConfirmed) {
+    return {
+      success: false,
+      blocked: true,
+      executeLocked: true,
+      approvalRequired: true,
+      errorCode: 'APPROVAL_REQUIRED_FOR_PRIVATE_EXPORT',
+      message: 'Private receiver fields require explicit owner approval.',
+    };
+  }
+  const built = await buildBulkPurchaseOrderGroups(params);
+  const selectedIds = Array.isArray(params.groupIds) && params.groupIds.length > 0
+    ? new Set(params.groupIds.map((id: any) => String(id)))
+    : null;
+  const groups = built.groups.filter(group => group.canExport && (!selectedIds || selectedIds.has(group.groupId)));
+  const files = [];
+  for (const group of groups) {
+    const rows = built.rowsByGroup[group.groupId] || [];
+    const file = await generateCarrierWorkbook({ group, rows, includePrivateFields });
+    if (file) files.push(file);
+  }
+  return {
+    success: true,
+    task: 'purchase-order-bulk-export',
+    executeLocked: true,
+    includePrivateFields,
+    approvalConfirmed,
+    format: 'xlsx',
+    fileCount: files.length,
+    files,
+    summary: built.summary,
+    warnings: [
+      ...(built.summary.warnings || []),
+      ...(params.format === 'zip' ? ['zip_not_enabled_returning_files_array'] : []),
+    ],
+  };
+}
+
+async function handlePurchaseOrderBulkEmailDraft(params: any = {}) {
+  const built = await buildBulkPurchaseOrderGroups(params);
+  const selectedIds = Array.isArray(params.groupIds) && params.groupIds.length > 0
+    ? new Set(params.groupIds.map((id: any) => String(id)))
+    : null;
+  const drafts = built.groups
+    .filter(group => (!selectedIds || selectedIds.has(group.groupId)))
+    .map(group => ({
+      groupId: group.groupId,
+      supplierName: group.supplierName,
+      recipientMasked: group.emailMasked || '',
+      recipientReady: group.emailConfigured,
+      subject: `[발주서] ${group.productGroupName} ${group.totalQuantity}개`,
+      bodyPreview: `${group.supplierName} 발주처에 ${group.productGroupName} ${group.totalQuantity}개 발주서 첨부 예정입니다. 실제 발송은 별도 승인 전까지 잠금 상태입니다.`,
+      attachmentFileName: group.fileName,
+      rowCount: group.rowCount,
+      totalQuantity: group.totalQuantity,
+      approvalRequired: true,
+      executeLocked: true,
+      warnings: group.warnings,
+    }));
+  return {
+    success: true,
+    task: 'purchase-order-bulk-email-draft',
+    executeLocked: true,
+    approvalRequired: true,
+    sendEnabled: false,
+    drafts,
+    summary: built.summary,
+    message: 'Email draft preview only. Actual sending remains locked.',
+  };
 }
