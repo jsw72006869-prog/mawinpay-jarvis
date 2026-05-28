@@ -425,7 +425,14 @@ export default function OutreachResultWorkspace({
               }}>API 상태 {apiStatus}</span>
             )}
             {saveSkippedDryRun && (
-              <span style={{ color: '#ffaa00', fontSize: 10 }}>저장 생략: dryRun</span>
+              <span style={{
+                border: '1px solid rgba(255,170,0,0.35)',
+                background: 'rgba(255,170,0,0.09)',
+                color: '#ffaa00',
+                borderRadius: 4,
+                padding: '5px 8px',
+                fontSize: 10,
+              }}>미리보기 모드 — Google Sheets 저장 안 함</span>
             )}
           </div>
         )}
@@ -592,6 +599,19 @@ export default function OutreachResultWorkspace({
                         whiteSpace: 'nowrap',
                       }}>
                         근거: {String((c as any).target_evidence_terms).split(',').slice(0, 4).map(s => s.trim()).filter(Boolean).join(', ')}
+                      </div>
+                    )}
+                    {((c as any).target_match_status === 'review' || (c as any).target_match_status === 'excluded') && ((c as any).target_exclude_reason || (c as any).excludedReason) && (
+                      <div style={{
+                        marginTop: '6px',
+                        color: '#ffaa00',
+                        fontSize: '9px',
+                        lineHeight: 1.45,
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
+                        whiteSpace: 'nowrap',
+                      }}>
+                        판정 사유: {(c as any).target_exclude_reason || (c as any).excludedReason}
                       </div>
                     )}
 
