@@ -2934,6 +2934,8 @@ const SHEET_HEADERS: Record<string, string[]> = {
   outreach_agent_runs: ['run_id','date_kst','mission','product','source_keyword','target_count','status','started_at','completed_at','current_node','discovered_count','contact_found_count','draft_ready_count','approval_waiting_count','sent_count','reply_count','positive_reply_count','accepted_count','followup_needed_count','followup_sent_count','failed_count','notes'],
   outreach_candidate_events: ['event_id','candidate_id','platform','profile_url','event_type','event_time','source','message_id','status_before','status_after','notes'],
   telegram_notification_logs: ['notification_id','brief_id','channel','sent','sent_at','error_code','error_message','created_at','notes'],
+  action_approval_log: ['action_id','action_type','status','source','target_summary','next_prompt','expires_at','created_at','updated_at','approval_source','executed_at','result_status','error_code','notes'],
+  outreach_collection_runs: ['run_id','requested_vertical','target_contactable_count','qualified_contactable_count','remaining_contactable_count','completion_status','stop_reason','batch_count','raw_search_result_count','deduped_channel_count','saved_candidate_count','public_email_count','qualified_public_email_count','started_at','finished_at','notes'],
   // OUTREACH-COPY-AGENT-MASTER-A.1: viral_content_swipe 탭 (Hot Content 카피 학습 재료)
   viral_content_swipe: ['id','platform','source_product','source_keyword','content_url','creator_name','hook_text','thumbnail_text','post_summary','engagement_visible','comment_signal','hot_reason','copy_pattern','emotion_trigger','buyer_desire','usable_for','hot_score','copy_pattern_score','risk_score','created_at','notes'],
   // COPY-BRAIN-A.1: Copy Brain 저장 구조
@@ -3018,6 +3020,160 @@ function generateRecordId(type: string): string {
   const ts = Date.now().toString(36);
   const rand = Math.random().toString(36).slice(2, 6);
   return `${type}-${ts}-${rand}`;
+}
+
+type PendingJarvisActionType =
+  | 'SMARTSTORE_CONFIRM_ORDERS'
+  | 'PURCHASE_ORDER_CREATE'
+  | 'PURCHASE_ORDER_EMAIL_SEND'
+  | 'OUTREACH_GOAL_COLLECT'
+  | 'OUTREACH_EMAIL_DRAFT'
+  | 'OUTREACH_EMAIL_SEND'
+  | 'OUTREACH_FOLLOWUP_DRAFT'
+  | 'OUTREACH_FOLLOWUP_SEND';
+
+type PendingJarvisActionStatus =
+  | 'awaiting_confirmation'
+  | 'approved'
+  | 'cancelled'
+  | 'executed'
+  | 'blocked'
+  | 'expired'
+  | 'failed'
+  | 'partial';
+
+type PendingJarvisAction = {
+  id: string;
+  actionType: PendingJarvisActionType;
+  status: PendingJarvisActionStatus;
+  source: 'chat' | 'telegram' | 'system';
+  targetSummary: Record<string, any>;
+  nextPrompt?: string;
+  expiresAt: string;
+  createdAt: string;
+};
+
+function safeJsonStringify(value: unknown): string {
+  try { return JSON.stringify(value ?? {}); } catch { return '{}'; }
+}
+
+function parseSafeJsonObject(value: string): Record<string, any> {
+  try {
+    const parsed = JSON.parse(value || '{}');
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+function sanitizeActionTargetSummary(summary: Record<string, any>): Record<string, any> {
+  const blockedKeys = /email|phone|address|token|secret|password|credential|access_token|refresh_token/i;
+  const clean: Record<string, any> = {};
+  for (const [key, value] of Object.entries(summary || {})) {
+    if (blockedKeys.test(key)) continue;
+    if (Array.isArray(value)) clean[key] = value.slice(0, 50);
+    else if (value && typeof value === 'object') clean[key] = sanitizeActionTargetSummary(value as Record<string, any>);
+    else clean[key] = value;
+  }
+  return clean;
+}
+
+async function createPendingJarvisAction(input: {
+  actionType: PendingJarvisActionType;
+  source?: 'chat' | 'telegram' | 'system';
+  targetSummary?: Record<string, any>;
+  nextPrompt?: string;
+  ttlMinutes?: number;
+}): Promise<PendingJarvisAction & { persisted: boolean; persistError?: string }> {
+  const now = new Date();
+  const action: PendingJarvisAction = {
+    id: generateRecordId('act'),
+    actionType: input.actionType,
+    status: 'awaiting_confirmation',
+    source: input.source || 'system',
+    targetSummary: sanitizeActionTargetSummary(input.targetSummary || {}),
+    nextPrompt: input.nextPrompt || '',
+    expiresAt: new Date(now.getTime() + (input.ttlMinutes || 60) * 60000).toISOString(),
+    createdAt: now.toISOString(),
+  };
+  if (!WORKSPACE_SHEET_ID || !GOOGLE_SHEETS_CREDENTIALS) {
+    return { ...action, persisted: false, persistError: 'sheets_not_configured' };
+  }
+  try {
+    await ensureHeaders('action_approval_log');
+    await sheetsAppend('action_approval_log', [[
+      action.id, action.actionType, action.status, action.source,
+      safeJsonStringify(action.targetSummary), action.nextPrompt || '',
+      action.expiresAt, action.createdAt, action.createdAt, '', '', '', '', '',
+    ]]);
+    return { ...action, persisted: true };
+  } catch (e: any) {
+    return { ...action, persisted: false, persistError: e?.message || 'persist_failed' };
+  }
+}
+
+async function readPendingJarvisAction(actionId: string): Promise<(PendingJarvisAction & { rowNum: number }) | null> {
+  if (!actionId || !WORKSPACE_SHEET_ID || !GOOGLE_SHEETS_CREDENTIALS) return null;
+  await ensureHeaders('action_approval_log');
+  const data = await sheetsRead('action_approval_log');
+  const rows: string[][] = data.values || [];
+  const headers = rows[0] || [];
+  const idx = (col: string) => headers.indexOf(col);
+  for (let i = 1; i < rows.length; i++) {
+    const row = rows[i] || [];
+    if ((row[idx('action_id')] || '') !== actionId) continue;
+    return {
+      id: actionId,
+      actionType: row[idx('action_type')] as PendingJarvisActionType,
+      status: (row[idx('status')] || 'awaiting_confirmation') as PendingJarvisActionStatus,
+      source: (row[idx('source')] || 'system') as 'chat' | 'telegram' | 'system',
+      targetSummary: parseSafeJsonObject(row[idx('target_summary')] || '{}'),
+      nextPrompt: row[idx('next_prompt')] || '',
+      expiresAt: row[idx('expires_at')] || '',
+      createdAt: row[idx('created_at')] || '',
+      rowNum: i + 1,
+    };
+  }
+  return null;
+}
+
+async function updatePendingJarvisAction(actionId: string, patch: {
+  status?: PendingJarvisActionStatus;
+  approvalSource?: string;
+  executedAt?: string;
+  resultStatus?: string;
+  errorCode?: string;
+  notes?: string;
+}): Promise<void> {
+  if (!actionId || !WORKSPACE_SHEET_ID || !GOOGLE_SHEETS_CREDENTIALS) return;
+  await ensureHeaders('action_approval_log');
+  const data = await sheetsRead('action_approval_log');
+  const rows: string[][] = data.values || [];
+  const headers = rows[0] || [];
+  const actionIdIdx = headers.indexOf('action_id');
+  const rowIndex = rows.findIndex((row, i) => i > 0 && row[actionIdIdx] === actionId);
+  if (rowIndex < 1) return;
+  const row = [...rows[rowIndex]];
+  const setCol = (col: string, value: string | undefined) => {
+    const i = headers.indexOf(col);
+    if (i >= 0 && value !== undefined) row[i] = value;
+  };
+  const now = new Date().toISOString();
+  setCol('status', patch.status);
+  setCol('updated_at', now);
+  setCol('approval_source', patch.approvalSource);
+  setCol('executed_at', patch.executedAt);
+  setCol('result_status', patch.resultStatus);
+  setCol('error_code', patch.errorCode);
+  setCol('notes', patch.notes);
+  const token = await getGoogleSheetsToken();
+  const range = encodeURIComponent(`action_approval_log!A${rowIndex + 1}`);
+  const url = `https://sheets.googleapis.com/v4/spreadsheets/${WORKSPACE_SHEET_ID}/values/${range}?valueInputOption=RAW`;
+  await fetch(url, {
+    method: 'PUT',
+    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ values: [row] }),
+  });
 }
 
 async function handleWorkspaceSave(params: any) {
@@ -3307,6 +3463,9 @@ async function handleOutreachCollect(params: any) {
   const { keyword, product, maxCandidates = 20, platform = 'all', requireEmail = true, existingCandidateIds = [], requestedVertical: explicitVertical } = params;
   if (!keyword) return { success: false, error: 'keyword required' };
   const dryRun = params?.dryRun === true || params?.dryRun === 'true' || params?.countOnly === true || params?.countOnly === 'true';
+  const mode = String(params?.mode || '').trim();
+  const isGoalCollect = mode === 'goal_collect' || params?.targetContactableCount !== undefined;
+  const targetContactableCount = Math.max(0, Number(params?.targetContactableCount || params?.targetQualifiedContactableCount || 0));
 
   const candidates: any[] = [];
   const excludedCandidates: any[] = [];
@@ -3911,6 +4070,33 @@ async function handleOutreachCollect(params: any) {
   outreachDiagnostics.savedCandidateCount = Number(autoSaveResult?.saved || 0) + Number(autoSaveResult?.updated || 0);
   if (dryRun) outreachDiagnostics.apiWarnings.push('sheet_save_skipped:dryRun');
   telemetry.deduped = outreachDiagnostics.duplicateRemovedCount;
+  const goalQualifiedContactableCount = outreachDiagnostics.qualifiedContactableCount;
+  const remainingContactableCount = isGoalCollect ? Math.max(0, targetContactableCount - goalQualifiedContactableCount) : 0;
+  const completionStatus = !isGoalCollect
+    ? 'not_goal_collect'
+    : dryRun
+      ? 'partial'
+      : targetContactableCount > 0 && goalQualifiedContactableCount >= targetContactableCount
+        ? 'complete'
+        : ['quota_exceeded', 'api_error', 'env_missing'].includes(outreachDiagnostics.youtubeApiStatus)
+          ? 'blocked'
+          : 'partial';
+  const stopReason = !isGoalCollect
+    ? ''
+    : dryRun
+      ? 'dryRun'
+      : completionStatus === 'complete'
+        ? ''
+        : outreachDiagnostics.youtubeApiStatus === 'quota_exceeded'
+          ? 'quota_exceeded'
+          : outreachDiagnostics.youtubeApiStatus === 'api_error'
+            ? 'api_error'
+            : outreachDiagnostics.youtubeApiStatus === 'env_missing'
+              ? 'env_missing'
+              : finalCandidates.length < max
+                ? 'no_more_results'
+                : 'max_batches_reached';
+  if (isGoalCollect) outreachDiagnostics.apiWarnings.push(`goal_collect:${completionStatus}`);
   const responseCandidates = dryRun
     ? finalCandidates.map(({ contact_email, email, ...candidate }) => ({
         ...candidate,
@@ -3938,12 +4124,21 @@ async function handleOutreachCollect(params: any) {
       excludedReasonCounts: outreachDiagnostics.excludedReasonCounts,
       candidateReadyToSaveCount: finalCandidates.length,
       youtubeApiStatus: outreachDiagnostics.youtubeApiStatus,
+      targetContactableCount,
+      remainingContactableCount,
+      completionStatus,
+      stopReason,
     },
     diagnostics: outreachDiagnostics,
     keyword,
     product: productName,
     requireEmail,
     requestedVertical,
+    mode: isGoalCollect ? 'goal_collect' : mode,
+    targetContactableCount,
+    remainingContactableCount,
+    completionStatus,
+    stopReason,
     searchedSegments,
     segmentStats,
     telemetry,
@@ -4556,6 +4751,148 @@ async function handleOutreachMailSend(params: any) {
   };
 }
 
+async function handleOutreachReplyCheck(params: any) {
+  return {
+    success: true,
+    dryRun: params?.dryRun !== false,
+    executeLocked: true,
+    status: 'blocked',
+    errorCode: 'GMAIL_REPLY_TRACKING_NOT_VERIFIED',
+    message: 'Reply/no-reply tracking requires verified Gmail thread lookup. No Gmail search was executed.',
+    summary: { replied: 0, noReply: 0, bounced: 0, unknown: 0 },
+  };
+}
+
+async function handleOutreachFollowupDraft(params: any) {
+  return {
+    success: true,
+    dryRun: params?.dryRun !== false,
+    approvalRequired: true,
+    executeLocked: true,
+    campaignId: params?.campaignId || '',
+    target: params?.target || 'no_reply',
+    angle: params?.angle || 'story',
+    draftPreview: 'Follow-up draft preview is prepared only after Gmail reply tracking is verified.',
+    message: 'Follow-up draft is preview-only. Sending remains locked.',
+  };
+}
+
+async function handleOutreachFollowupSendApproved(params: any) {
+  const approvalConfirmed = params?.approvalConfirmed === true || params?.approvalConfirmed === 'true';
+  const dryRun = params?.dryRun === true || params?.dryRun === 'true';
+  if (dryRun) {
+    return { success: true, dryRun: true, sendSkipped: true, approvalRequired: true, executeLocked: true, message: 'Follow-up send dryRun: no email was sent.' };
+  }
+  if (!approvalConfirmed) {
+    return { success: false, blocked: true, approvalRequired: true, executeLocked: true, errorCode: 'APPROVAL_REQUIRED', message: 'Follow-up send requires approvalConfirmed=true.' };
+  }
+  return {
+    success: false,
+    blocked: true,
+    approvalRequired: true,
+    executeLocked: true,
+    errorCode: 'GMAIL_FOLLOWUP_SEND_NOT_VERIFIED',
+    message: 'Actual follow-up send is blocked until Gmail reply tracking and recipient selection are verified.',
+  };
+}
+
+async function executeApprovedAction(action: PendingJarvisAction, approvalSource: 'chat' | 'telegram' | 'system', options: { dryRun?: boolean } = {}) {
+  const target = action.targetSummary || {};
+  const dryRun = options.dryRun === true;
+  const base = { actionId: action.id, actionType: action.actionType, approvalSource, dryRun, executeLocked: true };
+
+  if (action.actionType === 'SMARTSTORE_CONFIRM_ORDERS') {
+    return {
+      ...base,
+      ...(await handleSmartstoreConfirmOrders({
+        productOrderIds: Array.isArray(target.productOrderIds) ? target.productOrderIds : [],
+        dryRun,
+        approvalConfirmed: !dryRun,
+      })),
+    };
+  }
+  if (action.actionType === 'OUTREACH_GOAL_COLLECT') {
+    return {
+      ...base,
+      ...(await handleOutreachCollect({
+        ...(target.params || {}),
+        mode: 'goal_collect',
+        dryRun: dryRun || target.dryRun === true,
+        countOnly: dryRun || target.countOnly === true,
+      })),
+    };
+  }
+  if (action.actionType === 'OUTREACH_EMAIL_SEND') {
+    return {
+      ...base,
+      ...(await handleOutreachMailSend({
+        influencer_id: target.influencer_id,
+        profile_url: target.profile_url,
+        dryRun,
+        approvalConfirmed: !dryRun,
+      })),
+    };
+  }
+  if (action.actionType === 'OUTREACH_FOLLOWUP_SEND') {
+    return {
+      ...base,
+      ...(await handleOutreachFollowupSendApproved({ campaignId: target.campaignId, dryRun, approvalConfirmed: !dryRun })),
+    };
+  }
+  return {
+    ...base,
+    success: false,
+    blocked: true,
+    approvalRequired: true,
+    errorCode: action.actionType === 'PURCHASE_ORDER_EMAIL_SEND' ? 'PURCHASE_ORDER_RECIPIENT_CHANNEL_NOT_VERIFIED' : 'ACTION_EXECUTOR_NOT_IMPLEMENTED',
+    message: `${action.actionType} is blocked or not implemented yet.`,
+  };
+}
+
+async function handleApprovalActionCreate(params: any) {
+  const actionType = String(params?.actionType || '') as PendingJarvisActionType;
+  const allowed: PendingJarvisActionType[] = ['SMARTSTORE_CONFIRM_ORDERS','PURCHASE_ORDER_CREATE','PURCHASE_ORDER_EMAIL_SEND','OUTREACH_GOAL_COLLECT','OUTREACH_EMAIL_DRAFT','OUTREACH_EMAIL_SEND','OUTREACH_FOLLOWUP_DRAFT','OUTREACH_FOLLOWUP_SEND'];
+  if (!allowed.includes(actionType)) return { success: false, blocked: true, errorCode: 'ACTION_TYPE_REQUIRED', executeLocked: true };
+  const action = await createPendingJarvisAction({
+    actionType,
+    source: params?.source || 'chat',
+    targetSummary: params?.targetSummary || {},
+    nextPrompt: params?.nextPrompt || '',
+    ttlMinutes: Number(params?.ttlMinutes || 60),
+  });
+  return { success: true, approvalRequired: true, executeLocked: true, action, message: `Approval action created: ${action.id}` };
+}
+
+async function handleTelegramApprovalReply(params: any) {
+  const actionId = String(params?.actionId || '').trim();
+  const decision = String(params?.decision || '').trim();
+  const dryRun = params?.dryRun === true || params?.dryRun === 'true';
+  if (!actionId) return { success: false, blocked: true, executeLocked: true, errorCode: 'ACTION_ID_REQUIRED', message: 'Telegram approval requires actionId.' };
+  if (!['approve', 'cancel'].includes(decision)) return { success: false, blocked: true, executeLocked: true, errorCode: 'DECISION_REQUIRED', message: 'decision must be approve or cancel.' };
+  const action = await readPendingJarvisAction(actionId);
+  if (!action) return { success: false, blocked: true, executeLocked: true, errorCode: 'ACTION_NOT_FOUND' };
+  if (action.status !== 'awaiting_confirmation') return { success: false, blocked: true, executeLocked: true, errorCode: 'ACTION_NOT_AWAITING_CONFIRMATION', status: action.status };
+  if (action.expiresAt && Date.now() > Date.parse(action.expiresAt)) {
+    await updatePendingJarvisAction(actionId, { status: 'expired', approvalSource: 'telegram', errorCode: 'ACTION_EXPIRED' });
+    return { success: false, blocked: true, executeLocked: true, errorCode: 'ACTION_EXPIRED' };
+  }
+  if (decision === 'cancel') {
+    await updatePendingJarvisAction(actionId, { status: 'cancelled', approvalSource: 'telegram', resultStatus: 'cancelled' });
+    return { success: true, cancelled: true, executeLocked: true, actionId };
+  }
+  const result: any = await executeApprovedAction(action, 'telegram', { dryRun });
+  const resultStatus = result.success && !result.blocked ? 'executed' : result.blocked ? 'blocked' : 'failed';
+  await updatePendingJarvisAction(actionId, {
+    status: dryRun ? 'awaiting_confirmation' : resultStatus as PendingJarvisActionStatus,
+    approvalSource: 'telegram',
+    executedAt: dryRun ? '' : new Date().toISOString(),
+    resultStatus,
+    errorCode: result.errorCode || result.error || '',
+    notes: dryRun ? 'telegram approval dryRun: no state-changing execution' : '',
+  });
+  return { ...result, actionId, telegramApproval: true };
+}
+
 async function handleMarketPriceCheck(params: any) {
   const { productName, rawMaterialCost, currentPrice, shippingCost, packagingCost, platformFeeRate, otherCosts, competitorPrices, sourceCommand } = params;
 
@@ -5142,6 +5479,27 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       }
 
       // ── Market Price: 농산물 가격 판단 ──
+      if (resolvedTask === 'approval-action-create') {
+        const result = await handleApprovalActionCreate(params || rest);
+        return res.status(200).json(result);
+      }
+      if (resolvedTask === 'telegram-approval-reply') {
+        const result = await handleTelegramApprovalReply(params || rest);
+        return res.status(200).json(result);
+      }
+      if (resolvedTask === 'outreach-reply-check') {
+        const result = await handleOutreachReplyCheck(params || rest);
+        return res.status(200).json(result);
+      }
+      if (resolvedTask === 'outreach-followup-draft') {
+        const result = await handleOutreachFollowupDraft(params || rest);
+        return res.status(200).json(result);
+      }
+      if (resolvedTask === 'outreach-followup-send-approved') {
+        const result = await handleOutreachFollowupSendApproved(params || rest);
+        return res.status(200).json(result);
+      }
+
       if (resolvedTask === 'market-price-check') {
         const result = await handleMarketPriceCheck(params || rest);
         return res.status(200).json(result);
@@ -5590,12 +5948,50 @@ async function handleDailyBrief24h(params: any) {
     hotContentNotes,
   ];
 
+  const telegramActionRequests: any[] = [];
+  const confirmIds = ssData.fullOrderSummary?.confirmNeededProductOrderIds || [];
+  if (Array.isArray(confirmIds) && confirmIds.length > 0 && ssData.dataReliable !== false) {
+    if (dryRun) {
+      telegramActionRequests.push({
+        actionId: 'dryrun-preview-only',
+        actionType: 'SMARTSTORE_CONFIRM_ORDERS',
+        title: `Smartstore confirm needed: ${confirmIds.length}`,
+        targetSummary: { targetCount: confirmIds.length },
+        expiresAt: '',
+        dryRun: true,
+      });
+    } else {
+      const action = await createPendingJarvisAction({
+        actionType: 'SMARTSTORE_CONFIRM_ORDERS',
+        source: 'system',
+        targetSummary: { productOrderIds: confirmIds, targetCount: confirmIds.length },
+        nextPrompt: `Approve Smartstore confirm for ${confirmIds.length} product orders?`,
+        ttlMinutes: 120,
+      });
+      telegramActionRequests.push({
+        actionId: action.id,
+        actionType: action.actionType,
+        title: `Smartstore confirm needed: ${confirmIds.length}`,
+        targetSummary: { targetCount: confirmIds.length },
+        expiresAt: action.expiresAt,
+        persisted: action.persisted,
+      });
+    }
+  }
+
   if (dryRun) {
     return {
       success: true, dryRun: true, briefId, dateKst,
       periodStartKst, periodEndKst,
       smartstore: ssData, outreach: outreachData, hotContent,
-      hotContentNotes, telegramConfigured: !!(TELEGRAM_BOT_TOKEN && TELEGRAM_DAILY_BRIEF_CHAT_ID),
+      hotContentNotes,
+      telegramConfigured: !!(TELEGRAM_BOT_TOKEN && TELEGRAM_DAILY_BRIEF_CHAT_ID),
+      telegram: {
+        configured: !!(TELEGRAM_BOT_TOKEN && TELEGRAM_DAILY_BRIEF_CHAT_ID),
+        sent: false,
+        dryRun: true,
+        actionRequests: telegramActionRequests,
+      },
     };
   }
 
@@ -5702,6 +6098,8 @@ async function handleDailyBrief24h(params: any) {
       configured: !!(TELEGRAM_BOT_TOKEN && TELEGRAM_DAILY_BRIEF_CHAT_ID),
       sent: telegramResult.sent,
       error: telegramResult.error || null,
+      messageType: 'daily_brief',
+      actionRequests: telegramActionRequests,
     },
     savedToSheets: true,
   };

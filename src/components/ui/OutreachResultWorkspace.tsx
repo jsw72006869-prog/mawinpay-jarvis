@@ -432,6 +432,8 @@ export default function OutreachResultWorkspace({
               { label: '공개 이메일', value: countSummary.publicEmailCount },
               { label: '연락 가능', value: countSummary.contactableCount },
               { label: '최종 연락 가능 적합', value: countSummary.qualifiedContactableCount },
+              { label: '목표', value: countSummary.targetContactableCount },
+              { label: '남은 인원', value: countSummary.remainingContactableCount },
             ].filter(item => item.value !== undefined && item.value !== null).map(item => (
               <span key={item.label} style={{
                 border: '1px solid rgba(0,180,255,0.18)',
@@ -451,6 +453,16 @@ export default function OutreachResultWorkspace({
                 padding: '5px 8px',
                 fontSize: 10,
               }}>API 상태 {apiStatus}</span>
+            )}
+            {countSummary.completionStatus && countSummary.completionStatus !== 'not_goal_collect' && (
+              <span style={{
+                border: `1px solid ${countSummary.completionStatus === 'complete' ? 'rgba(0,255,136,0.25)' : 'rgba(255,170,0,0.35)'}`,
+                background: countSummary.completionStatus === 'complete' ? 'rgba(0,255,136,0.08)' : 'rgba(255,170,0,0.09)',
+                color: countSummary.completionStatus === 'complete' ? '#00ff88' : '#ffaa00',
+                borderRadius: 4,
+                padding: '5px 8px',
+                fontSize: 10,
+              }}>목표 상태 {countSummary.completionStatus}{countSummary.stopReason ? ` / ${countSummary.stopReason}` : ''}</span>
             )}
             {saveSkippedDryRun && (
               <span style={{
