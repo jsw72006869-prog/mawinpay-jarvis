@@ -190,6 +190,40 @@ type PredictiveAction = {
   riskLevel: 'low' | 'medium' | 'high';
 };
 
+type UiPendingActionType =
+  | 'SMARTSTORE_CONFIRM_ORDERS'
+  | 'PURCHASE_ORDER_CREATE'
+  | 'PURCHASE_ORDER_EMAIL_SEND'
+  | 'OUTREACH_GOAL_COLLECT'
+  | 'OUTREACH_EMAIL_SEND'
+  | 'OUTREACH_FOLLOWUP_SEND';
+
+type UiPendingAction = {
+  id: string;
+  actionType: UiPendingActionType;
+  status: 'awaiting_confirmation' | 'blocked' | 'partial' | 'ready' | 'cancelled';
+  source: 'chat' | 'telegram' | 'system';
+  title: string;
+  summary: {
+    targetCount?: number;
+    productOrderCount?: number;
+    totalOrderQuantity?: number;
+    confirmNeededCount?: number;
+    productOrderIds?: string[];
+    fileName?: string;
+    supplierName?: string;
+    recipientMasked?: string;
+    targetContactableCount?: number;
+    qualifiedContactableCount?: number;
+    remainingContactableCount?: number;
+    completionStatus?: string;
+    stopReason?: string;
+  };
+  nextPrompt: string;
+  createdAt: string;
+  actionId?: string;
+};
+
 // ── ACTION-A.1: Scene별 Predictive Actions 규칙 (GPT 호출 금지, keyword 기반) ──
 function getPredictiveActions(scene: JarvisScene, _input?: string): PredictiveAction[] {
   switch (scene) {
@@ -433,6 +467,8 @@ export default function JarvisApp() {
   const [actionContext, setActionContext] = useState<ActionContext | null>(null);
   const [workflowSteps, setWorkflowSteps] = useState<WorkflowStep[]>([]);
   const [approvalPreview, setApprovalPreview] = useState<ApprovalPreviewData | null>(null);
+  const [pendingAction, setPendingAction] = useState<UiPendingAction | null>(null);
+  const pendingActionRef = useRef<UiPendingAction | null>(null);
   const [workspaceVisible, setWorkspaceVisible] = useState(false);
   const [workspaceRecords, setWorkspaceRecords] = useState<WorkspaceRecord[]>([]);
   const [workspaceLoading, setWorkspaceLoading] = useState(false);
@@ -646,6 +682,10 @@ export default function JarvisApp() {
     setShowGoldenFlare(true);
     setTimeout(() => setShowGoldenFlare(false), 2000);
   }, []);
+
+  useEffect(() => {
+    pendingActionRef.current = pendingAction;
+  }, [pendingAction]);
 
   // ── UI-J Dual Screen Helper Functions ──
   const openDataWallOnKnownLeftMonitor = (url: string) => {
@@ -5664,6 +5704,292 @@ G. Review Objection: 작다/비싸다/무르다/배송 손상/맛 기대와 다�
   }, [addMessage, jarvisRespond]);
 
   // ── 타이핑 입력 제출 핸들러 ──
+  const postCloudTask = useCallback(async (taskType: string, params: Record<string, any> = {}) => {
+    const res = await fetch('/api/cloud-proxy', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ taskType, params }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data?.message || data?.error || `cloud task failed: ${taskType}`);
+    return data;
+  }, []);
+
+  const showPendingAction = useCallback((action: UiPendingAction) => {
+    setPendingAction(action);
+    setActiveScene('approval_gate');
+    setActionStatusMessage(`APPROVAL REQUIRED: ${action.title}`);
+    const baseContext: ActionContext = {
+      type: action.actionType === 'OUTREACH_GOAL_COLLECT' ? 'outreach_collect' : 'smartstore',
+      productOrderCount: action.summary.productOrderCount,
+      totalOrderQuantity: action.summary.totalOrderQuantity,
+      confirmNeededCount: action.summary.confirmNeededCount || action.summary.targetCount,
+      confirmNeededProductOrderIds: action.summary.productOrderIds,
+      collectedCount: action.summary.qualifiedContactableCount,
+      shortfall: action.summary.remainingContactableCount,
+      label: action.title,
+      description: action.nextPrompt,
+      locked: true,
+      sourceCommand: action.title,
+    };
+    setActionContext(baseContext);
+    setWorkflowSteps(buildWorkflowSteps(baseContext));
+    setApprovalPreview(action.actionType === 'SMARTSTORE_CONFIRM_ORDERS' ? buildApprovalPreview(baseContext) : null);
+    setConversationExpanded(true);
+  }, []);
+
+  const createLocalPendingAction = useCallback((input: Omit<UiPendingAction, 'id' | 'status' | 'source' | 'createdAt'>) => {
+    const action: UiPendingAction = {
+      ...input,
+      id: `ui_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+      status: 'awaiting_confirmation',
+      source: 'chat',
+      createdAt: new Date().toISOString(),
+    };
+    showPendingAction(action);
+    return action;
+  }, [showPendingAction]);
+
+  const handleSmartstoreApprovalProposal = useCallback(async (_sourceCommand: string) => {
+    setState('working');
+    addMessage('jarvis', '스마트스토어 전체 주문 현황을 ProductOrderId 기준으로 확인하겠습니다.', true);
+    const data = await postCloudTask('smartstore-orders', { action: 'query_order_status' });
+    const fullSummary = data?.fullOrderSummary || {};
+    const actionBuckets = fullSummary.actionBuckets || {};
+    const productOrderCount = Number(fullSummary.productOrderCount ?? data?.counts?.productOrderCount ?? 0) || 0;
+    const totalOrderQuantity = Number(fullSummary.totalOrderQuantity ?? data?.counts?.totalOrderQuantity ?? 0) || 0;
+    const confirmNeededCount = Number(actionBuckets.confirmNeededCount ?? data?.counts?.confirmNeeded ?? 0) || 0;
+    const pendingShippingCount = Number(actionBuckets.pendingShippingCount ?? data?.counts?.pendingShipping ?? 0) || 0;
+    const preShipTotal = Number(actionBuckets.preShipTotal ?? data?.counts?.preShipTotal ?? 0) || 0;
+    const ids = Array.isArray(fullSummary.confirmNeededProductOrderIds) ? fullSummary.confirmNeededProductOrderIds : [];
+    const source = data?.source || fullSummary.source || 'unknown';
+    const reliable = data?.dataReliable !== false && fullSummary.dataReliable !== false;
+
+    setSccOrderData({
+      newOrders: data?.counts?.newOrders ?? data?.newOrders ?? 0,
+      pendingShipping: pendingShippingCount,
+      preShipTotal,
+      shipping: data?.counts?.shipping ?? data?.shipping ?? null,
+      delivered: data?.counts?.delivered ?? data?.delivered ?? null,
+      purchaseConfirmed: data?.counts?.purchaseConfirmed ?? data?.purchaseConfirmed ?? null,
+      fullOrderSummary: fullSummary,
+      source,
+      dataReliable: reliable,
+      diagnostics: data?.diagnostics,
+      fetchedAt: data?.fetchedAt,
+    });
+    setMissionWorkspaceOpen(true);
+    setActiveScene('smartstore_brief');
+
+    const report = [
+      `**전체 주문/발주 현황**`,
+      ``,
+      `전체 상품주문: ${productOrderCount}건`,
+      `전체 주문수량: ${totalOrderQuantity || '확인 필요'}개`,
+      `발주확인 필요: ${confirmNeededCount}건`,
+      `배송준비: ${pendingShippingCount}건`,
+      `배송 전 처리 대상: ${preShipTotal}건`,
+      ``,
+      `기준: ProductOrderId unique / quantity 합계`,
+      `API 상태: ${source}${reliable ? '' : ' / 확인 필요'}`,
+    ].join('\n');
+    addMessage('jarvis', report, true);
+
+    if (confirmNeededCount > 0 && ids.length > 0) {
+      const prompt = `발주확인 필요한 주문이 ${confirmNeededCount}건 있습니다. 발주확인을 진행할까요?`;
+      addMessage('jarvis', `🔐 ${prompt}\n\n승인 전까지 실제 네이버 주문 상태는 변경하지 않습니다.`, true);
+      createLocalPendingAction({
+        actionType: 'SMARTSTORE_CONFIRM_ORDERS',
+        title: '발주확인 승인 대기',
+        summary: {
+          targetCount: confirmNeededCount,
+          productOrderCount,
+          totalOrderQuantity,
+          confirmNeededCount,
+          productOrderIds: ids,
+        },
+        nextPrompt: prompt,
+      });
+    } else {
+      setPendingAction(null);
+      pendingActionRef.current = null;
+      addMessage('jarvis', '현재 발주확인이 필요한 ProductOrderId 대상은 없습니다.', true);
+    }
+    setState('idle');
+  }, [addMessage, createLocalPendingAction, postCloudTask]);
+
+  const executePendingActionFromChat = useCallback(async (decision: 'approve' | 'cancel') => {
+    const action = pendingActionRef.current;
+    if (!action) {
+      addMessage('jarvis', '대표님, 어떤 작업을 승인하시는 건지 확인이 필요합니다. 먼저 실행할 작업을 선택해 주세요.', true);
+      setState('idle');
+      return;
+    }
+    if (decision === 'cancel') {
+      setPendingAction(null);
+      pendingActionRef.current = null;
+      setApprovalPreview(null);
+      setActionStatusMessage('승인 대기 작업이 취소되었습니다.');
+      addMessage('jarvis', `${action.title} 작업을 취소했습니다. 실제 실행은 없었습니다.`, true);
+      setState('idle');
+      return;
+    }
+
+    setState('working');
+    if (action.actionType === 'SMARTSTORE_CONFIRM_ORDERS') {
+      const ids = action.summary.productOrderIds || [];
+      const result = await postCloudTask('smartstore-confirm-orders', {
+        productOrderIds: ids,
+        dryRun: false,
+        approvalConfirmed: true,
+      });
+      setPendingAction(null);
+      pendingActionRef.current = null;
+      setApprovalPreview(null);
+      if (result?.blocked || result?.success === false) {
+        addMessage('jarvis', `🔒 발주확인은 아직 실제 실행이 막혀 있습니다.\n\n사유: ${result?.errorCode || result?.message || 'endpoint_not_verified'}\n\n대신 발주서 대상 미리보기는 만들 수 있습니다. 발주서를 작성할까요?`, true);
+      } else {
+        addMessage('jarvis', `발주확인 ${result?.confirmedCount ?? ids.length}건을 완료했습니다. 이제 발주서를 작성할까요?`, true);
+      }
+      createLocalPendingAction({
+        actionType: 'PURCHASE_ORDER_CREATE',
+        title: '발주서 작성 승인 대기',
+        summary: {
+          targetCount: ids.length,
+          productOrderIds: ids,
+          productOrderCount: action.summary.productOrderCount,
+          totalOrderQuantity: action.summary.totalOrderQuantity,
+        },
+        nextPrompt: '발주서 미리보기를 작성할까요?',
+      });
+      setState('idle');
+      return;
+    }
+
+    if (action.actionType === 'PURCHASE_ORDER_CREATE') {
+      setPendingAction(null);
+      pendingActionRef.current = null;
+      setApprovalPreview(null);
+      addMessage('jarvis', `발주서 작성은 dryRun/미리보기 단계로만 준비합니다.\n\n대상: ${action.summary.targetCount || 0}건\n상태: 실제 이메일 전송 없음\n\n발주처 이메일 전송은 별도 승인 작업으로 분리되어 있습니다.`, true);
+      createLocalPendingAction({
+        actionType: 'PURCHASE_ORDER_EMAIL_SEND',
+        title: '발주서 이메일 전송 승인 대기',
+        summary: {
+          targetCount: action.summary.targetCount,
+          fileName: action.summary.fileName || 'purchase-order-preview.xlsx',
+          recipientMasked: action.summary.recipientMasked || '미확인',
+        },
+        nextPrompt: '발주서 이메일 전송은 별도 승인 후 dryRun/blocked 상태로만 확인합니다. 전송을 요청하시겠습니까?',
+      });
+      setState('idle');
+      return;
+    }
+
+    if (action.actionType === 'PURCHASE_ORDER_EMAIL_SEND') {
+      const result = await postCloudTask('purchase-order-send-approved', {
+        approvalConfirmed: true,
+        dryRun: true,
+        fileName: action.summary.fileName,
+      });
+      setPendingAction(null);
+      pendingActionRef.current = null;
+      addMessage('jarvis', `발주서 이메일 전송 승인 요청은 dryRun으로 처리했습니다.\n\n실제 발송: 없음\n상태: ${result?.errorCode || result?.message || 'dryRun'}\nEXECUTE LOCKED 유지`, true);
+      setState('idle');
+      return;
+    }
+
+    addMessage('jarvis', `${action.title} 작업은 아직 프론트 승인 실행기가 연결되지 않았습니다. 실제 실행은 하지 않았습니다.`, true);
+    setState('idle');
+  }, [addMessage, createLocalPendingAction, postCloudTask]);
+
+  const parseOutreachGoalCommand = useCallback((rawText: string) => {
+    const normalized = rawText.trim();
+    const isOutreach = /(인플루언서|유튜버|블로거|크리에이터)/.test(normalized) && /(수집|찾아|모아|모집|검색)/.test(normalized);
+    if (!isOutreach) return null;
+    const verticalMap: Array<[RegExp, string, string]> = [
+      [/캠핑|차박|아웃도어/, 'camping', '캠핑'],
+      [/뷰티|메이크업|화장품|스킨케어|피부/, 'beauty', '뷰티'],
+      [/요리|레시피|집밥|먹방/, 'cooking', '요리'],
+      [/식품|푸드|농산물|간식/, 'food', '식품'],
+      [/육아|아이|엄마|주부/, 'parenting', '육아'],
+      [/여행|브이로그/, 'travel', '여행'],
+    ];
+    const matched = verticalMap.find(([pattern]) => pattern.test(normalized));
+    if (!matched) return null;
+    const numberMatch = normalized.match(/(\d+)\s*명?/);
+    const targetCount = numberMatch ? Number(numberMatch[1]) : 10;
+    const preview = /(미리보기|테스트|dryrun|dryRun|드라이런)/i.test(normalized);
+    const requirePublicEmail = /(이메일|메일|공개\s*메일)/.test(normalized);
+    return {
+      requestedVertical: matched[1],
+      verticalLabel: matched[2],
+      targetContactableCount: targetCount,
+      dryRun: preview,
+      countOnly: preview,
+      requirePublicEmail,
+      keyword: `${matched[2]} 인플루언서`,
+    };
+  }, []);
+
+  const handleOutreachGoalCollectCommand = useCallback(async (goal: NonNullable<ReturnType<typeof parseOutreachGoalCommand>>) => {
+    setState('working');
+    addMessage('jarvis', `${goal.verticalLabel} 인플루언서 목표 수집을 시작합니다. 목표는 연락 가능 적합 후보 ${goal.targetContactableCount}명입니다.${goal.dryRun ? ' 이번 실행은 dryRun/countOnly라 Google Sheets에는 저장하지 않습니다.' : ''}`, true);
+    const data = await postCloudTask('outreach-collect', {
+      keyword: goal.keyword,
+      product: goal.verticalLabel,
+      requestedVertical: goal.requestedVertical,
+      platform: 'youtube',
+      requestedCount: Math.min(goal.targetContactableCount, goal.dryRun ? 5 : goal.targetContactableCount),
+      maxCandidates: Math.min(goal.targetContactableCount, goal.dryRun ? 5 : goal.targetContactableCount),
+      targetContactableCount: goal.targetContactableCount,
+      mode: 'goal_collect',
+      requireQualified: true,
+      requireContactable: true,
+      requirePublicEmail: goal.requirePublicEmail,
+      dryRun: goal.dryRun,
+      countOnly: goal.countOnly,
+    });
+    const summary = { ...(data?.diagnostics || {}), ...(data?.summary || {}) };
+    const completionStatus = data?.completionStatus || summary.completionStatus || 'partial';
+    const qualifiedContactableCount = Number(summary.qualifiedContactableCount ?? data?.qualifiedContactableCount ?? 0) || 0;
+    const remainingContactableCount = Number(data?.remainingContactableCount ?? summary.remainingContactableCount ?? Math.max(0, goal.targetContactableCount - qualifiedContactableCount)) || 0;
+    const stopReason = data?.stopReason || summary.stopReason || (goal.dryRun ? 'dryRun' : 'unknown');
+    setOutreachWorkspaceVisible(true);
+    setOutreachCandidates(Array.isArray(data?.candidates) ? data.candidates : []);
+    setOutreachCollectionSummary({ ...(data?.summary || {}), ...(data?.diagnostics || {}), completionStatus, remainingContactableCount, stopReason, targetContactableCount: goal.targetContactableCount });
+
+    if (completionStatus === 'complete') {
+      addMessage('jarvis', `대표님, ${goal.verticalLabel} 인플루언서 연락 가능 적합 후보 ${goal.targetContactableCount}명을 확보했습니다. 다음 행동을 선택해 주세요.\n\n1. 이메일 양식 먼저 보기\n2. 제안 메일 초안 만들기\n3. 1명 테스트 발송\n4. 선택 후보에게 발송\n5. 나중에 보내기`, true);
+      createLocalPendingAction({
+        actionType: 'OUTREACH_EMAIL_SEND',
+        title: `${goal.verticalLabel} 인플루언서 제안 메일 승인 대기`,
+        summary: {
+          targetContactableCount: goal.targetContactableCount,
+          qualifiedContactableCount,
+          remainingContactableCount,
+          completionStatus,
+          stopReason,
+        },
+        nextPrompt: '제안 메일 초안을 만들거나 선택 후보에게 발송할까요?',
+      });
+    } else {
+      addMessage('jarvis', `대표님, ${goal.verticalLabel} 인플루언서 연락 가능 적합 후보 ${goal.targetContactableCount}명 목표로 수집했지만 현재 ${qualifiedContactableCount}명 확보했습니다. ${remainingContactableCount}명이 더 필요합니다. 중단 사유는 ${stopReason}입니다. 목표 미달이므로 완료로 처리하지 않습니다. 이어서 수집할까요?`, true);
+      createLocalPendingAction({
+        actionType: 'OUTREACH_GOAL_COLLECT',
+        title: `${goal.verticalLabel} 인플루언서 이어서 수집 승인 대기`,
+        summary: {
+          targetContactableCount: goal.targetContactableCount,
+          qualifiedContactableCount,
+          remainingContactableCount,
+          completionStatus,
+          stopReason,
+        },
+        nextPrompt: `${remainingContactableCount}명을 더 채우기 위해 이어서 수집할까요?`,
+      });
+    }
+    setState('idle');
+  }, [addMessage, createLocalPendingAction, parseOutreachGoalCommand, postCloudTask]);
+
   const handleTextSubmit = useCallback(async (text: string) => {
     if (!text.trim()) return;
     setTextInputValue('');
@@ -5726,6 +6052,37 @@ G. Review Objection: 작다/비싸다/무르다/배송 손상/맛 기대와 다�
 
     setState('thinking');
     addMessage('user', text);
+
+    const normalizedCommand = text.trim();
+    const approvalYes = /^(응|그래|진행해|승인|해줘|보내|전송해|좋아|확인|ok|yes)$/i.test(normalizedCommand);
+    const approvalNo = /^(취소|아니|보류|하지마|멈춰|나중에|no|cancel)$/i.test(normalizedCommand);
+    if (approvalYes || approvalNo) {
+      await executePendingActionFromChat(approvalYes ? 'approve' : 'cancel');
+      return;
+    }
+
+    const wantsFullOrderSummary = /(전체\s*주문\s*현황|전체주문현황|주문\s*현황.*전체)/.test(normalizedCommand);
+    const wantsConfirmOrder = /발주확인/.test(normalizedCommand) && /(해줘|진행|처리|승인|확인)/.test(normalizedCommand) && !/(미리보기|dry|드라이런|대상)/i.test(normalizedCommand);
+    if (wantsFullOrderSummary || wantsConfirmOrder) {
+      await handleSmartstoreApprovalProposal(normalizedCommand);
+      return;
+    }
+
+    if (/발주서\s*(작성|만들|생성|초안)/.test(normalizedCommand)) {
+      if (!pendingActionRef.current || pendingActionRef.current.actionType !== 'PURCHASE_ORDER_CREATE') {
+        addMessage('jarvis', '발주서 작성은 발주확인 승인 흐름과 분리되어 있습니다. 먼저 전체주문현황을 확인하고 발주확인 대상 승인 질문을 만들어 주세요.', true);
+        setState('idle');
+        return;
+      }
+      await executePendingActionFromChat('approve');
+      return;
+    }
+
+    const outreachGoal = parseOutreachGoalCommand(normalizedCommand);
+    if (outreachGoal) {
+      await handleOutreachGoalCollectCommand(outreachGoal);
+      return;
+    }
 
     if (/발주확인\s*(미리보기|dry|드라이런|대상|확인)/i.test(text)) {
       const ids = actionContext?.confirmNeededProductOrderIds || [];
@@ -7728,6 +8085,68 @@ G. Review Objection: 작다/비싸다/무르다/배송 손상/맛 기대와 다�
           )}
         </AnimatePresence>
       </div>
+
+      {pendingAction && (
+        <div
+          data-testid="action-card"
+          style={{
+            position: 'fixed',
+            right: 24,
+            bottom: 24,
+            zIndex: 95,
+            width: 'min(360px, calc(100vw - 32px))',
+            padding: 16,
+            borderRadius: 12,
+            border: '1px solid rgba(255,170,0,0.35)',
+            background: 'rgba(8,12,20,0.94)',
+            boxShadow: '0 18px 40px rgba(0,0,0,0.35)',
+            color: 'rgba(241,245,249,0.94)',
+            backdropFilter: 'blur(14px)',
+          }}
+        >
+          <div style={{ fontFamily: 'Orbitron, monospace', fontSize: '0.58rem', letterSpacing: '0.16em', color: '#ffaa00', marginBottom: 8 }}>
+            APPROVAL REQUIRED
+          </div>
+          <div style={{ fontWeight: 700, fontSize: '0.9rem', marginBottom: 6 }}>{pendingAction.title}</div>
+          <div style={{ fontSize: '0.72rem', lineHeight: 1.55, color: 'rgba(203,213,225,0.82)', marginBottom: 10 }}>
+            {pendingAction.nextPrompt}
+          </div>
+          <div data-testid="execute-locked" style={{ fontSize: '0.65rem', color: '#ff6b6b', marginBottom: 10 }}>
+            EXECUTE LOCKED - approval required, single action only
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+            <button
+              data-testid="action-approve-button"
+              onClick={() => executePendingActionFromChat('approve')}
+              style={{
+                border: '1px solid rgba(34,197,94,0.45)',
+                background: 'rgba(34,197,94,0.12)',
+                color: '#86efac',
+                borderRadius: 8,
+                padding: '8px 10px',
+                cursor: 'pointer',
+                fontWeight: 700,
+              }}
+            >
+              승인
+            </button>
+            <button
+              data-testid="action-cancel-button"
+              onClick={() => executePendingActionFromChat('cancel')}
+              style={{
+                border: '1px solid rgba(148,163,184,0.28)',
+                background: 'rgba(148,163,184,0.08)',
+                color: 'rgba(226,232,240,0.86)',
+                borderRadius: 8,
+                padding: '8px 10px',
+                cursor: 'pointer',
+              }}
+            >
+              취소
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* ── TOUCH TO ACTIVATE 힌트 ── */}
       <AnimatePresence>
