@@ -273,7 +273,14 @@ export default function OutreachResultWorkspace({
   };
   const countSummary = collectionSummary || {};
   const apiStatus = countSummary.youtubeApiStatus || '';
-  const saveSkippedDryRun = Array.isArray(countSummary.apiWarnings) && countSummary.apiWarnings.includes('sheet_save_skipped:dryRun');
+  const apiWarnings = Array.isArray(countSummary.apiWarnings) ? countSummary.apiWarnings : [];
+  const isPreviewMode =
+    countSummary.dryRun === true ||
+    countSummary.countOnly === true ||
+    countSummary.autoSave?.reason === 'dryRun' ||
+    countSummary.autoSave?.dryRun === true ||
+    apiWarnings.includes('sheet_save_skipped:dryRun');
+  const saveSkippedDryRun = isPreviewMode;
 
   const getScoreColor = (score: number) => {
     if (score >= 70) return '#00ff88';
@@ -286,6 +293,11 @@ export default function OutreachResultWorkspace({
     setDetailOpen(true);
     onJarvisContextEvent?.({ intent: 'candidate_selected', payload: { candidate: c } });
   }, [onJarvisContextEvent]);
+
+  const handleManualSave = useCallback(() => {
+    if (isPreviewMode) return;
+    onSave?.(candidates);
+  }, [candidates, isPreviewMode, onSave]);
 
   if (!visible) return null;
 
@@ -339,13 +351,29 @@ export default function OutreachResultWorkspace({
               >📊 Google Sheets</a>
             )}
             <button
-              onClick={() => onSave(candidates)}
+              onClick={handleManualSave}
+              disabled={isPreviewMode || !onSave}
+              title={isPreviewMode ? '미리보기 모드에서는 저장할 수 없습니다.' : undefined}
               style={{
-                background: 'rgba(0,180,255,0.12)', border: '1px solid rgba(0,180,255,0.35)',
-                color: '#00b4ff', padding: '6px 12px', borderRadius: '4px',
-                fontSize: '10px', cursor: 'pointer', letterSpacing: '0.5px',
+                background: isPreviewMode ? 'rgba(255,170,0,0.06)' : 'rgba(0,180,255,0.12)',
+                border: `1px solid ${isPreviewMode ? 'rgba(255,170,0,0.25)' : 'rgba(0,180,255,0.35)'}`,
+                color: isPreviewMode ? 'rgba(255,170,0,0.62)' : '#00b4ff',
+                padding: '6px 12px', borderRadius: '4px',
+                fontSize: '10px', cursor: isPreviewMode || !onSave ? 'not-allowed' : 'pointer',
+                letterSpacing: '0.5px',
+                opacity: isPreviewMode || !onSave ? 0.82 : 1,
               }}
-            >💾 Sheets 저장</button>
+            >{isPreviewMode ? '💾 저장 불가' : '💾 Sheets 저장'}</button>
+            {isPreviewMode && (
+              <span style={{
+                color: '#ffaa00',
+                fontSize: '10px',
+                border: '1px solid rgba(255,170,0,0.22)',
+                background: 'rgba(255,170,0,0.07)',
+                padding: '5px 8px',
+                borderRadius: '4px',
+              }}>미리보기 모드에서는 저장할 수 없습니다.</span>
+            )}
             <button
               onClick={onClose}
               style={{
