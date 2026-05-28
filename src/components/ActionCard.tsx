@@ -27,6 +27,10 @@ export interface ActionContext {
   newOrders?: number;
   pendingShipping?: number;
   preShipTotal?: number;
+  productOrderCount?: number;
+  totalOrderQuantity?: number;
+  confirmNeededCount?: number;
+  confirmNeededProductOrderIds?: string[];
   product?: string;
   contentType?: string;
   sourceCommand?: string;
@@ -89,6 +93,7 @@ const THEME = {
 // ── Action Recommendations by Context ──
 function getRecommendedActions(context: ActionContext): ActionButton[] {
   const { type, newOrders = 0, pendingShipping = 0 } = context;
+  const confirmNeeded = context.confirmNeededCount ?? newOrders;
 
   if (type === 'smartstore') {
     // A. 신규주문 0건 + 배송준비 있음
@@ -102,11 +107,11 @@ function getRecommendedActions(context: ActionContext): ActionButton[] {
       ];
     }
     // B. 신규주문 있음
-    if (newOrders > 0) {
+    if (confirmNeeded > 0) {
       return [
         { id: 'view_new', label: '신규주문 목록 보기', icon: '📦', mode: 'observe', command: '신규주문 목록 보여줘' },
         { id: 'draft_po', label: '발주서 초안 만들기', icon: '📝', mode: 'draft', command: '발주서 초안 만들어줘' },
-        { id: 'confirm_preview', label: '발주확인 Preview', icon: '✅', mode: 'execute', command: '발주확인 미리보기', disabled: true },
+        { id: 'confirm_preview', label: '발주확인 Dry-run', icon: '✅', mode: 'execute', command: '발주확인 미리보기' },
         { id: 'later', label: '나중에 하기', icon: '⏸️', mode: 'observe', command: '' },
       ];
     }
@@ -775,13 +780,15 @@ export function buildWorkflowSteps(context: ActionContext, _currentStep?: string
 
 // ── Export: Build Approval Preview data ──
 export function buildApprovalPreview(context: ActionContext): ApprovalPreviewData | null {
-  if (context.type === 'smartstore' && (context.newOrders || 0) > 0) {
+  const confirmNeeded = context.confirmNeededCount ?? context.newOrders ?? 0;
+  if (context.type === 'smartstore' && confirmNeeded > 0) {
     return {
-      title: `발주확인 대상 ${context.newOrders}건`,
-      description: '발주확인 대상 신규주문이 있습니다. 확인 후 발주서 초안을 만들 수 있습니다.',
-      affectedCount: context.newOrders || 0,
+      title: `발주확인 대상 ${confirmNeeded}건`,
+      description: '발주확인 필요 대상이 있습니다. 실제 실행은 대표님 승인과 검증된 API endpoint가 필요합니다.',
+      affectedCount: confirmNeeded,
       changeFrom: '발주확인 전',
       changeTo: '발주확인 완료',
+      items: (context.confirmNeededProductOrderIds || []).slice(0, 5).map(id => `${id.slice(0, 8)}***`),
     };
   }
   return null;

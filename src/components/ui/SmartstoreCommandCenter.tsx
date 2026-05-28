@@ -31,6 +31,17 @@ interface OrderData {
   newOrders?: number;
   pendingShipping?: number;
   purchaseConfirmed?: number;
+  fullOrderSummary?: {
+    productOrderCount?: number;
+    totalOrderQuantity?: number;
+    actionBuckets?: {
+      confirmNeededCount?: number;
+      pendingShippingCount?: number;
+      preShipTotal?: number;
+    };
+    dataReliable?: boolean;
+    source?: string;
+  };
   fetchedAt?: string | null;
   source?: string;
   dataReliable?: boolean;

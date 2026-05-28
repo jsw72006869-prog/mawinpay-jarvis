@@ -8,6 +8,13 @@ interface OrderData {
   newOrders?: number;
   pendingShipping?: number;
   purchaseConfirmed?: number;
+  fullOrderSummary?: {
+    productOrderCount?: number;
+    totalOrderQuantity?: number;
+    actionBuckets?: {
+      confirmNeededCount?: number;
+    };
+  };
   fetchedAt?: string | null;
 }
 
@@ -38,6 +45,16 @@ export default function DailyBriefPanel({ orderData, variant = 'vertical' }: Pro
   const hasData = orderData != null;
 
   const briefItems = [
+    {
+      label: '전체 상품주문',
+      value: hasData ? `${orderData!.fullOrderSummary?.productOrderCount ?? ((orderData!.newOrders ?? 0) + (orderData!.pendingShipping ?? 0))}건` : '조회 대기',
+      status: hasData ? 'ready' : 'standby',
+    },
+    {
+      label: '전체 주문수량',
+      value: hasData ? `${orderData!.fullOrderSummary?.totalOrderQuantity ?? '확인 필요'}개` : '조회 대기',
+      status: hasData ? 'ready' : 'standby',
+    },
     {
       label: '신규 주문',
       value: hasData ? `${orderData!.newOrders ?? 0}건` : '조회 대기',

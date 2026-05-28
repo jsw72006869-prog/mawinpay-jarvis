@@ -242,6 +242,32 @@ type SmartstoreOrderDiagnostics = {
   source: SmartstoreDataSource;
 };
 
+type SmartstoreFullOrderSummary = {
+  productOrderCount: number;
+  totalOrderQuantity: number;
+  quantityFallbackUsed: boolean;
+  quantityMissingCount: number;
+  statusBuckets: Record<string, number>;
+  actionBuckets: {
+    newOrderCount: number;
+    confirmNeededCount: number;
+    pendingShippingCount: number;
+    preShipTotal: number;
+    dispatchedCount: number;
+    deliveredCount: number;
+    purchaseConfirmedCount: number;
+    cancelledCount: number;
+    returnedCount: number;
+    exchangedCount: number;
+    unknownCount: number;
+  };
+  confirmNeededProductOrderIds: string[];
+  pendingShippingProductOrderIds: string[];
+  dataReliable: boolean;
+  source: SmartstoreDataSource;
+  diagnostics: SmartstoreOrderDiagnostics;
+};
+
 function safeDiagnosticMessage(error: any): string {
   const raw = String(error?.code || error?.message || error || 'unknown_error');
   return raw
@@ -303,6 +329,86 @@ function dedupeProductOrderRows<T = any>(rows: T[]): { rows: T[]; duplicateCount
   return { rows: deduped, duplicateCount };
 }
 
+function getProductOrderQuantityFromAny(item: any): { quantity: number; missing: boolean } {
+  const po = item?.productOrder || item || {};
+  const raw = po.quantity ?? po.orderQuantity ?? po.productOrderQuantity ?? po.qty;
+  const quantity = Number(raw);
+  if (!Number.isFinite(quantity) || quantity <= 0) {
+    return { quantity: 1, missing: true };
+  }
+  return { quantity, missing: false };
+}
+
+function buildSmartstoreFullOrderSummary(
+  productOrders: any[],
+  input: {
+    source?: SmartstoreDataSource;
+    dataReliable?: boolean;
+    diagnostics?: SmartstoreOrderDiagnostics;
+  } = {}
+): SmartstoreFullOrderSummary {
+  const deduped = dedupeProductOrderRows(productOrders || []);
+  const rows = deduped.rows.filter(row => !!getProductOrderIdFromAny(row));
+  const statusBuckets = buildProductOrderStatusBuckets(rows);
+  const confirmNeededProductOrderIds: string[] = [];
+  const pendingShippingProductOrderIds: string[] = [];
+  let totalOrderQuantity = 0;
+  let quantityMissingCount = 0;
+
+  for (const row of rows) {
+    const po = row?.productOrder || row || {};
+    const id = getProductOrderIdFromAny(row);
+    const status = getProductOrderStatusFromAny(row);
+    const placeOrderStatus = String(po.placeOrderStatus || '').trim();
+    const q = getProductOrderQuantityFromAny(row);
+    totalOrderQuantity += q.quantity;
+    if (q.missing) quantityMissingCount++;
+    if (status === 'PAYED' && placeOrderStatus !== 'OK') confirmNeededProductOrderIds.push(id);
+    if (status === 'PAYED' && placeOrderStatus === 'OK') pendingShippingProductOrderIds.push(id);
+  }
+
+  const diagnostics = createSmartstoreDiagnostics({
+    ...(input.diagnostics || {}),
+    productOrderIdCount: productOrders.map((o: any) => getProductOrderIdFromAny(o)).filter(Boolean).length,
+    productOrderIdUniqueCount: rows.length,
+    duplicateProductOrderIdCount: deduped.duplicateCount,
+    detailFetchedCount: rows.length,
+    statusBuckets,
+    apiWarnings: [
+      ...((input.diagnostics && input.diagnostics.apiWarnings) || []),
+      ...(deduped.duplicateCount > 0 ? [`full_summary_duplicate_product_order_ids:${deduped.duplicateCount}`] : []),
+      ...(quantityMissingCount > 0 ? [`quantity_missing:${quantityMissingCount}`] : []),
+    ],
+    source: input.source || input.diagnostics?.source || 'naver-commerce-api',
+  });
+
+  return {
+    productOrderCount: rows.length,
+    totalOrderQuantity,
+    quantityFallbackUsed: quantityMissingCount > 0,
+    quantityMissingCount,
+    statusBuckets,
+    actionBuckets: {
+      newOrderCount: confirmNeededProductOrderIds.length,
+      confirmNeededCount: confirmNeededProductOrderIds.length,
+      pendingShippingCount: pendingShippingProductOrderIds.length,
+      preShipTotal: (statusBuckets.PAYED || 0),
+      dispatchedCount: (statusBuckets.DISPATCHED || 0) + (statusBuckets.DELIVERING || 0),
+      deliveredCount: statusBuckets.DELIVERED || 0,
+      purchaseConfirmedCount: statusBuckets.PURCHASE_DECIDED || 0,
+      cancelledCount: (statusBuckets.CANCELED || 0) + (statusBuckets.CANCELLED || 0) + (statusBuckets.CANCELED_BY_NOPAYMENT || 0),
+      returnedCount: statusBuckets.RETURNED || 0,
+      exchangedCount: statusBuckets.EXCHANGED || 0,
+      unknownCount: statusBuckets.UNKNOWN || 0,
+    },
+    confirmNeededProductOrderIds,
+    pendingShippingProductOrderIds,
+    dataReliable: input.dataReliable !== false,
+    source: input.source || input.diagnostics?.source || 'naver-commerce-api',
+    diagnostics,
+  };
+}
+
 function unreliableSmartstorePayload(code: string, err: any, fetchedAt: string, mode?: string) {
   const text = `${code} ${safeDiagnosticMessage(err)}`;
   const source: SmartstoreDataSource = text.includes('not configured') || text.includes('credentials')
@@ -323,6 +429,77 @@ function unreliableSmartstorePayload(code: string, err: any, fetchedAt: string, 
     counts: { newOrders: 0, pendingShipping: 0, preShipTotal: 0, shipping: null, delivered: null, purchaseConfirmed: null },
     newOrders: 0, pendingShipping: 0, preShipTotal: 0, shipping: null, delivered: null, purchaseConfirmed: null,
     total: 0, data: [], orders: [],
+  };
+}
+
+async function handleSmartstoreConfirmOrders(params: any) {
+  const dryRun = params?.dryRun !== false && params?.dryRun !== 'false';
+  const approvalConfirmed = params?.approvalConfirmed === true || params?.approvalConfirmed === 'true';
+  const requestedIds = Array.isArray(params?.productOrderIds)
+    ? params.productOrderIds.map((id: any) => String(id).trim()).filter(Boolean)
+    : [];
+
+  if (!requestedIds.length) {
+    return {
+      success: false,
+      blocked: true,
+      errorCode: 'PRODUCT_ORDER_IDS_REQUIRED',
+      message: '발주확인 대상 ProductOrderId가 필요합니다.',
+      executeLocked: true,
+    };
+  }
+
+  const payedData = await getPayedOrdersFast(30, true);
+  const eligibleIds = new Set(
+    (payedData.newOrders || [])
+      .map((row: any) => getProductOrderIdFromAny(row))
+      .filter(Boolean)
+  );
+  const targets = requestedIds.map((productOrderId: string) => ({
+    productOrderId,
+    eligible: eligibleIds.has(productOrderId),
+    reason: eligibleIds.has(productOrderId) ? 'confirm_needed' : 'not_in_confirm_needed_live_set',
+  }));
+
+  if (dryRun) {
+    return {
+      success: true,
+      dryRun: true,
+      approvalRequired: true,
+      executeLocked: true,
+      source: payedData.source || 'naver-commerce-api',
+      dataReliable: payedData.dataReliable !== false,
+      requestedCount: requestedIds.length,
+      eligibleCount: targets.filter(t => t.eligible).length,
+      targets,
+      message: '발주확인 dryRun입니다. 네이버 주문 상태는 변경하지 않았습니다.',
+    };
+  }
+
+  if (!approvalConfirmed) {
+    return {
+      success: false,
+      blocked: true,
+      approvalRequired: true,
+      executeLocked: true,
+      errorCode: 'APPROVAL_REQUIRED',
+      requestedCount: requestedIds.length,
+      eligibleCount: targets.filter(t => t.eligible).length,
+      targets,
+      message: '대표님 승인 없이 발주확인은 실행할 수 없습니다.',
+    };
+  }
+
+  return {
+    success: false,
+    blocked: true,
+    approvalRequired: true,
+    executeLocked: true,
+    errorCode: 'SMARTSTORE_CONFIRM_ENDPOINT_NOT_VERIFIED',
+    requestedCount: requestedIds.length,
+    eligibleCount: targets.filter(t => t.eligible).length,
+    targets,
+    message: '네이버 커머스 발주확인 실행 endpoint가 현재 repo에서 검증되지 않아 실제 실행은 보류했습니다.',
   };
 }
 
@@ -1150,6 +1327,28 @@ async function handleSmartstoreOrders(params: any) {
       const deep = _ssDeepCache;
       const deepCacheAge = deep ? Math.round((Date.now() - deep.syncedAt) / 60000) : null;
       const deepIsStale = deep ? (Date.now() - deep.syncedAt) > SS_DEEP_CACHE_TTL : false;
+      let fullOrderSummary: SmartstoreFullOrderSummary | null = null;
+      try {
+        const fullStatuses = ['PAYMENT_WAITING', 'PAYED', 'DELIVERING', 'DELIVERED', 'PURCHASE_DECIDED', 'CANCELED', 'RETURNED', 'EXCHANGED'];
+        const fullOrders = await fetchOrders(fullStatuses, 30);
+        fullOrderSummary = buildSmartstoreFullOrderSummary(fullOrders, {
+          source: 'naver-commerce-api',
+          dataReliable: true,
+        });
+      } catch (summaryErr: any) {
+        fullOrderSummary = buildSmartstoreFullOrderSummary(payedData.allOrders || [], {
+          source: payedData.source || 'naver-commerce-api',
+          dataReliable: false,
+          diagnostics: createSmartstoreDiagnostics({
+            ...(payedData.diagnostics || {}),
+            apiWarnings: [
+              ...((payedData.diagnostics && payedData.diagnostics.apiWarnings) || []),
+              `full_order_summary_failed:${safeDiagnosticMessage(summaryErr)}`,
+            ],
+            source: payedData.source || 'api_error',
+          }),
+        });
+      }
 
       clearTimeout(handlerTimeoutId);
       return {
@@ -1210,7 +1409,11 @@ async function handleSmartstoreOrders(params: any) {
           shipping: deep?.shipping ?? null,
           delivered: deep?.delivered ?? null,
           purchaseConfirmed: deep?.purchaseConfirmed ?? null,
+          productOrderCount: fullOrderSummary.productOrderCount,
+          totalOrderQuantity: fullOrderSummary.totalOrderQuantity,
+          confirmNeeded: fullOrderSummary.actionBuckets.confirmNeededCount,
         },
+        fullOrderSummary,
         data: payedData.allOrders.map(safeOrderMap),
         orders: payedData.allOrders.map(safeOrderMap),
       };
@@ -4185,14 +4388,31 @@ async function handleOutreachMailPrepare(params: any) {
 
 // ── OUTREACH-MAIL-A.1: 메일 실제 발송 (승인 후 호출 전용) ──
 async function handleOutreachMailSend(params: any) {
-  const { influencer_id, profile_url, approved } = params;
+  const { influencer_id, profile_url, approved, approvalConfirmed, dryRun } = params;
+  const isApproved = approved === true || approved === 'true' || approvalConfirmed === true || approvalConfirmed === 'true';
+
+  if (dryRun === true || dryRun === 'true') {
+    const prepared = await handleOutreachMailPrepare({ influencer_id, profile_url });
+    return {
+      ...prepared,
+      dryRun: true,
+      success: prepared.success,
+      sendSkipped: true,
+      executeLocked: true,
+      message: prepared.success
+        ? '메일 발송 dryRun입니다. 초안/대상만 확인했고 실제 발송하지 않았습니다.'
+        : prepared.message || prepared.error,
+    };
+  }
 
   // 승인 플래그 필수 검증
-  if (approved !== true && approved !== 'true') {
+  if (!isApproved) {
     return {
       success: false,
-      error: '승인이 확인되지 않았습니다. approved=true 필수.',
+      error: '승인이 확인되지 않았습니다. approvalConfirmed=true 필수.',
       blocked: true,
+      approvalRequired: true,
+      executeLocked: true,
     };
   }
 
@@ -4906,6 +5126,20 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         const result = await handleOutreachMailSend(params || rest);
         return res.status(200).json(result);
       }
+      if (resolvedTask === 'smartstore-confirm-orders') {
+        const result = await handleSmartstoreConfirmOrders(params || rest);
+        return res.status(200).json(result);
+      }
+      if (resolvedTask === 'purchase-order-send-approved') {
+        return res.status(200).json({
+          success: false,
+          blocked: true,
+          approvalRequired: true,
+          executeLocked: true,
+          errorCode: 'PURCHASE_ORDER_RECIPIENT_CHANNEL_NOT_VERIFIED',
+          message: '발주서 전송 대상/채널이 아직 명확하지 않아 실제 전송은 보류했습니다. dryRun 발주서 미리보기만 사용하세요.',
+        });
+      }
 
       // ── Market Price: 농산물 가격 판단 ──
       if (resolvedTask === 'market-price-check') {
@@ -5243,6 +5477,18 @@ async function handleDailyBrief24h(params: any) {
   try {
     const rawCounts = await getSmartstoreStatusCounts(30);
     if (rawCounts) {
+      const fullOrderSummary = buildSmartstoreFullOrderSummary(rawCounts.payed || [], {
+        source: rawCounts.source || 'naver-commerce-api',
+        dataReliable: rawCounts.dataReliable !== false,
+        diagnostics: createSmartstoreDiagnostics({
+          ...(rawCounts.diagnostics || {}),
+          apiWarnings: [
+            ...((rawCounts.diagnostics && rawCounts.diagnostics.apiWarnings) || []),
+            'daily_brief_full_order_summary_payed_scope_only',
+          ],
+          source: rawCounts.source || 'naver-commerce-api',
+        }),
+      });
       ssData = {
         newOrders: rawCounts.newOrders?.length || 0,
         pendingShipping: rawCounts.pendingShipping?.length || 0,
@@ -5250,6 +5496,9 @@ async function handleDailyBrief24h(params: any) {
         delivered: rawCounts.delivered ?? 0,
         purchaseConfirmed: rawCounts.purchaseConfirmed ?? 0,
         confirmNeeded: rawCounts.payed?.length || 0,
+        productOrderCount: fullOrderSummary.productOrderCount,
+        totalOrderQuantity: fullOrderSummary.totalOrderQuantity,
+        fullOrderSummary,
         source: rawCounts.source || 'naver-commerce-api',
         dataReliable: rawCounts.dataReliable !== false,
         diagnostics: rawCounts.diagnostics,
@@ -6652,6 +6901,11 @@ function hdProfile(product: string): any {
     triggers: ['seasonal_peak', 'direct_from_farm'],
     sensory: { texture: [], aroma: [], scene: [], timing: [], emotionalImages: [] },
   };
+
+  if (action === 'smartstore-confirm-orders' || action === 'confirm_orders_dry_run') {
+    clearTimeout(handlerTimeoutId);
+    return handleSmartstoreConfirmOrders(params);
+  }
 }
 
 function hdNormalizePlatform(platform: string, outputType?: string): HDPlatform {
