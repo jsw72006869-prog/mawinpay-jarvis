@@ -2926,6 +2926,7 @@ const SHEET_HEADERS: Record<string, string[]> = {
   creative_scripts: ['scriptId','createdAt','product','platform','hook','caption','threadPost','kakaoMessage','reelsScript','recommendedGrowthLink','status','sourceCommand'],
   growth_campaigns: ['campaignId','createdAt','product','source','targetUrl','directUrl','couponCode','campaignMemo','status'],
   purchase_order_drafts: ['draftId','createdAt','supplier','productSummary','totalQuantity','totalAmountIfAvailable','status','safePreview'],
+  supplier_profiles: ['supplier_id','supplier_name','product_group_code','product_group_name','product_keywords','option_keywords','seller_product_code_keywords','carrier','email','active','notes','updated_at'],
   influencer_candidates: ['influencer_id','platform','channel_name','handle','profile_url','contact_email','contact_url','email_status','category_tags','source_keyword','source_product','followers_or_subscribers','avg_views','fit_score','fit_reason','outreach_status','last_contacted_at','reply_status','next_action','duplicate_hash','created_at','updated_at','notes'],
   influencer_candidates_v2: ['influencer_id','platform','channel_name','handle','profile_url','contact_email','contact_url','email_status','category_tags','source_keyword','source_product','followers_or_subscribers','avg_views','fit_score','fit_reason','outreach_status','last_contacted_at','reply_status','next_action','duplicate_hash','created_at','updated_at','notes','proposal_angle','proposal_subject','proposal_draft','requested_vertical','target_match_status','target_match_score','target_evidence_terms','target_evidence_fields','exclude_reason','qualified_for_requested_vertical','collected_query'],
   market_price_checks: ['checkId','createdAt','productName','rawMaterialCost','currentPrice','shippingCost','packagingCost','platformFeeRate','otherCosts','competitorPrices','competitorMinPrice','competitorAvgPrice','netSalesAmount','estimatedMargin','estimatedMarginRate','jarvisDecision','recommendedAction','sourceCommand'],
@@ -5489,6 +5490,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       }
       if (resolvedTask === 'purchase-order-bulk-email-draft') {
         const result = await handlePurchaseOrderBulkEmailDraft(params || rest);
+        return res.status(200).json(result);
+      }
+      if (resolvedTask === 'supplier-profiles-list') {
+        const result = await handleSupplierProfilesList(params || rest);
+        return res.status(200).json(result);
+      }
+      if (resolvedTask === 'supplier-profile-upsert') {
+        const result = await handleSupplierProfileUpsert(params || rest);
         return res.status(200).json(result);
       }
       if (resolvedTask === 'approval-action-create') {
@@ -8329,45 +8338,254 @@ function buildPurchaseOrderFileName(input: {
   return `${month}-${day} ${name ? `${name} ` : ''}발주서.${input.ext}`;
 }
 
-async function readPurchaseOrderSupplierProfiles(): Promise<Record<string, { supplierName?: string; emailMasked?: string; emailConfigured: boolean; carrier?: PurchaseOrderCarrierCode }>> {
+type PurchaseOrderSupplierProfile = {
+  supplierId: string;
+  supplierName?: string;
+  productGroupCode: string;
+  productGroupName?: string;
+  productKeywords: string[];
+  optionKeywords: string[];
+  sellerProductCodeKeywords: string[];
+  emailMasked?: string;
+  emailConfigured: boolean;
+  emailRaw?: string;
+  carrier?: PurchaseOrderCarrierCode;
+  active: boolean;
+  notes?: string;
+  updatedAt?: string;
+};
+
+function parseSupplierProfileListValue(value: any): string[] {
+  const raw = String(value || '').trim();
+  if (!raw) return [];
   try {
+    const parsed = JSON.parse(raw);
+    if (Array.isArray(parsed)) return parsed.map(item => String(item || '').trim()).filter(Boolean);
+  } catch {
+    // Fall through to comma parsing.
+  }
+  return raw.split(',').map(item => item.trim()).filter(Boolean);
+}
+
+function stringifySupplierProfileListValue(value: any): string {
+  const list = Array.isArray(value) ? value.map(item => String(item || '').trim()).filter(Boolean) : parseSupplierProfileListValue(value);
+  return JSON.stringify(list);
+}
+
+function normalizePurchaseOrderCarrier(value: any): PurchaseOrderCarrierCode {
+  const carrier = String(value || '').trim().toLowerCase();
+  if (carrier === 'lotte' || carrier === 'logen') return carrier;
+  return 'unknown';
+}
+
+function isValidSupplierEmail(value: string): boolean {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim());
+}
+
+function getPurchaseOrderProfileDefaults(productGroupCode: string, productGroupName?: string) {
+  const defaults: Record<string, { supplierName: string; productGroupName: string; productKeywords: string[] }> = {
+    chestnut: { supplierName: '밤 발주처', productGroupName: '밤', productKeywords: ['밤', '알밤', '생율'] },
+    corn: { supplierName: '옥수수 발주처', productGroupName: '옥수수', productKeywords: ['옥수수', '대학찰옥수수', '초당옥수수'] },
+    maesil: { supplierName: '매실 발주처', productGroupName: '매실', productKeywords: ['매실', '청매실', '황매실'] },
+    peach: { supplierName: '복숭아 발주처', productGroupName: '복숭아', productKeywords: ['복숭아', '딱복', '물복', '백도', '황도'] },
+  };
+  return defaults[productGroupCode] || {
+    supplierName: `${productGroupName || productGroupCode || '미분류'} 발주처`,
+    productGroupName: productGroupName || productGroupCode || '미분류',
+    productKeywords: productGroupName ? [productGroupName] : [],
+  };
+}
+
+function maskSupplierProfile(profile: PurchaseOrderSupplierProfile) {
+  const { emailRaw: _emailRaw, ...safe } = profile;
+  return safe;
+}
+
+async function readPurchaseOrderSupplierProfileRows(includeInactive = false): Promise<PurchaseOrderSupplierProfile[]> {
+  try {
+    await ensureHeaders('supplier_profiles');
     const data = await sheetsRead('supplier_profiles');
     const rows = data.values || [];
     const headers = rows[0] || [];
     const index = (names: string[]) => names.map(name => headers.indexOf(name)).find(i => i >= 0) ?? -1;
+    const supplierIdIdx = index(['supplier_id', 'supplierId']);
     const groupIdx = index(['product_group_code', 'group_code', 'productGroupCode']);
+    const productGroupNameIdx = index(['product_group_name', 'productGroupName']);
+    const productKeywordsIdx = index(['product_keywords', 'productKeywords']);
+    const optionKeywordsIdx = index(['option_keywords', 'optionKeywords']);
+    const sellerProductCodeKeywordsIdx = index(['seller_product_code_keywords', 'sellerProductCodeKeywords']);
     const supplierNameIdx = index(['supplier_name', 'supplierName', 'vendor_name']);
     const emailIdx = index(['contact_email', 'supplier_email', 'email']);
     const carrierIdx = index(['carrier', 'carrier_code']);
     const activeIdx = index(['active', 'is_active']);
-    const result: Record<string, { supplierName?: string; emailMasked?: string; emailConfigured: boolean; carrier?: PurchaseOrderCarrierCode }> = {};
+    const notesIdx = index(['notes']);
+    const updatedAtIdx = index(['updated_at', 'updatedAt']);
+    const result: PurchaseOrderSupplierProfile[] = [];
     if (groupIdx < 0) return result;
     for (const row of rows.slice(1)) {
       const active = activeIdx >= 0 ? String(row[activeIdx] || '').toLowerCase() : 'true';
-      if (active === 'false' || active === '0' || active === 'no') continue;
+      const isActive = !(active === 'false' || active === '0' || active === 'no');
+      if (!includeInactive && !isActive) continue;
       const groupCode = String(row[groupIdx] || '').trim();
       if (!groupCode) continue;
       const rawEmail = emailIdx >= 0 ? String(row[emailIdx] || '').trim() : '';
       const carrier = carrierIdx >= 0 ? String(row[carrierIdx] || '').trim().toLowerCase() as PurchaseOrderCarrierCode : undefined;
-      result[groupCode] = {
+      result.push({
+        supplierId: supplierIdIdx >= 0 ? String(row[supplierIdIdx] || '').trim() : `supplier_${groupCode}`,
+        productGroupCode: groupCode,
+        productGroupName: productGroupNameIdx >= 0 ? String(row[productGroupNameIdx] || '').trim() : undefined,
+        productKeywords: productKeywordsIdx >= 0 ? parseSupplierProfileListValue(row[productKeywordsIdx]) : [],
+        optionKeywords: optionKeywordsIdx >= 0 ? parseSupplierProfileListValue(row[optionKeywordsIdx]) : [],
+        sellerProductCodeKeywords: sellerProductCodeKeywordsIdx >= 0 ? parseSupplierProfileListValue(row[sellerProductCodeKeywordsIdx]) : [],
         supplierName: supplierNameIdx >= 0 ? String(row[supplierNameIdx] || '').trim() : undefined,
         emailMasked: rawEmail ? maskEmail(rawEmail) : undefined,
+        emailRaw: rawEmail,
         emailConfigured: !!rawEmail,
         carrier: carrier === 'lotte' || carrier === 'logen' || carrier === 'unknown' ? carrier : undefined,
-      };
+        active: isActive,
+        notes: notesIdx >= 0 ? String(row[notesIdx] || '').trim() : undefined,
+        updatedAt: updatedAtIdx >= 0 ? String(row[updatedAtIdx] || '').trim() : undefined,
+      });
     }
     return result;
   } catch {
-    return {};
+    return [];
   }
+}
+
+async function readPurchaseOrderSupplierProfiles(): Promise<Record<string, PurchaseOrderSupplierProfile>> {
+  const rows = await readPurchaseOrderSupplierProfileRows(false);
+  return rows
+    .sort((a, b) => String(a.updatedAt || '').localeCompare(String(b.updatedAt || '')))
+    .reduce<Record<string, PurchaseOrderSupplierProfile>>((acc, profile) => {
+      acc[profile.productGroupCode] = profile;
+      return acc;
+    }, {});
+}
+
+async function handleSupplierProfilesList(params: any = {}) {
+  const includeInactive = params.includeInactive === true || params.includeInactive === 'true';
+  const rows = await readPurchaseOrderSupplierProfileRows(includeInactive);
+  return {
+    success: true,
+    source: 'google_sheets',
+    profiles: rows.map(maskSupplierProfile),
+  };
+}
+
+async function handleSupplierProfileUpsert(params: any = {}) {
+  const approvalConfirmed = params.approvalConfirmed === true || params.approvalConfirmed === 'true';
+  if (!approvalConfirmed) {
+    return {
+      success: false,
+      blocked: true,
+      approvalRequired: true,
+      executeLocked: true,
+      errorCode: 'APPROVAL_REQUIRED',
+      message: 'Supplier profile changes require approvalConfirmed=true.',
+    };
+  }
+
+  const productGroupCode = String(params.productGroupCode || '').trim();
+  if (!productGroupCode) {
+    return { success: false, errorCode: 'PRODUCT_GROUP_REQUIRED', message: 'productGroupCode is required.' };
+  }
+
+  const defaults = getPurchaseOrderProfileDefaults(productGroupCode, params.productGroupName);
+  const rawEmail = String(params.email || '').trim();
+  if (rawEmail && !isValidSupplierEmail(rawEmail)) {
+    return { success: false, errorCode: 'INVALID_EMAIL', message: 'Supplier email format is invalid.' };
+  }
+
+  await ensureHeaders('supplier_profiles');
+  const headers = SHEET_HEADERS.supplier_profiles;
+  const data = await sheetsRead('supplier_profiles');
+  const rows = data.values || [];
+  const currentHeaders = rows[0] || headers;
+  const col = (name: string) => currentHeaders.indexOf(name);
+  const now = new Date().toISOString();
+  const supplierId = String(params.supplierId || `supplier_${productGroupCode}`).trim();
+  const carrier = normalizePurchaseOrderCarrier(params.carrier);
+  const existingIndex = rows.slice(1).findIndex((row: any[]) => {
+    const supplierIdIdx = col('supplier_id');
+    const groupIdx = col('product_group_code');
+    const rowSupplierId = supplierIdIdx >= 0 ? String(row[supplierIdIdx] || '').trim() : '';
+    const rowGroupCode = groupIdx >= 0 ? String(row[groupIdx] || '').trim() : '';
+    return rowSupplierId === supplierId || rowGroupCode === productGroupCode;
+  });
+
+  const existingRow = existingIndex >= 0 ? [...rows[existingIndex + 1]] : [];
+  const getExisting = (name: string) => {
+    const idx = col(name);
+    return idx >= 0 ? String(existingRow[idx] || '').trim() : '';
+  };
+  const mergedEmail = rawEmail || getExisting('email');
+  const profileRow = headers.map(header => {
+    switch (header) {
+      case 'supplier_id': return supplierId;
+      case 'supplier_name': return String(params.supplierName || getExisting('supplier_name') || defaults.supplierName).trim();
+      case 'product_group_code': return productGroupCode;
+      case 'product_group_name': return String(params.productGroupName || getExisting('product_group_name') || defaults.productGroupName).trim();
+      case 'product_keywords': return stringifySupplierProfileListValue(params.productKeywords || getExisting('product_keywords') || defaults.productKeywords);
+      case 'option_keywords': return stringifySupplierProfileListValue(params.optionKeywords || getExisting('option_keywords'));
+      case 'seller_product_code_keywords': return stringifySupplierProfileListValue(params.sellerProductCodeKeywords || getExisting('seller_product_code_keywords'));
+      case 'carrier': return carrier;
+      case 'email': return mergedEmail;
+      case 'active': return params.active === false || params.active === 'false' ? 'false' : 'true';
+      case 'notes': return String(params.notes || getExisting('notes') || '').trim();
+      case 'updated_at': return now;
+      default: return '';
+    }
+  });
+
+  if (existingIndex >= 0) {
+    const token = await getGoogleSheetsToken();
+    const rowNumber = existingIndex + 2;
+    const lastCol = toSheetColumnName(headers.length);
+    const range = encodeURIComponent(`supplier_profiles!A${rowNumber}:${lastCol}${rowNumber}`);
+    const url = `https://sheets.googleapis.com/v4/spreadsheets/${WORKSPACE_SHEET_ID}/values/${range}?valueInputOption=RAW`;
+    const res = await fetch(url, {
+      method: 'PUT',
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ values: [profileRow] }),
+    });
+    if (!res.ok) return { success: false, errorCode: 'SHEETS_UPDATE_FAILED', message: 'Supplier profile update failed.' };
+  } else {
+    await sheetsAppend('supplier_profiles', [profileRow]);
+  }
+
+  const safeProfile: PurchaseOrderSupplierProfile = {
+    supplierId,
+    supplierName: String(profileRow[headers.indexOf('supplier_name')] || ''),
+    productGroupCode,
+    productGroupName: String(profileRow[headers.indexOf('product_group_name')] || ''),
+    productKeywords: parseSupplierProfileListValue(profileRow[headers.indexOf('product_keywords')]),
+    optionKeywords: parseSupplierProfileListValue(profileRow[headers.indexOf('option_keywords')]),
+    sellerProductCodeKeywords: parseSupplierProfileListValue(profileRow[headers.indexOf('seller_product_code_keywords')]),
+    carrier,
+    emailRaw: mergedEmail,
+    emailConfigured: !!mergedEmail,
+    emailMasked: mergedEmail ? maskEmail(mergedEmail) : undefined,
+    active: profileRow[headers.indexOf('active')] !== 'false',
+    notes: String(profileRow[headers.indexOf('notes')] || ''),
+    updatedAt: now,
+  };
+  return {
+    success: true,
+    source: 'google_sheets',
+    profile: maskSupplierProfile(safeProfile),
+    emailMasked: safeProfile.emailMasked,
+    executeLocked: true,
+    message: 'Supplier profile saved. Email is masked in API responses.',
+  };
 }
 
 function routePurchaseOrderGroup(
   groupCode: PurchaseOrderGroupCode,
   groupName: string,
-  supplierProfiles: Record<string, { supplierName?: string; emailMasked?: string; emailConfigured: boolean; carrier?: PurchaseOrderCarrierCode }>
+  supplierProfiles: Record<string, PurchaseOrderSupplierProfile>
 ) {
-  const profile: { supplierName?: string; emailMasked?: string; emailConfigured: boolean; carrier?: PurchaseOrderCarrierCode } =
+  const profile: Partial<PurchaseOrderSupplierProfile> =
     supplierProfiles[groupCode] || { emailConfigured: false };
   const defaults: Record<PurchaseOrderGroupCode, { carrier: PurchaseOrderCarrierCode; supplierId: string; supplierName: string }> = {
     chestnut: { carrier: 'logen', supplierId: 'supplier_chestnut', supplierName: '밤 발주처' },
@@ -8395,7 +8613,7 @@ function routePurchaseOrderGroup(
     productGroupCode: groupCode,
     productGroupName: groupName,
     carrier,
-    supplierId: base.supplierId,
+    supplierId: profile.supplierId || base.supplierId,
     supplierName,
     emailConfigured: !!profile.emailConfigured,
     emailMasked: profile.emailMasked,
@@ -8417,7 +8635,7 @@ function buildPurchaseOrderAddress(po: any): string {
 
 function normalizePurchaseOrderRow(
   item: any,
-  supplierProfiles: Record<string, { supplierName?: string; emailMasked?: string; emailConfigured: boolean; carrier?: PurchaseOrderCarrierCode }>
+  supplierProfiles: Record<string, PurchaseOrderSupplierProfile>
 ): PurchaseOrderNormalizedRow | null {
   const po = item?.productOrder || item || {};
   const productOrderId = getProductOrderIdFromAny(item);
