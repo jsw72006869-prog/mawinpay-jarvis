@@ -3040,6 +3040,7 @@ type PendingJarvisActionType =
   | 'SMARTSTORE_CONFIRM_ORDERS'
   | 'PURCHASE_ORDER_CREATE'
   | 'PURCHASE_ORDER_EMAIL_SEND'
+  | 'BULK_PURCHASE_ORDER_EMAIL_SEND'
   | 'OUTREACH_GOAL_COLLECT'
   | 'OUTREACH_EMAIL_DRAFT'
   | 'OUTREACH_EMAIL_SEND'
@@ -3392,6 +3393,35 @@ function calculateProductFitScore(channel: any, keyword: string, product: string
   return { score: Math.min(score, 100), reason: reasons.join('. ') + '.' };
 }
 
+function calculateOutreachQualityScores(candidate: any) {
+  const targetFitScore = Number(candidate.target_match_score || candidate.targetMatchScore || candidate.productFitScore || candidate.fit_score || 0);
+  const subscribers = Number(candidate.subscriberCount || candidate.subscribers || candidate.followers_or_subscribers || 0);
+  const views = Number(candidate.viewCount || candidate.avg_views || candidate.avgViews || 0);
+  const emailOrContact = !!(candidate.contact_email || candidate.email || candidate.public_email || candidate.publicContactStatus === 'email_public' || candidate.publicContactStatus === 'public_email' || candidate.publicContactStatus === 'form_available');
+  const engagementRatio = subscribers > 0 ? Math.min(100, Math.round((views / subscribers) * 100)) : (views > 10000 ? 45 : 20);
+  const engagementScore = Math.max(15, Math.min(100, engagementRatio));
+  const contactQualityScore = emailOrContact ? (candidate.contact_email || candidate.email || candidate.public_email ? 90 : 65) : 15;
+  const responseLikelihoodScore = Math.round((contactQualityScore * 0.55) + (engagementScore * 0.30) + (targetFitScore * 0.15));
+  const collaborationFitScore = Math.round((targetFitScore * 0.70) + (engagementScore * 0.20) + (contactQualityScore * 0.10));
+  const priorityScore = Math.round((targetFitScore * 0.35) + (engagementScore * 0.25) + (responseLikelihoodScore * 0.20) + (collaborationFitScore * 0.15) + (contactQualityScore * 0.05));
+  const targetStatus = String(candidate.target_match_status || candidate.targetMatchStatus || '').toLowerCase();
+  const qualityTier = targetStatus === 'excluded' || !emailOrContact
+    ? 'excluded'
+    : priorityScore >= 75
+      ? 'A'
+      : priorityScore >= 55
+        ? 'B'
+        : 'review';
+  return {
+    target_fit_score: targetFitScore,
+    engagement_score: engagementScore,
+    response_likelihood_score: responseLikelihoodScore,
+    collaboration_fit_score: collaborationFitScore,
+    contact_quality_score: contactQualityScore,
+    priority_score: priorityScore,
+    quality_tier: qualityTier,
+  };
+}
 // ── 품목별 제안 각도 키워드 맵 ──
 const PRODUCT_ANGLE_MAP: Record<string, string[]> = {
   '복숭아': ['제철 과일 / 향과 당도', '여름 시즌 선물 수요', '먹방/캠핑/가족 콘텐츠 궁합', '짧은 수확 시즌 긴박감'],
@@ -4029,7 +4059,9 @@ async function handleOutreachCollect(params: any) {
   // ══════════════════════════════════════════════════════════════
 
   // 적합도 점수 내림차순 정렬
-  candidates.sort((a, b) => b.productFitScore - a.productFitScore);
+  candidates.forEach((candidate: any) => Object.assign(candidate, calculateOutreachQualityScores(candidate)));
+  excludedCandidates.forEach((candidate: any) => Object.assign(candidate, calculateOutreachQualityScores(candidate)));
+  candidates.sort((a, b) => (Number(b.priority_score || b.productFitScore || 0) - Number(a.priority_score || a.productFitScore || 0)));
 
   // 제외 사유 집계
   const excludedNoEmail = excludedCandidates.filter(c => c.excludedReason === 'no_public_email').length;
@@ -4053,6 +4085,11 @@ async function handleOutreachCollect(params: any) {
   const qualifiedCount = finalCandidates.filter(c => c.target_match_status === 'qualified').length;
   const reviewCount = finalCandidates.filter(c => c.target_match_status === 'review').length;
   const excludedTargetMismatch = allEvaluatedCandidates.filter(c => c.target_match_status === 'excluded').length;
+  const qualityTierCounts = allEvaluatedCandidates.reduce((acc: Record<string, number>, c: any) => {
+    const tier = c.quality_tier || 'unknown';
+    acc[tier] = (acc[tier] || 0) + 1;
+    return acc;
+  }, {});
 
   // ── AUTO-SAVE: 수집 완료 후 influencer_candidates_v2 자동 저장 ──
   let autoSaveResult: any = null;
@@ -4111,6 +4148,9 @@ async function handleOutreachCollect(params: any) {
                 ? 'no_more_results'
                 : 'max_batches_reached';
   if (isGoalCollect) outreachDiagnostics.apiWarnings.push(`goal_collect:${completionStatus}`);
+  (outreachDiagnostics as any).qualityTierCounts = qualityTierCounts;
+  (outreachDiagnostics as any).qualityQualifiedCount = finalCandidates.filter((c: any) => ['A', 'B'].includes(String(c.quality_tier || '')) && c.target_match_status === 'qualified').length;
+  (outreachDiagnostics as any).topPriorityScore = finalCandidates.length ? Number(finalCandidates[0]?.priority_score || 0) : 0;
   const responseCandidates = dryRun
     ? finalCandidates.map(({ contact_email, email, ...candidate }) => ({
         ...candidate,
@@ -4136,6 +4176,9 @@ async function handleOutreachCollect(params: any) {
       qualifiedPublicEmailCount: outreachDiagnostics.qualifiedPublicEmailCount,
       targetMatchStatusCounts: outreachDiagnostics.targetMatchStatusCounts,
       excludedReasonCounts: outreachDiagnostics.excludedReasonCounts,
+      qualityTierCounts,
+      qualityQualifiedCount: (outreachDiagnostics as any).qualityQualifiedCount,
+      topPriorityScore: (outreachDiagnostics as any).topPriorityScore,
       candidateReadyToSaveCount: finalCandidates.length,
       youtubeApiStatus: outreachDiagnostics.youtubeApiStatus,
       targetContactableCount,
@@ -4197,6 +4240,51 @@ function buildDuplicateHash(platform: string, profileUrl: string, channelName: s
   }
   return h.toString(16).padStart(8, '0');
 }
+async function handleOutreachQualityBatchRun(params: any = {}) {
+  const requestedVertical = params.requestedVertical || inferRequestedVerticalFromText(params.keyword || params.product || '');
+  const targetContactableCount = Math.max(1, Number(params.targetContactableCount || 20));
+  const dryRun = params.dryRun !== false;
+  const result: any = await handleOutreachCollect({
+    ...params,
+    keyword: params.keyword || `${requestedVertical} 인플루언서`,
+    product: params.product || requestedVertical,
+    requestedVertical,
+    platform: 'youtube',
+    mode: 'goal_collect',
+    targetContactableCount,
+    requestedCount: Math.min(Number(params.requestedCount || targetContactableCount), 10),
+    maxCandidates: Math.min(Number(params.maxCandidates || targetContactableCount), 10),
+    requireQualified: true,
+    requireContactable: true,
+    requirePublicEmail: params.requirePublicEmail !== false,
+    maxBatches: Math.min(Number(params.maxBatches || 1), 1),
+    dryRun,
+    countOnly: dryRun,
+  });
+  const summary = result?.summary || {};
+  const completionStatus = summary.completionStatus || result?.completionStatus || 'partial';
+  const reportPayload = {
+    messageType: 'outreach_quality_batch',
+    requestedVertical,
+    targetContactableCount,
+    qualifiedContactableCount: summary.qualifiedContactableCount || 0,
+    remainingContactableCount: summary.remainingContactableCount || targetContactableCount,
+    qualityTierCounts: summary.qualityTierCounts || {},
+    completionStatus,
+    stopReason: summary.stopReason || result?.stopReason || (dryRun ? 'dryRun' : 'unknown'),
+    telegramReportRecommended: ['complete', 'blocked'].includes(completionStatus) || Number(summary.qualityQualifiedCount || 0) >= 3,
+  };
+  return {
+    success: true,
+    dryRun,
+    executeLocked: true,
+    scheduler: { prepared: true, intervalHours: 3, cronCreated: false },
+    reportPayload,
+    summary,
+    diagnostics: result?.diagnostics,
+  };
+}
+
 async function handleOutreachSaveCandidates(params: any) {
   const { candidates, dryRun } = params;
   if (!candidates || !Array.isArray(candidates) || candidates.length === 0) {
@@ -4853,15 +4941,16 @@ async function executeApprovedAction(action: PendingJarvisAction, approvalSource
       ...(await handleOutreachFollowupSendApproved({ campaignId: target.campaignId, dryRun, approvalConfirmed: !dryRun })),
     };
   }
-  if (action.actionType === 'PURCHASE_ORDER_EMAIL_SEND') {
+  if (action.actionType === 'PURCHASE_ORDER_EMAIL_SEND' || action.actionType === 'BULK_PURCHASE_ORDER_EMAIL_SEND') {
     return {
       ...base,
-      ...(await handlePurchaseOrderEmailSendApproved({
+      ...(await handlePurchaseOrderEmailSendApprovedV2({
         ...(target.params || {}),
         actionId: action.id,
         groupIds: Array.isArray(target.groupIds) ? target.groupIds : [],
         scope: target.scope || 'pre_ship',
-        maxSendCount: 1,
+        maxSendCount: action.actionType === 'BULK_PURCHASE_ORDER_EMAIL_SEND' ? Math.min(3, Number(target.maxSendCount || 3)) : 1,
+        bulkApprovalConfirmed: action.actionType === 'BULK_PURCHASE_ORDER_EMAIL_SEND',
         dryRun,
         approvalSource,
         approvalConfirmed: true,
@@ -4880,7 +4969,7 @@ async function executeApprovedAction(action: PendingJarvisAction, approvalSource
 
 async function handleApprovalActionCreate(params: any) {
   const actionType = String(params?.actionType || '') as PendingJarvisActionType;
-  const allowed: PendingJarvisActionType[] = ['SMARTSTORE_CONFIRM_ORDERS','PURCHASE_ORDER_CREATE','PURCHASE_ORDER_EMAIL_SEND','OUTREACH_GOAL_COLLECT','OUTREACH_EMAIL_DRAFT','OUTREACH_EMAIL_SEND','OUTREACH_FOLLOWUP_DRAFT','OUTREACH_FOLLOWUP_SEND'];
+  const allowed: PendingJarvisActionType[] = ['SMARTSTORE_CONFIRM_ORDERS','PURCHASE_ORDER_CREATE','PURCHASE_ORDER_EMAIL_SEND','BULK_PURCHASE_ORDER_EMAIL_SEND','OUTREACH_GOAL_COLLECT','OUTREACH_EMAIL_DRAFT','OUTREACH_EMAIL_SEND','OUTREACH_FOLLOWUP_DRAFT','OUTREACH_FOLLOWUP_SEND'];
   if (!allowed.includes(actionType)) return { success: false, blocked: true, errorCode: 'ACTION_TYPE_REQUIRED', executeLocked: true };
   const action = await createPendingJarvisAction({
     actionType,
@@ -4889,7 +4978,27 @@ async function handleApprovalActionCreate(params: any) {
     nextPrompt: params?.nextPrompt || '',
     ttlMinutes: Number(params?.ttlMinutes || 60),
   });
-  return { success: true, approvalRequired: true, executeLocked: true, action, message: `Approval action created: ${action.id}` };
+  let telegramResult: any = { sent: false, skipped: true };
+  if (params?.sendTelegram === true || params?.sendTelegram === 'true') {
+    const summary = params?.targetSummary || {};
+    const isBulk = actionType === 'BULK_PURCHASE_ORDER_EMAIL_SEND';
+    const title = isBulk ? '선택 대량 발주서 이메일 전송 승인 요청' : '발주서 이메일 전송 승인 요청';
+    const lines = [
+      `대표님, ${title}입니다.`,
+      '',
+      `- 발주처: ${summary.supplierName || summary.supplierNames || '확인 필요'}`,
+      `- 수신처: ${summary.recipientMasked || '마스킹됨'}`,
+      `- 첨부: ${summary.attachmentFileName || summary.fileName || '발주서.xlsx'}`,
+      `- 발송 대상: ${summary.sendCount || (Array.isArray(summary.groupIds) ? summary.groupIds.length : 1)}곳`,
+      `- 총 발주 건수: ${summary.rowCount || summary.totalRows || 0}건`,
+      `- 총 수량: ${summary.totalQuantity || 0}개`,
+      '',
+      `승인: 승인 ${action.id}`,
+      `취소: 취소 ${action.id}`,
+    ];
+    telegramResult = await sendTelegramMessage(lines.join('\n')).catch((error: any) => ({ sent: false, error: error?.message || 'telegram_send_failed' }));
+  }
+  return { success: true, approvalRequired: true, executeLocked: true, action, telegram: telegramResult, message: `Approval action created: ${action.id}` };
 }
 
 async function handleTelegramApprovalReply(params: any) {
@@ -5474,6 +5583,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         const result = await handleOutreachCollect(params || rest);
         return res.status(200).json(result);
       }
+      if (resolvedTask === 'outreach-quality-batch-run') {
+        const result = await handleOutreachQualityBatchRun(params || rest);
+        return res.status(200).json(result);
+      }
       if (resolvedTask === 'outreach-list') {
         const result = await handleOutreachList(params || rest);
         return res.status(200).json(result);
@@ -5497,11 +5610,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         return res.status(200).json(result);
       }
       if (resolvedTask === 'purchase-order-email-send-approved') {
-        const result = await handlePurchaseOrderEmailSendApproved(params || rest);
+        const result = await handlePurchaseOrderEmailSendApprovedV2(params || rest);
         return res.status(200).json(result);
       }
       if (resolvedTask === 'purchase-order-send-approved') {
-        const result = await handlePurchaseOrderEmailSendApproved(params || rest);
+        const result = await handlePurchaseOrderEmailSendApprovedV2(params || rest);
         return res.status(200).json(result);
       }
       if (resolvedTask === 'purchase-order-send-approved-legacy-blocked') {
@@ -9053,6 +9166,18 @@ async function sendGmailWithAttachment(input: {
   return { success: true, messageId: String(info?.messageId || '') };
 }
 
+function buildSafePurchaseOrderSendResult(result: any) {
+  if (!result || typeof result !== 'object') return result;
+  const {
+    subject: _subject,
+    bodyPreview: _bodyPreview,
+    attachmentContentBase64: _attachmentContentBase64,
+    contentBase64: _contentBase64,
+    ...safe
+  } = result;
+  return safe;
+}
+
 async function handlePurchaseOrderEmailSendApproved(params: any = {}) {
   const approvalConfirmed = params.approvalConfirmed === true || params.approvalConfirmed === 'true';
   const dryRun = params.dryRun === true || params.dryRun === 'true';
@@ -9199,5 +9324,183 @@ async function handlePurchaseOrderEmailSendApproved(params: any = {}) {
     rowCount: attachment.rowCount,
     totalQuantity: attachment.totalQuantity,
     gmailMessageIdHash: messageIdHash,
+  };
+}
+
+async function handlePurchaseOrderEmailSendApprovedV2(params: any = {}) {
+  const approvalConfirmed = params.approvalConfirmed === true || params.approvalConfirmed === 'true';
+  const dryRun = params.dryRun === true || params.dryRun === 'true';
+  const maxSendCount = Number(params.maxSendCount || 1);
+  const bulkApprovalConfirmed = params.bulkApprovalConfirmed === true || params.bulkApprovalConfirmed === 'true';
+  const approvalSource = String(params.approvalSource || 'chat');
+  const actionId = String(params.actionId || '');
+  const groupIds: string[] = Array.from(new Set<string>(Array.isArray(params.groupIds) ? params.groupIds.map((id: any) => String(id)).filter(Boolean) : []));
+
+  if (!approvalConfirmed) {
+    return { success: false, sent: false, blocked: true, approvalRequired: true, executeLocked: true, errorCode: 'APPROVAL_REQUIRED' };
+  }
+  if (groupIds.length === 0) {
+    return { success: false, sent: false, blocked: true, executeLocked: true, errorCode: 'NO_GROUP_IDS' };
+  }
+  if (groupIds.length === 1 && maxSendCount !== 1) {
+    return { success: false, sent: false, blocked: true, executeLocked: true, errorCode: 'SINGLE_SEND_LIMIT_EXCEEDED' };
+  }
+  if (groupIds.length > 1 && !bulkApprovalConfirmed) {
+    return { success: false, sent: false, blocked: true, approvalRequired: true, executeLocked: true, errorCode: 'BULK_APPROVAL_REQUIRED' };
+  }
+  if (groupIds.length > 3 || maxSendCount > 3) {
+    return { success: false, sent: false, blocked: true, executeLocked: true, errorCode: 'BULK_SEND_LIMIT_EXCEEDED' };
+  }
+
+  const built = await buildBulkPurchaseOrderGroups({ ...params, scope: params.scope || 'pre_ship' });
+  const profiles = await readPurchaseOrderSupplierProfiles();
+  const perGroupResults: any[] = [];
+
+  for (const groupId of groupIds.slice(0, maxSendCount)) {
+    const group = built.groups.find((item: any) => String(item.groupId) === groupId);
+    if (!group) {
+      perGroupResults.push({ groupId, success: false, sent: false, blocked: true, errorCode: 'GROUP_NOT_FOUND' });
+      continue;
+    }
+    if (!group.canEmail) {
+      const errorCode = group.emailConfigured ? 'GROUP_NOT_READY_FOR_EMAIL' : 'SUPPLIER_EMAIL_MISSING';
+      await appendPurchaseOrderEmailSendLog({
+        actionId,
+        approvalSource,
+        supplierId: group.supplierId,
+        supplierName: group.supplierName,
+        productGroupName: group.productGroupName,
+        carrier: group.carrier,
+        fileName: group.fileName,
+        rowCount: group.rowCount,
+        totalQuantity: group.totalQuantity,
+        recipientMasked: group.emailMasked || '',
+        status: 'BLOCKED',
+        errorCode,
+      }).catch(() => null);
+      perGroupResults.push({ groupId, success: false, sent: false, blocked: true, errorCode, recipientMasked: group.emailMasked || '', supplierName: group.supplierName });
+      continue;
+    }
+
+    const profile = profiles[group.productGroupCode];
+    const recipientEmail = String(profile?.emailRaw || '').trim();
+    const recipientMasked = group.emailMasked || (recipientEmail ? maskEmail(recipientEmail) : '');
+    if (!recipientEmail || !isValidSupplierEmail(recipientEmail)) {
+      perGroupResults.push({ groupId, success: false, sent: false, blocked: true, errorCode: 'SUPPLIER_EMAIL_MISSING', recipientMasked, supplierName: group.supplierName });
+      continue;
+    }
+
+    const rows = built.rowsByGroup[group.groupId] || [];
+    const attachment = await generateCarrierWorkbook({ group, rows, includePrivateFields: true });
+    if (!attachment?.contentBase64) {
+      await appendPurchaseOrderEmailSendLog({
+        actionId,
+        approvalSource,
+        supplierId: group.supplierId,
+        supplierName: group.supplierName,
+        productGroupName: group.productGroupName,
+        carrier: group.carrier,
+        fileName: group.fileName,
+        rowCount: group.rowCount,
+        totalQuantity: group.totalQuantity,
+        recipientMasked,
+        status: 'FAILED',
+        errorCode: 'ATTACHMENT_GENERATION_FAILED',
+      }).catch(() => null);
+      perGroupResults.push({ groupId, success: false, sent: false, errorCode: 'ATTACHMENT_GENERATION_FAILED', recipientMasked, supplierName: group.supplierName });
+      continue;
+    }
+
+    const subject = `[발주서] ${group.productGroupName} ${group.totalQuantity}개`;
+    const body = buildPurchaseOrderEmailBody({
+      supplierName: group.supplierName,
+      attachmentFileName: attachment.fileName,
+      rowCount: attachment.rowCount,
+      totalQuantity: attachment.totalQuantity,
+    });
+
+    if (dryRun) {
+      perGroupResults.push({
+        groupId,
+        success: true,
+        sent: false,
+        dryRun: true,
+        sendSkipped: true,
+        recipientMasked,
+        supplierName: group.supplierName,
+        attachmentFileName: attachment.fileName,
+        rowCount: attachment.rowCount,
+        totalQuantity: attachment.totalQuantity,
+        subject,
+        bodyPreview: body,
+      });
+      continue;
+    }
+
+    const sendResult = await sendGmailWithAttachment({
+      to: recipientEmail,
+      subject,
+      body,
+      attachments: [{ fileName: attachment.fileName, mimeType: attachment.mimeType, contentBase64: attachment.contentBase64 }],
+    });
+    const messageIdHash = sendResult.messageId ? hashForLog(sendResult.messageId) : '';
+    const status = sendResult.success ? 'EXECUTED' : 'FAILED';
+    const errorCode = sendResult.success ? '' : (sendResult.errorCode || 'GMAIL_SEND_FAILED');
+    await appendPurchaseOrderEmailSendLog({
+      actionId,
+      approvalSource,
+      supplierId: group.supplierId,
+      supplierName: group.supplierName,
+      productGroupName: group.productGroupName,
+      carrier: group.carrier,
+      fileName: attachment.fileName,
+      rowCount: attachment.rowCount,
+      totalQuantity: attachment.totalQuantity,
+      recipientMasked,
+      gmailMessageIdHash: messageIdHash,
+      status,
+      errorCode,
+    }).catch(() => null);
+
+    perGroupResults.push({
+      groupId,
+      success: sendResult.success,
+      sent: sendResult.success,
+      executionStatus: sendResult.success ? 'EXECUTED' : 'FAILED',
+      errorCode,
+      recipientMasked,
+      supplierName: group.supplierName,
+      attachmentFileName: attachment.fileName,
+      rowCount: attachment.rowCount,
+      totalQuantity: attachment.totalQuantity,
+      gmailMessageIdHash: messageIdHash,
+    });
+  }
+
+  const safeResults = perGroupResults.map(buildSafePurchaseOrderSendResult);
+  const sentCount = safeResults.filter((result: any) => result.sent).length;
+  const blockedCount = safeResults.filter((result: any) => result.blocked || result.errorCode).length;
+  const first = safeResults[0] || {};
+  return {
+    success: dryRun ? true : sentCount > 0,
+    sent: sentCount > 0,
+    dryRun,
+    sendSkipped: dryRun,
+    executeLocked: true,
+    approvalRequired: dryRun,
+    sendMode: groupIds.length > 1 ? 'bulk' : 'single',
+    requestedCount: groupIds.length,
+    sentCount,
+    blockedCount,
+    recipientMasked: first.recipientMasked,
+    supplierName: first.supplierName,
+    attachmentFileName: first.attachmentFileName,
+    rowCount: safeResults.reduce((sum: number, result: any) => sum + Number(result.rowCount || 0), 0),
+    totalQuantity: safeResults.reduce((sum: number, result: any) => sum + Number(result.totalQuantity || 0), 0),
+    gmailMessageIdHash: first.gmailMessageIdHash,
+    executionStatus: dryRun ? 'DRY_RUN' : (sentCount === groupIds.length ? 'EXECUTED' : sentCount > 0 ? 'PARTIAL' : 'FAILED'),
+    errorCode: sentCount > 0 ? '' : (first.errorCode || 'PURCHASE_ORDER_EMAIL_SEND_FAILED'),
+    perGroupResults: safeResults,
+    message: dryRun ? 'dryRun: Gmail send skipped.' : '',
   };
 }
