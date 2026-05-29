@@ -135,6 +135,9 @@ function buildJarvisVoiceSummary(text: string, intent?: string, actionType?: str
   if (/private_export_command|pending_action_prompt.*PRIVATE_EXPORT|개인정보 포함 발주서 다운로드에는 승인이 필요/.test(source)) {
     return '대표님, 이 파일에는 배송 정보가 포함됩니다. 다운로드하려면 승인이 필요합니다.';
   }
+  if (/privacy_export_question/.test(source)) {
+    return '맞습니다, 대표님. 화면에서는 개인정보를 마스킹하지만, 실제 발주처 전달용 엑셀 파일에는 승인 후 배송 정보가 포함됩니다.';
+  }
   if (/masked|마스킹/.test(source)) {
     return '마스킹 파일은 검토용입니다. 실제 배송용 파일은 승인 후 개인정보를 포함해 따로 생성합니다.';
   }
