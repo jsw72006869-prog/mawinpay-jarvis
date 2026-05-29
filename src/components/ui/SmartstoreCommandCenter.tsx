@@ -786,17 +786,18 @@ export default function SmartstoreCommandCenter({
                           const emailDraft = supplierEmailDrafts[draftKey] || '';
                           return (
                             <div key={`${group.groupId}-settings`} style={{ fontSize: 11, color: 'rgba(226,232,240,0.86)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: 8, padding: 8 }}>
-                              {group.routingStatus === 'carrier_missing' && (
-                                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
+                      {group.routingStatus === 'carrier_missing' && (
+                                <div data-testid="purchase-order-group-card" style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
                                   <span style={{ color: '#fbbf24' }}>택배사 설정 필요</span>
-                                  <button type="button" onClick={() => onSupplierCarrierSave?.(group, 'logen')} style={{ fontSize: 10, padding: '4px 7px', borderRadius: 6, border: '1px solid rgba(34,211,238,0.3)', background: 'rgba(34,211,238,0.08)', color: '#bae6fd' }}>로젠으로 저장</button>
-                                  <button type="button" onClick={() => onSupplierCarrierSave?.(group, 'lotte')} style={{ fontSize: 10, padding: '4px 7px', borderRadius: 6, border: '1px solid rgba(34,211,238,0.3)', background: 'rgba(34,211,238,0.08)', color: '#bae6fd' }}>롯데로 저장</button>
+                                  <button data-testid="carrier-save-logen-button" type="button" onClick={() => onSupplierCarrierSave?.(group, 'logen')} style={{ fontSize: 10, padding: '4px 7px', borderRadius: 6, border: '1px solid rgba(34,211,238,0.3)', background: 'rgba(34,211,238,0.08)', color: '#bae6fd' }}>로젠으로 저장</button>
+                                  <button data-testid="carrier-save-lotte-button" type="button" onClick={() => onSupplierCarrierSave?.(group, 'lotte')} style={{ fontSize: 10, padding: '4px 7px', borderRadius: 6, border: '1px solid rgba(34,211,238,0.3)', background: 'rgba(34,211,238,0.08)', color: '#bae6fd' }}>롯데로 저장</button>
                                 </div>
                               )}
                               {!group.emailConfigured && group.productGroupCode !== 'unknown' && (
                                 <div style={{ display: 'flex', gap: 6, marginTop: group.routingStatus === 'carrier_missing' ? 6 : 0, flexWrap: 'wrap', alignItems: 'center' }}>
                                   <span style={{ color: '#fbbf24' }}>발주처 이메일 필요</span>
                                   <input
+                                    data-testid="supplier-email-input"
                                     value={emailDraft}
                                     onChange={event => setSupplierEmailDrafts(prev => ({ ...prev, [draftKey]: event.target.value }))}
                                     placeholder="email"
@@ -804,6 +805,7 @@ export default function SmartstoreCommandCenter({
                                     style={{ minWidth: 150, flex: '1 1 150px', background: 'rgba(15,23,42,0.88)', border: '1px solid rgba(255,255,255,0.14)', borderRadius: 6, color: '#e5e7eb', padding: '4px 6px', fontSize: 11 }}
                                   />
                                   <button
+                                    data-testid="supplier-email-save-button"
                                     type="button"
                                     onClick={() => {
                                       onSupplierEmailSave?.(group, emailDraft);
@@ -816,7 +818,7 @@ export default function SmartstoreCommandCenter({
                                 </div>
                               )}
                               {group.emailConfigured && (
-                                <div style={{ marginTop: 5, color: '#bbf7d0' }}>이메일 저장됨: {group.emailMasked}</div>
+                                <div data-testid="supplier-email-masked" style={{ marginTop: 5, color: '#bbf7d0' }}>이메일 저장됨: {group.emailMasked}</div>
                               )}
                             </div>
                           );
