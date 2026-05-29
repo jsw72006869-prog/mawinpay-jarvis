@@ -4864,7 +4864,7 @@ async function executeApprovedAction(action: PendingJarvisAction, approvalSource
         maxSendCount: 1,
         dryRun,
         approvalSource,
-        approvalConfirmed: !dryRun,
+        approvalConfirmed: true,
       })),
     };
   }
