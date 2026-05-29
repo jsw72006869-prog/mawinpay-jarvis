@@ -435,7 +435,10 @@ async function speakElevenLabs(
       await new Promise<void>((resolve) => {
         audio.onended = () => { URL.revokeObjectURL(url); if (globalAudioRef === audio) globalAudioRef = null; resolve(); };
         audio.onerror = () => { URL.revokeObjectURL(url); if (globalAudioRef === audio) globalAudioRef = null; resolve(); };
-        audio.play().catch(() => resolve());
+        audio.play().catch((error) => {
+          console.warn('[JARVIS VOICE] playback blocked', error);
+          resolve();
+        });
       });
       return;
     }
@@ -464,7 +467,9 @@ async function speakElevenLabs(
                 earlyUrl = URL.createObjectURL(new Blob([combined], { type: 'audio/mpeg' }));
                 earlyAudio = new Audio(earlyUrl);
                 globalAudioRef = earlyAudio;
-                earlyAudio.play().catch(() => {});
+                earlyAudio.play().catch((error) => {
+                  console.warn('[JARVIS VOICE] early playback blocked', error);
+                });
                 console.log('[TTS] ⚡ 스트리밍 조기 재생 시작');
               }
             }
@@ -482,7 +487,10 @@ async function speakElevenLabs(
           globalAudioRef = finalAudio;
           finalAudio.onended = () => { URL.revokeObjectURL(finalUrl); if (globalAudioRef === finalAudio) globalAudioRef = null; resolve(); };
           finalAudio.onerror = () => { URL.revokeObjectURL(finalUrl); if (globalAudioRef === finalAudio) globalAudioRef = null; resolve(); };
-          finalAudio.play().catch(() => resolve());
+          finalAudio.play().catch((error) => {
+            console.warn('[JARVIS VOICE] playback blocked', error);
+            resolve();
+          });
         } catch {
           resolve();
         }
