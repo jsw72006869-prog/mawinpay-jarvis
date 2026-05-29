@@ -7,6 +7,7 @@ import { evaluateTargetFit, detectVerticalFromKeyword, VERTICAL_QUERY_PACKS, typ
 // Dynamic imports for ESM-only packages (resolved at runtime)
 let _bcrypt: any = null;
 let _HttpsProxyAgent: any = null;
+let _nodemailer: any = null;
 
 async function getBcrypt() {
   if (!_bcrypt) {
@@ -24,6 +25,14 @@ async function getHttpsProxyAgentClass() {
   return _HttpsProxyAgent;
 }
 
+async function getNodemailer() {
+  if (!_nodemailer) {
+    const mod = await import('nodemailer');
+    _nodemailer = (mod as any).default || mod;
+  }
+  return _nodemailer;
+}
+
 // ── Runtime: Node.js (NOT Edge) ──
 export const config = {
   maxDuration: 60,
@@ -37,6 +46,9 @@ const QUOTAGUARD_URL = process.env.QUOTAGUARD_URL || process.env.QUOTAGUARDSTATI
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY || '';
 const YOUTUBE_API_KEY = process.env.YOUTUBE_API_KEY || '';
 const YOUTUBE_API_KEY_BACKUP = process.env.YOUTUBE_API_KEY_BACKUP || '';
+const GMAIL_ADDRESS = process.env.GMAIL_ADDRESS || '';
+const GMAIL_APP_PASSWORD = process.env.GMAIL_APP_PASSWORD || '';
+const GMAIL_SENDER_NAME = process.env.GMAIL_SENDER_NAME || 'MAWINPAY JARVIS';
 
 // YouTube API 키 로테이션 상태
 let youtubeKeyState = {
@@ -2936,6 +2948,7 @@ const SHEET_HEADERS: Record<string, string[]> = {
   outreach_candidate_events: ['event_id','candidate_id','platform','profile_url','event_type','event_time','source','message_id','status_before','status_after','notes'],
   telegram_notification_logs: ['notification_id','brief_id','channel','sent','sent_at','error_code','error_message','created_at','notes'],
   action_approval_log: ['action_id','action_type','status','source','target_summary','next_prompt','expires_at','created_at','updated_at','approval_source','executed_at','result_status','error_code','notes'],
+  purchase_order_email_send_log: ['sent_at','action_id','approval_source','supplier_id','supplier_name','product_group_name','carrier','file_name','row_count','total_quantity','recipient_masked','gmail_message_id_hash','status','error_code'],
   outreach_collection_runs: ['run_id','requested_vertical','target_contactable_count','qualified_contactable_count','remaining_contactable_count','completion_status','stop_reason','batch_count','raw_search_result_count','deduped_channel_count','saved_candidate_count','public_email_count','qualified_public_email_count','started_at','finished_at','notes'],
   // OUTREACH-COPY-AGENT-MASTER-A.1: viral_content_swipe 탭 (Hot Content 카피 학습 재료)
   viral_content_swipe: ['id','platform','source_product','source_keyword','content_url','creator_name','hook_text','thumbnail_text','post_summary','engagement_visible','comment_signal','hot_reason','copy_pattern','emotion_trigger','buyer_desire','usable_for','hot_score','copy_pattern_score','risk_score','created_at','notes'],
@@ -4840,12 +4853,27 @@ async function executeApprovedAction(action: PendingJarvisAction, approvalSource
       ...(await handleOutreachFollowupSendApproved({ campaignId: target.campaignId, dryRun, approvalConfirmed: !dryRun })),
     };
   }
+  if (action.actionType === 'PURCHASE_ORDER_EMAIL_SEND') {
+    return {
+      ...base,
+      ...(await handlePurchaseOrderEmailSendApproved({
+        ...(target.params || {}),
+        actionId: action.id,
+        groupIds: Array.isArray(target.groupIds) ? target.groupIds : [],
+        scope: target.scope || 'pre_ship',
+        maxSendCount: 1,
+        dryRun,
+        approvalSource,
+        approvalConfirmed: !dryRun,
+      })),
+    };
+  }
   return {
     ...base,
     success: false,
     blocked: true,
     approvalRequired: true,
-    errorCode: action.actionType === 'PURCHASE_ORDER_EMAIL_SEND' ? 'PURCHASE_ORDER_RECIPIENT_CHANNEL_NOT_VERIFIED' : 'ACTION_EXECUTOR_NOT_IMPLEMENTED',
+    errorCode: 'ACTION_EXECUTOR_NOT_IMPLEMENTED',
     message: `${action.actionType} is blocked or not implemented yet.`,
   };
 }
@@ -5468,7 +5496,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         const result = await handleSmartstoreConfirmOrders(params || rest);
         return res.status(200).json(result);
       }
+      if (resolvedTask === 'purchase-order-email-send-approved') {
+        const result = await handlePurchaseOrderEmailSendApproved(params || rest);
+        return res.status(200).json(result);
+      }
       if (resolvedTask === 'purchase-order-send-approved') {
+        const result = await handlePurchaseOrderEmailSendApproved(params || rest);
+        return res.status(200).json(result);
+      }
+      if (resolvedTask === 'purchase-order-send-approved-legacy-blocked') {
         return res.status(200).json({
           success: false,
           blocked: true,
@@ -8924,5 +8960,244 @@ async function handlePurchaseOrderBulkEmailDraft(params: any = {}) {
     drafts,
     summary: built.summary,
     message: 'Email draft preview only. Actual sending remains locked.',
+  };
+}
+
+function hashForLog(value: string): string {
+  return value ? crypto.createHash('sha256').update(value).digest('hex').slice(0, 16) : '';
+}
+
+function buildPurchaseOrderEmailBody(input: {
+  supplierName: string;
+  attachmentFileName: string;
+  rowCount: number;
+  totalQuantity: number;
+}) {
+  return [
+    '안녕하세요.',
+    '',
+    '금일 발주서 전달드립니다.',
+    '',
+    `- 발주 건수: ${input.rowCount}건`,
+    `- 총 수량: ${input.totalQuantity}개`,
+    `- 첨부 파일: ${input.attachmentFileName}`,
+    '',
+    '확인 부탁드립니다.',
+    '감사합니다.',
+  ].join('\n');
+}
+
+async function appendPurchaseOrderEmailSendLog(input: {
+  actionId?: string;
+  approvalSource?: string;
+  supplierId?: string;
+  supplierName?: string;
+  productGroupName?: string;
+  carrier?: string;
+  fileName?: string;
+  rowCount?: number;
+  totalQuantity?: number;
+  recipientMasked?: string;
+  gmailMessageIdHash?: string;
+  status: string;
+  errorCode?: string;
+}) {
+  if (!WORKSPACE_SHEET_ID || !GOOGLE_SHEETS_CREDENTIALS) return { saved: false, reason: 'sheets_not_configured' };
+  await ensureHeaders('purchase_order_email_send_log');
+  await sheetsAppend('purchase_order_email_send_log', [[
+    new Date().toISOString(),
+    input.actionId || '',
+    input.approvalSource || '',
+    input.supplierId || '',
+    input.supplierName || '',
+    input.productGroupName || '',
+    input.carrier || '',
+    input.fileName || '',
+    String(input.rowCount ?? ''),
+    String(input.totalQuantity ?? ''),
+    input.recipientMasked || '',
+    input.gmailMessageIdHash || '',
+    input.status,
+    input.errorCode || '',
+  ]]);
+  return { saved: true };
+}
+
+async function sendGmailWithAttachment(input: {
+  to: string;
+  subject: string;
+  body: string;
+  attachments: Array<{ fileName: string; mimeType: string; contentBase64: string }>;
+}) {
+  if (!GMAIL_ADDRESS || !GMAIL_APP_PASSWORD) {
+    return { success: false, errorCode: 'GMAIL_ATTACHMENT_SEND_NOT_CONFIGURED' };
+  }
+  const nodemailer = await getNodemailer();
+  const transporter = nodemailer.createTransport({
+    service: 'gmail',
+    auth: { user: GMAIL_ADDRESS, pass: GMAIL_APP_PASSWORD },
+  });
+  const info = await transporter.sendMail({
+    from: `"${GMAIL_SENDER_NAME}" <${GMAIL_ADDRESS}>`,
+    replyTo: GMAIL_ADDRESS,
+    to: input.to,
+    subject: input.subject,
+    text: input.body,
+    html: input.body.split('\n').map(line => `<p>${line || '&nbsp;'}</p>`).join(''),
+    attachments: input.attachments.map(att => ({
+      filename: att.fileName,
+      content: Buffer.from(att.contentBase64, 'base64'),
+      contentType: att.mimeType,
+    })),
+  });
+  return { success: true, messageId: String(info?.messageId || '') };
+}
+
+async function handlePurchaseOrderEmailSendApproved(params: any = {}) {
+  const approvalConfirmed = params.approvalConfirmed === true || params.approvalConfirmed === 'true';
+  const dryRun = params.dryRun === true || params.dryRun === 'true';
+  const maxSendCount = Number(params.maxSendCount || 1);
+  const approvalSource = String(params.approvalSource || 'chat');
+  const actionId = String(params.actionId || '');
+  const groupIds = Array.isArray(params.groupIds) ? params.groupIds.map((id: any) => String(id)).filter(Boolean) : [];
+
+  if (!approvalConfirmed) {
+    return { success: false, sent: false, blocked: true, approvalRequired: true, executeLocked: true, errorCode: 'APPROVAL_REQUIRED' };
+  }
+  if (groupIds.length === 0) {
+    return { success: false, sent: false, blocked: true, executeLocked: true, errorCode: 'NO_GROUP_IDS' };
+  }
+  if (groupIds.length > 1 || maxSendCount !== 1) {
+    return { success: false, sent: false, blocked: true, executeLocked: true, errorCode: 'BULK_SEND_LOCKED' };
+  }
+
+  const built = await buildBulkPurchaseOrderGroups({ ...params, scope: params.scope || 'pre_ship' });
+  const group = built.groups.find((item: any) => String(item.groupId) === groupIds[0]);
+  if (!group) {
+    return { success: false, sent: false, blocked: true, executeLocked: true, errorCode: 'GROUP_NOT_FOUND' };
+  }
+  if (!group.canEmail) {
+    const errorCode = group.emailConfigured ? 'GROUP_NOT_READY_FOR_EMAIL' : 'SUPPLIER_EMAIL_MISSING';
+    await appendPurchaseOrderEmailSendLog({
+      actionId,
+      approvalSource,
+      supplierId: group.supplierId,
+      supplierName: group.supplierName,
+      productGroupName: group.productGroupName,
+      carrier: group.carrier,
+      fileName: group.fileName,
+      rowCount: group.rowCount,
+      totalQuantity: group.totalQuantity,
+      recipientMasked: group.emailMasked || '',
+      status: 'BLOCKED',
+      errorCode,
+    }).catch(() => null);
+    return { success: false, sent: false, blocked: true, executeLocked: true, errorCode, recipientMasked: group.emailMasked || '', supplierName: group.supplierName };
+  }
+
+  const profiles = await readPurchaseOrderSupplierProfiles();
+  const profile = profiles[group.productGroupCode];
+  const recipientEmail = String(profile?.emailRaw || '').trim();
+  const recipientMasked = group.emailMasked || (recipientEmail ? maskEmail(recipientEmail) : '');
+  if (!recipientEmail || !isValidSupplierEmail(recipientEmail)) {
+    return { success: false, sent: false, blocked: true, executeLocked: true, errorCode: 'SUPPLIER_EMAIL_MISSING', recipientMasked };
+  }
+
+  const rows = built.rowsByGroup[group.groupId] || [];
+  const attachment = await generateCarrierWorkbook({ group, rows, includePrivateFields: true });
+  if (!attachment?.contentBase64) {
+    await appendPurchaseOrderEmailSendLog({
+      actionId,
+      approvalSource,
+      supplierId: group.supplierId,
+      supplierName: group.supplierName,
+      productGroupName: group.productGroupName,
+      carrier: group.carrier,
+      fileName: group.fileName,
+      rowCount: group.rowCount,
+      totalQuantity: group.totalQuantity,
+      recipientMasked,
+      status: 'FAILED',
+      errorCode: 'ATTACHMENT_GENERATION_FAILED',
+    }).catch(() => null);
+    return { success: false, sent: false, executeLocked: true, errorCode: 'ATTACHMENT_GENERATION_FAILED', recipientMasked };
+  }
+
+  const subject = `[발주서] ${group.productGroupName} ${group.totalQuantity}개`;
+  const body = buildPurchaseOrderEmailBody({
+    supplierName: group.supplierName,
+    attachmentFileName: attachment.fileName,
+    rowCount: attachment.rowCount,
+    totalQuantity: attachment.totalQuantity,
+  });
+
+  if (dryRun) {
+    return {
+      success: true,
+      sent: false,
+      dryRun: true,
+      sendSkipped: true,
+      executeLocked: true,
+      approvalRequired: true,
+      recipientMasked,
+      supplierName: group.supplierName,
+      attachmentFileName: attachment.fileName,
+      rowCount: attachment.rowCount,
+      totalQuantity: attachment.totalQuantity,
+      subject,
+      bodyPreview: body,
+      message: 'dryRun: Gmail send skipped.',
+    };
+  }
+
+  const sendResult = await sendGmailWithAttachment({
+    to: recipientEmail,
+    subject,
+    body,
+    attachments: [{ fileName: attachment.fileName, mimeType: attachment.mimeType, contentBase64: attachment.contentBase64 }],
+  });
+  const messageIdHash = sendResult.messageId ? hashForLog(sendResult.messageId) : '';
+  const status = sendResult.success ? 'EXECUTED' : 'FAILED';
+  const errorCode = sendResult.success ? '' : (sendResult.errorCode || 'GMAIL_SEND_FAILED');
+  await appendPurchaseOrderEmailSendLog({
+    actionId,
+    approvalSource,
+    supplierId: group.supplierId,
+    supplierName: group.supplierName,
+    productGroupName: group.productGroupName,
+    carrier: group.carrier,
+    fileName: attachment.fileName,
+    rowCount: attachment.rowCount,
+    totalQuantity: attachment.totalQuantity,
+    recipientMasked,
+    gmailMessageIdHash: messageIdHash,
+    status,
+    errorCode,
+  }).catch(() => null);
+
+  if (!sendResult.success) {
+    return {
+      success: false,
+      sent: false,
+      executeLocked: true,
+      executionStatus: 'FAILED',
+      errorCode,
+      recipientMasked,
+      supplierName: group.supplierName,
+      attachmentFileName: attachment.fileName,
+    };
+  }
+  return {
+    success: true,
+    sent: true,
+    sentCount: 1,
+    executeLocked: true,
+    executionStatus: 'EXECUTED',
+    recipientMasked,
+    supplierName: group.supplierName,
+    attachmentFileName: attachment.fileName,
+    rowCount: attachment.rowCount,
+    totalQuantity: attachment.totalQuantity,
+    gmailMessageIdHash: messageIdHash,
   };
 }
