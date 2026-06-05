@@ -47,6 +47,10 @@ import SmartstoreCommandCenter from './ui/SmartstoreCommandCenter';
 import KeywordRadarPanel from './ui/KeywordRadarPanel';
 import CreativeStudio, { type CopyCard } from './CreativeStudio';
 import OutreachResultWorkspace from './ui/OutreachResultWorkspace';
+import { buildJarvisSituationSnapshot } from '../lib/conversation-os/snapshot';
+import { planJarvisNextActions } from '../lib/conversation-os/planner';
+import { composeJarvisBriefing } from '../lib/conversation-os/composer';
+import type { JarvisNextAction } from '../lib/conversation-os/types';
 
 interface ContextRegistryItem {
   id: string;
@@ -565,6 +569,7 @@ export default function JarvisApp() {
     selectedGroupIds: [],
     drafts: [],
   });
+  const [conversationNextActions, setConversationNextActions] = useState<JarvisNextAction[]>([]);
   const [marketPriceVisible, setMarketPriceVisible] = useState(false);
   const [marketPriceResult, setMarketPriceResult] = useState<MarketPriceResult | null>(null);
   const [marketPriceInputMode, setMarketPriceInputMode] = useState(false);
@@ -5910,10 +5915,16 @@ G. Review Objection: 작다/비싸다/무르다/배송 손상/맛 기대와 다�
       drafts,
       statusMessage: '실제 발송 전 미리보기입니다. 승인 전까지 Gmail 발송은 실행되지 않습니다.',
     });
+    const snapshot = buildJarvisSituationSnapshot({
+      purchaseOrderPreview: preview,
+      outreachSummary: outreachCollectionSummary,
+      pendingAction: pendingActionRef.current,
+    });
+    setConversationNextActions(planJarvisNextActions(snapshot));
     addMessage('jarvis', `대표님, 발주서 이메일 초안 ${drafts.length}건을 화면에 열었습니다. 수신처는 마스킹으로만 표시하고, 실제 Gmail 발송은 승인 후에만 진행됩니다.`, true);
     speakJarvisSummary({ text: '발주서 이메일 초안을 화면에 열었습니다. 실제 발송은 승인 후에만 진행됩니다.', intent: 'purchase_order_email_draft_preview' });
     setState('idle');
-  }, [addMessage, findPurchaseOrderDraftGroupIds, postCloudTask, purchaseOrderBulkPreview, refreshPurchaseOrderBulkPreview, speakJarvisSummary]);
+  }, [addMessage, findPurchaseOrderDraftGroupIds, outreachCollectionSummary, postCloudTask, purchaseOrderBulkPreview, refreshPurchaseOrderBulkPreview, speakJarvisSummary]);
 
   const runPurchaseOrderEmailDryRun = useCallback(async (groupIds: string[]) => {
     const ids = Array.from(new Set(groupIds.filter(Boolean))).slice(0, 3);
@@ -5934,6 +5945,40 @@ G. Review Objection: 작다/비싸다/무르다/배송 손상/맛 기대와 다�
     addMessage('jarvis', `${msg}\n\n수신처 원문과 첨부 base64는 화면에 표시하지 않았습니다.`, true);
     speakJarvisSummary({ text: msg, intent: 'purchase_order_email_dryrun' });
   }, [addMessage, postCloudTask, speakJarvisSummary]);
+
+  const showConversationOsBriefing = useCallback(async (sourceCommand: string) => {
+    setState('working');
+    addMessage('jarvis', '대표님, 주문/발주서/이메일/Outreach 상태를 한 번에 묶어서 우선순위를 판단하겠습니다.', true);
+
+    const [smartstoreSettled, purchaseSettled, dailySettled] = await Promise.allSettled([
+      postCloudTask('smartstore-orders', { action: 'query_order_status' }),
+      refreshPurchaseOrderBulkPreview(),
+      postCloudTask('daily-brief-24h', { dryRun: true, sendTelegram: false }),
+    ]);
+
+    const smartstoreResult = smartstoreSettled.status === 'fulfilled' ? smartstoreSettled.value : null;
+    const purchasePreview = purchaseSettled.status === 'fulfilled' ? purchaseSettled.value : purchaseOrderBulkPreview;
+    const dailyResult = dailySettled.status === 'fulfilled' ? dailySettled.value : null;
+    const mergedOutreachSummary = {
+      ...(dailyResult?.outreachSummary || dailyResult?.outreach || {}),
+      ...(outreachCollectionSummary || {}),
+    };
+
+    const snapshot = buildJarvisSituationSnapshot({
+      smartstoreResult,
+      purchaseOrderPreview: purchasePreview,
+      outreachSummary: mergedOutreachSummary,
+      pendingAction: pendingActionRef.current,
+      telegramResult: dailyResult,
+    });
+    const nextActions = planJarvisNextActions(snapshot);
+    const composed = composeJarvisBriefing(snapshot, nextActions);
+    setConversationNextActions(nextActions);
+    setConversationExpanded(true);
+    addMessage('jarvis', composed.screenText, true);
+    speakJarvisSummary({ text: composed.voiceSummary, intent: 'conversation_os_briefing' });
+    setState('idle');
+  }, [addMessage, outreachCollectionSummary, postCloudTask, purchaseOrderBulkPreview, refreshPurchaseOrderBulkPreview, speakJarvisSummary]);
 
   const requestPurchaseOrderEmailSendApproval = useCallback((groupIds: string[]) => {
     const ids = Array.from(new Set(groupIds.filter(Boolean))).slice(0, 3);
@@ -6261,6 +6306,12 @@ G. Review Objection: 작다/비싸다/무르다/배송 손상/맛 기대와 다�
         maskPrivateFields: true,
       });
       setPurchaseOrderBulkPreview(preview);
+      const snapshot = buildJarvisSituationSnapshot({
+        purchaseOrderPreview: preview,
+        outreachSummary: outreachCollectionSummary,
+        pendingAction: pendingActionRef.current,
+      });
+      setConversationNextActions(planJarvisNextActions(snapshot));
       const summary = preview?.summary || {};
       const groups = Array.isArray(preview?.groups) ? preview.groups : [];
       const groupLines = groups.slice(0, 8).map((group: any) => {
@@ -6527,6 +6578,13 @@ G. Review Objection: 작다/비싸다/무르다/배송 손상/맛 기대와 다�
     addMessage('user', text);
 
     const normalizedCommand = text.trim();
+    const wantsConversationOsBriefing =
+      /(오늘\s*(업무\s*)?브리핑|지금\s*뭐부터|자비스\s*오늘\s*상황|우선순위|다음\s*행동)/.test(normalizedCommand)
+      && !/(전체주문현황|전체\s*주문\s*현황|발주확인)/.test(normalizedCommand);
+    if (wantsConversationOsBriefing) {
+      await showConversationOsBriefing(normalizedCommand);
+      return;
+    }
     const wantsPrivatePurchaseOrderExport =
       /개인정보\s*포함.*(발주서|파일).*(다운로드|만들|생성)/.test(normalizedCommand)
       || /(원본|실제\s*배송용).*(발주서|파일).*(다운로드|만들|생성)/.test(normalizedCommand)
@@ -7691,7 +7749,7 @@ G. Review Objection: 작다/비싸다/무르다/배송 손상/맛 기대와 다�
       await new Promise(r => setTimeout(r, 300));
       setState(stateRef.current === 'idle' ? 'idle' : 'listening');
     }
-  }, [addMessage, jarvisRespond, speakJarvisSummary, stopSpeakingLevel]);
+  }, [addMessage, jarvisRespond, showConversationOsBriefing, speakJarvisSummary, stopSpeakingLevel]);
 
   useSpeechRecognition({
     onResult: (text: string) => {
@@ -8711,6 +8769,77 @@ G. Review Objection: 작다/비싸다/무르다/배송 손상/맛 기대와 다�
           )}
         </AnimatePresence>
       </div>
+
+      {conversationNextActions.length > 0 && (
+        <div
+          data-testid="jarvis-next-actions"
+          style={{
+            position: 'fixed',
+            left: 24,
+            bottom: 24,
+            zIndex: 72,
+            width: 'min(420px, calc(100vw - 32px))',
+            padding: 14,
+            borderRadius: 10,
+            border: '1px solid rgba(0,245,255,0.24)',
+            background: 'rgba(6,10,18,0.92)',
+            boxShadow: '0 18px 40px rgba(0,0,0,0.34)',
+            color: 'rgba(229,246,255,0.92)',
+            backdropFilter: 'blur(14px)',
+          }}
+        >
+          <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'center', marginBottom: 10 }}>
+            <div style={{ fontFamily: 'Orbitron, monospace', fontSize: '0.58rem', letterSpacing: '0.16em', color: '#00f5ff' }}>
+              NEXT ACTIONS
+            </div>
+            <button
+              onClick={() => setConversationNextActions([])}
+              style={{
+                border: '1px solid rgba(148,163,184,0.22)',
+                background: 'rgba(148,163,184,0.08)',
+                color: 'rgba(226,232,240,0.8)',
+                borderRadius: 6,
+                padding: '4px 8px',
+                cursor: 'pointer',
+                fontSize: '0.68rem',
+              }}
+            >
+              닫기
+            </button>
+          </div>
+          <div style={{ display: 'grid', gap: 8 }}>
+            {conversationNextActions.map(action => (
+              <button
+                key={action.id}
+                data-testid="jarvis-next-action-card"
+                onClick={() => handleTextSubmit(action.command)}
+                style={{
+                  textAlign: 'left',
+                  border: action.approvalRequired ? '1px solid rgba(250,204,21,0.28)' : '1px solid rgba(148,163,184,0.18)',
+                  background: action.approvalRequired ? 'rgba(250,204,21,0.08)' : 'rgba(15,23,42,0.62)',
+                  color: 'rgba(241,245,249,0.94)',
+                  borderRadius: 8,
+                  padding: 10,
+                  cursor: 'pointer',
+                }}
+              >
+                <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, alignItems: 'center' }}>
+                  <strong style={{ fontSize: '0.78rem' }}>{action.label}</strong>
+                  <span style={{ fontSize: '0.62rem', color: action.approvalRequired ? '#fde68a' : '#67e8f9' }}>
+                    {action.approvalRequired ? '승인 필요' : 'safe'}
+                  </span>
+                </div>
+                <div data-testid="jarvis-next-action-reason" style={{ marginTop: 5, fontSize: '0.7rem', lineHeight: 1.45, color: 'rgba(203,213,225,0.78)' }}>
+                  {action.reason}
+                </div>
+                <div data-testid="jarvis-next-action-command" style={{ marginTop: 6, fontSize: '0.68rem', color: 'rgba(0,245,255,0.8)' }}>
+                  {action.command}
+                </div>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
 
       {pendingAction && (
         <div
