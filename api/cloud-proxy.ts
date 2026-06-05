@@ -9499,7 +9499,7 @@ async function handlePurchaseOrderEmailSendApprovedV2(params: any = {}) {
     totalQuantity: safeResults.reduce((sum: number, result: any) => sum + Number(result.totalQuantity || 0), 0),
     gmailMessageIdHash: first.gmailMessageIdHash,
     executionStatus: dryRun ? 'DRY_RUN' : (sentCount === groupIds.length ? 'EXECUTED' : sentCount > 0 ? 'PARTIAL' : 'FAILED'),
-    errorCode: sentCount > 0 ? '' : (first.errorCode || 'PURCHASE_ORDER_EMAIL_SEND_FAILED'),
+    errorCode: dryRun ? '' : (sentCount > 0 ? '' : (first.errorCode || 'PURCHASE_ORDER_EMAIL_SEND_FAILED')),
     perGroupResults: safeResults,
     message: dryRun ? 'dryRun: Gmail send skipped.' : '',
   };
