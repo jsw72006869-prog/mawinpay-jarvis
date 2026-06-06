@@ -19,7 +19,7 @@ function result(
 }
 
 function hasQuestionSignal(text: string): boolean {
-  return /(\?|왜|뭐야|무엇|어떻게|가능해|맞아|아니야|필요하지|알려줘|설명해줘|언제 완료|차이가|어디서|어떤)/i.test(text);
+  return /(\?|뭐야|무엇|어떻게|가능해|맞아|아니야|필요하지|알려줘|설명해줘|언제 완료|차이가|어디서|어떤|왜|실패)/i.test(text);
 }
 
 function isInfluencerText(text: string): boolean {
@@ -31,7 +31,7 @@ function isCollectText(text: string): boolean {
 }
 
 function isCountOnlyText(text: string): boolean {
-  return /(가능한지|몇\s*명|후보\s*수|숫자만|수만|카운트|count|규모만|확인만)/i.test(text);
+  return /(가능한지|몇\s*명|후보\s*수|숫자만|수량만|카운트|count|규모만|확인만)/i.test(text);
 }
 
 export function inferIntentFromUserText(text: string, context: JarvisConversationContext = {}): JarvisIntentResult {
@@ -51,11 +51,11 @@ export function inferIntentFromUserText(text: string, context: JarvisConversatio
     return result('approval_no', 0.98, 'approval cancellation phrase', 'approval_required');
   }
 
-  if (/^(계속\s*수집|더\s*수집|이어\s*수집|이어줘|계속|추가|채워|목표까지|부족한\s*만큼)$/i.test(raw)) {
-    return result('outreach_goal_continue_command', 0.95, 'short outreach continuation command', 'execute');
+  if (/^(계속\s*수집(?:해|해줘)?|이어\s*수집(?:해|해줘)?|이어서\s*수집(?:해|해줘)?|추가\s*수집(?:해|해줘)?|더\s*찾아줘|부족한\s*만큼|continue\s*(collect|outreach)?)$/i.test(raw)) {
+    return result('outreach_goal_continue_command', 0.98, 'short outreach continuation command', 'execute');
   }
 
-  if (/(2번\s*모니터|두\s*번째\s*모니터|미션\s*디스플레이|큰\s*화면|현재\s*상황\s*띄워|후보\s*화면|메일\s*미리보기\s*크게|승인\s*카드\s*보여|보안\s*상태\s*보여)/i.test(raw)) {
+  if (/(2번\s*모니터|두\s*번째\s*모니터|미션\s*디스플레이|화면|후보\s*화면|메일\s*미리보기\s*크게|승인\s*카드\s*보여|보안\s*상태\s*보여)/i.test(raw)) {
     return result('show_mission_display_command', 0.9, 'mission display command', 'execute');
   }
 
@@ -68,11 +68,11 @@ export function inferIntentFromUserText(text: string, context: JarvisConversatio
     );
   }
 
-  if (/(후보\s*보여줘|후보\s*리스트|수집한\s*후보|상위\s*후보|최근\s*후보)/i.test(raw)) {
+  if (/(후보\s*보여줘|후보\s*리스트|수집된\s*후보|상위\s*후보|최근\s*후보)/i.test(raw)) {
     return result('review_candidates_command', 0.9, 'review latest outreach candidates', 'preview');
   }
 
-  if (/(상위\s*\d*\s*명.*메일\s*미리보기|후보.*메일\s*초안|개인화\s*메일|제안\s*메일\s*미리보기)/i.test(raw)) {
+  if (/(상위\s*\d*\s*명?\s*메일\s*미리보기|후보.*메일\s*초안|개인화\s*메일|제안\s*메일\s*미리보기)/i.test(raw)) {
     return result('generate_email_preview_command', 0.9, 'candidate email preview command', 'preview');
   }
 
