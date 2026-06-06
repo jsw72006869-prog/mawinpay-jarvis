@@ -3444,6 +3444,180 @@ function buildYouTubeCandidateSignals(input: {
   };
 }
 
+function normalizeYouTubeMetric(value: any): number {
+  const n = Number(value || 0);
+  return Number.isFinite(n) && n > 0 ? n : 0;
+}
+
+function clampScore(value: number): number {
+  if (!Number.isFinite(value)) return 0;
+  return Math.max(0, Math.min(100, Math.round(value)));
+}
+
+function daysSince(dateValue: any): number {
+  const t = new Date(String(dateValue || '')).getTime();
+  if (!Number.isFinite(t)) return 365;
+  return Math.max(0, Math.floor((Date.now() - t) / 86400000));
+}
+
+function scoreTitleHook(title: string): number {
+  const text = String(title || '').toLowerCase();
+  const hooks = [
+    '?꿀', '?대박', '?충격', '?비밀', '?비교', '?후기', '?추천', '?실패', '?성공',
+    'best', 'review', 'vs', 'secret', 'tips', 'how to', 'must', 'top',
+  ];
+  let score = 18;
+  for (const hook of hooks) {
+    if (text.includes(hook.toLowerCase())) score += 9;
+  }
+  if (/[0-9]/.test(text)) score += 8;
+  if (text.length >= 18 && text.length <= 58) score += 8;
+  return clampScore(score);
+}
+
+function buildHotVideoInsights(input: {
+  keyword: string;
+  categoryLabel?: string;
+  videos: any[];
+  channels: any[];
+}) {
+  const keywordTokens = buildKeywordTokens([input.keyword, input.categoryLabel].filter(Boolean).join(' '));
+  const channelMap = new Map<string, any>();
+  for (const channel of input.channels || []) {
+    const id = String(channel.channelId || channel.id || '');
+    if (id) channelMap.set(id, channel);
+  }
+
+  const hotVideos = (input.videos || []).map(video => {
+    const channel = channelMap.get(String(video.channelId || '')) || {};
+    const viewCount = normalizeYouTubeMetric(video.viewCount);
+    const likeCount = normalizeYouTubeMetric(video.likeCount);
+    const commentCount = normalizeYouTubeMetric(video.commentCount);
+    const subscriberCount = normalizeYouTubeMetric(channel.subscriberCount || video.subscriberCount);
+    const viewSubscriberRatio = subscriberCount > 0 ? Number((viewCount / subscriberCount).toFixed(2)) : 0;
+    const titleText = String(video.title || '').toLowerCase();
+    const matchedTokens = keywordTokens.filter(token => titleText.includes(token.toLowerCase()));
+    const recency = daysSince(video.publishedAt);
+    const recencyScore = recency <= 14 ? 100 : recency <= 45 ? 76 : recency <= 90 ? 54 : recency <= 180 ? 34 : 16;
+    const engagementScore = clampScore(
+      Math.min(55, Math.log10(viewCount + 1) * 11)
+      + Math.min(25, Math.log10(likeCount + 1) * 7)
+      + Math.min(20, Math.log10(commentCount + 1) * 8)
+    );
+    const keywordFitScore = clampScore(28 + matchedTokens.length * 24);
+    const hookScore = scoreTitleHook(video.title);
+    const productFitScore = clampScore((keywordFitScore * 0.65) + (hookScore * 0.20) + (recencyScore * 0.15));
+    const shortsRepurposeScore = clampScore(
+      (viewSubscriberRatio >= 2 ? 36 : viewSubscriberRatio >= 1 ? 26 : viewSubscriberRatio >= 0.35 ? 16 : 8)
+      + (commentCount >= 50 ? 18 : commentCount >= 10 ? 10 : 4)
+      + (hookScore * 0.26)
+      + (recencyScore * 0.18)
+    );
+    const totalScore = clampScore(
+      engagementScore * 0.30
+      + keywordFitScore * 0.22
+      + hookScore * 0.18
+      + recencyScore * 0.15
+      + shortsRepurposeScore * 0.15
+    );
+    const reasonParts = [
+      matchedTokens.length ? `keyword:${matchedTokens.slice(0, 3).join('/')}` : 'keyword:review',
+      viewSubscriberRatio ? `view/sub:${viewSubscriberRatio}` : 'view/sub:unknown',
+      `hook:${hookScore}`,
+    ];
+    return {
+      videoId: video.videoId,
+      title: String(video.title || '').slice(0, 140),
+      channelId: video.channelId || '',
+      channelTitle: video.channelTitle || channel.channelName || channel.title || '',
+      videoUrl: video.url || (video.videoId ? `https://www.youtube.com/watch?v=${video.videoId}` : ''),
+      thumbnailUrl: video.thumbnailUrl || '',
+      publishedAt: video.publishedAt || '',
+      viewCount,
+      likeCount,
+      commentCount,
+      subscriberCount,
+      viewSubscriberRatio,
+      recencyScore,
+      engagementScore,
+      keywordFitScore,
+      hookScore,
+      productFitScore,
+      shortsRepurposeScore,
+      totalScore,
+      reason: reasonParts.join(', '),
+    };
+  }).sort((a, b) => b.totalScore - a.totalScore).slice(0, 12);
+
+  const titles = hotVideos.map(video => String(video.title || ''));
+  const titlePatterns = Array.from(new Set(titles.flatMap(title => {
+    const patterns: string[] = [];
+    if (/[0-9]/.test(title)) patterns.push('numbered_hook');
+    if (/(후기|review|리뷰)/i.test(title)) patterns.push('review_proof');
+    if (/(추천|best|top)/i.test(title)) patterns.push('recommendation_list');
+    if (/(비교|vs)/i.test(title)) patterns.push('comparison_angle');
+    if (/(루틴|routine|how to)/i.test(title)) patterns.push('routine_or_howto');
+    return patterns;
+  }))).slice(0, 8);
+  const emotionalTriggers = Array.from(new Set(titles.flatMap(title => {
+    const triggers: string[] = [];
+    if (/(실패|mistake|망)/i.test(title)) triggers.push('avoid_failure');
+    if (/(대박|best|top|추천)/i.test(title)) triggers.push('smart_choice');
+    if (/(비밀|secret|꿀팁)/i.test(title)) triggers.push('insider_tip');
+    if (/(처음|입문|beginner)/i.test(title)) triggers.push('beginner_confidence');
+    return triggers;
+  }))).slice(0, 8);
+
+  const keywordLabel = input.categoryLabel || input.keyword || 'campaign';
+  const contentAngles = [
+    `${keywordLabel} top-performing title remake`,
+    `${keywordLabel} review-proof collaboration angle`,
+    `${keywordLabel} short-form hook test`,
+  ];
+  const shortsIdeas = hotVideos.slice(0, 3).map(video => `${video.channelTitle || 'creator'}: ${video.title}`.slice(0, 120));
+  const outreachAngles = hotVideos.slice(0, 3).map(video => (
+    `${video.channelTitle || 'creator'} has a strong recent hook; pitch a product-first remake with proof from the hot video.`
+  ));
+
+  return {
+    keywordOrCategory: keywordLabel,
+    hotVideos,
+    titlePatterns,
+    thumbnailPatterns: ['face_or_product_closeup', 'before_after_or_result', 'large_readable_text'],
+    emotionalTriggers,
+    contentAngles,
+    shortsIdeas,
+    outreachAngles,
+  };
+}
+
+function buildCandidateHotVideoFields(channel: any, channelVideos: any[], hotVideos: any[], signals: any) {
+  const channelHotVideos = hotVideos.filter(video => String(video.channelId || '') === String(channel.channelId || channel.id || ''));
+  const bestHotVideo = channelHotVideos[0] || null;
+  const subscriberCount = normalizeYouTubeMetric(channel.subscriberCount);
+  const topVideoViewCount = normalizeYouTubeMetric(bestHotVideo?.viewCount || signals?.topVideo?.viewCount);
+  const recentAverageViews = normalizeYouTubeMetric(signals?.recentAverageViews);
+  const viewSubscriberRatio = subscriberCount > 0
+    ? Number(((topVideoViewCount || recentAverageViews) / subscriberCount).toFixed(2))
+    : 0;
+  const isRookie = subscriberCount > 0 && subscriberCount <= 50000 && viewSubscriberRatio >= 1.2;
+  const hotVideoScore = clampScore(bestHotVideo?.totalScore || signals?.viralFitScore || 0);
+  const suggestedOffer = hotVideoScore >= 75
+    ? 'Send a proof-led collaboration pitch based on the creator hot video pattern.'
+    : signals?.contactable
+      ? 'Ask for a small test collaboration before full campaign spend.'
+      : 'Research public contact first; keep this in review until contact is verified.';
+  return {
+    hotVideoScore,
+    viewSubscriberRatio,
+    rookieBadge: isRookie ? 'rising_creator' : '',
+    isRookie,
+    suggestedOffer,
+    bestHotVideoTitle: bestHotVideo?.title || signals?.topVideo?.title || '',
+    bestHotVideoUrl: bestHotVideo?.videoUrl || signals?.topVideo?.url || '',
+  };
+}
+
 function calculateProductFitScore(channel: any, keyword: string, product: string): { score: number; reason: string } {
   let score = 0;
   const reasons: string[] = [];
@@ -4373,38 +4547,50 @@ async function handleYouTubeCollectionPreview(params: any = {}) {
     .replace(/\b(?:010|011|016|017|018|019)[-\s.]?\d{3,4}[-\s.]?\d{4}\b/g, '[phone_hidden]')
     .slice(0, 180);
 
-  const buildSummary = (stopReason: string, completionStatus = 'blocked') => ({
-    collectionMode,
-    targetType,
-    categoryKey: params.categoryKey || params.requestedVertical || 'unknown',
-    categoryLabel: params.categoryLabel || params.verticalLabel || params.requestedVertical || '',
-    keyword,
-    targetCount,
-    searchedVideoCount: videos.length,
-    uniqueChannelCount: channels.length || seenChannelIds.size,
-    candidateCount: candidates.length,
-    contactableCount: candidates.filter((c: any) => c.contact_email_exists).length,
-    rawSearchResultCount: isVideoCollection ? videos.length : seenChannelIds.size,
-    dedupedChannelCount: channels.length || seenChannelIds.size,
-    displayedCandidateCount: candidates.length,
-    publicEmailCount: candidates.filter((c: any) => c.contact_email_exists).length,
-    providerCalled: apiStatus.youtubeProviderCalled,
-    searchCalled: apiStatus.searchListCalled,
-    videosCalled: apiStatus.videosListCalled,
-    channelsCalled: apiStatus.channelsListCalled,
-    youtubeApiKeyConfigured: apiStatus.youtubeApiKeyConfigured,
-    youtubeProviderImplemented: apiStatus.youtubeProviderImplemented,
-    youtubeProviderCalled: apiStatus.youtubeProviderCalled,
-    searchListCalled: apiStatus.searchListCalled,
-    videosListCalled: apiStatus.videosListCalled,
-    channelsListCalled: apiStatus.channelsListCalled,
-    videoCategoriesListUsed: apiStatus.videoCategoriesListUsed,
-    completionStatus,
-    stopReason,
-    videos: videos.slice(0, requestedLimit),
-    channels,
-    candidates,
-  });
+  const buildSummary = (stopReason: string, completionStatus = 'blocked') => {
+    const viralInsight = buildHotVideoInsights({
+      keyword,
+      categoryLabel: params.categoryLabel || params.verticalLabel || params.requestedVertical || '',
+      videos,
+      channels,
+    });
+    return {
+      collectionMode,
+      targetType,
+      categoryKey: params.categoryKey || params.requestedVertical || 'unknown',
+      categoryLabel: params.categoryLabel || params.verticalLabel || params.requestedVertical || '',
+      keyword,
+      targetCount,
+      searchedVideoCount: videos.length,
+      uniqueChannelCount: channels.length || seenChannelIds.size,
+      candidateCount: candidates.length,
+      contactableCount: candidates.filter((c: any) => c.contact_email_exists).length,
+      rawSearchResultCount: isVideoCollection ? videos.length : seenChannelIds.size,
+      dedupedChannelCount: channels.length || seenChannelIds.size,
+      displayedCandidateCount: candidates.length,
+      publicEmailCount: candidates.filter((c: any) => c.contact_email_exists).length,
+      hotVideoCount: viralInsight.hotVideos.length,
+      topHotVideoScore: Number(viralInsight.hotVideos[0]?.totalScore || 0),
+      providerCalled: apiStatus.youtubeProviderCalled,
+      searchCalled: apiStatus.searchListCalled,
+      videosCalled: apiStatus.videosListCalled,
+      channelsCalled: apiStatus.channelsListCalled,
+      youtubeApiKeyConfigured: apiStatus.youtubeApiKeyConfigured,
+      youtubeProviderImplemented: apiStatus.youtubeProviderImplemented,
+      youtubeProviderCalled: apiStatus.youtubeProviderCalled,
+      searchListCalled: apiStatus.searchListCalled,
+      videosListCalled: apiStatus.videosListCalled,
+      channelsListCalled: apiStatus.channelsListCalled,
+      videoCategoriesListUsed: apiStatus.videoCategoriesListUsed,
+      completionStatus,
+      stopReason,
+      videos: videos.slice(0, requestedLimit),
+      channels,
+      candidates,
+      hotVideos: viralInsight.hotVideos,
+      viralInsight,
+    };
+  };
 
   if (!keyword) {
     const summary = buildSummary('keyword_required');
@@ -4610,8 +4796,40 @@ async function handleYouTubeCollectionPreview(params: any = {}) {
         apiWarnings.push(`youtube_channels_http_${channelsRes.status}`);
       }
     }
+    const finalViralInsight = buildHotVideoInsights({
+      keyword,
+      categoryLabel: params.categoryLabel || params.verticalLabel || params.requestedVertical || '',
+      videos,
+      channels,
+    });
+    for (const candidate of candidates) {
+      const channelVideos = videos.filter(video => String(video.channelId || '') === String(candidate.channelId || ''));
+      const hotFields = buildCandidateHotVideoFields(candidate, channelVideos, finalViralInsight.hotVideos, {
+        viralFitScore: candidate.viralFitScore,
+        recentAverageViews: candidate.recentAverageViews,
+        topVideo: { title: candidate.topVideoTitle, viewCount: candidate.topVideoViewCount, url: candidate.recentContentUrl },
+        contactable: candidate.contactable,
+      });
+      Object.assign(candidate, hotFields, {
+        emailDiscovery: {
+          status: candidate.emailStatus || 'unknown',
+          publicEmailFound: Boolean(candidate.contact_email_exists),
+          maskedEmail: candidate.maskedEmail || candidate.publicEmailMasked || '',
+        },
+      });
+    }
+    for (const channel of channels) {
+      const candidate = candidates.find((item: any) => String(item.channelId || '') === String(channel.channelId || ''));
+      if (!candidate) continue;
+      channel.hotVideoScore = candidate.hotVideoScore;
+      channel.viewSubscriberRatio = candidate.viewSubscriberRatio;
+      channel.rookieBadge = candidate.rookieBadge;
+      channel.suggestedOffer = candidate.suggestedOffer;
+      channel.bestHotVideoTitle = candidate.bestHotVideoTitle;
+      channel.bestHotVideoUrl = candidate.bestHotVideoUrl;
+    }
     const summary = buildSummary(params.countOnly ? 'countOnly' : 'dryRun', params.countOnly ? 'count_only' : 'preview');
-    return { success: true, ...summary, status: 'OK', stopReason: summary.stopReason, completionStatus: summary.completionStatus, summary, collectionSummary: summary, diagnostics: { ...apiStatus, youtubeApiStatus: 'ok', apiWarnings }, videos: summary.videos, channels, candidates, dryRun: true, countOnly: params.countOnly === true, autoSave: { skipped: true, reason: 'dryRun' } };
+    return { success: true, ...summary, status: 'OK', stopReason: summary.stopReason, completionStatus: summary.completionStatus, summary, collectionSummary: summary, viralInsight: summary.viralInsight, hotVideos: summary.hotVideos, diagnostics: { ...apiStatus, youtubeApiStatus: 'ok', apiWarnings }, videos: summary.videos, channels, candidates, dryRun: true, countOnly: params.countOnly === true, autoSave: { skipped: true, reason: 'dryRun' } };
   } catch (error: any) {
     apiWarnings.push('youtube_collection_preview_exception');
     const summary = buildSummary('api_error');
@@ -4755,6 +4973,18 @@ async function handleYouTubeCandidateEnrichPreview(params: any = {}) {
       thumbnailUrl: snippet.thumbnails?.medium?.url || snippet.thumbnails?.default?.url || '',
     };
     const signals = buildYouTubeCandidateSignals({ keyword, categoryLabel: categoryKey, channel, channelVideos: recentVideos, contactEmail: contact.email });
+    const viralInsight = buildHotVideoInsights({
+      keyword,
+      categoryLabel: categoryKey,
+      videos: recentVideos,
+      channels: [{ ...channel, channelName: channel.title }],
+    });
+    const hotVideoFields = buildCandidateHotVideoFields(
+      { ...channel, channelName: channel.title },
+      recentVideos,
+      viralInsight.hotVideos,
+      signals
+    );
     const riskFlags = [
       ...(signals.matchedKeywords.length ? [] : ['weak_keyword_evidence']),
       ...(contact.email ? [] : ['public_email_not_found']),
@@ -4775,6 +5005,14 @@ async function handleYouTubeCandidateEnrichPreview(params: any = {}) {
       videoCount: channel.videoCount,
       recentAverageViews: signals.recentAverageViews,
       recentVideos,
+      hotVideos: viralInsight.hotVideos,
+      hotVideoScore: hotVideoFields.hotVideoScore,
+      viewSubscriberRatio: hotVideoFields.viewSubscriberRatio,
+      rookieBadge: hotVideoFields.rookieBadge,
+      isRookie: hotVideoFields.isRookie,
+      suggestedOffer: hotVideoFields.suggestedOffer,
+      bestHotVideoTitle: hotVideoFields.bestHotVideoTitle,
+      bestHotVideoUrl: hotVideoFields.bestHotVideoUrl,
       matchedKeywords: signals.matchedKeywords,
       productFit: {
         score: signals.fitScore,
@@ -4787,6 +5025,12 @@ async function handleYouTubeCandidateEnrichPreview(params: any = {}) {
         emailStatus: signals.emailStatus,
         emailMasked: contact.email ? maskEmail(contact.email) : '',
       },
+      emailDiscovery: {
+        status: signals.emailStatus,
+        publicEmailFound: Boolean(contact.email),
+        maskedEmail: contact.email ? maskEmail(contact.email) : '',
+      },
+      viralInsight,
       riskFlags,
       diagnostics: { ...apiStatus, youtubeApiStatus: 'ok', apiWarnings },
       autoSave: { skipped: true, reason: 'dryRun' },
