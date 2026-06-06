@@ -642,7 +642,14 @@ export default function JarvisApp() {
   const [workspaceLoading, setWorkspaceLoading] = useState(false);
   const [outreachVisible, setOutreachVisible] = useState(false);
   const [outreachCandidates, setOutreachCandidates] = useState<InfluencerCandidate[]>([]);
-  const [outreachCollectionSummary, setOutreachCollectionSummary] = useState<any>(null);
+  const [outreachCollectionSummary, setOutreachCollectionSummary] = useState<any>(() => {
+    try {
+      const raw = window.sessionStorage.getItem('jarvis:lastOutreachCollectionSummary');
+      return raw ? JSON.parse(raw) : null;
+    } catch {
+      return null;
+    }
+  });
   const [outreachLoading, setOutreachLoading] = useState(false);
   const [purchaseOrderBulkPreview, setPurchaseOrderBulkPreview] = useState<any>(null);
   const [purchaseOrderEmailDraftPreview, setPurchaseOrderEmailDraftPreview] = useState<PurchaseOrderEmailDraftPreviewState>({
@@ -849,6 +856,19 @@ export default function JarvisApp() {
   // ── SCC 패널용 React state (리렌더링 트리거) ──
   const [sccOrderData, setSccOrderData] = useState<any>(null);
   const lastClapActivateAtRef = useRef<number>(0);
+
+  useEffect(() => {
+    try {
+      if (outreachCollectionSummary) {
+        window.sessionStorage.setItem(
+          'jarvis:lastOutreachCollectionSummary',
+          JSON.stringify(outreachCollectionSummary),
+        );
+      }
+    } catch {
+      // Session persistence is a convenience for E2E/context recovery only.
+    }
+  }, [outreachCollectionSummary]);
 
   // ── UI 컨텍스트 동기화 (GPT에게 현재 화면 정보 전달) ──
   useEffect(() => {
