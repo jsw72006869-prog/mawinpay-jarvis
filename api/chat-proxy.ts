@@ -1,5 +1,6 @@
 /// <reference types="node" />
 import type { VercelRequest, VercelResponse } from '@vercel/node';
+const jarvisSecurity = require('./_shared/security.cjs') as any;
 
 /**
  * GPT Chat Completions 프록시
@@ -7,13 +8,7 @@ import type { VercelRequest, VercelResponse } from '@vercel/node';
  * 서버 측 환경변수(OPENAI_API_KEY)를 사용하여 안전하게 프록시합니다.
  */
 export default async function handler(req: VercelRequest, res: VercelResponse) {
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
-
-  if (req.method === 'OPTIONS') {
-    return res.status(200).end();
-  }
+  if (jarvisSecurity.applyCors(req, res, { methods: 'POST, OPTIONS' })) return;
 
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' });

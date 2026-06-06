@@ -34,7 +34,7 @@ export interface MissionLogPayload {
   icon: string;
   source: string;
   message: string;
-  logType: 'info' | 'success' | 'error' | 'warn' | 'thinking';
+  logType: 'info' | 'success' | 'error' | 'warn' | 'warning' | 'thinking' | 'working' | 'done' | 'active';
   screenshot?: string; // base64 이미지 또는 URL (AgentConsolePanel에서 표시)
   extra?: Record<string, any>;
 }
@@ -141,11 +141,26 @@ export function emitPulseLine(from: string, to: string, speed: PulseLinePayload[
 }
 
 /** 미션 로그 */
-export function emitMissionLog(icon: string, source: string, message: string, logType: MissionLogPayload['logType'] = 'info', extra?: { screenshot?: string; [key: string]: any }) {
+export function emitMissionLog(icon: string | { step?: string; label?: string; status?: MissionLogPayload['logType']; detail?: string; [key: string]: any }, source?: string, message?: string, logType: MissionLogPayload['logType'] = 'info', extra?: { screenshot?: string; [key: string]: any }) {
+  if (typeof icon === 'object') {
+    const item = icon;
+    emit({
+      type: 'mission_log',
+      timestamp: Date.now(),
+      payload: {
+        icon: item.icon || '•',
+        source: item.step || source || 'JARVIS',
+        message: item.label || item.detail || message || '',
+        logType: item.status || logType || 'info',
+        extra: item,
+      } as MissionLogPayload,
+    });
+    return;
+  }
   emit({
     type: 'mission_log',
     timestamp: Date.now(),
-    payload: { icon, source, message, logType, screenshot: extra?.screenshot, extra } as MissionLogPayload,
+    payload: { icon, source: source || 'JARVIS', message: message || '', logType, screenshot: extra?.screenshot, extra } as MissionLogPayload,
   });
 }
 

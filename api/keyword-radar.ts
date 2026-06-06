@@ -1,5 +1,6 @@
 /// <reference types="node" />
 import type { VercelRequest, VercelResponse } from '@vercel/node';
+const jarvisSecurity = require('./_shared/security.cjs') as any;
 
 /**
  * SEO-K.1.2 Keyword Radar — Product Name Resolver
@@ -398,10 +399,7 @@ async function measureRank(
 
 // ── Main Handler ──
 export default async function handler(req: VercelRequest, res: VercelResponse) {
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
-  if (req.method === 'OPTIONS') return res.status(200).end();
+  if (jarvisSecurity.applyCors(req, res, { methods: 'POST, OPTIONS' })) return;
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
 
   const clientId = process.env.NAVER_CLIENT_ID;

@@ -219,7 +219,7 @@ function CentralDataCardEnhanced({
       initial="initial"
       animate={glitchActive ? 'glitch' : 'animate'}
       exit="exit"
-      variants={glitchActive ? glitchVariants : morphVariants}
+      variants={(glitchActive ? glitchVariants : morphVariants) as any}
       style={{
         width: 280,
         background: platform.bg,

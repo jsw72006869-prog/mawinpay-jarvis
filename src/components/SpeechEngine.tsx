@@ -7,6 +7,9 @@ export { ELEVENLABS_VOICES };
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 declare const window: any;
+type SpeechRecognition = any;
+type SpeechRecognitionEvent = any;
+type SpeechRecognitionErrorEvent = any;
 
 interface SpeechEngineProps {
   onResult: (text: string) => void;

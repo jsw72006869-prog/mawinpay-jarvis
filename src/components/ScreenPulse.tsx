@@ -15,6 +15,9 @@ export default function ScreenPulse({ state, clapDetected }: ScreenPulseProps) {
     thinking:  'rgba(124,58,237,0.35)',
     speaking:  'rgba(0,245,255,0.45)',
     working:   'rgba(34,197,94,0.35)',
+    success:   'rgba(34,197,94,0.45)',
+    error:     'rgba(239,68,68,0.45)',
+    approval_required: 'rgba(250,204,21,0.42)',
   };
 
   const glowColors: Record<JarvisState, string> = {
@@ -23,6 +26,9 @@ export default function ScreenPulse({ state, clapDetected }: ScreenPulseProps) {
     thinking:  '#7C3AED',
     speaking:  '#00F5FF',
     working:   '#22C55E',
+    success:   '#22C55E',
+    error:     '#EF4444',
+    approval_required: '#FACC15',
   };
 
   const color = glowColors[state];

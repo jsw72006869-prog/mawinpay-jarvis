@@ -23,7 +23,7 @@ export interface ActionButton {
 }
 
 export interface ActionContext {
-  type: 'smartstore' | 'creative' | 'growth_link' | 'briefing' | 'general' | 'outreach_result' | 'outreach_collect' | 'market_price_result';
+  type: 'smartstore' | 'creative' | 'growth_link' | 'briefing' | 'general' | 'outreach_result' | 'outreach_collect' | 'market_price_result' | 'outreach_mail_send' | 'email_send';
   newOrders?: number;
   pendingShipping?: number;
   preShipTotal?: number;
@@ -43,6 +43,9 @@ export interface ActionContext {
   emailCount?: number;
   shortfall?: number;
   savedTo?: string;
+  detail?: string;
+  totalCount?: number;
+  [key: string]: any;
 }
 
 export interface WorkflowStep {

@@ -36,7 +36,8 @@ export type PurchaseTrigger =
   | 'kimjang'
   | 'camping'
   | 'kids_snack'
-  | 'group_buy_deadline';
+  | 'group_buy_deadline'
+  | 'gift_praise';
 
 // ═══ Platform Copy Channel ═══
 export type PlatformCopyChannel =

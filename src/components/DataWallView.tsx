@@ -79,7 +79,7 @@ type RealIntelCandidate = {
   subscriberText?: string;
   viewsText?: string;
   likesText?: string;
-  contactStatus: 'contactable' | 'unknown' | 'none' | 'review';
+  contactStatus: 'contactable' | 'unknown' | 'none' | 'review' | 'url_only';
   fitScore?: number;
   reason?: string;
   keywords?: string[];
@@ -97,6 +97,14 @@ type RealIntelCandidate = {
   riskFlags?: string[];
   positiveSignals?: string[];
   jarvisReason?: string;
+  name?: string;
+  subscribers?: number | string;
+  engagementRate?: number | string;
+  fitReason?: string;
+  channelUrl?: string;
+  contentQuality?: number;
+  audienceFit?: number;
+  brandSafety?: number;
 };
 
 /* ─── OUTREACH-Q.5: Candidate Quality Evaluation ─── */
@@ -1423,7 +1431,7 @@ const DataWallView: React.FC = () => {
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ color: '#fff', fontSize: '12px', fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.name}</div>
                     <div style={{ color: 'rgba(255,255,255,0.4)', fontSize: '9px', marginTop: '2px' }}>
-                      {c.subscribers ? `${(c.subscribers / 1000).toFixed(1)}K` : ''} · {c.recommendationTier || '검토'}
+                      {c.subscribers ? `${(Number(c.subscribers) / 1000).toFixed(1)}K` : ''} · {c.recommendationTier || '검토'}
                     </div>
                   </div>
                   <div style={{
@@ -1544,7 +1552,7 @@ const DataWallView: React.FC = () => {
                 <div>
                   <div style={{ color: '#fff', fontSize: '16px', fontWeight: 700 }}>{selectedInfluencer.name}</div>
                   <div style={{ color: 'rgba(255,255,255,0.5)', fontSize: '11px', marginTop: '3px' }}>
-                    {selectedInfluencer.platform} · {selectedInfluencer.subscribers ? `${(selectedInfluencer.subscribers / 1000).toFixed(1)}K 구독` : ''}
+                    {selectedInfluencer.platform} · {selectedInfluencer.subscribers ? `${(Number(selectedInfluencer.subscribers) / 1000).toFixed(1)}K 구독` : ''}
                   </div>
                 </div>
               </div>
@@ -1568,7 +1576,7 @@ const DataWallView: React.FC = () => {
                 </div>
                 <div style={{ padding: '14px', borderRadius: '10px', background: 'rgba(0,245,255,0.05)', border: '1px solid rgba(0,245,255,0.15)', textAlign: 'center' }}>
                   <div style={{ color: 'rgba(0,245,255,0.6)', fontSize: '9px', letterSpacing: '1px', marginBottom: '6px' }}>ENGAGEMENT</div>
-                  <div style={{ color: '#00F5FF', fontSize: '24px', fontWeight: 700 }}>{selectedInfluencer.engagementRate ? `${selectedInfluencer.engagementRate.toFixed(1)}%` : '—'}</div>
+                  <div style={{ color: '#00F5FF', fontSize: '24px', fontWeight: 700 }}>{selectedInfluencer.engagementRate ? `${Number(selectedInfluencer.engagementRate).toFixed(1)}%` : '—'}</div>
                 </div>
                 <div style={{ padding: '14px', borderRadius: '10px', background: 'rgba(255,184,0,0.05)', border: '1px solid rgba(255,184,0,0.15)', textAlign: 'center' }}>
                   <div style={{ color: 'rgba(255,184,0,0.6)', fontSize: '9px', letterSpacing: '1px', marginBottom: '6px' }}>CONTACT</div>

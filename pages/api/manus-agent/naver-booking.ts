@@ -1,4 +1,5 @@
 import type { NextApiRequest, NextApiResponse } from 'next';
+const jarvisSecurity = require('../../../api/_shared/security.cjs') as any;
 
 /**
  * 마누스 AI 기반 범용 웹 작업 자동화 엔드포인트
@@ -28,11 +29,7 @@ export default async function handler(
   req: NextApiRequest,
   res: NextApiResponse
 ) {
-  // CORS
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
-  if (req.method === 'OPTIONS') return res.status(200).end();
+  if (jarvisSecurity.applyCors(req, res, { methods: 'POST, OPTIONS' })) return;
   if (req.method !== 'POST') {
     return res.status(405).json({ success: false, error: 'Method not allowed' });
   }

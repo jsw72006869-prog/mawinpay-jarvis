@@ -3,6 +3,8 @@ import type { VercelRequest, VercelResponse } from '@vercel/node';
 import mysql from 'mysql2/promise';
 import crypto from 'crypto';
 import { evaluateTargetFit, detectVerticalFromKeyword, VERTICAL_QUERY_PACKS, type OutreachTargetVertical, type TargetMatchStatus, type TargetFitResult } from './target-fit-gate';
+import { buildPersonalizedInfluencerEmail, evaluateInfluencerEmailQuality } from '../src/lib/outreach/personalizedEmail';
+const jarvisSecurity = require('./_shared/security.cjs') as any;
 
 // Dynamic imports for ESM-only packages (resolved at runtime)
 let _bcrypt: any = null;
@@ -49,6 +51,31 @@ const YOUTUBE_API_KEY_BACKUP = process.env.YOUTUBE_API_KEY_BACKUP || '';
 const GMAIL_ADDRESS = process.env.GMAIL_ADDRESS || '';
 const GMAIL_APP_PASSWORD = process.env.GMAIL_APP_PASSWORD || '';
 const GMAIL_SENDER_NAME = process.env.GMAIL_SENDER_NAME || 'MAWINPAY JARVIS';
+const JARVIS_ALLOWED_ORIGINS = (process.env.JARVIS_ALLOWED_ORIGINS || 'https://mawinpay-jarvis.vercel.app,http://localhost:3002,http://localhost:3000')
+  .split(',')
+  .map(origin => origin.trim())
+  .filter(Boolean);
+
+function applyJarvisCors(req: VercelRequest, res: VercelResponse) {
+  jarvisSecurity.applyCors(req, res, { allowedOrigins: JARVIS_ALLOWED_ORIGINS });
+}
+
+function assertOwnerRequest(req: VercelRequest): { ok: true } | { ok: false; errorCode: string } {
+  return jarvisSecurity.requireOwnerToken(req);
+}
+
+function isExternalExecutionTask(task: string, params: any): boolean {
+  const dryRun = params?.dryRun === true || params?.dryRun === 'true' || params?.countOnly === true || params?.countOnly === 'true';
+  if (dryRun) return false;
+  return [
+    'purchase-order-email-send-approved',
+    'purchase-order-send-approved',
+    'outreach-mail-send',
+    'outreach-followup-send-approved',
+    'telegram-approval-reply',
+    'smartstore-confirm-orders',
+  ].includes(task);
+}
 
 // YouTube API 키 로테이션 상태
 let youtubeKeyState = {
@@ -2940,7 +2967,7 @@ const SHEET_HEADERS: Record<string, string[]> = {
   purchase_order_drafts: ['draftId','createdAt','supplier','productSummary','totalQuantity','totalAmountIfAvailable','status','safePreview'],
   supplier_profiles: ['supplier_id','supplier_name','product_group_code','product_group_name','product_keywords','option_keywords','seller_product_code_keywords','carrier','email','active','notes','updated_at'],
   influencer_candidates: ['influencer_id','platform','channel_name','handle','profile_url','contact_email','contact_url','email_status','category_tags','source_keyword','source_product','followers_or_subscribers','avg_views','fit_score','fit_reason','outreach_status','last_contacted_at','reply_status','next_action','duplicate_hash','created_at','updated_at','notes'],
-  influencer_candidates_v2: ['influencer_id','platform','channel_name','handle','profile_url','contact_email','contact_url','email_status','category_tags','source_keyword','source_product','followers_or_subscribers','avg_views','fit_score','fit_reason','outreach_status','last_contacted_at','reply_status','next_action','duplicate_hash','created_at','updated_at','notes','proposal_angle','proposal_subject','proposal_draft','requested_vertical','target_match_status','target_match_score','target_evidence_terms','target_evidence_fields','exclude_reason','qualified_for_requested_vertical','collected_query'],
+  influencer_candidates_v2: ['influencer_id','platform','channel_name','handle','profile_url','contact_email','contact_url','email_status','category_tags','source_keyword','source_product','followers_or_subscribers','avg_views','fit_score','fit_reason','outreach_status','last_contacted_at','reply_status','next_action','duplicate_hash','created_at','updated_at','notes','proposal_angle','proposal_subject','proposal_draft','requested_vertical','target_match_status','target_match_score','target_evidence_terms','target_evidence_fields','exclude_reason','qualified_for_requested_vertical','collected_query','target_fit_score','engagement_score','response_likelihood_score','collaboration_fit_score','contact_quality_score','priority_score','quality_tier','email_subject','email_body','personalization_status','personalization_score','personalization_signals','email_quality_flags'],
   market_price_checks: ['checkId','createdAt','productName','rawMaterialCost','currentPrice','shippingCost','packagingCost','platformFeeRate','otherCosts','competitorPrices','competitorMinPrice','competitorAvgPrice','netSalesAmount','estimatedMargin','estimatedMarginRate','jarvisDecision','recommendedAction','sourceCommand'],
   // DAILY-BRIEF-A.1: Daily Brief 4탭
   daily_operations_brief: ['brief_id','date_kst','period_start_kst','period_end_kst','smartstore_new_orders','smartstore_ready_orders','smartstore_delivering','smartstore_delivered','smartstore_purchase_decided','smartstore_confirm_needed','outreach_discovered','outreach_public_email_found','outreach_contact_url_found','outreach_draft_ready','outreach_approval_waiting','outreach_email_sent','outreach_positive_replies','outreach_accepted','outreach_followup_needed','outreach_followup_drafted','outreach_followup_sent','hot_youtube_count','hot_threads_count','hot_instagram_count','hot_tiktok_count','hot_naver_blog_count','telegram_sent','telegram_sent_at','telegram_error_code','created_at','notes'],
@@ -4061,6 +4088,27 @@ async function handleOutreachCollect(params: any) {
   // 적합도 점수 내림차순 정렬
   candidates.forEach((candidate: any) => Object.assign(candidate, calculateOutreachQualityScores(candidate)));
   excludedCandidates.forEach((candidate: any) => Object.assign(candidate, calculateOutreachQualityScores(candidate)));
+  candidates.forEach((candidate: any) => {
+    const personalized = buildPersonalizedInfluencerEmail({
+      candidateId: candidate.candidateId,
+      channelName: candidate.name || candidate.channelName,
+      channelTitle: candidate.channelTitle || candidate.name,
+      requestedVertical,
+      productName,
+      recentVideoTitles: [candidate.recentContentTitle || candidate.topVideoTitle || candidate.videoTitle].filter(Boolean),
+      channelDescription: candidate.description || '',
+      fitReason: candidate.productFitReason || candidate.fit_reason || '',
+      suggestedCollabAngle: candidate.suggestedOfferAngle || candidate.proposal_angle || '',
+    });
+    const emailQuality = evaluateInfluencerEmailQuality(personalized);
+    candidate.email_subject = personalized.subject;
+    candidate.email_body = personalized.body;
+    candidate.personalization_status = personalized.personalizationStatus;
+    candidate.personalization_score = emailQuality.score;
+    candidate.personalization_signals = personalized.signals.join(', ');
+    candidate.email_quality_flags = emailQuality.flags.join(', ');
+    if (!emailQuality.passed && candidate.quality_tier === 'A') candidate.quality_tier = 'B';
+  });
   candidates.sort((a, b) => (Number(b.priority_score || b.productFitScore || 0) - Number(a.priority_score || a.productFitScore || 0)));
 
   // 제외 사유 집계
@@ -4241,7 +4289,7 @@ function buildDuplicateHash(platform: string, profileUrl: string, channelName: s
   return h.toString(16).padStart(8, '0');
 }
 async function handleOutreachQualityBatchRun(params: any = {}) {
-  const requestedVertical = params.requestedVertical || inferRequestedVerticalFromText(params.keyword || params.product || '');
+  const requestedVertical = params.requestedVertical || detectVerticalFromKeyword(params.keyword || params.product || '');
   const targetContactableCount = Math.max(1, Number(params.targetContactableCount || 20));
   const dryRun = params.dryRun !== false;
   const result: any = await handleOutreachCollect({
@@ -4414,6 +4462,19 @@ async function handleOutreachSaveCandidates(params: any) {
         c.target_exclude_reason || c.excludedReason || '',
         c.qualified_for_requested_vertical || '',
         c.collected_query || c.keyword || '',
+        String(c.target_fit_score || c.target_match_score || ''),
+        String(c.engagement_score || ''),
+        String(c.response_likelihood_score || ''),
+        String(c.collaboration_fit_score || ''),
+        String(c.contact_quality_score || ''),
+        String(c.priority_score || ''),
+        c.quality_tier || '',
+        c.email_subject || c.proposal_subject || '',
+        c.email_body || c.proposal_draft || '',
+        c.personalization_status || '',
+        String(c.personalization_score || ''),
+        Array.isArray(c.personalization_signals) ? c.personalization_signals.join(', ') : (c.personalization_signals || ''),
+        Array.isArray(c.email_quality_flags) ? c.email_quality_flags.join(', ') : (c.email_quality_flags || ''),
       ];
       if (dryRun) {
         const isDup = existingHashes.has(dupHash);
@@ -4673,13 +4734,49 @@ async function handleOutreachMailPrepare(params: any) {
     channelName,
     platform: platformVal,
     toEmail: contactEmail.replace(/(.{2}).+(@.+)/, '$1***$2'), // 이메일 마스킹 (화면 표시용)
-    toEmailRaw: contactEmail, // 실제 발송용 (로그 미출력)
     subject: proposalSubject,
     bodyPreview: proposalDraft.slice(0, 200) + (proposalDraft.length > 200 ? '...' : ''),
     influencer_id: get('influencer_id'),
     profile_url: get('profile_url'),
     rowNum: targetRowNum,
     message: `[${channelName}] 발송 준비 완료. 대표님 승인 후 발송됩니다.`,
+  };
+}
+
+async function handleOutreachPersonalizedEmailPreview(params: any = {}) {
+  const candidate = params.candidate || params;
+  const email = buildPersonalizedInfluencerEmail({
+    candidateId: candidate.candidateId || candidate.influencer_id,
+    channelName: candidate.channelName || candidate.channel_name || candidate.name,
+    channelTitle: candidate.channelTitle || candidate.channel_name,
+    requestedVertical: candidate.requestedVertical || candidate.requested_vertical || params.requestedVertical,
+    productName: params.productName || candidate.source_product || candidate.suggestedProduct,
+    recentVideoTitles: Array.isArray(candidate.recentVideoTitles)
+      ? candidate.recentVideoTitles
+      : [candidate.recentContentTitle || candidate.videoTitle || candidate.recent_video_title].filter(Boolean),
+    channelDescription: candidate.channelDescription || candidate.description || candidate.notes,
+    contentStyle: candidate.contentStyle || candidate.content_style,
+    channelTone: candidate.channelTone || candidate.channel_tone,
+    audienceProfile: candidate.audienceProfile || candidate.audience_profile,
+    fitReason: candidate.fitReason || candidate.fit_reason || candidate.productFitReason,
+    suggestedCollabAngle: candidate.suggestedCollabAngle || candidate.proposal_angle || candidate.proposalAngle,
+  });
+  const quality = evaluateInfluencerEmailQuality(email);
+  return {
+    success: true,
+    executeLocked: true,
+    approvalRequiredForSend: true,
+    email: {
+      subject: email.subject,
+      bodyPreview: email.body,
+      personalizationStatus: email.personalizationStatus,
+      personalizationScore: email.personalizationScore,
+      signals: email.signals,
+      riskFlags: email.riskFlags,
+    },
+    quality,
+    sendEligible: quality.passed,
+    blockedReason: quality.passed ? '' : 'PERSONALIZATION_SCORE_BELOW_70',
   };
 }
 
@@ -5278,9 +5375,7 @@ async function handleKamisMini(params: any) {
 // ── MAIN HANDLER ──
 // ══════════════════════════════════════════════════════════════
 export default async function handler(req: VercelRequest, res: VercelResponse) {
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  applyJarvisCors(req, res);
 
   if (req.method === 'OPTIONS') return res.status(200).end();
 
@@ -5350,12 +5445,21 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             headers.forEach((h: string, i: number) => { obj[h] = row[i] || ''; });
             return obj;
           });
+          const sanitizeInfluencerRow = (row: any) => {
+            const rawEmail = String(row.contact_email || row.email || row.public_email || '');
+            const { contact_email, email, public_email, ...safeRow } = row;
+            return {
+              ...safeRow,
+              contact_email_exists: rawEmail.includes('@'),
+              contact_email_masked: rawEmail.includes('@') ? maskEmail(rawEmail) : '',
+            };
+          };
           const emailCount = influencers.filter((i: any) => i.contact_email && i.contact_email.includes('@')).length;
           return res.status(200).json({
             summary: {
-              influencers: influencers.slice(0, 50),
-              emails: influencers.filter((i: any) => i.contact_email).slice(0, 20),
-              naver: influencers.filter((i: any) => i.platform === 'Naver Blog').slice(0, 20),
+              influencers: influencers.slice(0, 50).map(sanitizeInfluencerRow),
+              emails: influencers.filter((i: any) => i.contact_email).slice(0, 20).map(sanitizeInfluencerRow),
+              naver: influencers.filter((i: any) => i.platform === 'Naver Blog').slice(0, 20).map(sanitizeInfluencerRow),
             },
             total: influencers.length,
             emailCount,
@@ -5374,6 +5478,33 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (req.method === 'POST') {
       const { endpoint, taskType, task, params, ...rest } = req.body;
       const resolvedTask = taskType || task || endpoint || '';
+      const mergedForSecurity = params || rest;
+      const securityParams = {
+        ...(mergedForSecurity || {}),
+        idempotencyKey: (mergedForSecurity || {}).idempotencyKey || req.headers['x-jarvis-idempotency-key'],
+      };
+      if (isExternalExecutionTask(resolvedTask, securityParams)) {
+        const owner = assertOwnerRequest(req);
+        if (owner.ok === false) {
+          return res.status(401).json({
+            success: false,
+            blocked: true,
+            executeLocked: true,
+            errorCode: owner.errorCode,
+            message: 'External execution requires owner authorization.',
+          });
+        }
+        const executionGate = jarvisSecurity.requireActionExecutionParams(securityParams);
+        if (executionGate.ok === false) {
+          return res.status(400).json({
+            success: false,
+            blocked: true,
+            executeLocked: true,
+            errorCode: executionGate.errorCode,
+            message: 'External execution requires actionId and idempotencyKey.',
+          });
+        }
+      }
 
       // ── 스마트스토어 주문 조회 ──
       if (resolvedTask === 'smartstore-orders') {
@@ -5599,6 +5730,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       // ── OUTREACH-MAIL-A.1: 메일 발송 준비/실행 ──
       if (resolvedTask === 'outreach-mail-prepare') {
         const result = await handleOutreachMailPrepare(params || rest);
+        return res.status(200).json(result);
+      }
+      if (resolvedTask === 'outreach-personalized-email-preview') {
+        const result = await handleOutreachPersonalizedEmailPreview(params || rest);
         return res.status(200).json(result);
       }
       if (resolvedTask === 'outreach-mail-send') {
@@ -7392,6 +7527,10 @@ type HDPlatform =
   | 'threads' | 'youtube_shorts' | 'youtube_thumbnail' | 'instagram_reels'
   | 'tiktok' | 'naver_blog' | 'outreach_email' | 'smartstore_detail';
 
+type HDHumanDesire = string;
+type HDCustomerAnxiety = string;
+type HDPurchaseTrigger = string;
+
 const HD_GENERIC_PHRASES = [
   '지금 만나보세요', '특별한 가격', '최고의 품질', '합리적인 가격',
   '신선하고 맛있는', '많은 관심 부탁드립니다', '놓치지 마세요', '고객님께 추천드립니다',
@@ -7469,11 +7608,6 @@ function hdProfile(product: string): any {
     triggers: ['seasonal_peak', 'direct_from_farm'],
     sensory: { texture: [], aroma: [], scene: [], timing: [], emotionalImages: [] },
   };
-
-  if (action === 'smartstore-confirm-orders' || action === 'confirm_orders_dry_run') {
-    clearTimeout(handlerTimeoutId);
-    return handleSmartstoreConfirmOrders(params);
-  }
 }
 
 function hdNormalizePlatform(platform: string, outputType?: string): HDPlatform {
@@ -9351,6 +9485,21 @@ async function handlePurchaseOrderEmailSendApprovedV2(params: any = {}) {
   if (groupIds.length > 3 || maxSendCount > 3) {
     return { success: false, sent: false, blocked: true, executeLocked: true, errorCode: 'BULK_SEND_LIMIT_EXCEEDED' };
   }
+  if (!dryRun) {
+    if (!actionId) {
+      return { success: false, sent: false, blocked: true, executeLocked: true, errorCode: 'ACTION_ID_REQUIRED_FOR_EXECUTION' };
+    }
+    const action = await readPendingJarvisAction(actionId);
+    if (!action) {
+      return { success: false, sent: false, blocked: true, executeLocked: true, errorCode: 'ACTION_NOT_FOUND' };
+    }
+    if (!['PURCHASE_ORDER_EMAIL_SEND', 'BULK_PURCHASE_ORDER_EMAIL_SEND'].includes(action.actionType)) {
+      return { success: false, sent: false, blocked: true, executeLocked: true, errorCode: 'ACTION_TYPE_MISMATCH' };
+    }
+    if (!['awaiting_confirmation', 'approved'].includes(action.status)) {
+      return { success: false, sent: false, blocked: true, executeLocked: true, errorCode: 'ACTION_ALREADY_FINALIZED', status: action.status };
+    }
+  }
 
   const built = await buildBulkPurchaseOrderGroups({ ...params, scope: params.scope || 'pre_ship' });
   const profiles = await readPurchaseOrderSupplierProfiles();
@@ -9481,6 +9630,14 @@ async function handlePurchaseOrderEmailSendApprovedV2(params: any = {}) {
   const sentCount = safeResults.filter((result: any) => result.sent).length;
   const blockedCount = safeResults.filter((result: any) => result.blocked || result.errorCode).length;
   const first = safeResults[0] || {};
+  if (!dryRun && actionId) {
+    await updatePendingJarvisAction(actionId, {
+      status: sentCount > 0 ? (sentCount === groupIds.length ? 'executed' : 'partial') : 'failed',
+      approvalSource,
+      resultStatus: sentCount > 0 ? 'sent' : 'failed',
+      errorCode: sentCount > 0 ? '' : (first.errorCode || 'PURCHASE_ORDER_EMAIL_SEND_FAILED'),
+    }).catch(() => null);
+  }
   return {
     success: dryRun ? true : sentCount > 0,
     sent: sentCount > 0,

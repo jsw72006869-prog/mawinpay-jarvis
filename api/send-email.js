@@ -4,25 +4,28 @@
 // attachments 지원 + 테스트 수신자 보호 조건
 
 const nodemailer = require('nodemailer');
+const crypto = require('crypto');
+const jarvisSecurity = require('./_shared/security.cjs');
 
 // 테스트 수신자 보호 조건 - 이 목록에 없는 주소로는 발송 차단
 const ALLOWED_TEST_RECIPIENTS = ['jungsng805@naver.com'];
 
 module.exports = async function handler(req, res) {
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
-  if (req.method === 'OPTIONS') return res.status(200).end();
+  if (jarvisSecurity.applyCors(req, res)) return;
 
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
+  const { to, subject, body, html, recipients, attachments, testMode, dryRun, actionId, idempotencyKey } = req.body || {};
+  const isTestMode = testMode === true || testMode === 'true';
+  const isDryRun = dryRun === true || dryRun === 'true' || isTestMode;
+
   const gmailUser = process.env.GMAIL_ADDRESS;
   const gmailPass = process.env.GMAIL_APP_PASSWORD;
   const senderName = process.env.GMAIL_SENDER_NAME || 'MAWINPAY JARVIS';
 
-  if (!gmailUser || !gmailPass) {
+  if (!isDryRun && (!gmailUser || !gmailPass)) {
     return res.status(500).json({
       error: 'Gmail 설정 없음',
       message: 'GMAIL_ADDRESS, GMAIL_APP_PASSWORD 환경변수를 Vercel에 설정해주세요.',
@@ -30,15 +33,22 @@ module.exports = async function handler(req, res) {
   }
 
   // Gmail SMTP 트랜스포터 생성
-  const transporter = nodemailer.createTransport({
+  const transporter = !isDryRun ? nodemailer.createTransport({
     service: 'gmail',
     auth: {
       user: gmailUser,
       pass: gmailPass,
     },
-  });
-
-  const { to, subject, body, html, recipients, attachments, testMode } = req.body || {};
+  }) : null;
+  if (!isDryRun) {
+    const owner = jarvisSecurity.requireOwnerToken(req);
+    if (!owner.ok) return jarvisSecurity.block(res, 401, owner.errorCode, 'Gmail execution requires owner authorization.');
+    const execution = jarvisSecurity.requireActionExecutionParams({
+      actionId,
+      idempotencyKey: idempotencyKey || req.headers['x-jarvis-idempotency-key'],
+    });
+    if (!execution.ok) return jarvisSecurity.block(res, 400, execution.errorCode, 'Gmail execution requires actionId and idempotencyKey.');
+  }
 
   // 단일 발송 또는 다중 발송
   const targets = recipients && Array.isArray(recipients)
@@ -50,7 +60,7 @@ module.exports = async function handler(req, res) {
     return res.status(400).json({ error: 'to 또는 recipients 필드가 필요합니다.' });
   }
 
-  const isTestMode = testMode === true || testMode === 'true';
+  const maskEmail = (value) => String(value || '').replace(/(.{2}).+(@.+)/, '$1***$2');
 
   // attachments 처리: [{filename, content(base64), contentType}] 형식
   const mailAttachments = [];
@@ -78,14 +88,19 @@ module.exports = async function handler(req, res) {
     const mailHtml = target.body || target.html || html || body || '';
 
     if (!toEmail || !toEmail.includes('@')) {
-      results.push({ email: toEmail, status: 'skipped', reason: '유효하지 않은 이메일' });
+      results.push({ recipientMasked: maskEmail(toEmail), status: 'skipped', reason: '유효하지 않은 이메일' });
+      continue;
+    }
+
+    if (isDryRun) {
+      results.push({ recipientMasked: maskEmail(toEmail), status: 'dry_run_skipped' });
       continue;
     }
 
     // 보호 조건: 허용된 테스트 수신자만 발송
     if (!ALLOWED_TEST_RECIPIENTS.includes(toEmail)) {
       results.push({
-        email: toEmail,
+        recipientMasked: maskEmail(toEmail),
         status: 'blocked',
         reason: '테스트 수신자 목록에 없음 (execute LOCKED)',
       });
@@ -108,11 +123,15 @@ module.exports = async function handler(req, res) {
       }
 
       const info = await transporter.sendMail(mailOptions);
-      results.push({ email: toEmail, status: 'sent', messageId: info.messageId });
+      results.push({
+        recipientMasked: maskEmail(toEmail),
+        status: 'sent',
+        messageIdHash: crypto.createHash('sha256').update(String(info.messageId || '')).digest('hex').slice(0, 16),
+      });
       successCount++;
     } catch (err) {
-      console.error(`[Gmail] 발송 실패 ${toEmail}:`, err);
-      results.push({ email: toEmail, status: 'failed', reason: String(err.message || err) });
+      console.error('[Gmail] send failed for masked recipient:', String(err.message || err).slice(0, 120));
+      results.push({ recipientMasked: maskEmail(toEmail), status: 'failed', reason: String(err.message || err).slice(0, 120) });
       failCount++;
     }
 
@@ -131,5 +150,6 @@ module.exports = async function handler(req, res) {
     results,
     provider: 'gmail',
     testMode: isTestMode,
+    dryRun: isDryRun,
   });
 };

@@ -54,7 +54,7 @@ interface LogEntry {
   icon: string;
   source: string;
   text: string;
-  type: 'info' | 'success' | 'error' | 'warn' | 'thinking';
+  type: 'info' | 'success' | 'error' | 'warn' | 'warning' | 'thinking' | 'working' | 'done' | 'active';
 }
 
 interface ActivePulse {

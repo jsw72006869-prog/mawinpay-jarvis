@@ -2,6 +2,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { useEffect, useState, useRef, useCallback } from 'react';
 
 export interface InfluencerData {
+  id?: string;
   name: string;
   platform: string;
   followers?: string;
@@ -14,7 +15,7 @@ export interface InfluencerData {
   status?: string;
   subscriberCount?: number;
   subscribers?: number;
-  viewCount?: number;
+  viewCount?: number | string;
   viewCountFormatted?: string;
   videoCount?: number;
   description?: string;
@@ -432,7 +433,7 @@ export default function InfluencerCards({ influencers, visible, onClose, onSendE
   if (sortBy === 'subscribers') {
     filteredList.sort((a, b) => ((b.subscriberCount || b.subscribers || 0) - (a.subscriberCount || a.subscribers || 0)));
   } else if (sortBy === 'views') {
-    filteredList.sort((a, b) => ((b.viewCount || 0) - (a.viewCount || 0)));
+    filteredList.sort((a, b) => (Number(b.viewCount || 0) - Number(a.viewCount || 0)));
   }
 
   const stats = {

@@ -47,12 +47,17 @@ export type JarvisActionType =
   | 'smartstore_confirm' | 'smartstore_sheet' | 'smartstore_settlement'
   | 'smartstore_purchase_email' | 'smartstore_report'
   | 'manus_task' | 'manus_status' | 'morning_briefing' | 'analyze_influencers_smart'
-  | 'kamis_price' | 'daily_brief_24h' | 'unknown';
+  | 'kamis_price' | 'daily_brief_24h'
+  | 'generate_influencer_content' | 'youtube_trending' | 'book_restaurant_legacy'
+  | 'copy_orchestrator' | 'copy_review_research' | 'copy_social_research'
+  | 'copy_market_research' | 'copy_research' | 'creative_content'
+  | 'query_database' | 'workspace_save'
+  | 'unknown';
 
 export type JarvisAction = {
   type: JarvisActionType;
-  params?: Record<string, string | number>;
-  response: string;
+  params?: Record<string, any>;
+  response?: string;
   workingMessage?: string;
   imageUrl?: string;
   followUp?: string;
@@ -1014,6 +1019,8 @@ export interface NaverSearchItem {
   url: string;
   creatorName: string;
   creatorUrl: string;
+  bloggername?: string;
+  bloggerlink?: string;
   blogId: string;
   email: string;
   guessedEmail: string;

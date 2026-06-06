@@ -1,4 +1,5 @@
 "use strict";
+const jarvisSecurity = require('../_shared/security.cjs');
 /**
  * Vercel Cron Job: DAILY-BRIEF-A.1
  * 매일 KST 오전 9시 (UTC 00:00) 최근 24시간 운영 브리핑 생성
@@ -23,8 +24,7 @@ function verifyCronAuth(req) {
 }
 
 module.exports = async function handler(req, res) {
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  if (req.method === 'OPTIONS') return res.status(200).end();
+  if (jarvisSecurity.applyCors(req, res)) return;
 
   // Cron 인증 확인
   if (!verifyCronAuth(req)) {

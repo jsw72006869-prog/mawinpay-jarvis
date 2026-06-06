@@ -1,4 +1,5 @@
 "use strict";
+const jarvisSecurity = require('../_shared/security.cjs');
 /**
  * Vercel Cron Job: 매일 아침 7시 농산물 시장 데이터 수집 및 분석
  * 
@@ -26,9 +27,7 @@ const CACHE_KEY = 'market_daily_cache';
 let cachedData = null;
 
 module.exports = async function handler(req, res) {
-  // CORS
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  if (req.method === 'OPTIONS') return res.status(200).end();
+  if (jarvisSecurity.applyCors(req, res)) return;
   
   // Cron 인증 (Vercel에서 호출 시)
   if (!verifyCronAuth(req)) {

@@ -94,7 +94,7 @@ export function getPurchaseTriggers(input: {
 }
 
 // ═══ 트리거 라벨 ═══
-export const PURCHASE_TRIGGER_LABELS: Record<PurchaseTrigger, string> = {
+export const PURCHASE_TRIGGER_LABELS = {
   seasonal_peak: '제철 피크',
   limited_quantity: '한정 수량',
   direct_from_farm: '산지 직송',
@@ -106,7 +106,7 @@ export const PURCHASE_TRIGGER_LABELS: Record<PurchaseTrigger, string> = {
   camping: '캠핑',
   kids_snack: '아이 간식',
   group_buy_deadline: '공구 마감',
-};
+} as Record<PurchaseTrigger, string>;
 
 // ═══ 트리거 사용 가이드 (verified vs unverified) ═══
 export const TRIGGER_USAGE_GUIDE: Record<string, { verified: string; unverified: string }> = {

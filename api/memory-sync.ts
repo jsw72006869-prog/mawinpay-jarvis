@@ -1,5 +1,6 @@
 /// <reference types="node" />
 import type { VercelRequest, VercelResponse } from '@vercel/node';
+const jarvisSecurity = require('./_shared/security.cjs') as any;
 
 /**
  * JARVIS Memory Sync API
@@ -27,11 +28,7 @@ let memoryCache: {
 };
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
-
-  if (req.method === 'OPTIONS') return res.status(200).end();
+  if (jarvisSecurity.applyCors(req, res)) return;
 
   try {
     if (req.method === 'GET') {

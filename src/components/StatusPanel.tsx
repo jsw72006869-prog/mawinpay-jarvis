@@ -54,9 +54,11 @@ export default function StatusPanel({ state, stats, isVisible }: StatusPanelProp
 
   const stateColors: Record<JarvisState, string> = {
     idle: '#0066FF', listening: '#FF6B35', thinking: '#7C3AED', speaking: '#00F5FF', working: '#22C55E',
+    success: '#22C55E', error: '#EF4444', approval_required: '#FACC15',
   };
   const stateLabels: Record<JarvisState, string> = {
     idle: 'STANDBY', listening: 'LISTENING', thinking: 'ANALYZING', speaking: 'RESPONDING', working: 'EXECUTING',
+    success: 'SUCCESS', error: 'ERROR', approval_required: 'APPROVAL',
   };
 
   return (

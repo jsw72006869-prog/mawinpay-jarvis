@@ -8,6 +8,7 @@
  * 4. 카피 생성 시 레퍼런스 근거 제시
  */
 import type { VercelRequest, VercelResponse } from '@vercel/node';
+const jarvisSecurity = require('./_shared/security.cjs') as any;
 
 export const config = {
   maxDuration: 60,
@@ -838,11 +839,7 @@ ${instruction}
 
 // ═══ 메인 핸들러 ═══
 export default async function handler(req: VercelRequest, res: VercelResponse) {
-  // CORS
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
-  if (req.method === 'OPTIONS') return res.status(200).end();
+  if (jarvisSecurity.applyCors(req, res)) return;
 
   try {
     const { action, product, contentType, count, keywords, userStyle } = req.body || {};

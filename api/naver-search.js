@@ -1,5 +1,6 @@
 "use strict";
 // Vercel Serverless Function (CommonJS 방식)
+const jarvisSecurity = require('./_shared/security.cjs');
 const NAVER_BLOG_API = 'https://openapi.naver.com/v1/search/blog.json';
 const NAVER_CAFE_API = 'https://openapi.naver.com/v1/search/cafearticle.json';
 // ── 네이버 블로그 프로필 크롤링 (이웃수/방문자수/이메일) ──
@@ -73,11 +74,7 @@ function stripHtml(str) {
     return str.replace(/<[^>]*>/g, '').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&#39;/g, "'").trim();
 }
 module.exports = async function handler(req, res) {
-    res.setHeader('Access-Control-Allow-Origin', '*');
-    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-    res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
-    if (req.method === 'OPTIONS')
-        return res.status(200).end();
+    if (jarvisSecurity.applyCors(req, res)) return;
     const clientId = process.env.NAVER_CLIENT_ID;
     const clientSecret = process.env.NAVER_CLIENT_SECRET;
     if (!clientId || !clientSecret) {

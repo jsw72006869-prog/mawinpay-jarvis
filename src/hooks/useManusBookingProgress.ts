@@ -65,7 +65,7 @@ export function useManusBookingProgress(
       lastTaskStatusRef.current = task;
 
       // 진행 상황 업데이트
-      const newProgress = (task.progress || []).map((p, idx) => ({
+      const newProgress: BookingProgressState['progress'] = (task.progress || []).map((p, idx) => ({
         step: idx,
         message: p.content || '',
         timestamp: Date.parse(p.timestamp || new Date().toISOString()),
@@ -73,7 +73,7 @@ export function useManusBookingProgress(
       }));
 
       // 상태 분석 및 자율 판단
-      const decision = analyzeManusTaskAndMakeDecision(task, autonomousContext || {});
+      const decision = analyzeManusTaskAndMakeDecision(task, autonomousContext || { recentSearches: [], bookingHistory: [] });
 
       // 대기 상태 분석
       let isWaiting = false;

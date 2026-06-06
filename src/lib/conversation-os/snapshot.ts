@@ -41,18 +41,20 @@ export function buildJarvisSituationSnapshot(input: {
   const emailMissingGroupCount = toNumber(purchaseSummary.emailMissingGroupCount, groups.filter(group => !group.emailConfigured).length);
   const carrierMissingGroupCount = toNumber(purchaseSummary.carrierMissingGroupCount, groups.filter(group => group.carrier === 'unknown').length);
   const readyEmailGroupCount = toNumber(purchaseSummary.readyGroupCount, groups.filter(group => group.canSend).length);
+  const confirmNeededCount = toNumber(actionBuckets.confirmNeededCount ?? input.smartstoreResult?.counts?.confirmNeeded);
+  const remainingContactableCount = toNumber(outreach.remainingContactableCount);
 
   if (emailMissingGroupCount > 0) risks.push(`발주처 이메일 미설정 ${emailMissingGroupCount}곳`);
   if (carrierMissingGroupCount > 0) risks.push(`택배사 규칙 미지정 ${carrierMissingGroupCount}건`);
+  if (remainingContactableCount > 0) risks.push(`인플루언서 목표 미달 ${remainingContactableCount}명`);
   if (readyEmailGroupCount > 0) opportunities.push(`발주서 이메일 초안 가능 ${readyEmailGroupCount}곳`);
-  if (toNumber(actionBuckets.confirmNeededCount) > 0) opportunities.push(`발주확인 필요 ${toNumber(actionBuckets.confirmNeededCount)}건`);
-  if (toNumber(outreach.remainingContactableCount) > 0) risks.push(`인플루언서 목표 미달 ${toNumber(outreach.remainingContactableCount)}명`);
+  if (confirmNeededCount > 0) opportunities.push(`발주확인 필요 ${confirmNeededCount}건`);
 
   return {
     smartstore: {
       productOrderCount: toNumber(smartFull.productOrderCount ?? input.smartstoreResult?.counts?.productOrderCount),
       totalOrderQuantity: toNumber(smartFull.totalOrderQuantity ?? input.smartstoreResult?.counts?.totalOrderQuantity),
-      confirmNeededCount: toNumber(actionBuckets.confirmNeededCount ?? input.smartstoreResult?.counts?.confirmNeeded),
+      confirmNeededCount,
       pendingShippingCount: toNumber(actionBuckets.pendingShippingCount ?? input.smartstoreResult?.counts?.pendingShipping),
       dataReliable: input.smartstoreResult?.dataReliable !== false && smartFull.dataReliable !== false,
       source: safeString(input.smartstoreResult?.source || smartFull.source),
@@ -70,10 +72,10 @@ export function buildJarvisSituationSnapshot(input: {
       activeCampaign: safeString(outreach.requestedVertical || outreach.activeCampaign),
       targetContactableCount: toNumber(outreach.targetContactableCount),
       qualifiedContactableCount: toNumber(outreach.qualifiedContactableCount),
-      remainingContactableCount: toNumber(outreach.remainingContactableCount),
+      remainingContactableCount,
       completionStatus: safeString(outreach.completionStatus),
       topCandidatesReady: toNumber(outreach.qualityTierCounts?.A),
-      qualityQualifiedCount: toNumber(outreach.qualityQualifiedCount),
+      qualityQualifiedCount: toNumber(outreach.qualityQualifiedCount || outreach.qualifiedCount),
       draftReady: Boolean(outreach.draftReady),
       followupNeededCount: toNumber(outreach.followupNeededCount),
     },
