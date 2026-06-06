@@ -6289,7 +6289,16 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
       // ── Outreach: 인플루언서 후보 수집/저장/조회 ──
       if (resolvedTask === 'outreach-collect') {
-        const result = await handleOutreachCollect(params || rest);
+        const outreachParams = params || rest;
+        if (outreachParams?.source === 'youtube_collection_os') {
+          const result = await handleYouTubeCollectionPreview({
+            ...outreachParams,
+            dryRun: true,
+            countOnly: outreachParams.countOnly === true,
+          });
+          return res.status(200).json(result);
+        }
+        const result = await handleOutreachCollect(outreachParams);
         return res.status(200).json(result);
       }
       if (resolvedTask === 'outreach-quality-batch-run') {
