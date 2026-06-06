@@ -223,6 +223,7 @@ export type JarvisMemoryEventType =
   | 'gmail_draft'
   | 'youtube_collection'
   | 'viral_content_insight'
+  | 'creative_generation'
   | 'approval'
   | 'error'
   | 'user_preference';

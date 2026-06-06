@@ -1,228 +1,40 @@
-import { useState, useCallback } from 'react';
+import { useMemo, useState, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import type { InfluencerCandidate } from '../InfluencerOutreachPanel';
 
-// ── 후보 상세 Drawer ──
-function CandidateDetailDrawer({
-  candidate,
-  onClose,
-  onJarvisContextEvent,
-}: {
-  candidate: InfluencerCandidate;
-  onClose: () => void;
-  onJarvisContextEvent?: (event: { intent: string; payload?: unknown }) => void;
-}) {
-  const getScoreColor = (score: number) => {
-    if (score >= 70) return '#00ff88';
-    if (score >= 50) return '#ffaa00';
-    return '#ff4444';
-  };
+type CandidateFilter =
+  | 'all'
+  | 'proposal_ready'
+  | 'needs_enrichment'
+  | 'excluded'
+  | 'email'
+  | 'views'
+  | 'fit';
 
-  return (
-    <motion.div
-      className="outreach-detail-drawer"
-      initial={{ opacity: 0, x: 60 }}
-      animate={{ opacity: 1, x: 0 }}
-      exit={{ opacity: 0, x: 60 }}
-      transition={{ type: 'spring', damping: 28, stiffness: 200 }}
-      style={{
-        position: 'fixed',
-        top: 0, right: 0, bottom: 0,
-        width: 'min(520px, 92vw)',
-        background: 'linear-gradient(160deg, rgba(8,14,32,0.99) 0%, rgba(4,8,20,0.99) 100%)',
-        borderLeft: '1px solid rgba(0,180,255,0.35)',
-        zIndex: 9200,
-        display: 'flex', flexDirection: 'column',
-        fontFamily: "'JetBrains Mono', 'Fira Code', monospace",
-        boxShadow: '-16px 0 60px rgba(0,100,255,0.18)',
-        overflowY: 'auto',
-      }}
-    >
-      {/* Header */}
-      <div style={{
-        padding: '18px 22px',
-        borderBottom: '1px solid rgba(0,180,255,0.2)',
-        display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start',
-        background: 'rgba(0,180,255,0.04)',
-        flexShrink: 0,
-      }}>
-        <div>
-          <div style={{ color: '#00b4ff', fontSize: '9px', letterSpacing: '2px', marginBottom: '4px' }}>CANDIDATE DETAIL</div>
-          <div style={{ color: '#ffffff', fontSize: '16px', fontWeight: 700, maxWidth: '360px' }}>{candidate.name}</div>
-          <div style={{ color: 'rgba(255,255,255,0.5)', fontSize: '11px', marginTop: '2px' }}>{candidate.platform}</div>
-        </div>
-        <button
-          onClick={onClose}
-          style={{
-            background: 'rgba(255,50,50,0.12)', border: '1px solid rgba(255,50,50,0.35)',
-            color: '#ff6666', padding: '6px 12px', borderRadius: '4px', cursor: 'pointer',
-            fontSize: '10px', letterSpacing: '1px', flexShrink: 0,
-          }}
-        >CLOSE</button>
-      </div>
+type CandidateViewModel = {
+  id: string;
+  channelName: string;
+  platform: string;
+  channelUrl: string;
+  thumbnailUrl: string;
+  subscriberCountText: string;
+  recentAverageViewsText: string;
+  topVideoTitle: string;
+  topVideoViewCountText: string;
+  matchedKeyword: string;
+  matchedCategory: string;
+  fitScore: number;
+  viralFitScore: number;
+  contactable: boolean;
+  emailStatus: string;
+  maskedEmail: string;
+  reasonShort: string;
+  status: 'proposal_ready' | 'needs_enrichment' | 'excluded' | 'review';
+  evidenceTerms: string[];
+  excludeReason: string;
+  raw: InfluencerCandidate;
+};
 
-      {/* Body */}
-      <div style={{ padding: '20px 22px', flex: 1 }}>
-        {/* Badges */}
-        <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginBottom: '18px' }}>
-          <span style={{
-            background: candidate.platform.toLowerCase().includes('youtube') ? 'rgba(255,0,0,0.18)' : 'rgba(0,200,0,0.18)',
-            color: candidate.platform.toLowerCase().includes('youtube') ? '#ff4444' : '#00cc66',
-            padding: '4px 10px', borderRadius: '4px', fontSize: '11px', fontWeight: 600,
-          }}>{candidate.platform}</span>
-          <span style={{
-            background: `${getScoreColor(candidate.productFitScore)}18`,
-            border: `1px solid ${getScoreColor(candidate.productFitScore)}`,
-            color: getScoreColor(candidate.productFitScore),
-            padding: '4px 10px', borderRadius: '4px', fontSize: '11px', fontWeight: 700,
-          }}>적합도 {candidate.productFitScore}점</span>
-          {(candidate.publicContactStatus === 'email_public' || candidate.publicEmailMasked) && (
-            <span style={{
-              background: 'rgba(0,255,136,0.12)', border: '1px solid rgba(0,255,136,0.4)',
-              color: '#00ff88', padding: '4px 10px', borderRadius: '4px', fontSize: '11px',
-            }}>✉ 공개 이메일 확인됨</span>
-          )}
-          <span style={{
-            background: 'rgba(255,165,0,0.12)', border: '1px solid rgba(255,165,0,0.35)',
-            color: '#ffaa00', padding: '4px 10px', borderRadius: '4px', fontSize: '10px',
-          }}>{candidate.outreachStatus || 'collected'}</span>
-        </div>
-
-        {/* Info Grid */}
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '18px' }}>
-          {[
-            { label: '구독/방문', value: candidate.subscriberOrVisitor || '-' },
-            { label: '조회수', value: candidate.viewCount || '-' },
-            { label: '키워드', value: candidate.keyword || '-' },
-            { label: '제안 상품', value: candidate.suggestedProduct || '-' },
-          ].map(item => (
-            <div key={item.label} style={{
-              background: 'rgba(255,255,255,0.03)',
-              border: '1px solid rgba(255,255,255,0.08)',
-              borderRadius: '6px', padding: '10px 12px',
-            }}>
-              <div style={{ color: 'rgba(255,255,255,0.4)', fontSize: '9px', letterSpacing: '1px', marginBottom: '4px' }}>{item.label}</div>
-              <div style={{ color: '#ffffff', fontSize: '12px', fontWeight: 600 }}>{item.value}</div>
-            </div>
-          ))}
-        </div>
-
-        {/* 최근 콘텐츠 */}
-        {candidate.recentContentTitle && (
-          <div style={{
-            background: 'rgba(0,180,255,0.05)', border: '1px solid rgba(0,180,255,0.15)',
-            borderRadius: '8px', padding: '14px 16px', marginBottom: '14px',
-          }}>
-            <div style={{ color: '#00b4ff', fontSize: '9px', letterSpacing: '1.5px', marginBottom: '6px' }}>최근 콘텐츠</div>
-            <div style={{ color: '#ffffff', fontSize: '12px', fontWeight: 600, marginBottom: '6px' }}>{candidate.recentContentTitle}</div>
-          </div>
-        )}
-
-        {/* 자비스 판단 */}
-        {candidate.productFitReason && (
-          <div style={{
-            background: 'rgba(170,136,255,0.05)', border: '1px solid rgba(170,136,255,0.2)',
-            borderRadius: '8px', padding: '14px 16px', marginBottom: '14px',
-          }}>
-            <div style={{ color: '#aa88ff', fontSize: '9px', letterSpacing: '1.5px', marginBottom: '6px' }}>자비스 판단</div>
-            <div style={{ color: 'rgba(255,255,255,0.8)', fontSize: '11px', lineHeight: '1.7' }}>{candidate.productFitReason}</div>
-          </div>
-        )}
-
-        {/* 제안 각도 */}
-        {candidate.suggestedOfferAngle && (
-          <div style={{
-            background: 'rgba(255,170,0,0.05)', border: '1px solid rgba(255,170,0,0.2)',
-            borderRadius: '8px', padding: '14px 16px', marginBottom: '14px',
-          }}>
-            <div style={{ color: '#ffaa00', fontSize: '9px', letterSpacing: '1.5px', marginBottom: '6px' }}>추천 제안 각도</div>
-            <div style={{ color: 'rgba(255,255,255,0.8)', fontSize: '11px', lineHeight: '1.7' }}>{candidate.suggestedOfferAngle}</div>
-          </div>
-        )}
-
-        {/* 이메일 원문 비노출 안내 */}
-        {(candidate.publicContactStatus === 'email_public' || candidate.publicEmailMasked) && (
-          <div style={{
-            background: 'rgba(0,255,136,0.04)', border: '1px solid rgba(0,255,136,0.2)',
-            borderRadius: '8px', padding: '12px 16px', marginBottom: '14px',
-          }}>
-            <div style={{ color: '#00ff88', fontSize: '10px', lineHeight: '1.6' }}>
-              ✉ 공개 이메일 확인됨 — 보안 정책상 이메일 원문은 화면에 표시하지 않습니다.<br />
-              <span style={{ color: 'rgba(255,255,255,0.5)' }}>Google Sheets에서 확인하세요.</span>
-            </div>
-          </div>
-        )}
-
-        {/* 채널/콘텐츠 URL 버튼 */}
-        <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginBottom: '16px' }}>
-          {candidate.channelOrBlogUrl && (
-            <a
-              href={candidate.channelOrBlogUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              style={{
-                background: 'rgba(0,180,255,0.12)', border: '1px solid rgba(0,180,255,0.35)',
-                color: '#00b4ff', padding: '7px 14px', borderRadius: '4px',
-                fontSize: '10px', textDecoration: 'none', letterSpacing: '0.5px',
-              }}
-            >↗ 프로필 열기</a>
-          )}
-          {candidate.recentContentUrl && (
-            <a
-              href={candidate.recentContentUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              style={{
-                background: 'rgba(170,136,255,0.12)', border: '1px solid rgba(170,136,255,0.35)',
-                color: '#aa88ff', padding: '7px 14px', borderRadius: '4px',
-                fontSize: '10px', textDecoration: 'none', letterSpacing: '0.5px',
-              }}
-            >↗ 콘텐츠 열기</a>
-          )}
-        </div>
-
-        {/* Next Actions */}
-        <div style={{
-          background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.08)',
-          borderRadius: '8px', padding: '14px 16px',
-        }}>
-          <div style={{ color: 'rgba(255,255,255,0.4)', fontSize: '9px', letterSpacing: '1.5px', marginBottom: '10px' }}>NEXT ACTIONS</div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-            <button
-              onClick={() => onJarvisContextEvent?.({ intent: 'draft_proposal', payload: { candidate } })}
-              style={{
-                background: 'rgba(170,136,255,0.12)', border: '1px solid rgba(170,136,255,0.35)',
-                color: '#aa88ff', padding: '8px 14px', borderRadius: '4px',
-                fontSize: '10px', cursor: 'pointer', textAlign: 'left', letterSpacing: '0.5px',
-              }}
-            >✏ 제안서 초안 만들기 (Draft Only)</button>
-            <button
-              onClick={() => {
-                const url = 'https://docs.google.com/spreadsheets';
-                window.open(url, '_blank');
-              }}
-              style={{
-                background: 'rgba(0,255,136,0.08)', border: '1px solid rgba(0,255,136,0.25)',
-                color: '#00ff88', padding: '8px 14px', borderRadius: '4px',
-                fontSize: '10px', cursor: 'pointer', textAlign: 'left', letterSpacing: '0.5px',
-              }}
-            >📊 Google Sheets 열기</button>
-            <button
-              disabled
-              style={{
-                background: 'rgba(255,50,50,0.06)', border: '1px solid rgba(255,50,50,0.2)',
-                color: 'rgba(255,80,80,0.5)', padding: '8px 14px', borderRadius: '4px',
-                fontSize: '10px', cursor: 'not-allowed', textAlign: 'left', letterSpacing: '0.5px',
-              }}
-            >🔒 실제 발송 — EXECUTE LOCKED (대표님 승인 필요)</button>
-          </div>
-        </div>
-      </div>
-    </motion.div>
-  );
-}
-
-// ── 메인 OutreachResultWorkspace ──
 interface OutreachResultWorkspaceProps {
   visible: boolean;
   candidates: InfluencerCandidate[];
@@ -232,6 +44,272 @@ interface OutreachResultWorkspaceProps {
   onSave?: (candidates: InfluencerCandidate[]) => void;
   onJarvisContextEvent?: (event: { intent: string; payload?: unknown }) => void;
   sheetsUrl?: string;
+}
+
+function asNumber(value: unknown): number {
+  const n = Number(value);
+  return Number.isFinite(n) ? n : 0;
+}
+
+function formatCount(value: unknown): string {
+  const n = asNumber(value);
+  if (n <= 0) return '확인 필요';
+  if (n >= 100000000) return `${(n / 100000000).toFixed(1)}억`;
+  if (n >= 10000) return `${Math.round(n / 10000).toLocaleString('ko-KR')}만`;
+  return n.toLocaleString('ko-KR');
+}
+
+function compactText(value: unknown, fallback: string): string {
+  const text = String(value || '').trim();
+  return text || fallback;
+}
+
+function getScoreColor(score: number): string {
+  if (score >= 75) return '#00ff88';
+  if (score >= 55) return '#ffaa00';
+  return '#ff6666';
+}
+
+function getEvidenceTerms(candidate: any): string[] {
+  const raw = candidate.target_evidence_terms || candidate.evidenceTerms || candidate.matchedKeywords || [];
+  if (Array.isArray(raw)) return raw.map(String).map(s => s.trim()).filter(Boolean).slice(0, 6);
+  return String(raw || '')
+    .split(',')
+    .map(s => s.trim())
+    .filter(Boolean)
+    .slice(0, 6);
+}
+
+function buildCandidateViewModel(candidate: InfluencerCandidate): CandidateViewModel {
+  const c = candidate as any;
+  const fitScore = asNumber(c.fitScore ?? c.productFitScore ?? c.target_match_score ?? 0);
+  const viralFitScore = asNumber(c.viralFitScore ?? c.priority_score ?? c.response_likelihood_score ?? 0);
+  const contactable = Boolean(
+    c.contactable ||
+    c.contact_email_exists ||
+    c.emailExists ||
+    c.publicEmailMasked ||
+    c.maskedEmail ||
+    c.publicContactStatus === 'email_public' ||
+    c.publicContactStatus === 'form_available',
+  );
+  const targetStatus = String(c.target_match_status || '').toLowerCase();
+  const outreachStatus = String(c.outreachStatus || '').toLowerCase();
+  const status: CandidateViewModel['status'] =
+    targetStatus === 'excluded' || outreachStatus === 'excluded'
+      ? 'excluded'
+      : outreachStatus === 'proposal_ready' || (fitScore >= 70 && contactable)
+        ? 'proposal_ready'
+        : targetStatus === 'review'
+          ? 'review'
+          : 'needs_enrichment';
+
+  const channelName = compactText(c.channelName || c.name || c.title, '채널명 확인 필요');
+  const topVideoTitle = compactText(c.topVideoTitle || c.recentContentTitle, '최근 대표 영상 정보가 아직 없습니다. 보강 분석으로 확인할 수 있습니다.');
+  const reasonShort = compactText(
+    c.reasonShort || c.productFitReason,
+    fitScore > 0
+      ? '기본 수집 정보 기준으로 적합도를 계산했습니다. 최근 영상 보강 분석을 권장합니다.'
+      : '적합도 근거가 부족합니다. 채널 상세 보강 분석이 필요합니다.',
+  );
+
+  return {
+    id: String(c.candidateId || c.id || c.channelId || c.channelOrBlogUrl || channelName),
+    channelName,
+    platform: compactText(c.platform, 'YouTube'),
+    channelUrl: compactText(c.channelUrl || c.channelOrBlogUrl || c.profile_url, ''),
+    thumbnailUrl: compactText(c.thumbnailUrl, ''),
+    subscriberCountText: c.subscriberCount ? formatCount(c.subscriberCount) : compactText(c.subscriberOrVisitor, '구독자 확인 필요'),
+    recentAverageViewsText: formatCount(c.recentAverageViews || c.averageViewCount),
+    topVideoTitle,
+    topVideoViewCountText: formatCount(c.topVideoViewCount || c.topVideoViews),
+    matchedKeyword: compactText(c.matchedKeyword || c.keyword || c.source_keyword, '매칭 키워드 확인 필요'),
+    matchedCategory: compactText(c.matchedCategory || c.requested_vertical || c.category, '카테고리 확인 필요'),
+    fitScore,
+    viralFitScore,
+    contactable,
+    emailStatus: compactText(c.emailStatus || c.publicContactStatus, contactable ? 'contactable' : 'email_not_found'),
+    maskedEmail: compactText(c.maskedEmail || c.publicEmailMasked || c.emailMasked, ''),
+    reasonShort,
+    status,
+    evidenceTerms: getEvidenceTerms(c),
+    excludeReason: compactText(c.target_exclude_reason || c.excludedReason || c.excludeReason, ''),
+    raw: candidate,
+  };
+}
+
+function MetricBox({ label, value, color = '#00b4ff' }: { label: string; value: unknown; color?: string }) {
+  return (
+    <div style={{
+      background: 'rgba(255,255,255,0.035)',
+      border: `1px solid ${color}22`,
+      borderRadius: 8,
+      padding: '10px 12px',
+      minHeight: 58,
+    }}>
+      <div style={{ color: 'rgba(255,255,255,0.48)', fontSize: 10, marginBottom: 5 }}>{label}</div>
+      <div style={{ color, fontSize: 16, fontWeight: 800 }}>{String(value ?? '확인 필요')}</div>
+    </div>
+  );
+}
+
+function CandidateDetailDrawer({
+  model,
+  onClose,
+  onJarvisContextEvent,
+}: {
+  model: CandidateViewModel;
+  onClose: () => void;
+  onJarvisContextEvent?: (event: { intent: string; payload?: unknown }) => void;
+}) {
+  const actionPayload = { candidate: model.raw, viewModel: model };
+  return (
+    <motion.div
+      className="outreach-detail-drawer"
+      data-testid="outreach-candidate-detail"
+      initial={{ opacity: 0, x: 60 }}
+      animate={{ opacity: 1, x: 0 }}
+      exit={{ opacity: 0, x: 60 }}
+      transition={{ type: 'spring', damping: 28, stiffness: 200 }}
+      style={{
+        position: 'fixed',
+        top: 0,
+        right: 0,
+        bottom: 0,
+        width: 'min(560px, 94vw)',
+        background: 'linear-gradient(160deg, rgba(7,12,27,0.99), rgba(3,7,18,0.99))',
+        borderLeft: '1px solid rgba(0,180,255,0.35)',
+        zIndex: 9200,
+        display: 'flex',
+        flexDirection: 'column',
+        fontFamily: "'JetBrains Mono', 'Fira Code', monospace",
+        boxShadow: '-18px 0 70px rgba(0,100,255,0.2)',
+        overflowY: 'auto',
+      }}
+    >
+      <div style={{
+        padding: '18px 22px',
+        borderBottom: '1px solid rgba(0,180,255,0.2)',
+        display: 'flex',
+        justifyContent: 'space-between',
+        gap: 12,
+        background: 'rgba(0,180,255,0.04)',
+      }}>
+        <div>
+          <div style={{ color: '#00b4ff', fontSize: 10, letterSpacing: 2, marginBottom: 5 }}>CANDIDATE DETAIL</div>
+          <div style={{ color: '#fff', fontSize: 18, fontWeight: 800 }}>{model.channelName}</div>
+          <div style={{ color: 'rgba(255,255,255,0.52)', fontSize: 11, marginTop: 4 }}>{model.platform} / {model.matchedCategory}</div>
+        </div>
+        <button onClick={onClose} style={{
+          background: 'rgba(255,70,70,0.12)',
+          border: '1px solid rgba(255,70,70,0.35)',
+          color: '#ff7777',
+          padding: '7px 12px',
+          borderRadius: 5,
+          cursor: 'pointer',
+          height: 34,
+        }}>닫기</button>
+      </div>
+
+      <div style={{ padding: 22, display: 'grid', gap: 14 }}>
+        <section style={{ display: 'grid', gridTemplateColumns: '96px 1fr', gap: 14, alignItems: 'center' }}>
+          <div style={{
+            width: 96,
+            height: 96,
+            borderRadius: 10,
+            background: model.thumbnailUrl ? `url(${model.thumbnailUrl}) center/cover` : 'rgba(255,255,255,0.05)',
+            border: '1px solid rgba(255,255,255,0.1)',
+          }} />
+          <div style={{ display: 'grid', gap: 8 }}>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+              <span style={{ color: '#00b4ff', border: '1px solid rgba(0,180,255,0.35)', padding: '4px 8px', borderRadius: 5, fontSize: 10 }}>{model.platform}</span>
+              <span style={{ color: getScoreColor(model.fitScore), border: `1px solid ${getScoreColor(model.fitScore)}66`, padding: '4px 8px', borderRadius: 5, fontSize: 10 }}>적합도 {model.fitScore || '확인 필요'}</span>
+              <span style={{ color: getScoreColor(model.viralFitScore), border: `1px solid ${getScoreColor(model.viralFitScore)}55`, padding: '4px 8px', borderRadius: 5, fontSize: 10 }}>바이럴 {model.viralFitScore || '확인 필요'}</span>
+              <span style={{ color: model.contactable ? '#00ff88' : '#ffaa00', border: `1px solid ${model.contactable ? 'rgba(0,255,136,0.35)' : 'rgba(255,170,0,0.35)'}`, padding: '4px 8px', borderRadius: 5, fontSize: 10 }}>
+                {model.contactable ? '연락 가능' : '연락처 보강 필요'}
+              </span>
+            </div>
+            {model.channelUrl ? (
+              <a href={model.channelUrl} target="_blank" rel="noopener noreferrer" style={{ color: '#8fdcff', fontSize: 12 }}>채널 열기</a>
+            ) : (
+              <div style={{ color: '#ffaa00', fontSize: 12 }}>채널 URL이 응답에 없어 원본 확인이 필요합니다.</div>
+            )}
+          </div>
+        </section>
+
+        <section style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 10 }}>
+          <MetricBox label="구독자" value={model.subscriberCountText} />
+          <MetricBox label="최근 평균 조회수" value={model.recentAverageViewsText} color="#ffaa00" />
+          <MetricBox label="상위 영상 조회수" value={model.topVideoViewCountText} color="#aa88ff" />
+          <MetricBox label="이메일 상태" value={model.maskedEmail || model.emailStatus} color={model.contactable ? '#00ff88' : '#ffaa00'} />
+        </section>
+
+        <section style={{ background: 'rgba(0,180,255,0.05)', border: '1px solid rgba(0,180,255,0.17)', borderRadius: 10, padding: 14 }}>
+          <div style={{ color: '#00b4ff', fontSize: 10, letterSpacing: 1.4, marginBottom: 8 }}>매칭 근거</div>
+          <div style={{ color: '#fff', fontSize: 12, lineHeight: 1.7 }}>{model.reasonShort}</div>
+          <div style={{ marginTop: 10, display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+            <span style={{ color: '#dbeafe', background: 'rgba(255,255,255,0.06)', padding: '4px 8px', borderRadius: 5, fontSize: 10 }}>키워드: {model.matchedKeyword}</span>
+            {model.evidenceTerms.length > 0
+              ? model.evidenceTerms.map(term => <span key={term} style={{ color: '#00ff88', background: 'rgba(0,255,136,0.08)', padding: '4px 8px', borderRadius: 5, fontSize: 10 }}>{term}</span>)
+              : <span style={{ color: '#ffaa00', fontSize: 10 }}>근거 term이 부족합니다. 보강 분석으로 최근 영상 제목을 확인하세요.</span>}
+          </div>
+        </section>
+
+        <section style={{ background: 'rgba(170,136,255,0.05)', border: '1px solid rgba(170,136,255,0.2)', borderRadius: 10, padding: 14 }}>
+          <div style={{ color: '#aa88ff', fontSize: 10, letterSpacing: 1.4, marginBottom: 8 }}>최근 대표 영상</div>
+          <div style={{ color: '#fff', fontSize: 12, lineHeight: 1.7 }}>{model.topVideoTitle}</div>
+        </section>
+
+        <section style={{ background: 'rgba(255,170,0,0.05)', border: '1px solid rgba(255,170,0,0.18)', borderRadius: 10, padding: 14 }}>
+          <div style={{ color: '#ffaa00', fontSize: 10, letterSpacing: 1.4, marginBottom: 8 }}>작업 판단</div>
+          <div style={{ color: 'rgba(255,255,255,0.82)', fontSize: 12, lineHeight: 1.7 }}>
+            {model.status === 'proposal_ready'
+              ? '바로 제안 초안을 검토할 수 있습니다. 실제 발송은 계속 승인 잠금 상태입니다.'
+              : model.status === 'excluded'
+                ? `제외 후보입니다. ${model.excludeReason || '요청 분야와의 근거가 부족합니다.'}`
+                : '보강 필요 후보입니다. 최근 영상과 반응도를 더 확인한 뒤 제안 여부를 판단하는 편이 안전합니다.'}
+          </div>
+        </section>
+
+        <section style={{ border: '1px solid rgba(255,255,255,0.1)', borderRadius: 10, padding: 14 }}>
+          <div style={{ color: 'rgba(255,255,255,0.5)', fontSize: 10, letterSpacing: 1.4, marginBottom: 10 }}>NEXT ACTIONS</div>
+          <div style={{ display: 'grid', gap: 8 }}>
+            {[
+              { label: '보강 분석', intent: 'candidate_enrich_preview', tone: '#00b4ff' },
+              { label: '후보 제외', intent: 'candidate_exclude', tone: '#ff7777' },
+              { label: '비슷한 후보 찾기', intent: 'find_similar_candidate', tone: '#ffaa00' },
+              { label: '제안 메일 초안 만들기', intent: 'draft_proposal', tone: '#aa88ff' },
+            ].map(action => (
+              <button
+                key={action.intent}
+                onClick={() => onJarvisContextEvent?.({ intent: action.intent, payload: actionPayload })}
+                style={{
+                  background: `${action.tone}14`,
+                  border: `1px solid ${action.tone}55`,
+                  color: action.tone,
+                  padding: '9px 12px',
+                  borderRadius: 6,
+                  textAlign: 'left',
+                  cursor: 'pointer',
+                  fontSize: 11,
+                }}
+              >{action.label}</button>
+            ))}
+            <button disabled style={{
+              background: 'rgba(255,70,70,0.06)',
+              border: '1px solid rgba(255,70,70,0.22)',
+              color: 'rgba(255,90,90,0.58)',
+              padding: '9px 12px',
+              borderRadius: 6,
+              textAlign: 'left',
+              cursor: 'not-allowed',
+              fontSize: 11,
+            }}>실제 발송은 EXECUTE LOCKED, 대표님 승인 전 불가</button>
+          </div>
+        </section>
+      </div>
+    </motion.div>
+  );
 }
 
 export default function OutreachResultWorkspace({
@@ -244,54 +322,50 @@ export default function OutreachResultWorkspace({
   onJarvisContextEvent,
   sheetsUrl,
 }: OutreachResultWorkspaceProps) {
-  const [filter, setFilter] = useState<'all' | 'high' | 'youtube' | 'naver' | 'email' | 'qualified' | 'review'>('all');
-  const [selectedCandidate, setSelectedCandidate] = useState<InfluencerCandidate | null>(null);
+  const [filter, setFilter] = useState<CandidateFilter>('all');
+  const [selectedCandidateId, setSelectedCandidateId] = useState<string | null>(null);
   const [detailOpen, setDetailOpen] = useState(false);
   const [page, setPage] = useState(0);
   const PAGE_SIZE = 10;
 
-  const filtered = candidates.filter(c => {
-    if (filter === 'high') return c.productFitScore >= 60;
-    if (filter === 'youtube') return c.platform.toLowerCase().includes('youtube');
-    if (filter === 'naver') return c.platform.toLowerCase().includes('naver');
-    if (filter === 'email') return c.publicContactStatus === 'email_public' || !!c.publicEmailMasked;
-    if (filter === 'qualified') return (c as any).target_match_status === 'qualified';
-    if (filter === 'review') return (c as any).target_match_status === 'review';
-    return true;
-  });
+  const models = useMemo(() => candidates.map(buildCandidateViewModel), [candidates]);
+  const filtered = useMemo(() => {
+    const next = models.filter(model => {
+      if (filter === 'proposal_ready') return model.status === 'proposal_ready';
+      if (filter === 'needs_enrichment') return model.status === 'needs_enrichment' || model.status === 'review';
+      if (filter === 'excluded') return model.status === 'excluded';
+      if (filter === 'email') return model.contactable;
+      return true;
+    });
+    if (filter === 'views') return [...next].sort((a, b) => asNumber((b.raw as any).recentAverageViews || (b.raw as any).topVideoViewCount) - asNumber((a.raw as any).recentAverageViews || (a.raw as any).topVideoViewCount));
+    if (filter === 'fit') return [...next].sort((a, b) => b.fitScore - a.fitScore);
+    return next;
+  }, [filter, models]);
 
   const totalPages = Math.ceil(filtered.length / PAGE_SIZE);
   const paged = filtered.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
-
-  const stats = {
-    total: candidates.length,
-    contactable: candidates.filter(c => c.publicContactStatus === 'email_public' || c.publicContactStatus === 'form_available').length,
-    highFit: candidates.filter(c => c.productFitScore >= 60).length,
-    emailDraft: candidates.filter(c => c.firstEmailDraft).length,
-    qualified: candidates.filter(c => (c as any).target_match_status === 'qualified').length,
-    review: candidates.filter(c => (c as any).target_match_status === 'review').length,
-  };
+  const selectedModel = models.find(model => model.id === selectedCandidateId) || null;
   const countSummary = collectionSummary || {};
-  const apiStatus = countSummary.youtubeApiStatus || '';
+  const apiStatus = countSummary.youtubeApiStatus || countSummary.diagnostics?.youtubeApiStatus || '';
   const apiWarnings = Array.isArray(countSummary.apiWarnings) ? countSummary.apiWarnings : [];
   const isPreviewMode =
     countSummary.dryRun === true ||
     countSummary.countOnly === true ||
     countSummary.autoSave?.reason === 'dryRun' ||
-    countSummary.autoSave?.dryRun === true ||
     apiWarnings.includes('sheet_save_skipped:dryRun');
-  const saveSkippedDryRun = isPreviewMode;
 
-  const getScoreColor = (score: number) => {
-    if (score >= 70) return '#00ff88';
-    if (score >= 50) return '#ffaa00';
-    return '#ff4444';
+  const stats = {
+    total: models.length,
+    proposalReady: models.filter(model => model.status === 'proposal_ready').length,
+    needsEnrichment: models.filter(model => model.status === 'needs_enrichment' || model.status === 'review').length,
+    excluded: models.filter(model => model.status === 'excluded').length,
+    contactable: models.filter(model => model.contactable).length,
   };
 
-  const handleCandidateSelect = useCallback((c: InfluencerCandidate) => {
-    setSelectedCandidate(c);
+  const handleCandidateSelect = useCallback((model: CandidateViewModel) => {
+    setSelectedCandidateId(model.id);
     setDetailOpen(true);
-    onJarvisContextEvent?.({ intent: 'candidate_selected', payload: { candidate: c } });
+    onJarvisContextEvent?.({ intent: 'candidate_selected', payload: { candidate: model.raw, viewModel: model } });
   }, [onJarvisContextEvent]);
 
   const handleManualSave = useCallback(() => {
@@ -305,51 +379,37 @@ export default function OutreachResultWorkspace({
     <>
       <motion.div
         className="outreach-result-workspace"
+        data-testid="outreach-workspace"
         initial={{ opacity: 0, scale: 0.97 }}
         animate={{ opacity: 1, scale: 1 }}
         exit={{ opacity: 0, scale: 0.97 }}
         transition={{ type: 'spring', damping: 28, stiffness: 180 }}
         style={{
           position: 'fixed',
-          top: 0, left: 0, right: 0, bottom: 0,
+          inset: 0,
           background: 'rgba(4,8,20,0.97)',
           zIndex: 9100,
-          display: 'flex', flexDirection: 'column',
+          display: 'flex',
+          flexDirection: 'column',
           fontFamily: "'JetBrains Mono', 'Fira Code', monospace",
           backdropFilter: 'blur(12px)',
         }}
       >
-        {/* ── 헤더 ── */}
         <div style={{
           padding: '14px 24px',
           borderBottom: '1px solid rgba(0,180,255,0.2)',
-          display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
           background: 'rgba(0,180,255,0.04)',
           flexShrink: 0,
         }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
-            <div>
-              <div style={{ color: '#00b4ff', fontSize: '9px', letterSpacing: '2px', marginBottom: '3px' }}>INFLUENCER OUTREACH</div>
-              <div style={{ color: '#ffffff', fontSize: '15px', fontWeight: 700 }}>공동구매 후보 Result Workspace</div>
-            </div>
-            <div style={{
-              background: 'rgba(0,255,136,0.12)', border: '1px solid rgba(0,255,136,0.35)',
-              color: '#00ff88', padding: '4px 10px', borderRadius: '12px', fontSize: '10px',
-            }}>{candidates.length}명 수집됨</div>
+          <div>
+            <div style={{ color: '#00b4ff', fontSize: 10, letterSpacing: 2, marginBottom: 4 }}>INFLUENCER OUTREACH</div>
+            <div style={{ color: '#fff', fontSize: 16, fontWeight: 800 }}>수집 후보 분석 워크스페이스</div>
           </div>
-          <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-            {sheetsUrl && (
-              <a
-                href={sheetsUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                style={{
-                  background: 'rgba(0,255,136,0.1)', border: '1px solid rgba(0,255,136,0.3)',
-                  color: '#00ff88', padding: '6px 12px', borderRadius: '4px',
-                  fontSize: '10px', textDecoration: 'none', letterSpacing: '0.5px',
-                }}
-              >📊 Google Sheets</a>
-            )}
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+            {sheetsUrl && <a href={sheetsUrl} target="_blank" rel="noopener noreferrer" style={{ color: '#00ff88', fontSize: 11 }}>Google Sheets</a>}
             <button
               onClick={handleManualSave}
               disabled={isPreviewMode || !onSave}
@@ -357,314 +417,184 @@ export default function OutreachResultWorkspace({
               style={{
                 background: isPreviewMode ? 'rgba(255,170,0,0.06)' : 'rgba(0,180,255,0.12)',
                 border: `1px solid ${isPreviewMode ? 'rgba(255,170,0,0.25)' : 'rgba(0,180,255,0.35)'}`,
-                color: isPreviewMode ? 'rgba(255,170,0,0.62)' : '#00b4ff',
-                padding: '6px 12px', borderRadius: '4px',
-                fontSize: '10px', cursor: isPreviewMode || !onSave ? 'not-allowed' : 'pointer',
-                letterSpacing: '0.5px',
-                opacity: isPreviewMode || !onSave ? 0.82 : 1,
+                color: isPreviewMode ? 'rgba(255,170,0,0.72)' : '#00b4ff',
+                padding: '7px 12px',
+                borderRadius: 5,
+                cursor: isPreviewMode || !onSave ? 'not-allowed' : 'pointer',
+                fontSize: 11,
               }}
-            >{isPreviewMode ? '💾 저장 불가' : '💾 Sheets 저장'}</button>
-            {isPreviewMode && (
-              <span style={{
-                color: '#ffaa00',
-                fontSize: '10px',
-                border: '1px solid rgba(255,170,0,0.22)',
-                background: 'rgba(255,170,0,0.07)',
-                padding: '5px 8px',
-                borderRadius: '4px',
-              }}>미리보기 모드에서는 저장할 수 없습니다.</span>
-            )}
-            <button
-              onClick={onClose}
-              style={{
-                background: 'rgba(255,50,50,0.12)', border: '1px solid rgba(255,50,50,0.35)',
-                color: '#ff6666', padding: '6px 12px', borderRadius: '4px',
-                cursor: 'pointer', fontSize: '10px', letterSpacing: '1px',
-              }}
-            >CLOSE</button>
+            >{isPreviewMode ? '저장 불가' : 'Sheets 저장'}</button>
+            {isPreviewMode && <span style={{ color: '#ffaa00', fontSize: 10, border: '1px solid rgba(255,170,0,0.25)', padding: '6px 8px', borderRadius: 5 }}>미리보기 모드, 저장 안 함</span>}
+            <button onClick={onClose} style={{
+              background: 'rgba(255,70,70,0.12)',
+              border: '1px solid rgba(255,70,70,0.35)',
+              color: '#ff7777',
+              padding: '7px 12px',
+              borderRadius: 5,
+              cursor: 'pointer',
+              fontSize: 11,
+            }}>닫기</button>
           </div>
         </div>
 
-        {/* ── 요약 스트립 ── */}
-        <div className="outreach-summary-strip" style={{
+        <div style={{
           padding: '12px 24px',
           borderBottom: '1px solid rgba(0,180,255,0.1)',
-          display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '12px',
+          display: 'grid',
+          gridTemplateColumns: 'repeat(5, minmax(0, 1fr))',
+          gap: 12,
           flexShrink: 0,
         }}>
-          {[
-            { label: '총 수집', value: stats.total, unit: '명', color: '#00b4ff' },
-            { label: '공개 이메일', value: stats.contactable, unit: '명', color: '#00ff88' },
-            { label: '적합도 60↑', value: stats.highFit, unit: '명', color: '#ffaa00' },
-            { label: '초안 생성', value: stats.emailDraft, unit: '건', color: '#aa88ff' },
-          ].map(s => (
-            <div key={s.label} style={{
-              background: 'rgba(255,255,255,0.03)',
-              border: `1px solid ${s.color}22`,
-              borderRadius: '8px', padding: '12px 16px',
-              textAlign: 'center',
-            }}>
-              <div style={{ color: s.color, fontSize: '22px', fontWeight: 700 }}>{s.value}<span style={{ fontSize: '12px' }}>{s.unit}</span></div>
-              <div style={{ color: 'rgba(255,255,255,0.45)', fontSize: '9px', letterSpacing: '1px', marginTop: '4px' }}>{s.label}</div>
-            </div>
-          ))}
+          <MetricBox label="전체 후보" value={`${stats.total}명`} />
+          <MetricBox label="바로 제안 가능" value={`${stats.proposalReady}명`} color="#00ff88" />
+          <MetricBox label="보강 필요" value={`${stats.needsEnrichment}명`} color="#ffaa00" />
+          <MetricBox label="제외 후보" value={`${stats.excluded}명`} color="#ff7777" />
+          <MetricBox label="공개 이메일" value={`${stats.contactable}명`} color="#aa88ff" />
         </div>
 
-        {/* ── 필터 + 페이지네이션 ── */}
         {collectionSummary && (
           <div style={{
             padding: '10px 24px',
             borderBottom: '1px solid rgba(0,180,255,0.08)',
             display: 'flex',
-            gap: '8px',
+            gap: 8,
             flexWrap: 'wrap',
             alignItems: 'center',
             flexShrink: 0,
           }}>
             {[
-              { label: '전체 검색', value: countSummary.rawSearchResultCount },
-              { label: '중복 제거 후보', value: countSummary.dedupedChannelCount },
-              { label: saveSkippedDryRun ? '저장 대기 후보' : '저장 후보', value: saveSkippedDryRun ? countSummary.candidateReadyToSaveCount : countSummary.savedCandidateCount },
-              { label: '화면 표시 후보', value: countSummary.displayedCandidateCount },
-              { label: '적합 후보', value: countSummary.qualifiedCount },
-              { label: '검토 필요', value: countSummary.reviewCount },
-              { label: '제외', value: countSummary.excludedCount },
-              { label: '공개 이메일', value: countSummary.publicEmailCount },
-              { label: '연락 가능', value: countSummary.contactableCount },
-              { label: '최종 연락 가능 적합', value: countSummary.qualifiedContactableCount },
-              { label: '목표', value: countSummary.targetContactableCount },
-              { label: '남은 인원', value: countSummary.remainingContactableCount },
-            ].filter(item => item.value !== undefined && item.value !== null).map(item => (
-              <span key={item.label} style={{
-                border: '1px solid rgba(0,180,255,0.18)',
-                background: 'rgba(0,180,255,0.06)',
-                color: 'rgba(230,247,255,0.82)',
-                borderRadius: 4,
-                padding: '5px 8px',
-                fontSize: 10,
-              }}>{item.label} {item.value}명</span>
+              ['전체 검색', countSummary.rawSearchResultCount],
+              ['중복 제거 후보', countSummary.dedupedChannelCount],
+              ['화면 표시 후보', countSummary.displayedCandidateCount],
+              ['공개 이메일', countSummary.publicEmailCount],
+              ['연락 가능', countSummary.contactableCount],
+              ['적합 후보', countSummary.qualifiedCount],
+              ['검토 필요', countSummary.reviewCount],
+              ['제외', countSummary.excludedCount],
+            ].filter(([, value]) => value !== undefined && value !== null).map(([label, value]) => (
+              <span key={String(label)} style={{ color: 'rgba(230,247,255,0.84)', background: 'rgba(0,180,255,0.06)', border: '1px solid rgba(0,180,255,0.18)', borderRadius: 5, padding: '5px 8px', fontSize: 10 }}>
+                {String(label)} {String(value)}
+              </span>
             ))}
-            {apiStatus && (
-              <span style={{
-                border: `1px solid ${apiStatus === 'ok' ? 'rgba(0,255,136,0.25)' : 'rgba(255,170,0,0.35)'}`,
-                background: apiStatus === 'ok' ? 'rgba(0,255,136,0.08)' : 'rgba(255,170,0,0.09)',
-                color: apiStatus === 'ok' ? '#00ff88' : '#ffaa00',
-                borderRadius: 4,
-                padding: '5px 8px',
-                fontSize: 10,
-              }}>API 상태 {apiStatus}</span>
-            )}
-            {countSummary.completionStatus && countSummary.completionStatus !== 'not_goal_collect' && (
-              <span style={{
-                border: `1px solid ${countSummary.completionStatus === 'complete' ? 'rgba(0,255,136,0.25)' : 'rgba(255,170,0,0.35)'}`,
-                background: countSummary.completionStatus === 'complete' ? 'rgba(0,255,136,0.08)' : 'rgba(255,170,0,0.09)',
-                color: countSummary.completionStatus === 'complete' ? '#00ff88' : '#ffaa00',
-                borderRadius: 4,
-                padding: '5px 8px',
-                fontSize: 10,
-              }}>목표 상태 {countSummary.completionStatus}{countSummary.stopReason ? ` / ${countSummary.stopReason}` : ''}</span>
-            )}
-            {saveSkippedDryRun && (
-              <span style={{
-                border: '1px solid rgba(255,170,0,0.35)',
-                background: 'rgba(255,170,0,0.09)',
-                color: '#ffaa00',
-                borderRadius: 4,
-                padding: '5px 8px',
-                fontSize: 10,
-              }}>미리보기 모드 — Google Sheets 저장 안 함</span>
-            )}
+            {apiStatus && <span style={{ color: apiStatus === 'ok' ? '#00ff88' : '#ffaa00', background: apiStatus === 'ok' ? 'rgba(0,255,136,0.08)' : 'rgba(255,170,0,0.08)', border: `1px solid ${apiStatus === 'ok' ? 'rgba(0,255,136,0.25)' : 'rgba(255,170,0,0.3)'}`, borderRadius: 5, padding: '5px 8px', fontSize: 10 }}>API 상태 {apiStatus}</span>}
           </div>
         )}
 
         <div style={{
           padding: '10px 24px',
           borderBottom: '1px solid rgba(0,180,255,0.08)',
-          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          gap: 12,
           flexShrink: 0,
         }}>
-          <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
             {[
-              { key: 'all', label: '전체' },
-              { key: 'qualified', label: `✅ 적합 (${stats.qualified})` },
-              { key: 'review', label: `⚠️ 검토 (${stats.review})` },
-              { key: 'high', label: '적합도↑' },
-              { key: 'youtube', label: 'YouTube' },
-              { key: 'naver', label: 'Naver' },
-              { key: 'email', label: '이메일 확인' },
-            ].map(f => (
-              <button
-                key={f.key}
-                onClick={() => { setFilter(f.key as any); setPage(0); }}
-                style={{
-                  background: filter === f.key ? 'rgba(0,180,255,0.2)' : 'rgba(255,255,255,0.04)',
-                  border: `1px solid ${filter === f.key ? 'rgba(0,180,255,0.5)' : 'rgba(255,255,255,0.1)'}`,
-                  color: filter === f.key ? '#00b4ff' : 'rgba(255,255,255,0.55)',
-                  padding: '4px 12px', borderRadius: '12px', fontSize: '10px', cursor: 'pointer',
-                }}
-              >{f.label}</button>
+              ['all', '전체'],
+              ['proposal_ready', '바로 제안 가능'],
+              ['needs_enrichment', '보강 필요'],
+              ['excluded', '제외 후보'],
+              ['email', '공개 이메일 있음'],
+              ['views', '조회수 높은 순'],
+              ['fit', '적합도 높은 순'],
+            ].map(([key, label]) => (
+              <button key={key} onClick={() => { setFilter(key as CandidateFilter); setPage(0); }} style={{
+                background: filter === key ? 'rgba(0,180,255,0.2)' : 'rgba(255,255,255,0.04)',
+                border: `1px solid ${filter === key ? 'rgba(0,180,255,0.5)' : 'rgba(255,255,255,0.1)'}`,
+                color: filter === key ? '#00b4ff' : 'rgba(255,255,255,0.62)',
+                padding: '5px 12px',
+                borderRadius: 14,
+                fontSize: 10,
+                cursor: 'pointer',
+              }}>{label}</button>
             ))}
           </div>
-          <div style={{ color: 'rgba(255,255,255,0.4)', fontSize: '10px' }}>
-            {filtered.length}명 중 {page * PAGE_SIZE + 1}–{Math.min((page + 1) * PAGE_SIZE, filtered.length)}명 표시
+          <div style={{ color: 'rgba(255,255,255,0.45)', fontSize: 10 }}>
+            {filtered.length}명 중 {filtered.length ? page * PAGE_SIZE + 1 : 0}-{Math.min((page + 1) * PAGE_SIZE, filtered.length)}명 표시
           </div>
         </div>
 
-        {/* ── 후보 리스트 ── */}
         <div className="outreach-scroll-area" style={{ flex: 1, overflowY: 'auto', padding: '16px 24px' }}>
           {loading ? (
-            <div style={{ padding: '60px 20px', textAlign: 'center' }}>
-              <motion.div
-                animate={{ rotate: 360 }}
-                transition={{ duration: 2, repeat: Infinity, ease: 'linear' }}
-                style={{
-                  width: '44px', height: '44px', margin: '0 auto 16px',
-                  border: '2px solid rgba(0,180,255,0.3)', borderTop: '2px solid #00b4ff',
-                  borderRadius: '50%',
-                }}
-              />
-              <div style={{ color: '#00b4ff', fontSize: '12px' }}>후보 수집 중...</div>
-            </div>
+            <div style={{ padding: '60px 20px', textAlign: 'center', color: '#00b4ff' }}>후보 수집 및 분석 중입니다.</div>
           ) : paged.length === 0 ? (
-            <div style={{ padding: '60px 20px', textAlign: 'center', color: 'rgba(255,255,255,0.3)', fontSize: '12px' }}>
-              수집된 후보가 없습니다. "공동구매 후보 수집해줘" 명령을 실행하세요.
-            </div>
+            <div style={{ padding: '60px 20px', textAlign: 'center', color: 'rgba(255,255,255,0.45)', fontSize: 12 }}>표시할 후보가 없습니다. 필터를 바꾸거나 보강 수집을 실행해 주세요.</div>
           ) : (
-            <div className="outreach-candidate-list" style={{
-              display: 'grid',
-              gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))',
-              gap: '12px',
-            }}>
+            <div className="outreach-candidate-list" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(340px, 1fr))', gap: 12 }}>
               <AnimatePresence>
-                {paged.map((c, idx) => (
+                {paged.map((model, idx) => (
                   <motion.div
-                    key={c.candidateId}
-                    className={`outreach-candidate-card${selectedCandidate?.candidateId === c.candidateId ? ' is-selected' : ''}`}
+                    key={model.id}
+                    className={`outreach-candidate-card${selectedCandidateId === model.id ? ' is-selected' : ''}`}
+                    data-testid="outreach-candidate-card"
                     initial={{ opacity: 0, y: 16, scale: 0.97 }}
                     animate={{ opacity: 1, y: 0, scale: 1 }}
                     exit={{ opacity: 0, scale: 0.95 }}
-                    transition={{ delay: idx * 0.04, type: 'spring', damping: 22 }}
-                    onClick={() => handleCandidateSelect(c)}
+                    transition={{ delay: idx * 0.025, type: 'spring', damping: 22 }}
+                    onClick={() => handleCandidateSelect(model)}
                     style={{
-                      background: selectedCandidate?.candidateId === c.candidateId
-                        ? 'rgba(0,180,255,0.08)'
-                        : 'rgba(255,255,255,0.03)',
-                      border: `1px solid ${selectedCandidate?.candidateId === c.candidateId ? 'rgba(0,180,255,0.5)' : 'rgba(0,180,255,0.12)'}`,
-                      borderRadius: '10px', padding: '14px 16px',
-                      cursor: 'pointer', position: 'relative',
-                      boxShadow: selectedCandidate?.candidateId === c.candidateId
-                        ? '0 0 18px rgba(0,180,255,0.15)'
-                        : 'none',
-                      transition: 'border-color 0.2s, box-shadow 0.2s',
+                      background: selectedCandidateId === model.id ? 'rgba(0,180,255,0.08)' : 'rgba(255,255,255,0.03)',
+                      border: `1px solid ${selectedCandidateId === model.id ? 'rgba(0,180,255,0.5)' : 'rgba(0,180,255,0.13)'}`,
+                      borderRadius: 10,
+                      padding: 14,
+                      cursor: 'pointer',
+                      position: 'relative',
+                      minHeight: 238,
                     }}
                   >
-                    {/* 점수 배지 */}
-                    <div style={{
-                      position: 'absolute', top: '10px', right: '10px',
-                      background: `${getScoreColor(c.productFitScore)}18`,
-                      border: `1px solid ${getScoreColor(c.productFitScore)}`,
-                      borderRadius: '4px', padding: '2px 7px',
-                      color: getScoreColor(c.productFitScore), fontSize: '11px', fontWeight: 700,
-                    }}>{c.productFitScore}점</div>
-
-                    {/* 플랫폼 + 이름 */}
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px', paddingRight: '50px' }}>
-                      <span style={{
-                        background: c.platform.toLowerCase().includes('youtube') ? 'rgba(255,0,0,0.18)' : 'rgba(0,200,0,0.18)',
-                        color: c.platform.toLowerCase().includes('youtube') ? '#ff4444' : '#00cc66',
-                        padding: '2px 7px', borderRadius: '3px', fontSize: '9px', fontWeight: 600,
-                      }}>{c.platform.toLowerCase().includes('youtube') ? '▶' : 'N'} {c.platform}</span>
-                    </div>
-                    <div style={{ color: '#ffffff', fontSize: '13px', fontWeight: 700, marginBottom: '6px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                      {c.name}
-                    </div>
-
-                    {/* 최근 콘텐츠 */}
-                    {c.recentContentTitle && (
-                      <div style={{ color: 'rgba(255,255,255,0.5)', fontSize: '10px', marginBottom: '8px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                        {c.recentContentTitle}
-                      </div>
-                    )}
-
-                    {/* 상태 배지 */}
-                    <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
-                      {/* OUTREACH-TARGET-FIT-A.1: target match status 배지 */}
-                      {(c as any).target_match_status === 'qualified' && (
-                        <span className="outreach-status-badge" style={{
-                          background: 'rgba(0,255,136,0.15)', border: '1px solid rgba(0,255,136,0.5)',
-                          color: '#00ff88', padding: '2px 7px', borderRadius: '3px', fontSize: '9px', fontWeight: 700,
-                        }}>✅ 적합</span>
-                      )}
-                      {(c as any).target_match_status === 'review' && (
-                        <span className="outreach-status-badge" style={{
-                          background: 'rgba(255,170,0,0.15)', border: '1px solid rgba(255,170,0,0.5)',
-                          color: '#ffaa00', padding: '2px 7px', borderRadius: '3px', fontSize: '9px', fontWeight: 700,
-                        }}>⚠️ 검토</span>
-                      )}
-                      {(c.publicContactStatus === 'email_public' || c.publicEmailMasked) && (
-                        <span className="outreach-status-badge" style={{
-                          background: 'rgba(0,255,136,0.12)', border: '1px solid rgba(0,255,136,0.35)',
-                          color: '#00ff88', padding: '2px 7px', borderRadius: '3px', fontSize: '9px',
-                        }}>✉ 이메일</span>
-                      )}
-                      {c.productFitScore >= 70 && (
-                        <span className="outreach-status-badge" style={{
-                          background: 'rgba(0,255,136,0.08)', border: '1px solid rgba(0,255,136,0.25)',
-                          color: '#00ff88', padding: '2px 7px', borderRadius: '3px', fontSize: '9px',
-                        }}>HIGH FIT</span>
-                      )}
-                      {/* requested_vertical 표시 */}
-                      {(c as any).requested_vertical && (c as any).requested_vertical !== 'unknown' && (
-                        <span style={{
-                          background: 'rgba(170,136,255,0.12)', border: '1px solid rgba(170,136,255,0.35)',
-                          color: '#aa88ff', padding: '2px 7px', borderRadius: '3px', fontSize: '9px',
-                        }}>{(c as any).requested_vertical}</span>
-                      )}
-                      {(c as any).target_match_score !== undefined && (
-                        <span style={{
-                          background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.14)',
-                          color: 'rgba(255,255,255,0.7)', padding: '2px 7px', borderRadius: '3px', fontSize: '9px',
-                        }}>근거점수 {(c as any).target_match_score}</span>
-                      )}
-                    </div>
-
-                    {(c as any).target_evidence_terms && (
+                    <div style={{ display: 'grid', gridTemplateColumns: '74px 1fr', gap: 12 }}>
                       <div style={{
-                        marginTop: '8px',
-                        color: 'rgba(255,255,255,0.48)',
-                        fontSize: '9px',
-                        lineHeight: 1.45,
-                        overflow: 'hidden',
-                        textOverflow: 'ellipsis',
-                        whiteSpace: 'nowrap',
-                      }}>
-                        근거: {String((c as any).target_evidence_terms).split(',').slice(0, 4).map(s => s.trim()).filter(Boolean).join(', ')}
+                        width: 74,
+                        height: 74,
+                        borderRadius: 9,
+                        background: model.thumbnailUrl ? `url(${model.thumbnailUrl}) center/cover` : 'rgba(255,255,255,0.05)',
+                        border: '1px solid rgba(255,255,255,0.1)',
+                      }} />
+                      <div style={{ minWidth: 0 }}>
+                        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', paddingRight: 54 }}>
+                          <span style={{ color: model.platform.toLowerCase().includes('youtube') ? '#ff7777' : '#00ff88', border: '1px solid rgba(255,255,255,0.14)', padding: '2px 7px', borderRadius: 4, fontSize: 9 }}>{model.platform}</span>
+                          <span style={{ color: model.contactable ? '#00ff88' : '#ffaa00', border: `1px solid ${model.contactable ? 'rgba(0,255,136,0.3)' : 'rgba(255,170,0,0.3)'}`, padding: '2px 7px', borderRadius: 4, fontSize: 9 }}>
+                            {model.contactable ? '연락 가능' : '연락처 보강'}
+                          </span>
+                        </div>
+                        <div style={{ color: '#fff', fontSize: 14, fontWeight: 800, marginTop: 7, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{model.channelName}</div>
+                        <div style={{ color: 'rgba(255,255,255,0.52)', fontSize: 10, marginTop: 5, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{model.matchedKeyword} / {model.matchedCategory}</div>
                       </div>
-                    )}
-                    {((c as any).target_match_status === 'review' || (c as any).target_match_status === 'excluded') && ((c as any).target_exclude_reason || (c as any).excludedReason) && (
-                      <div style={{
-                        marginTop: '6px',
-                        color: '#ffaa00',
-                        fontSize: '9px',
-                        lineHeight: 1.45,
-                        overflow: 'hidden',
-                        textOverflow: 'ellipsis',
-                        whiteSpace: 'nowrap',
-                      }}>
-                        판정 사유: {(c as any).target_exclude_reason || (c as any).excludedReason}
-                      </div>
-                    )}
+                    </div>
 
-                    {/* 크게 보기 버튼 */}
-                    <div style={{ marginTop: '10px', textAlign: 'right' }}>
-                      <button
-                        onClick={(e) => { e.stopPropagation(); handleCandidateSelect(c); }}
-                        style={{
-                          background: 'rgba(0,180,255,0.1)', border: '1px solid rgba(0,180,255,0.3)',
-                          color: '#00b4ff', padding: '4px 10px', borderRadius: '4px',
-                          fontSize: '9px', cursor: 'pointer', letterSpacing: '0.5px',
-                        }}
-                      >크게 보기 →</button>
+                    <div style={{ position: 'absolute', top: 12, right: 12, display: 'grid', gap: 5, textAlign: 'right' }}>
+                      <span style={{ color: getScoreColor(model.fitScore), border: `1px solid ${getScoreColor(model.fitScore)}66`, padding: '2px 7px', borderRadius: 4, fontSize: 10, fontWeight: 800 }}>{model.fitScore || '-'} fit</span>
+                      <span style={{ color: getScoreColor(model.viralFitScore), border: `1px solid ${getScoreColor(model.viralFitScore)}44`, padding: '2px 7px', borderRadius: 4, fontSize: 10 }}>{model.viralFitScore || '-'} viral</span>
+                    </div>
+
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8, marginTop: 14 }}>
+                      <MetricBox label="구독자" value={model.subscriberCountText} />
+                      <MetricBox label="평균 조회" value={model.recentAverageViewsText} color="#ffaa00" />
+                      <MetricBox label="상위 조회" value={model.topVideoViewCountText} color="#aa88ff" />
+                    </div>
+
+                    <div style={{ color: 'rgba(255,255,255,0.75)', fontSize: 11, lineHeight: 1.55, marginTop: 12, minHeight: 34 }}>
+                      {model.reasonShort}
+                    </div>
+
+                    <div style={{ color: 'rgba(255,255,255,0.52)', fontSize: 10, marginTop: 10, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                      대표 영상: {model.topVideoTitle}
+                    </div>
+
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 12, gap: 8 }}>
+                      <span style={{ color: model.status === 'proposal_ready' ? '#00ff88' : model.status === 'excluded' ? '#ff7777' : '#ffaa00', fontSize: 10 }}>
+                        {model.status === 'proposal_ready' ? '바로 제안 가능' : model.status === 'excluded' ? '제외 후보' : '보강 필요'}
+                      </span>
+                      <button onClick={(e) => { e.stopPropagation(); handleCandidateSelect(model); }} style={{
+                        background: 'rgba(0,180,255,0.1)',
+                        border: '1px solid rgba(0,180,255,0.3)',
+                        color: '#00b4ff',
+                        padding: '5px 10px',
+                        borderRadius: 5,
+                        fontSize: 10,
+                        cursor: 'pointer',
+                      }}>상세 보기</button>
                     </div>
                   </motion.div>
                 ))}
@@ -673,57 +603,22 @@ export default function OutreachResultWorkspace({
           )}
         </div>
 
-        {/* ── 페이지네이션 + 하단 바 ── */}
-        <div style={{
-          padding: '12px 24px',
-          borderTop: '1px solid rgba(0,180,255,0.1)',
-          display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-          flexShrink: 0,
-          background: 'rgba(0,0,0,0.3)',
-        }}>
-          <div style={{ display: 'flex', gap: '6px' }}>
-            <button
-              onClick={() => setPage(p => Math.max(0, p - 1))}
-              disabled={page === 0}
-              style={{
-                background: page === 0 ? 'rgba(255,255,255,0.03)' : 'rgba(0,180,255,0.1)',
-                border: '1px solid rgba(0,180,255,0.2)',
-                color: page === 0 ? 'rgba(255,255,255,0.2)' : '#00b4ff',
-                padding: '5px 12px', borderRadius: '4px', fontSize: '10px',
-                cursor: page === 0 ? 'not-allowed' : 'pointer',
-              }}
-            >← 이전</button>
-            <span style={{ color: 'rgba(255,255,255,0.4)', fontSize: '10px', padding: '5px 8px' }}>
-              {page + 1} / {Math.max(1, totalPages)}
-            </span>
-            <button
-              onClick={() => setPage(p => Math.min(totalPages - 1, p + 1))}
-              disabled={page >= totalPages - 1}
-              style={{
-                background: page >= totalPages - 1 ? 'rgba(255,255,255,0.03)' : 'rgba(0,180,255,0.1)',
-                border: '1px solid rgba(0,180,255,0.2)',
-                color: page >= totalPages - 1 ? 'rgba(255,255,255,0.2)' : '#00b4ff',
-                padding: '5px 12px', borderRadius: '4px', fontSize: '10px',
-                cursor: page >= totalPages - 1 ? 'not-allowed' : 'pointer',
-              }}
-            >다음 →</button>
+        <div style={{ padding: '12px 24px', borderTop: '1px solid rgba(0,180,255,0.1)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexShrink: 0, background: 'rgba(0,0,0,0.3)' }}>
+          <div style={{ display: 'flex', gap: 6 }}>
+            <button onClick={() => setPage(p => Math.max(0, p - 1))} disabled={page === 0} style={{ background: 'rgba(0,180,255,0.1)', border: '1px solid rgba(0,180,255,0.2)', color: page === 0 ? 'rgba(255,255,255,0.25)' : '#00b4ff', padding: '6px 12px', borderRadius: 5, cursor: page === 0 ? 'not-allowed' : 'pointer' }}>이전</button>
+            <span style={{ color: 'rgba(255,255,255,0.45)', fontSize: 11, padding: '6px 8px' }}>{page + 1} / {Math.max(1, totalPages)}</span>
+            <button onClick={() => setPage(p => Math.min(totalPages - 1, p + 1))} disabled={page >= totalPages - 1} style={{ background: 'rgba(0,180,255,0.1)', border: '1px solid rgba(0,180,255,0.2)', color: page >= totalPages - 1 ? 'rgba(255,255,255,0.25)' : '#00b4ff', padding: '6px 12px', borderRadius: 5, cursor: page >= totalPages - 1 ? 'not-allowed' : 'pointer' }}>다음</button>
           </div>
-
-          <div className="outreach-execute-lock" style={{
-            background: 'rgba(255,50,50,0.08)', border: '1px solid rgba(255,50,50,0.25)',
-            borderRadius: '6px', padding: '6px 14px',
-            color: 'rgba(255,80,80,0.7)', fontSize: '9px', letterSpacing: '1px',
-          }}>
-            🔒 EXECUTE LOCKED — 대표님 승인 전 실행 불가
+          <div className="outreach-execute-lock" data-testid="execute-locked" style={{ background: 'rgba(255,70,70,0.08)', border: '1px solid rgba(255,70,70,0.25)', borderRadius: 6, padding: '6px 14px', color: 'rgba(255,90,90,0.72)', fontSize: 10, letterSpacing: 1 }}>
+            EXECUTE LOCKED - 승인 전 발송 불가
           </div>
         </div>
       </motion.div>
 
-      {/* ── 후보 상세 Drawer ── */}
       <AnimatePresence>
-        {detailOpen && selectedCandidate && (
+        {detailOpen && selectedModel && (
           <CandidateDetailDrawer
-            candidate={selectedCandidate}
+            model={selectedModel}
             onClose={() => setDetailOpen(false)}
             onJarvisContextEvent={onJarvisContextEvent}
           />
