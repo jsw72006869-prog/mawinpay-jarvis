@@ -4386,7 +4386,7 @@ async function handleYouTubeCollectionPreview(params: any = {}) {
     contactableCount: candidates.filter((c: any) => c.contact_email_exists).length,
     rawSearchResultCount: isVideoCollection ? videos.length : seenChannelIds.size,
     dedupedChannelCount: channels.length || seenChannelIds.size,
-    displayedCandidateCount: isVideoCollection ? videos.length : candidates.length,
+    displayedCandidateCount: candidates.length,
     publicEmailCount: candidates.filter((c: any) => c.contact_email_exists).length,
     providerCalled: apiStatus.youtubeProviderCalled,
     searchCalled: apiStatus.searchListCalled,
