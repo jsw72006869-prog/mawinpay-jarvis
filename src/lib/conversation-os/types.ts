@@ -185,3 +185,96 @@ export type JarvisComposedResponse = {
   voiceSummary: string;
   nextActions: JarvisNextAction[];
 };
+
+export type YouTubeCollectionMode =
+  | 'category_channel_collect'
+  | 'category_video_collect'
+  | 'keyword_video_collect'
+  | 'keyword_channel_collect'
+  | 'count_only';
+
+export type YouTubeCollectionTargetType =
+  | 'influencer'
+  | 'channel'
+  | 'video'
+  | 'mixed';
+
+export type YouTubeCollectionIntent = {
+  intent: 'collect_youtube';
+  mode: YouTubeCollectionMode;
+  targetType: YouTubeCollectionTargetType;
+  categoryKey?: string;
+  categoryLabel?: string;
+  keyword?: string;
+  targetCount: number;
+  maxVideos?: number;
+  maxChannels?: number;
+  maxPages?: number;
+  dryRun: true;
+  countOnly: boolean;
+  requiresApproval: false;
+  actualExecution: false;
+  originalUserText?: string;
+};
+
+export type JarvisMemoryEventType =
+  | 'briefing'
+  | 'purchase_order'
+  | 'gmail_draft'
+  | 'youtube_collection'
+  | 'viral_content_insight'
+  | 'approval'
+  | 'error'
+  | 'user_preference';
+
+export type JarvisMemoryEvent = {
+  id: string;
+  type: JarvisMemoryEventType;
+  summary: string;
+  source: 'chat' | 'api_result' | 'browser' | 'system';
+  importance: 'low' | 'medium' | 'high';
+  createdAt: string;
+  payload?: Record<string, unknown>;
+};
+
+export type VoiceReply = {
+  text: string;
+  emotion: 'calm' | 'confident' | 'urgent' | 'blocked' | 'warm';
+  shouldSpeak: boolean;
+  sensitiveFiltered: boolean;
+};
+
+export type JarvisBusinessBrainContext = {
+  userText: string;
+  intent?: string;
+  businessContext: {
+    activeDomain: 'orders' | 'purchase_orders' | 'outreach' | 'marketing' | 'general';
+    currentGoal?: string;
+    nextDecision?: string;
+  };
+  recentMemory: JarvisMemoryEvent[];
+  executionMode: 'read_only' | 'preview' | 'approval_required';
+  safetyState: {
+    approvalRequired: boolean;
+    noExternalExecution: boolean;
+    piiMasked: boolean;
+  };
+  responseStyle: {
+    screen: 'detailed';
+    voice: 'short_summary';
+  };
+};
+
+export type YouTubeViralInsight = {
+  headline: string;
+  topVideoPatterns: string[];
+  titleHooks: string[];
+  creatorBuckets: {
+    contactable: number;
+    established: number;
+    rising: number;
+    reviewNeeded: number;
+  };
+  contentIdeas: string[];
+  outreachSuggestions: string[];
+};

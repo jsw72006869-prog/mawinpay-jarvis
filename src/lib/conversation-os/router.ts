@@ -65,9 +65,9 @@ export function routeJarvisCommand(input: {
       command: `${label} 인플루언서 ${target}명 이어서 수집`,
       screenText: [
         `대표님, 직전 Outreach 기준으로 ${label} 후보를 이어서 수집하겠습니다.`,
-        '목표에 도달하기 전에는 완료라고 말하지 않고, 부족 인원과 중단 사유를 그대로 보고하겠습니다.',
+        '목표 기준, 현재 확보 수, 남은 인원과 중단 사유를 분리해서 보고하겠습니다.',
       ].join('\n\n'),
-      voiceSummary: `${label} 인플루언서 수집을 이어서 진행하겠습니다. 목표 미달이면 완료 처리하지 않겠습니다.`,
+      voiceSummary: `${label} 인플루언서 수집을 이어서 진행하겠습니다. 목표 기준과 확보 현황을 나눠 보고하겠습니다.`,
     };
   }
 

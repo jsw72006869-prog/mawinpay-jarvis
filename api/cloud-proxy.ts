@@ -4277,6 +4277,208 @@ async function handleOutreachCollect(params: any) {
 }
 
 // OUTREACH-SHEET.1: duplicate_hash 생성 헬퍼
+async function handleYouTubeCollectionPreview(params: any = {}) {
+  const collectionMode = String(params.collectionMode || 'category_channel_collect');
+  const targetType = String(params.targetType || (collectionMode.includes('video') ? 'video' : 'channel'));
+  const isVideoCollection = targetType === 'video' || collectionMode.includes('video');
+  const keyword = String(params.keyword || params.categoryLabel || params.verticalLabel || params.requestedVertical || '').trim();
+  const targetCount = Math.max(1, Number(params.targetCount || params.targetContactableCount || params.requestedCount || (isVideoCollection ? 50 : 20)));
+  const maxPages = Math.min(Math.max(1, Number(params.maxPages || 3)), 3);
+  const maxResultsPerPage = Math.min(Math.max(1, Number(params.maxResults || 50)), 50);
+  const requestedLimit = Math.min(Number(params.requestedCount || targetCount), isVideoCollection ? 150 : 100);
+  const apiStatus: any = {
+    youtubeApiKeyConfigured: Boolean(YOUTUBE_API_KEY),
+    youtubeProviderImplemented: true,
+    youtubeProviderCalled: false,
+    searchListCalled: false,
+    videosListCalled: false,
+    channelsListCalled: false,
+    videoCategoriesListUsed: false,
+  };
+  const apiWarnings: string[] = [];
+  const videos: any[] = [];
+  const channels: any[] = [];
+  const candidates: any[] = [];
+  const seenVideoIds = new Set<string>();
+  const seenChannelIds = new Set<string>();
+
+  const buildSummary = (stopReason: string, completionStatus = 'blocked') => ({
+    collectionMode,
+    targetType,
+    categoryKey: params.categoryKey || params.requestedVertical || 'unknown',
+    categoryLabel: params.categoryLabel || params.verticalLabel || params.requestedVertical || '',
+    keyword,
+    targetCount,
+    searchedVideoCount: videos.length,
+    uniqueChannelCount: channels.length || seenChannelIds.size,
+    candidateCount: candidates.length,
+    contactableCount: candidates.filter((c: any) => c.contact_email_exists).length,
+    rawSearchResultCount: isVideoCollection ? videos.length : seenChannelIds.size,
+    dedupedChannelCount: channels.length || seenChannelIds.size,
+    displayedCandidateCount: isVideoCollection ? videos.length : candidates.length,
+    publicEmailCount: candidates.filter((c: any) => c.contact_email_exists).length,
+    providerCalled: apiStatus.youtubeProviderCalled,
+    searchCalled: apiStatus.searchListCalled,
+    videosCalled: apiStatus.videosListCalled,
+    channelsCalled: apiStatus.channelsListCalled,
+    youtubeApiKeyConfigured: apiStatus.youtubeApiKeyConfigured,
+    youtubeProviderImplemented: apiStatus.youtubeProviderImplemented,
+    youtubeProviderCalled: apiStatus.youtubeProviderCalled,
+    searchListCalled: apiStatus.searchListCalled,
+    videosListCalled: apiStatus.videosListCalled,
+    channelsListCalled: apiStatus.channelsListCalled,
+    videoCategoriesListUsed: apiStatus.videoCategoriesListUsed,
+    completionStatus,
+    stopReason,
+    videos: videos.slice(0, requestedLimit),
+    channels,
+    candidates,
+  });
+
+  if (!keyword) {
+    const summary = buildSummary('keyword_required');
+    return { success: false, ...summary, status: 'BLOCKED', stopReason: 'keyword_required', completionStatus: 'blocked', message: 'keyword is required for YouTube collection preview.', summary, collectionSummary: summary, videos, channels, candidates, diagnostics: { ...apiStatus, youtubeApiStatus: 'api_error', apiWarnings: ['keyword_required'] }, autoSave: { skipped: true, reason: 'dryRun' } };
+  }
+  if (!YOUTUBE_API_KEY) {
+    const summary = buildSummary('not_configured');
+    return { success: true, ...summary, status: 'BLOCKED', stopReason: 'not_configured', completionStatus: 'blocked', message: 'YOUTUBE_API_KEY is not configured; real YouTube search was not executed.', summary, collectionSummary: summary, videos, channels, candidates, diagnostics: { ...apiStatus, youtubeApiStatus: 'env_missing', apiWarnings: ['youtube_api_key_missing'] }, autoSave: { skipped: true, reason: 'dryRun' } };
+  }
+
+  try {
+    apiStatus.youtubeProviderCalled = true;
+    const searchType = isVideoCollection ? 'video' : 'channel';
+    let pageToken = '';
+    for (let page = 0; page < maxPages; page++) {
+      const pageParam = pageToken ? `&pageToken=${encodeURIComponent(pageToken)}` : '';
+      const searchUrl = `https://www.googleapis.com/youtube/v3/search?part=snippet&type=${searchType}&q=${encodeURIComponent(keyword)}&order=relevance&maxResults=${maxResultsPerPage}&regionCode=KR&relevanceLanguage=ko&safeSearch=moderate${pageParam}&key=${getCurrentYouTubeKey()}`;
+      const searchRes: any = await fetchYouTubeAPI(searchUrl);
+      apiStatus.searchListCalled = true;
+      if (!searchRes.ok) {
+        const errData = await searchRes.json().catch(() => ({})) as any;
+        if (isYouTubeQuotaErrorPayload(errData)) {
+          apiWarnings.push('youtube_quota_exceeded');
+          const summary = buildSummary('quota_exceeded');
+          return { success: true, ...summary, status: 'BLOCKED', stopReason: 'quota_exceeded', completionStatus: 'blocked', message: 'YouTube quota exceeded; returned explicit blocked status instead of fake zero.', summary, collectionSummary: summary, videos, channels, candidates, diagnostics: { ...apiStatus, youtubeApiStatus: 'quota_exceeded', apiWarnings }, autoSave: { skipped: true, reason: 'dryRun' } };
+        }
+        apiWarnings.push(`youtube_search_http_${searchRes.status}`);
+        const summary = buildSummary('api_error');
+        return { success: true, ...summary, status: 'BLOCKED', stopReason: 'api_error', completionStatus: 'blocked', message: 'YouTube search.list failed; returned explicit api_error status.', summary, collectionSummary: summary, videos, channels, candidates, diagnostics: { ...apiStatus, youtubeApiStatus: 'api_error', apiWarnings }, autoSave: { skipped: true, reason: 'dryRun' } };
+      }
+      const searchData = await searchRes.json() as any;
+      const items = Array.isArray(searchData.items) ? searchData.items : [];
+      for (const item of items) {
+        const snippet = item.snippet || {};
+        const channelId = snippet.channelId || item.id?.channelId;
+        if (channelId) seenChannelIds.add(channelId);
+        if (isVideoCollection) {
+          const videoId = item.id?.videoId;
+          if (!videoId || seenVideoIds.has(videoId)) continue;
+          seenVideoIds.add(videoId);
+          videos.push({
+            videoId,
+            channelId: channelId || '',
+            title: snippet.title || '',
+            channelTitle: snippet.channelTitle || '',
+            publishedAt: snippet.publishedAt || '',
+            thumbnailUrl: snippet.thumbnails?.medium?.url || snippet.thumbnails?.default?.url || '',
+            url: `https://www.youtube.com/watch?v=${videoId}`,
+          });
+        }
+      }
+      pageToken = searchData.nextPageToken || '';
+      if (!pageToken || videos.length >= requestedLimit || seenChannelIds.size >= requestedLimit) break;
+    }
+
+    if (!isVideoCollection && videos.length === 0) {
+      const videoSearchUrl = `https://www.googleapis.com/youtube/v3/search?part=snippet&type=video&q=${encodeURIComponent(keyword)}&order=relevance&maxResults=${Math.min(maxResultsPerPage, requestedLimit)}&regionCode=KR&relevanceLanguage=ko&safeSearch=moderate&key=${getCurrentYouTubeKey()}`;
+      const videoSearchRes: any = await fetchYouTubeAPI(videoSearchUrl);
+      apiStatus.searchListCalled = true;
+      if (videoSearchRes.ok) {
+        const videoSearchData = await videoSearchRes.json() as any;
+        const videoItems = Array.isArray(videoSearchData.items) ? videoSearchData.items : [];
+        for (const item of videoItems) {
+          const snippet = item.snippet || {};
+          const channelId = snippet.channelId || item.id?.channelId;
+          const videoId = item.id?.videoId;
+          if (channelId) seenChannelIds.add(channelId);
+          if (!videoId || seenVideoIds.has(videoId)) continue;
+          seenVideoIds.add(videoId);
+          videos.push({
+            videoId,
+            channelId: channelId || '',
+            title: snippet.title || '',
+            channelTitle: snippet.channelTitle || '',
+            publishedAt: snippet.publishedAt || '',
+            thumbnailUrl: snippet.thumbnails?.medium?.url || snippet.thumbnails?.default?.url || '',
+            url: `https://www.youtube.com/watch?v=${videoId}`,
+          });
+        }
+      } else {
+        apiWarnings.push(`youtube_video_search_http_${videoSearchRes.status}`);
+      }
+    }
+
+    const channelIds = Array.from(seenChannelIds).slice(0, 50);
+    const videoIds = Array.from(seenVideoIds).slice(0, 50);
+    if (videoIds.length > 0) {
+      const videosUrl = `https://www.googleapis.com/youtube/v3/videos?part=snippet,statistics,contentDetails&id=${videoIds.join(',')}&key=${getCurrentYouTubeKey()}`;
+      const videosRes: any = await fetchYouTubeAPI(videosUrl);
+      apiStatus.videosListCalled = true;
+      if (videosRes.ok) {
+        const videosData = await videosRes.json() as any;
+        const videoMap = new Map((videosData.items || []).map((v: any) => [v.id, v]));
+        for (const video of videos) {
+          const detail: any = videoMap.get(video.videoId);
+          if (!detail) continue;
+          video.viewCount = Number(detail.statistics?.viewCount || 0);
+          video.likeCount = Number(detail.statistics?.likeCount || 0);
+          video.commentCount = Number(detail.statistics?.commentCount || 0);
+          video.duration = detail.contentDetails?.duration || '';
+        }
+      } else {
+        apiWarnings.push(`youtube_videos_http_${videosRes.status}`);
+      }
+    }
+    if (channelIds.length > 0) {
+      const channelsUrl = `https://www.googleapis.com/youtube/v3/channels?part=snippet,statistics,brandingSettings&id=${channelIds.join(',')}&key=${getCurrentYouTubeKey()}`;
+      const channelsRes: any = await fetchYouTubeAPI(channelsUrl);
+      apiStatus.channelsListCalled = true;
+      if (channelsRes.ok) {
+        const channelsData = await channelsRes.json() as any;
+        for (const ch of (channelsData.items || [])) {
+          const snippet = ch.snippet || {};
+          const stats = ch.statistics || {};
+          const description = String(snippet.description || ch.brandingSettings?.channel?.description || '');
+          const contact = extractContactInfo(description, '');
+          const publicContactStatus = contact.email ? 'email_public' : 'unknown';
+          const channel = {
+            channelId: ch.id,
+            title: snippet.title || '',
+            descriptionPreview: description.slice(0, 180),
+            subscriberCount: Number(stats.subscriberCount || 0),
+            videoCount: Number(stats.videoCount || 0),
+            viewCount: Number(stats.viewCount || 0),
+            thumbnailUrl: snippet.thumbnails?.medium?.url || snippet.thumbnails?.default?.url || '',
+            url: `https://www.youtube.com/channel/${ch.id}`,
+            contact_email_exists: Boolean(contact.email),
+            publicContactStatus,
+          };
+          channels.push(channel);
+          candidates.push({ id: ch.id, channelId: ch.id, name: channel.title, title: channel.title, profile_url: channel.url, platform: 'YouTube', subscriberCount: channel.subscriberCount, videoCount: channel.videoCount, viewCount: channel.viewCount, publicContactStatus, contact_email_exists: channel.contact_email_exists, source_keyword: keyword, collectionMode, targetType });
+        }
+      } else {
+        apiWarnings.push(`youtube_channels_http_${channelsRes.status}`);
+      }
+    }
+    const summary = buildSummary(params.countOnly ? 'countOnly' : 'dryRun', params.countOnly ? 'count_only' : 'preview');
+    return { success: true, ...summary, status: 'OK', stopReason: summary.stopReason, completionStatus: summary.completionStatus, summary, collectionSummary: summary, diagnostics: { ...apiStatus, youtubeApiStatus: 'ok', apiWarnings }, videos: summary.videos, channels, candidates, dryRun: true, countOnly: params.countOnly === true, autoSave: { skipped: true, reason: 'dryRun' } };
+  } catch (error: any) {
+    apiWarnings.push('youtube_collection_preview_exception');
+    const summary = buildSummary('api_error');
+    return { success: true, ...summary, status: 'BLOCKED', stopReason: 'api_error', completionStatus: 'blocked', message: String(error?.message || error || 'youtube_collection_preview_failed').slice(0, 200), summary, collectionSummary: summary, videos, channels, candidates, diagnostics: { ...apiStatus, youtubeApiStatus: 'api_error', apiWarnings }, autoSave: { skipped: true, reason: 'dryRun' } };
+  }
+}
+
 function buildDuplicateHash(platform: string, profileUrl: string, channelName: string, handle: string): string {
   const norm = (s: string) => (s || '').toLowerCase().replace(/[\s\/\?#&=]+/g, '').trim();
   const base = profileUrl ? `${norm(platform)}::${norm(profileUrl)}` : `${norm(platform)}::${norm(channelName)}::${norm(handle)}`;
@@ -4292,6 +4494,23 @@ async function handleOutreachQualityBatchRun(params: any = {}) {
   const requestedVertical = params.requestedVertical || detectVerticalFromKeyword(params.keyword || params.product || '');
   const targetContactableCount = Math.max(1, Number(params.targetContactableCount || 20));
   const dryRun = params.dryRun !== false;
+  const collectionMode = params.collectionMode || 'category_channel_collect';
+  const targetType = params.targetType || (String(collectionMode).includes('video') ? 'video' : 'channel');
+  const isVideoCollection = targetType === 'video' || String(collectionMode).includes('video');
+  const isCollectionOsPreview = params.source === 'youtube_collection_os' || params.collectionMode || params.targetType;
+  if (isCollectionOsPreview) {
+    return handleYouTubeCollectionPreview({
+      ...params,
+      requestedVertical,
+      targetContactableCount,
+      collectionMode,
+      targetType,
+      dryRun: true,
+      countOnly: params.countOnly === true,
+    });
+  }
+  const requestedLimit = Math.min(Number(params.requestedCount || targetContactableCount), isVideoCollection ? 50 : 20);
+  const maxCandidateLimit = Math.min(Number(params.maxCandidates || targetContactableCount), isVideoCollection ? 50 : 20);
   const result: any = await handleOutreachCollect({
     ...params,
     keyword: params.keyword || `${requestedVertical} 인플루언서`,
@@ -4299,21 +4518,43 @@ async function handleOutreachQualityBatchRun(params: any = {}) {
     requestedVertical,
     platform: 'youtube',
     mode: 'goal_collect',
+    collectionMode,
+    targetType,
     targetContactableCount,
-    requestedCount: Math.min(Number(params.requestedCount || targetContactableCount), 10),
-    maxCandidates: Math.min(Number(params.maxCandidates || targetContactableCount), 10),
+    requestedCount: requestedLimit,
+    maxCandidates: maxCandidateLimit,
     requireQualified: true,
-    requireContactable: true,
+    requireContactable: params.requireContactable === true,
     requirePublicEmail: params.requirePublicEmail !== false,
     maxBatches: Math.min(Number(params.maxBatches || 1), 1),
     dryRun,
     countOnly: dryRun,
   });
   const summary = result?.summary || {};
+  const collectionSummary = {
+    ...summary,
+    collectionMode,
+    targetType,
+    categoryKey: params.categoryKey || requestedVertical,
+    categoryLabel: params.categoryLabel || params.verticalLabel || requestedVertical,
+    keyword: params.keyword || summary.keyword || '',
+    targetCount: Number(params.targetCount || targetContactableCount),
+    searchedVideoCount: Number(summary.searchedVideoCount || summary.rawSearchResultCount || 0),
+    uniqueChannelCount: Number(summary.uniqueChannelCount || summary.dedupedChannelCount || 0),
+    candidateCount: Number(summary.candidateCount || summary.qualifiedCount || 0),
+    contactableCount: Number(summary.contactableCount || summary.qualifiedContactableCount || 0),
+    videos: Array.isArray(result?.videos) ? result.videos : Array.isArray(summary.videos) ? summary.videos : [],
+    channels: Array.isArray(result?.channels) ? result.channels : Array.isArray(summary.channels) ? summary.channels : [],
+  };
   const completionStatus = summary.completionStatus || result?.completionStatus || 'partial';
   const reportPayload = {
     messageType: 'outreach_quality_batch',
     requestedVertical,
+    collectionMode,
+    targetType,
+    categoryKey: params.categoryKey || requestedVertical,
+    categoryLabel: params.categoryLabel || params.verticalLabel || requestedVertical,
+    keyword: params.keyword || '',
     targetContactableCount,
     qualifiedContactableCount: summary.qualifiedContactableCount || 0,
     remainingContactableCount: summary.remainingContactableCount || targetContactableCount,
@@ -4328,8 +4569,11 @@ async function handleOutreachQualityBatchRun(params: any = {}) {
     executeLocked: true,
     scheduler: { prepared: true, intervalHours: 3, cronCreated: false },
     reportPayload,
-    summary,
+    summary: collectionSummary,
     diagnostics: result?.diagnostics,
+    videos: collectionSummary.videos,
+    channels: collectionSummary.channels,
+    candidates: Array.isArray(result?.candidates) ? result.candidates : [],
   };
 }
 
