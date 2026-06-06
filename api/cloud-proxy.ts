@@ -4301,6 +4301,10 @@ async function handleYouTubeCollectionPreview(params: any = {}) {
   const candidates: any[] = [];
   const seenVideoIds = new Set<string>();
   const seenChannelIds = new Set<string>();
+  const safePublicPreview = (value: string) => String(value || '')
+    .replace(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi, '[email_hidden]')
+    .replace(/\b(?:010|011|016|017|018|019)[-\s.]?\d{3,4}[-\s.]?\d{4}\b/g, '[phone_hidden]')
+    .slice(0, 180);
 
   const buildSummary = (stopReason: string, completionStatus = 'blocked') => ({
     collectionMode,
@@ -4454,7 +4458,7 @@ async function handleYouTubeCollectionPreview(params: any = {}) {
           const channel = {
             channelId: ch.id,
             title: snippet.title || '',
-            descriptionPreview: description.slice(0, 180),
+            descriptionPreview: safePublicPreview(description),
             subscriberCount: Number(stats.subscriberCount || 0),
             videoCount: Number(stats.videoCount || 0),
             viewCount: Number(stats.viewCount || 0),
